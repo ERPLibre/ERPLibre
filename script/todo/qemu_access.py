@@ -5,13 +5,14 @@
 
 import json
 import os
+import shlex
 import shutil
 import socket
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from script.todo import todo_install
+from script.todo import qemu_usb, todo_install
 from script.todo.deploy_form_lib import VM_USER_DEFAULT
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_couleur import retour
@@ -747,7 +748,7 @@ class QemuAccessMixin:
         print(f"  ⚠ {t('virt-viewer still missing after the install.')}")
         return False
 
-    def _qemu_virt_viewer(self, name, src):
+    def _qemu_virt_viewer(self, name, src, usbredir=False):
         """Ouvre l'écran d'une VM avec virt-viewer, qui monte SON tunnel.
 
         C'est la voie la plus courte : virt-viewer parle à libvirt par
@@ -762,6 +763,11 @@ class QemuAccessMixin:
           - aucun affichage : on donne la commande à lancer sur le poste, sous
             la forme qemu+ssh, avec l'adresse par laquelle cette machine a été
             jointe.
+
+        usbredir=True ajoute les options spice-gtk de
+        qemu_usb.virt_viewer_argv : les Stream Deck du poste qui ouvre la
+        fenêtre passent d'office dans la VM par la redirection USB SPICE.
+        Sans lui, l'argv reste « virt-viewer -c <uri> <domaine> ».
         """
         domain = name.rsplit("+", 1)[-1] if src == "ssh_config" else name
         display = os.environ.get("DISPLAY") or os.environ.get(
@@ -784,8 +790,8 @@ class QemuAccessMixin:
         if display:
             if not self._qemu_ensure_virt_viewer():
                 return
-            cmd = ["virt-viewer", "-c", uri, domain]
-            print(f"\n  {t('Opening')} : {' '.join(cmd)}")
+            cmd = qemu_usb.virt_viewer_argv(uri, domain, usbredir=usbredir)
+            print(f"\n  {t('Opening')} : {shlex.join(cmd)}")
             try:
                 with open("/tmp/erplibre-virt-viewer.log", "ab") as log:
                     subprocess.Popen(
@@ -804,9 +810,10 @@ class QemuAccessMixin:
         host, from_ssh = self._qemu_self_address()
         user = os.environ.get("USER", "user")
         print(f"\n  {t('No display here; run this on YOUR workstation:')}")
-        print(
-            f"\n    virt-viewer -c qemu+ssh://{user}@{host}/system {domain}\n"
+        poste = qemu_usb.virt_viewer_argv(
+            f"qemu+ssh://{user}@{host}/system", domain, usbredir=usbredir
         )
+        print(f"\n    {shlex.join(poste)}\n")
         if not from_ssh:
             print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
         print(f"  {t('A ~/.ssh/config alias works there too.')}")

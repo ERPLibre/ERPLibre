@@ -43,6 +43,7 @@ SCRIPTS = (
     "install_nixos.py",
     "install_erplibre_home.py",
     "qemu_cache.py",
+    "usb_passthrough.py",
 )
 
 # L'autorité du cache de téléchargement, telle que le service l'écrit sur

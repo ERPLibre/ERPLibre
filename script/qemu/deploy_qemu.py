@@ -449,6 +449,174 @@ def gpu_install_args(node: str) -> list[str]:
     ]
 
 
+# --------------------------------------------------------------------------- #
+# USB : périphériques de l'hôte passés à la VM dès sa création
+# --------------------------------------------------------------------------- #
+# La lecture de sysfs et des sélecteurs vit dans script/todo/qemu_usb.py, que
+# le menu TODO utilise aussi. Ce script tourne hors de tout paquet Python
+# (lancé par son chemin, souvent sous sudo) : le module est chargé par son
+# chemin, et seulement quand une option USB est donnée.
+QEMU_USB_PATH = Path(__file__).resolve().parent.parent / "todo" / "qemu_usb.py"
+_QEMU_USB = {}
+
+# L'affichage que la redirection USB SPICE demande. Sur la boucle locale,
+# comme le VNC : virt-viewer y arrive par qemu+ssh, qui tunnelle jusqu'au
+# port de l'hyperviseur ; « listen=none » ne s'ouvre qu'en local.
+SPICE_USBREDIR_GRAPHICS = "spice,listen=127.0.0.1"
+
+# Architectures où virt-install pose les emplacements <redirdev spicevmc>
+# d'un affichage SPICE : x86 seulement.
+SPICE_USBREDIR_ARCHES = ("amd64", "x86_64")
+
+
+def qemu_usb():
+    """Le module qemu_usb.py, chargé une fois par son chemin."""
+    if "mod" not in _QEMU_USB:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "erplibre_qemu_usb", QEMU_USB_PATH
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _QEMU_USB["mod"] = mod
+    return _QEMU_USB["mod"]
+
+
+def usb_selector(text: str) -> str:
+    """Type argparse de --usb-hostdev : « VID:PID » ou « BUS.DEV ».
+
+    Seule la FORME est vérifiée ici ; la présence du périphérique l'est au
+    moment de virt-install (usb_hostdev_args), où son absence n'arrête rien.
+    """
+    try:
+        lisible = qemu_usb().parse_selector(text) is not None
+    except Exception as exc:  # module introuvable ou illisible
+        raise argparse.ArgumentTypeError(
+            f"lecture USB impossible ({QEMU_USB_PATH}) : {exc}"
+        ) from exc
+    if not lisible:
+        raise argparse.ArgumentTypeError(
+            f"« {text} » : attendu VID:PID (ex. 0fd9:0080) ou BUS.DEV"
+            " (ex. 3.5)"
+        )
+    return text.strip()
+
+
+def usb_host_devices() -> list:
+    """Les périphériques USB passables de l'hôte (sysfs, sans privilège)."""
+    return qemu_usb().host_usb_devices()
+
+
+def usb_hostdev_args(selectors, devs) -> tuple[list[str], list[str]]:
+    """(arguments « --hostdev » de virt-install, lignes à afficher).
+
+    virt-install cherche le périphérique au moment de créer la VM, et échoue
+    s'il est absent (« Did not find a matching node device ») ou si deux
+    branchés répondent au même VID:PID (« corresponds to multiple node
+    devices »). Chaque sélecteur est donc confronté d'abord à `devs`
+    (host_usb_devices) :
+
+    - absent : ignoré avec un avertissement ; la VM est créée sans lui ;
+    - unique par son VID:PID : passé par VID:PID, forme qui survit au
+      rebranchement ;
+    - ambigu : chaque périphérique désigné est épinglé par « bus.dev », sans
+      zéros de tête (libvirt lirait « 008 » comme un octal invalide).
+
+    Un périphérique désigné par deux sélecteurs n'est passé qu'une fois.
+    « source.startupPolicy=optional » laisse la VM démarrer plus tard sans
+    lui : un Stream Deck débranché n'empêche pas le démarrage.
+    """
+    qu = qemu_usb()
+    args, lignes, vus = [], [], set()
+    for sel in selectors or ():
+        crit = qu.parse_selector(sel)
+        if crit is None:
+            lignes.append(f"  ⚠ USB : sélecteur illisible « {sel} », ignoré.")
+            continue
+        trouves = qu.find_devices(devs, **crit)
+        if not trouves:
+            lignes.append(
+                f"  ⚠ USB : {sel} n'est pas branché sur l'hôte — ignoré, la"
+                " VM est créée sans lui."
+            )
+            continue
+        for dev in trouves:
+            cle = (dev["busnum"], dev["devnum"])
+            if cle in vus:
+                continue
+            vus.add(cle)
+            epingle = qu.ambiguous(devs, dev["vid"], dev["pid"])
+            source = (
+                f"{dev['busnum']}.{dev['devnum']}"
+                if epingle
+                else f"{dev['vid']}:{dev['pid']}"
+            )
+            args += ["--hostdev", f"{source},source.startupPolicy=optional"]
+            note = (
+                " (épinglé par son adresse : plusieurs identiques branchés)"
+                if epingle
+                else ""
+            )
+            lignes.append(
+                f"  USB : {qu.device_label(dev)} [{source}] passé à la"
+                f" VM{note}."
+            )
+    return args, lignes
+
+
+def _graphics_type(graphics: str) -> str:
+    """« vnc,listen=… » ou « type=vnc,… » -> « vnc »."""
+    tete = (graphics or "").split(",", 1)[0].strip()
+    return tete.split("=", 1)[1] if tete.startswith("type=") else tete
+
+
+def usb_refusal(args: argparse.Namespace) -> str:
+    """Pourquoi les options USB ne s'appliquent pas à cette VM ; "" si
+    elles s'appliquent.
+
+    --spice-usbredir demande un écran (une VM sans affichage n'a pas de
+    session SPICE où brancher quoi que ce soit) et une VM x86 : ailleurs,
+    virt-install ne pose aucun emplacement de redirection. --usb-hostdev
+    est refusé sur s390x, qui n'a pas de bus USB.
+    """
+    arch = getattr(args, "arch", "amd64")
+    if getattr(args, "usb_hostdev", None) and arch == "s390x":
+        return "--usb-hostdev : s390x n'a pas de bus USB."
+    if not getattr(args, "spice_usbredir", False):
+        return ""
+    if arch not in SPICE_USBREDIR_ARCHES:
+        return (
+            f"--spice-usbredir : VM x86_64 seulement ({arch} demandée) —"
+            " virt-install n'y pose aucun emplacement de redirection USB."
+        )
+    if not args.desktop and _graphics_type(args.graphics) == "none":
+        return (
+            "--spice-usbredir : la VM n'a pas d'écran. Ajouter --desktop"
+            " (ou un --graphics) : la redirection passe par la session"
+            " SPICE de virt-viewer."
+        )
+    return ""
+
+
+def spice_usbredir_graphics(args: argparse.Namespace, graphics: str) -> list:
+    """Le « --graphics spice » à poser AVANT l'affichage `graphics`, ou [].
+
+    virt-viewer ouvre le PREMIER affichage du domaine, et seul SPICE offre
+    son menu « USB device selection » : SPICE passe donc devant. Le VNC
+    reste derrière, pour les tunnels SSH et le diagnostic de console. Dès
+    qu'un affichage SPICE est présent, virt-install ajoute de lui-même deux
+    <redirdev type='spicevmc'>, le canal de l'agent et le son.
+    """
+    if not getattr(args, "spice_usbredir", False):
+        return []
+    if getattr(args, "arch", "amd64") not in SPICE_USBREDIR_ARCHES:
+        return []
+    if _graphics_type(graphics) in ("none", "spice"):
+        return []
+    return ["--graphics", SPICE_USBREDIR_GRAPHICS]
+
+
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
 # Image NixOS : release ÉPINGLÉE d'un tiers, jamais « latest ». Une release
@@ -525,14 +693,30 @@ def debian_variant(version: str, desktop: bool = False) -> str:
 
     « genericcloud » embarque le noyau cloud, compilé sans DRM : ni
     virtio-gpu, ni aucun autre pilote d'affichage. Une VM graphique y démarre
-    sur un écran que GDM et LightDM ne savent pas ouvrir. « generic » porte le
-    noyau standard, avec le même cloud-init et le même fichier SHA512SUMS dans
-    le même répertoire. « genericcloud », plus léger, ne sert donc qu'à un
-    serveur, et seulement là où il est encore publié.
+    sur un écran que GDM et LightDM ne savent pas ouvrir. Il est aussi
+    compilé sans USB : un périphérique passé à la VM n'y apparaît pas, d'où
+    `desktop` vrai aussi pour une VM qui reçoit un périphérique USB
+    (wants_full_kernel). « generic » porte le noyau standard, avec le même
+    cloud-init et le même fichier SHA512SUMS dans le même répertoire.
+    « genericcloud », plus léger, ne sert donc qu'à un serveur, et seulement
+    là où il est encore publié.
     """
     if desktop or version not in DEBIAN_GENERICCLOUD_VERSIONS:
         return "generic"
     return "genericcloud"
+
+
+def wants_full_kernel(args) -> bool:
+    """Vrai quand la VM exige le noyau standard plutôt que le noyau cloud
+    de Debian : bureau (DRM), --usb-hostdev ou --spice-usbredir. Le noyau
+    cloud est compilé sans USB (CONFIG_USB_SUPPORT absent) : un
+    périphérique passé à la VM, par l'hôte comme par virt-viewer, n'y
+    apparaîtrait jamais. Rend la valeur `desktop` de debian_variant."""
+    return (
+        bool(getattr(args, "desktop", False))
+        or bool(getattr(args, "usb_hostdev", None))
+        or bool(getattr(args, "spice_usbredir", False))
+    )
 
 
 def image_url(
@@ -2174,6 +2358,15 @@ def _download_one(url: str, tmp: Path, timeout: int, depuis: int = 0) -> None:
         )
 
 
+def image_en_cache(dest: Path) -> bool:
+    """Vrai si `dest` est une image que download_image garderait sans la
+    retélécharger : présente et non vide."""
+    try:
+        return dest.stat().st_size > 0
+    except OSError:
+        return False
+
+
 def download_image(
     urls,
     dest: Path,
@@ -2181,7 +2374,9 @@ def download_image(
     timeout: int = DOWNLOAD_TIMEOUT,
     *,
     remplace: bool = False,
-) -> None:
+    controle=None,
+    runner: Runner | None = None,
+) -> bool:
     """Télécharge l'image (essaie chaque miroir dans l'ordre) si absente du
     cache. Échoue proprement — jamais de blocage infini — grâce au timeout.
 
@@ -2192,20 +2387,30 @@ def download_image(
     renommé par-dessus l'ancienne une fois complet. Le chemin `dest` existe
     donc pendant tout le transfert, et un échec y laisse l'ancienne image.
     L'appelant tient alors déjà le verrou, et juge lui-même de l'image
-    présente : aucune revue « déjà là » ne l'en dispense."""
+    présente : aucune revue « déjà là » ne l'en dispense.
+
+    `controle(chemin) -> bool` juge le fichier COMPLET avant qu'il ne prenne
+    la place de `dest` : refusé, il est effacé, `dest` reste tel quel — absent
+    ou ancienne image — et la fonction rend False sans essayer d'autre miroir.
+    Elle rend True dans tous les autres cas où elle revient.
+
+    Un répertoire de cache où cet utilisateur n'écrit pas — root:root 0755,
+    le cas par défaut — passe par `runner` et sudo pour les seuls gestes qui
+    demandent ce droit : voir FichierPartiel. Sans sudo possible, le refus se
+    dit AVANT le moindre octet tiré, et non comme une panne de réseau."""
     if isinstance(urls, str):
         urls = [urls]
-    if not remplace and dest.exists() and dest.stat().st_size > 0:
+    if not remplace and image_en_cache(dest):
         size_mb = dest.stat().st_size / 1024 / 1024
         print(
             f"  Image déjà présente ({size_mb:.0f} Mo), téléchargement"
             f" ignoré : {dest}",
             flush=True,
         )
-        return
+        return True
     if dry_run:
         print(f"  [dry-run] téléchargement {urls[0]} -> {dest}", flush=True)
-        return
+        return True
 
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -2215,17 +2420,143 @@ def download_image(
             "  Relancez avec sudo, ou choisissez --image-dir vers un dossier"
             " accessible en écriture."
         )
+    if not os.access(dest.parent, os.W_OK):
+        _exige_sudo(dest, runner, remplace)
+        # Le verrou se crée ici avec le même droit que le reste : sans lui,
+        # deux installations sans droit d'écriture viseraient ensemble le
+        # même `.part`. touch ne remplace pas un fichier existant, donc pas
+        # l'inode qu'un autre processus tient peut-être déjà.
+        verrou = Path(f"{dest}.lock")
+        if not verrou.exists():
+            runner.run(["touch", "--", str(verrou)], privileged=True)
     with verrou_image(dest):
         # Revue SOUS le verrou : l'installation qui le tenait vient peut-être
         # de poser l'image. Le .part, lui, n'est jamais visé par deux
         # processus à la fois.
-        if not remplace and dest.exists() and dest.stat().st_size > 0:
+        if not remplace and image_en_cache(dest):
             print(
                 f"  Image posée entre-temps par une autre installation : {dest}",
                 flush=True,
             )
+            return True
+        return _telecharge_miroirs(
+            urls,
+            dest,
+            timeout,
+            remplace=remplace,
+            controle=controle,
+            runner=runner,
+        )
+
+
+def _exige_sudo(dest: Path, runner: Runner | None, remplace: bool) -> None:
+    """Quitte avec un message clair quand l'écriture dans le répertoire de
+    `dest` est refusée et qu'aucun sudo ne peut s'en charger.
+
+    Sans ce contrôle, l'ouverture du `.part` échoue sur « Permission
+    denied », comptée comme l'échec du miroir : le message final invite à
+    vérifier la connectivité, alors que le remède est le droit d'écrire."""
+    if runner is not None and runner.use_sudo:
+        return
+    bloque = repertoire_a_root(dest.parent)
+    detail = f" ({bloque[1]} {bloque[2]})" if bloque else ""
+    garde = f"\n  L'ancienne image reste en place : {dest}" if remplace else ""
+    sys.exit(
+        f"\nÉcriture refusée dans {dest.parent}{detail} : l'image ne peut"
+        " pas y être posée.\n"
+        "  Relancez avec sudo (et sans --no-sudo), ou choisissez --image-dir"
+        " vers un dossier accessible en écriture." + garde
+    )
+
+
+class FichierPartiel:
+    """Le fichier où arrive le transfert (`chemin`), et ce qu'il subit : être
+    vidé, mesuré, posé à la place de l'image, ou retiré.
+
+    Répertoire accessible en écriture : `<image>.part`, effacé en arrivant.
+    Un `.part` qui ne s'efface pas — laissé par un autre compte dans un
+    répertoire à sticky bit, ou devenu un répertoire — ne bloque rien : le
+    transfert part vers un nom neuf du même répertoire (mkstemp), et le
+    renommage final reste atomique, sur le même système de fichiers.
+
+    Répertoire refusé à cet utilisateur : sudo crée le `.part` vide à son nom
+    à lui (install -o), le transfert s'y écrit sans aucun droit de plus, et
+    sudo fait le reste — le chown vers le propriétaire du répertoire, puis le
+    mv, atomique lui aussi. Le `.part` d'un autre compte s'efface alors avec
+    ce même droit avant d'être recréé. Tout se trace par Runner : la commande
+    s'affiche, et la raison de sudo se dit avant l'invite."""
+
+    def __init__(self, dest: Path, runner: Runner | None = None) -> None:
+        self.dest = dest
+        self.chemin = dest.with_suffix(dest.suffix + ".part")
+        self.runner = None
+        if os.access(dest.parent, os.W_OK):
+            self._prend_direct()
+        else:
+            self.runner = runner
+            self._sudo(["rm", "-f", "--", str(self.chemin)])
+            self._sudo(
+                [
+                    "install",
+                    "-m",
+                    "0644",
+                    "-o",
+                    str(os.getuid()),
+                    "-g",
+                    str(os.getgid()),
+                    "/dev/null",
+                    str(self.chemin),
+                ]
+            )
+
+    def _sudo(self, cmd: list[str], check: bool = True) -> None:
+        self.runner.run(cmd, privileged=True, check=check)
+
+    def _prend_direct(self) -> None:
+        try:
+            self.chemin.unlink(missing_ok=True)
+        except OSError as exc:
+            fd, nom = tempfile.mkstemp(
+                prefix=f"{self.dest.name}.",
+                suffix=".part",
+                dir=self.dest.parent,
+            )
+            os.close(fd)
+            print(
+                f"  ⚠ {self.chemin.name} ne s'efface pas"
+                f" ({exc.strerror or exc}) : transfert vers {Path(nom).name},"
+                " le reste est à retirer avec le droit de qui l'a créé.",
+                flush=True,
+            )
+            self.chemin = Path(nom)
+
+    def vide(self) -> None:
+        """Ramène le transfert à zéro octet : un nouveau miroir ne reprend
+        jamais les octets d'un autre."""
+        if self.runner is None:
+            self.chemin.unlink(missing_ok=True)
+        else:
+            os.truncate(self.chemin, 0)
+
+    def taille(self) -> int:
+        return self.chemin.stat().st_size if self.chemin.exists() else 0
+
+    def pose(self) -> None:
+        """Renomme le fichier complet par-dessus `dest`."""
+        if self.runner is None:
+            self.chemin.replace(self.dest)
             return
-        _telecharge_miroirs(urls, dest, timeout, remplace=remplace)
+        infos = self.dest.parent.stat()
+        self._sudo(
+            ["chown", f"{infos.st_uid}:{infos.st_gid}", "--", str(self.chemin)]
+        )
+        self._sudo(["mv", "-f", "--", str(self.chemin), str(self.dest)])
+
+    def retire(self) -> None:
+        if self.runner is None:
+            self.chemin.unlink(missing_ok=True)
+        else:
+            self._sudo(["rm", "-f", "--", str(self.chemin)], check=False)
 
 
 def _motif(exc: BaseException) -> str:
@@ -2238,8 +2569,14 @@ def _motif(exc: BaseException) -> str:
 
 
 def _telecharge_miroirs(
-    urls, dest: Path, timeout: int, *, remplace: bool = False
-) -> None:
+    urls,
+    dest: Path,
+    timeout: int,
+    *,
+    remplace: bool = False,
+    controle=None,
+    runner: Runner | None = None,
+) -> bool:
     """Essaie chaque miroir de `urls` dans l'ordre jusqu'à poser `dest`.
 
     Appelée sous verrou_image. Sur chaque miroir, REPRISES_MAX essais : une
@@ -2248,8 +2585,9 @@ def _telecharge_miroirs(
     l'essai, puis reprend aussi là où le .part s'est arrêté. Un échec qui
     décrit le miroir — 404 en tête — passe au suivant sans insister. Quitte
     le processus (sys.exit) quand aucun miroir n'a abouti ; `remplace` (voir
-    download_image) n'y change que la commande manuelle proposée."""
-    tmp = dest.with_suffix(dest.suffix + ".part")
+    download_image) n'y change que la commande manuelle proposée. Rend False
+    quand `controle` refuse le fichier complet, True quand il est posé."""
+    part = FichierPartiel(dest, runner)
     errors = []
     had_404 = False
     for i, url in enumerate(urls, 1):
@@ -2261,13 +2599,19 @@ def _telecharge_miroirs(
         # .part trouvé en arrivant est le reste d'un processus mort — sous le
         # verrou, personne d'autre ne l'écrit : un essai qui échoue avant
         # d'avoir rien écrit en reprendrait sinon les octets au suivant.
-        tmp.unlink(missing_ok=True)
+        part.vide()
         for essai in range(1, REPRISES_MAX + 1):
-            depuis = tmp.stat().st_size if tmp.exists() else 0
+            depuis = part.taille()
             try:
-                _download_one(url, tmp, timeout, depuis if essai > 1 else 0)
-                tmp.replace(dest)
-                return
+                _download_one(
+                    url, part.chemin, timeout, depuis if essai > 1 else 0
+                )
+                # Jugé AVANT le renommage : refusé, il n'a jamais remplacé
+                # l'image en place. Un autre miroir n'est pas essayé, la
+                # somme publiée étant la même pour tous.
+                if controle is None or controle(part.chemin):
+                    part.pose()
+                    return True
             except Exception as exc:
                 # Une HTTPError porte la réponse ouverte : la fermer avant de
                 # réessayer, sans quoi chaque essai laisse une socket derrière.
@@ -2275,7 +2619,7 @@ def _telecharge_miroirs(
                     exc.close()
                 tronque = isinstance(exc, TelechargementTronque)
                 if essai < REPRISES_MAX and (tronque or erreur_passagere(exc)):
-                    recus = tmp.stat().st_size if tmp.exists() else 0
+                    recus = part.taille()
                     if tronque:
                         print(
                             f"\n  Coupé à {recus} octets, reprise"
@@ -2292,12 +2636,15 @@ def _telecharge_miroirs(
                         )
                         time.sleep(pause)
                     continue
-                tmp.unlink(missing_ok=True)
+                part.vide()
                 if isinstance(exc, urllib.error.HTTPError):
                     had_404 = had_404 or exc.code == 404
                 print(f"\n  Échec : {_motif(exc)}", flush=True)
                 errors.append(f"{url} -> {_motif(exc)}")
-            break
+                break
+            part.retire()
+            return False
+    part.retire()
     hint = (
         "\n  Image introuvable (404) : cette version est probablement EOL et"
         " a été retirée du miroir. Choisissez une version LTS encore"
@@ -2470,6 +2817,8 @@ def verify_sha256(
     dry_run: bool,
     distro: str = "ubuntu",
     urls: tuple[str, ...] = (),
+    runner: Runner | None = None,
+    frais: bool = False,
 ) -> None:
     """Vérifie l'empreinte via les sommes que la distribution publie.
 
@@ -2479,6 +2828,14 @@ def verify_sha256(
     de déployer pour cela rendrait la vérification plus coûteuse que le risque
     qu'elle couvre. Une empreinte qui ne correspond PAS est une panne
     d'intégrité, et elle arrête tout.
+
+    `runner` sert au seul retéléchargement, dans un cache où cet utilisateur
+    n'écrit pas : voir download_image.
+
+    `frais` dit que l'image vient d'être téléchargée par l'appelant, et non
+    trouvée en cache : un écart la condamne alors sans reprise, comme une
+    image absente que cette fonction télécharge elle-même. Faux par défaut,
+    l'image présente est tenue pour gardée d'un essai antérieur.
     """
     if dry_run:
         print("  [dry-run] vérification des sommes ignorée")
@@ -2503,12 +2860,38 @@ def verify_sha256(
         print(f"  ⚠ empreinte absente pour {filename}, image NON vérifiée")
         return
 
-    def empreinte() -> str:
+    def empreinte(chemin: Path = image) -> str:
         h = hashlib.new(algo)
-        with image.open("rb") as fh:
+        with chemin.open("rb") as fh:
             for chunk in iter(lambda: fh.read(1 << 20), b""):
                 h.update(chunk)
         return h.hexdigest()
+
+    # Le fichier téléchargé se juge AVANT de prendre la place de l'image :
+    # `controle` en garde l'empreinte, que le refus cite et qu'un succès
+    # dispense de recalculer.
+    mesure: dict[str, str] = {}
+
+    def controle(chemin: Path) -> bool:
+        mesure["obtenu"] = empreinte(chemin)
+        return mesure["obtenu"] == expected
+
+    def telecharge(miroirs, remplace: bool) -> bool:
+        mesure.clear()
+        return download_image(
+            miroirs,
+            image,
+            dry_run,
+            remplace=remplace,
+            controle=controle,
+            runner=runner,
+        )
+
+    def ecart(titre: str, obtenu: str, suite: str) -> None:
+        sys.exit(
+            f"{titre}\n  attendu : {expected}\n  obtenu  : {obtenu}"
+            + (f"\n{suite}" if suite else "")
+        )
 
     # Empreinte et reprise forment UN bloc sous verrou_image : des
     # installations lancées ensemble sur une image périmée la jugeraient
@@ -2516,43 +2899,65 @@ def verify_sha256(
     # vient de poser. Sous le verrou, la première la reprend ; les suivantes
     # en calculent l'empreinte après elle, et la trouvent conforme.
     with verrou_image(image):
-        # Absente ici, l'image a été effacée par une installation dont les
-        # octets RETÉLÉCHARGÉS ne correspondaient toujours pas à la somme,
-        # pendant que celle-ci attendait le verrou — une reprise qui échoue
-        # en cours de transfert, elle, laisse l'ancienne image en place.
-        # L'installation retente le téléchargement à son tour plutôt que de
-        # lever sur un fichier manquant. Ces octets-là sont frais : un écart
-        # les condamne sans seconde reprise, sinon chaque installation en
-        # attente tirerait l'image deux fois de suite avant d'échouer comme
-        # la première.
-        frais = not image.exists()
-        if frais:
-            download_image(list(urls) or [url], image, dry_run)
-        obtenu = empreinte()
+        # Absente ici, l'image a été effacée entre son téléchargement et ce
+        # bloc. Elle se retélécharge plutôt que de lever sur un fichier
+        # manquant, et ces octets-là sont frais : un écart les condamne sans
+        # seconde reprise.
+        absente = not image.exists()
+        frais = frais or absente
+        if absente and not telecharge(list(urls) or [url], remplace=False):
+            ecart(
+                f"Somme {algo} NON conforme sur l'image téléchargée : elle"
+                f" est écartée, rien n'a été posé à {image}.",
+                mesure.get("obtenu", ""),
+                "  Le miroir sert peut-être une image en cours de"
+                " publication : réessayez plus tard.",
+            )
+        obtenu = mesure.pop("obtenu", "") or empreinte()
         # Un écart sur une image GARDÉE ne prouve pas une substitution : le
         # répertoire « latest » d'une distribution avance à chaque version
         # mineure, et la somme publiée cesse alors de décrire celle du
-        # disque. Supprimer puis abandonner coûtait toute une campagne pour
-        # une simple péremption. L'image est reprise UNE fois ; un second
-        # écart, lui, porte sur des octets fraîchement téléchargés et arrête
-        # tout.
+        # disque. L'image est reprise UNE fois ; un second écart, lui, porte
+        # sur des octets fraîchement téléchargés et arrête tout.
         #
-        # La reprise REMPLACE l'image sans l'effacer d'abord : une autre
-        # installation qui la convertit (prepare_disk, sans verrou) lirait
-        # sinon un chemin absent pendant tout le transfert. Le renommage
-        # final laisse à un lecteur déjà ouvert l'ancien inode entier.
+        # La reprise REMPLACE l'image sans l'effacer d'abord, et seulement
+        # une fois la nouvelle jugée conforme : une autre installation qui la
+        # convertit (prepare_disk, sans verrou) lirait sinon un chemin absent
+        # pendant tout le transfert, et une reprise refusée ne laisse jamais
+        # le cache vide. Le renommage final laisse à un lecteur déjà ouvert
+        # l'ancien inode entier.
         if obtenu != expected and urls and not frais:
-            print(f"  Somme {algo} NON conforme : image reprise une fois.")
-            download_image(list(urls), image, dry_run, remplace=True)
-            obtenu = empreinte()
-        if obtenu != expected:
-            image.unlink(
-                missing_ok=True
-            )  # évite la réutilisation du cache corrompu
-            sys.exit(
-                f"Somme {algo} NON conforme ! Image supprimée : {image}\n"
-                f"  attendu : {expected}\n  obtenu  : {obtenu}"
+            print(
+                f"  Image en cache périmée : sa somme {algo} ne correspond"
+                " plus à celle publiée (une image « latest » republiée en"
+                " amont, le plus souvent).\n  Nouveau téléchargement ;"
+                " l'ancienne image reste en place tant que la nouvelle n'est"
+                " pas vérifiée.",
+                flush=True,
             )
+            if not telecharge(list(urls), remplace=True):
+                ecart(
+                    f"Somme {algo} NON conforme, y compris sur l'image"
+                    " retéléchargée : celle-ci est écartée.",
+                    mesure.get("obtenu", ""),
+                    f"  L'ancienne image reste en place, NON conforme elle"
+                    f" aussi : {image}\n  Le miroir sert peut-être une image"
+                    " en cours de publication : réessayez plus tard.",
+                )
+            obtenu = mesure.pop("obtenu", "") or empreinte()
+        if obtenu != expected:
+            # Des octets frais, ou une image sans miroir à qui la redemander,
+            # partent : laissés en cache, ils resserviraient tels quels au
+            # prochain essai, et sans un mot sous --no-verify.
+            try:
+                image.unlink(missing_ok=True)
+                sort = f"Image supprimée : {image}"
+            except OSError as exc:
+                sort = (
+                    f"Image NON supprimée ({exc.strerror or exc}) :"
+                    f"\n    sudo rm -f -- {shlex.quote(str(image))}"
+                )
+            ecart(f"Somme {algo} NON conforme ! {sort}", obtenu, "")
     print(f"  Somme {algo} conforme.")
 
 
@@ -5935,9 +6340,25 @@ def virt_install(
     # console dont la 3D est demandée, egl-headless reste donc le seul.
     graphics_omis = bool(gpu_args) and graphics == "none"
     if not graphics_omis:
-        cmd += ["--graphics", graphics]
+        # SPICE avant l'affichage demandé : il est avant la tranche 3D, que
+        # le repli EGL est seul à retirer, et y survit donc.
+        spice = spice_usbredir_graphics(args, graphics)
+        if spice:
+            print(
+                "  USB : affichage SPICE posé AVANT le VNC (virt-viewer ouvre"
+                " le premier), avec ses emplacements de redirection USB."
+            )
+        cmd += spice + ["--graphics", graphics]
     i_gpu = len(cmd)
     cmd += video + gpu_args
+    # Les périphériques USB de l'hôte, APRÈS la tranche 3D : le repli EGL
+    # recopie tout ce qui la suit, le --hostdev compris.
+    usb_selectors = getattr(args, "usb_hostdev", None) or ()
+    if usb_selectors:
+        hostdev, lignes = usb_hostdev_args(usb_selectors, usb_host_devices())
+        for ligne in lignes:
+            print(ligne)
+        cmd += hostdev
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
         # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
@@ -6282,6 +6703,26 @@ def build_parser() -> argparse.ArgumentParser:
         "sur un hôte à plusieurs cartes.",
     )
     g_vm.add_argument(
+        "--usb-hostdev",
+        action="append",
+        default=[],
+        type=usb_selector,
+        metavar="VID:PID|BUS.DEV",
+        help="Périphérique USB de l'hôte passé à la VM (répétable), ex. "
+        "0fd9:0080 pour un Stream Deck. Absent de l'hôte : ignoré avec un "
+        "avertissement, la VM est créée quand même. Plusieurs identiques "
+        "branchés : chacun est épinglé par bus.dev. La VM démarre aussi "
+        "quand il est débranché (startupPolicy=optional).",
+    )
+    g_vm.add_argument(
+        "--spice-usbredir",
+        action="store_true",
+        help="Ajoute un affichage SPICE AVANT le VNC, avec ses emplacements "
+        "de redirection USB : virt-viewer, qui ouvre le premier affichage, "
+        "offre alors son menu « USB device selection ». VM graphique x86_64 "
+        "seulement ; le VNC reste pour les tunnels SSH.",
+    )
+    g_vm.add_argument(
         "--osinfo", help="Force la valeur --osinfo (sinon déduite)."
     )
     g_vm.add_argument(
@@ -6601,6 +7042,11 @@ def main() -> None:
             f"{args.distro} {args.version} n'est pas publié en {args.arch}.\n"
             f"  Versions disponibles : {', '.join(ok_versions) or 'aucune'}."
         )
+    # Refusé avant toute image téléchargée : l'option ne changerait rien à la
+    # VM, et le dire après une heure d'installation ne sert plus.
+    refus_usb = usb_refusal(args)
+    if refus_usb:
+        sys.exit(refus_usb)
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:
         code = args.codename
@@ -6615,13 +7061,14 @@ def main() -> None:
     # échouer le resize : on suppose des Go par défaut (« 30 » -> « 30G »).
     if re.fullmatch(r"\d+", str(args.disk_size)):
         args.disk_size = f"{args.disk_size}G"
+    full_kernel = wants_full_kernel(args)
     urls = image_candidates(
         args.distro,
         code,
         args.arch,
         args.version,
         args.dry_run,
-        bool(args.desktop),
+        full_kernel,
     )
     url = urls[0]
     # PAR DÉFAUT, et pour toute distribution qui publie ses sommes. C'était
@@ -6639,7 +7086,7 @@ def main() -> None:
     # Chemin de l'image : déduit automatiquement si non fourni.
     if args.image_path is None:
         args.image_path = args.image_dir / default_image_name(
-            args.distro, code, args.arch, args.version, bool(args.desktop)
+            args.distro, code, args.arch, args.version, full_kernel
         )
 
     runner = Runner(
@@ -6653,7 +7100,8 @@ def main() -> None:
             f"({args.distro} {args.version} / {code}) =="
         )
         print(f"  Destination : {args.image_path}")
-        download_image(urls, args.image_path, args.dry_run)
+        frais = not image_en_cache(args.image_path)
+        download_image(urls, args.image_path, args.dry_run, runner=runner)
         verify_pinned_sha256(
             args.distro, args.image_path, args.dry_run, tuple(urls)
         )
@@ -6664,6 +7112,8 @@ def main() -> None:
                 args.dry_run,
                 args.distro,
                 tuple(urls),
+                runner=runner,
+                frais=frais,
             )
         print("\nTerminé (téléchargement seul).")
         return
@@ -6741,11 +7191,13 @@ def main() -> None:
             [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
             kernel,
             args.dry_run,
+            runner=runner,
         )
         download_image(
             [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
             initrd_src,
             args.dry_run,
+            runner=runner,
         )
 
         print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
@@ -6779,7 +7231,8 @@ def main() -> None:
         print(
             f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
         )
-        download_image(urls, args.image_path, args.dry_run)
+        frais = not image_en_cache(args.image_path)
+        download_image(urls, args.image_path, args.dry_run, runner=runner)
         verify_pinned_sha256(
             args.distro, args.image_path, args.dry_run, tuple(urls)
         )
@@ -6790,6 +7243,8 @@ def main() -> None:
                 args.dry_run,
                 args.distro,
                 tuple(urls),
+                runner=runner,
+                frais=frais,
             )
 
         print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")

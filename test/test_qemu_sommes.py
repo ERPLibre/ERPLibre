@@ -209,9 +209,20 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
             image.write_bytes(sur_disque)
             appels = []
 
-            def faux_telechargement(urls_, dest, dry_run, timeout=None, **_):
+            def faux_telechargement(
+                urls_, dest, dry_run, timeout=None, controle=None, **_
+            ):
+                """Tient le contrat de download_image : le fichier complet
+                est jugé par `controle` AVANT de prendre la place de
+                `dest`, et un refus laisse `dest` tel quel."""
                 appels.append(tuple(urls_))
-                Path(dest).write_bytes(pose)
+                part = Path(f"{dest}.part")
+                part.write_bytes(pose)
+                if controle is not None and not controle(part):
+                    part.unlink()
+                    return False
+                part.replace(dest)
+                return True
 
             sorti = False
             with (
@@ -237,11 +248,15 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
 
     def test_un_second_ecart_arrete_tout(self):
         """Des octets fraîchement téléchargés qui ne concordent pas ne sont
-        plus une péremption : la vérification doit alors refuser."""
+        plus une péremption : la vérification doit alors refuser. Ils sont
+        jugés avant de remplacer l'image : refusés, ils n'ont jamais pris sa
+        place, et l'ancienne reste."""
         sorti, n, final = self.jouer(b"vieille", b"faux-aussi")
         self.assertTrue(sorti, "une image fausse deux fois passe")
         self.assertEqual(1, n, "la reprise boucle au lieu d'arrêter")
-        self.assertEqual(b"", final, "l'image fausse est restée sur le disque")
+        self.assertEqual(
+            b"vieille", final, "la reprise refusée a remplacé l'image"
+        )
 
     def test_sans_miroir_le_comportement_ne_change_pas(self):
         """Appelée sans liste de miroirs — le mode épinglé, un appelant tiers

@@ -11174,11 +11174,11 @@ TRANSLATIONS = {
         "en": "extension, schemas and translations, extension enabled",
     },
     "script/install/install_erplibre_home.sh --stream-deck"
-    " in the VM's checkout": {
+    " --autostart in the VM's checkout": {
         "fr": "script/install/install_erplibre_home.sh --stream-deck"
-        " dans le checkout de la VM",
+        " --autostart dans le checkout de la VM",
         "en": "script/install/install_erplibre_home.sh --stream-deck"
-        " in the VM's checkout",
+        " --autostart in the VM's checkout",
     },
     "ERPLibre Home, plus USB packages, udev rule, deck program,"
     " .venv.streamdeck": {
@@ -24867,6 +24867,771 @@ TRANSLATIONS = {
             "ERPLibre checkouts knows; an Odoo elsewhere sharing this "
             "data_dir is not consulted."
         ),
+    },
+    # Menu QEMU — USB : plans de qemu_usb.py (passage d'un périphérique
+    # USB à une VM, redirection SPICE).
+    "Attach {device} to {domain}": {
+        "fr": "Attacher {device} à {domain}",
+        "en": "Attach {device} to {domain}",
+    },
+    "Detach {device} from {domain}": {
+        "fr": "Détacher {device} de {domain}",
+        "en": "Detach {device} from {domain}",
+    },
+    "Detach stale {device} from {domain}": {
+        "fr": "Détacher {device}, débranché, de {domain}",
+        "en": "Detach stale {device} from {domain}",
+    },
+    "Detach empty placeholder {device} from {domain}": {
+        "fr": "Détacher l'emplacement vide {device} de {domain}",
+        "en": "Detach empty placeholder {device} from {domain}",
+    },
+    "The Stream Decks stay on the host:": {
+        "fr": "Les Stream Deck restent à l'hôte :",
+        "en": "The Stream Decks stay on the host:",
+    },
+    "the VM is created without USB passthrough.": {
+        "fr": "la VM est créée sans passage USB.",
+        "en": "the VM is created without USB passthrough.",
+    },
+    "already attached": {
+        "fr": "déjà attaché",
+        "en": "already attached",
+    },
+    "not attached": {
+        "fr": "pas attaché",
+        "en": "not attached",
+    },
+    "the VM is not running": {
+        "fr": "la VM n'est pas démarrée",
+        "en": "the VM is not running",
+    },
+    "the VM has no USB controller": {
+        "fr": "la VM n'a aucun contrôleur USB",
+        "en": "the VM has no USB controller",
+    },
+    "USB is disabled in the VM (model none)": {
+        "fr": "l'USB est désactivé dans la VM (modèle none)",
+        "en": "USB is disabled in the VM (model none)",
+    },
+    "Add a SPICE display (127.0.0.1)": {
+        "fr": "Ajouter un affichage SPICE (127.0.0.1)",
+        "en": "Add a SPICE display (127.0.0.1)",
+    },
+    "Add a SPICE display (127.0.0.1) before {first}": {
+        "fr": "Ajouter un affichage SPICE (127.0.0.1) avant {first}",
+        "en": "Add a SPICE display (127.0.0.1) before {first}",
+    },
+    "Move the SPICE display before {first}": {
+        "fr": "Placer l'affichage SPICE avant {first}",
+        "en": "Move the SPICE display before {first}",
+    },
+    "Add a USB controller ({model})": {
+        "fr": "Ajouter un contrôleur USB ({model})",
+        "en": "Add a USB controller ({model})",
+    },
+    "Enable USB: controller model none -> {model}": {
+        "fr": "Activer l'USB : modèle de contrôleur none -> {model}",
+        "en": "Enable USB: controller model none -> {model}",
+    },
+    "Add {n} SPICE USB redirection slot(s)": {
+        "fr": "Ajouter {n} emplacement(s) de redirection USB SPICE",
+        "en": "Add {n} SPICE USB redirection slot(s)",
+    },
+    "Add the SPICE agent channel": {
+        "fr": "Ajouter le canal de l'agent SPICE",
+        "en": "Add the SPICE agent channel",
+    },
+    "Restrict USB redirection to vendor(s) {vendors}": {
+        "fr": "Restreindre la redirection USB au(x) vendeur(s) {vendors}",
+        "en": "Restrict USB redirection to vendor(s) {vendors}",
+    },
+    "Remove the USB redirection filter": {
+        "fr": "Retirer le filtre de redirection USB",
+        "en": "Remove the USB redirection filter",
+    },
+    "Redefine {domain}: {changes}": {
+        "fr": "Redéfinir {domain} : {changes}",
+        "en": "Redefine {domain}: {changes}",
+    },
+    "SPICE is not available on s390x": {
+        "fr": "SPICE n'est pas disponible sur s390x",
+        "en": "SPICE is not available on s390x",
+    },
+    # Menu QEMU — USB : messages du CLI autonome script/qemu/usb_qemu.py.
+    "sudo is needed: {uri} is open to root only (the libvirt group would avoid it).": {
+        "fr": "sudo est requis : {uri} n'est ouvert qu'à root (le groupe libvirt l'éviterait).",
+        "en": "sudo is needed: {uri} is open to root only (the libvirt group would avoid it).",
+    },
+    "Cannot read the state of {domain}: {error}": {
+        "fr": "Impossible de lire l'état de {domain} : {error}",
+        "en": "Cannot read the state of {domain}: {error}",
+    },
+    "Cannot read the definition of {domain}: {error}": {
+        "fr": "Impossible de lire la définition de {domain} : {error}",
+        "en": "Cannot read the definition of {domain}: {error}",
+    },
+    "FAILED: {error}": {
+        "fr": "ÉCHEC : {error}",
+        "en": "FAILED: {error}",
+    },
+    "Cannot list the USB devices of {uri}: {error}": {
+        "fr": "Impossible de lister les périphériques USB de {uri} : {error}",
+        "en": "Cannot list the USB devices of {uri}: {error}",
+    },
+    "Invalid domain name: {domain}": {
+        "fr": "Nom de domaine invalide : {domain}",
+        "en": "Invalid domain name: {domain}",
+    },
+    "Choose --live, --config, or both.": {
+        "fr": "Choisir --live, --config, ou les deux.",
+        "en": "Choose --live, --config, or both.",
+    },
+    "Unreadable selector {selector}: expected VID:PID or BUS.DEV.": {
+        "fr": "Sélecteur illisible {selector} : VID:PID ou BUS.DEV attendu.",
+        "en": "Unreadable selector {selector}: expected VID:PID or BUS.DEV.",
+    },
+    "{selector} matches several devices; choose one by BUS.DEV:": {
+        "fr": "{selector} désigne plusieurs périphériques ; en choisir un par BUS.DEV :",
+        "en": "{selector} matches several devices; choose one by BUS.DEV:",
+    },
+    "No USB device at {selector} on the host.": {
+        "fr": "Aucun périphérique USB en {selector} sur l'hôte.",
+        "en": "No USB device at {selector} on the host.",
+    },
+    "{device} is not plugged into the host: only --config can declare it ahead.": {
+        "fr": "{device} n'est pas branché sur l'hôte : seul --config peut le déclarer d'avance.",
+        "en": "{device} is not plugged into the host: only --config can declare it ahead.",
+    },
+    "The ERPLibre Home Stream Deck service runs on the libvirt host and holds the deck. Run again with --yes to stop it during the passthrough.": {
+        "fr": "Le service Stream Deck d'ERPLibre Home tourne sur l'hôte libvirt et tient le deck. Relancer avec --yes pour l'arrêter pendant le passage à la VM.",
+        "en": "The ERPLibre Home Stream Deck service runs on the libvirt host and holds the deck. Run again with --yes to stop it during the passthrough.",
+    },
+    "Stopping the host Stream Deck service": {
+        "fr": "Arrêt du service Stream Deck de l'hôte",
+        "en": "Stopping the host Stream Deck service",
+    },
+    "Note: the host Stream Deck service runs; the VM takes the deck from it at its next start.": {
+        "fr": "Note : le service Stream Deck de l'hôte tourne ; la VM lui prendra le deck à son prochain démarrage.",
+        "en": "Note: the host Stream Deck service runs; the VM takes the deck from it at its next start.",
+    },
+    "Restarting the host Stream Deck service": {
+        "fr": "Relance du service Stream Deck de l'hôte",
+        "en": "Restarting the host Stream Deck service",
+    },
+    "The host Stream Deck service is stopped; restart it with:": {
+        "fr": "Le service Stream Deck de l'hôte est arrêté ; le relancer par :",
+        "en": "The host Stream Deck service is stopped; restart it with:",
+    },
+    "No USB device found on the host.": {
+        "fr": "Aucun périphérique USB trouvé sur l'hôte.",
+        "en": "No USB device found on the host.",
+    },
+    "Root is needed; running:": {
+        "fr": "Root est requis ; lancement de :",
+        "en": "Root is needed; running:",
+    },
+    "Unreadable mapping {path}: {error}": {
+        "fr": "Correspondance illisible {path} : {error}",
+        "en": "Unreadable mapping {path}: {error}",
+    },
+    "Installing USB auto-reattach": {
+        "fr": "Pose du rattachement USB automatique",
+        "en": "Installing USB auto-reattach",
+    },
+    "Test it by replugging the device, then read:": {
+        "fr": "L'essayer en rebranchant le périphérique, puis lire :",
+        "en": "Test it by replugging the device, then read:",
+    },
+    "Removing USB auto-reattach": {
+        "fr": "Retrait du rattachement USB automatique",
+        "en": "Removing USB auto-reattach",
+    },
+    "No device mapped to a VM.": {
+        "fr": "Aucun périphérique associé à une VM.",
+        "en": "No device mapped to a VM.",
+    },
+    "No matching entry.": {
+        "fr": "Aucune entrée correspondante.",
+        "en": "No matching entry.",
+    },
+    "Invalid sysfs name: {name}": {
+        "fr": "Nom sysfs invalide : {name}",
+        "en": "Invalid sysfs name: {name}",
+    },
+    "{name}: device gone, nothing to do.": {
+        "fr": "{name} : périphérique reparti, rien à faire.",
+        "en": "{name}: device gone, nothing to do.",
+    },
+    "{device}: mapped to no VM.": {
+        "fr": "{device} : associé à aucune VM.",
+        "en": "{device}: mapped to no VM.",
+    },
+    # Proxmox — USB : périphériques du nœud passés à une VM par
+    # « qm set -usbN » (proxmox_menu.py, _pve_usb).
+    "USB devices (Stream Deck)": {
+        "fr": "🔌 Périphériques USB (Stream Deck)",
+        "en": "🔌 USB devices (Stream Deck)",
+    },
+    "Proxmox USB attachments are always persistent: they are written to the VM configuration and follow a replug by VID:PID, without any udev rule.": {
+        "fr": "Sous Proxmox, un attachement USB est toujours persistant : il est écrit dans la configuration de la VM et suit un rebranchement par VID:PID, sans règle udev.",
+        "en": "Proxmox USB attachments are always persistent: they are written to the VM configuration and follow a replug by VID:PID, without any udev rule.",
+    },
+    "USB ports of Proxmox VM": {
+        "fr": "Ports USB de la VM Proxmox",
+        "en": "USB ports of Proxmox VM",
+    },
+    "No usbN port on this Proxmox VM.": {
+        "fr": "Aucun port usbN sur cette VM Proxmox.",
+        "en": "No usbN port on this Proxmox VM.",
+    },
+    "Attach a USB device of the Proxmox node": {
+        "fr": "Attacher un périphérique USB du nœud Proxmox",
+        "en": "Attach a USB device of the Proxmox node",
+    },
+    "Detach a USB device from this Proxmox VM": {
+        "fr": "Détacher un périphérique USB de cette VM Proxmox",
+        "en": "Detach a USB device from this Proxmox VM",
+    },
+    "Cannot list the USB devices of the Proxmox node.": {
+        "fr": "Impossible de lister les périphériques USB du nœud Proxmox.",
+        "en": "Cannot list the USB devices of the Proxmox node.",
+    },
+    "No USB device plugged into the Proxmox node.": {
+        "fr": "Aucun périphérique USB branché sur le nœud Proxmox.",
+        "en": "No USB device plugged into the Proxmox node.",
+    },
+    "USB devices of the Proxmox node:": {
+        "fr": "Périphériques USB du nœud Proxmox :",
+        "en": "USB devices of the Proxmox node:",
+    },
+    "Already in this Proxmox VM:": {
+        "fr": "Déjà dans cette VM Proxmox :",
+        "en": "Already in this Proxmox VM:",
+    },
+    "No free usbN port on this Proxmox VM:": {
+        "fr": "Aucun port usbN libre sur cette VM Proxmox :",
+        "en": "No free usbN port on this Proxmox VM:",
+    },
+    "Two identical devices are plugged in: this one is pinned to its physical port, and a replug on another port is not followed.": {
+        "fr": "Deux périphériques identiques sont branchés : celui-ci est épinglé à son port physique, et un rebranchement sur un autre port n'est pas suivi.",
+        "en": "Two identical devices are plugged in: this one is pinned to its physical port, and a replug on another port is not followed.",
+    },
+    "USB hotplug is off for this Proxmox VM: the device appears at its next start.": {
+        "fr": "Le branchement USB à chaud est désactivé pour cette VM Proxmox : le périphérique apparaîtra à son prochain démarrage.",
+        "en": "USB hotplug is off for this Proxmox VM: the device appears at its next start.",
+    },
+    "USB device not found on the Proxmox node:": {
+        "fr": "Périphérique USB introuvable sur le nœud Proxmox :",
+        "en": "USB device not found on the Proxmox node:",
+    },
+    "No Stream Deck plugged into the Proxmox node: the VM is created without one.": {
+        "fr": "Aucun Stream Deck branché sur le nœud Proxmox : la VM est créée sans.",
+        "en": "No Stream Deck plugged into the Proxmox node: the VM is created without one.",
+    },
+    # Menu QEMU — USB : sous-menu de qemu_usb_menu.py (passage d'un
+    # périphérique USB à une VM, redirection SPICE, rattachement auto).
+    "USB": {
+        "fr": "🔌 USB",
+        "en": "🔌 USB",
+    },
+    "USB devices (Stream Deck, passthrough, SPICE)": {
+        "fr": "🎛  Périphériques USB (Stream Deck, passage, SPICE)",
+        "en": "🎛  USB devices (Stream Deck, passthrough, SPICE)",
+    },
+    "Device on the libvirt host": {
+        "fr": "🖥  Périphérique sur l'hôte libvirt",
+        "en": "🖥  Device on the libvirt host",
+    },
+    "List the USB devices of this machine": {
+        "fr": "📋 Lister les périphériques USB de cette machine",
+        "en": "📋 List the USB devices of this machine",
+    },
+    "Attach a USB device to a VM": {
+        "fr": "🔗 Attacher un périphérique USB à une VM",
+        "en": "🔗 Attach a USB device to a VM",
+    },
+    "Detach a USB device from a VM": {
+        "fr": "⏏  Détacher un périphérique USB d'une VM",
+        "en": "⏏  Detach a USB device from a VM",
+    },
+    "Show the USB devices of a VM": {
+        "fr": "🔍 Voir les périphériques USB d'une VM",
+        "en": "🔍 Show the USB devices of a VM",
+    },
+    "Device on this workstation (SPICE)": {
+        "fr": "💻 Périphérique sur ce poste (SPICE)",
+        "en": "💻 Device on this workstation (SPICE)",
+    },
+    "Open virt-viewer with USB redirection": {
+        "fr": "🖥  Ouvrir virt-viewer avec la redirection USB",
+        "en": "🖥  Open virt-viewer with USB redirection",
+    },
+    "Enable SPICE USB redirection on a VM": {
+        "fr": "🔀 Activer la redirection USB SPICE sur une VM",
+        "en": "🔀 Enable SPICE USB redirection on a VM",
+    },
+    "Disable SPICE USB redirection on a VM": {
+        "fr": "🚫 Désactiver la redirection USB SPICE d'une VM",
+        "en": "🚫 Disable SPICE USB redirection on a VM",
+    },
+    "SPICE USB redirection is not set up.": {
+        "fr": "La redirection USB SPICE n'est pas en place.",
+        "en": "SPICE USB redirection is not set up.",
+    },
+    "SPICE USB redirection disabled.": {
+        "fr": "Redirection USB SPICE désactivée.",
+        "en": "SPICE USB redirection disabled.",
+    },
+    "Remove {n} SPICE USB redirection slot(s)": {
+        "fr": "Retirer {n} emplacement(s) de redirection USB SPICE",
+        "en": "Remove {n} SPICE USB redirection slot(s)",
+    },
+    "Replug": {
+        "fr": "🔁 Rebranchement",
+        "en": "🔁 Replug",
+    },
+    "Auto-reattach on replug (udev rule, device mapping)": {
+        "fr": (
+            "🔄 Rattachement auto au rebranchement (règle udev, correspondance)"
+        ),
+        "en": "🔄 Auto-reattach on replug (udev rule, device mapping)",
+    },
+    "Restart a USB device of a VM (detach, reattach)": {
+        "fr": "🔃 Redémarrer un périphérique USB d'une VM (détacher, rattacher)",
+        "en": "🔃 Restart a USB device of a VM (detach, reattach)",
+    },
+    "Restart {device} on {domain}": {
+        "fr": "Redémarrer {device} sur {domain}",
+        "en": "Restart {device} on {domain}",
+    },
+    "The VM is not running: nothing to restart.": {
+        "fr": "La VM ne tourne pas : rien à redémarrer.",
+        "en": "The VM is not running: nothing to restart.",
+    },
+    "{device} is not plugged into {host}.": {
+        "fr": "{device} n'est pas branché sur {host}.",
+        "en": "{device} is not plugged into {host}.",
+    },
+    "The device is detached from the VM.": {
+        "fr": "Le périphérique est détaché de la VM.",
+        "en": "The device is detached from the VM.",
+    },
+    "Restarted:": {
+        "fr": "Redémarré :",
+        "en": "Restarted:",
+    },
+    "The ERPLibre Home deck service runs on {host}.": {
+        "fr": "Le service deck d'ERPLibre Home tourne sur {host}.",
+        "en": "The ERPLibre Home deck service runs on {host}.",
+    },
+    "Restart the ERPLibre Home deck service on {host}? (y/N): ": {
+        "fr": "Relancer le service deck d'ERPLibre Home sur {host} ? (o/N) : ",
+        "en": "Restart the ERPLibre Home deck service on {host}? (y/N): ",
+    },
+    "Cannot read the USB devices of {host}.": {
+        "fr": "Impossible de lire les périphériques USB de {host}.",
+        "en": "Cannot read the USB devices of {host}.",
+    },
+    "{host} is a Proxmox VE host: no libvirt there.": {
+        "fr": "{host} est un hôte Proxmox VE : pas de libvirt là-bas.",
+        "en": "{host} is a Proxmox VE host: no libvirt there.",
+    },
+    "Action:": {
+        "fr": "Action :",
+        "en": "Action:",
+    },
+    "Cannot create a temporary directory on {host}.": {
+        "fr": "Impossible de créer un répertoire temporaire sur {host}.",
+        "en": "Cannot create a temporary directory on {host}.",
+    },
+    "Running VM (live)": {
+        "fr": "VM en marche (live)",
+        "en": "Running VM (live)",
+    },
+    "Definition (config)": {
+        "fr": "Définition (config)",
+        "en": "Definition (config)",
+    },
+    "Redirect only Stream Decks (vendor {vendor})? (y/N): ": {
+        "fr": "Ne rediriger que les Stream Deck (vendeur {vendor}) ? (o/N) : ",
+        "en": "Redirect only Stream Decks (vendor {vendor})? (y/N): ",
+    },
+    "Persistence:": {
+        "fr": "Persistance :",
+        "en": "Persistence:",
+    },
+    "live and config: now and at every start": {
+        "fr": "live et config : maintenant et à chaque démarrage",
+        "en": "live and config: now and at every start",
+    },
+    "live only: until the VM stops": {
+        "fr": "live seulement : jusqu'à l'arrêt de la VM",
+        "en": "live only: until the VM stops",
+    },
+    "config only: from the next start": {
+        "fr": "config seulement : à partir du prochain démarrage",
+        "en": "config only: from the next start",
+    },
+    "It holds the deck, and loses it to the VM.": {
+        "fr": "Il tient le deck, et le perd au profit de la VM.",
+        "en": "It holds the deck, and loses it to the VM.",
+    },
+    "Stop that service during the passthrough? (y/N): ": {
+        "fr": "Arrêter ce service pendant le passage ? (o/N) : ",
+        "en": "Stop that service during the passthrough? (y/N): ",
+    },
+    "USB devices of this machine (hubs left out)": {
+        "fr": "Périphériques USB de cette machine (concentrateurs exclus)",
+        "en": "USB devices of this machine (hubs left out)",
+    },
+    "USB devices of the libvirt host": {
+        "fr": "Périphériques USB de l'hôte libvirt",
+        "en": "USB devices of the libvirt host",
+    },
+    "Run these commands? (y/N): ": {
+        "fr": "Lancer ces commandes ? (o/N) : ",
+        "en": "Run these commands? (y/N): ",
+    },
+    "Detached.": {
+        "fr": "Détaché.",
+        "en": "Detached.",
+    },
+    "SPICE USB redirection": {
+        "fr": "Redirection USB SPICE",
+        "en": "SPICE USB redirection",
+    },
+    "Displays, in order:": {
+        "fr": "Affichages, dans l'ordre :",
+        "en": "Displays, in order:",
+    },
+    "Redirection slots:": {
+        "fr": "Emplacements de redirection :",
+        "en": "Redirection slots:",
+    },
+    "Other devices: File > USB device selection.": {
+        "fr": (
+            "Autres périphériques : Fichier > Sélection des périphériques USB."
+        ),
+        "en": "Other devices: File > USB device selection.",
+    },
+    "Auto-reattach on replug": {
+        "fr": "Rattachement auto au rebranchement",
+        "en": "Auto-reattach on replug",
+    },
+    "Install the udev rule and the unit": {
+        "fr": "Poser la règle udev et l'unité",
+        "en": "Install the udev rule and the unit",
+    },
+    "Reattach a device to this VM on replug": {
+        "fr": "Rattacher un périphérique à cette VM au rebranchement",
+        "en": "Reattach a device to this VM on replug",
+    },
+    "Stop reattaching a device to this VM": {
+        "fr": "Ne plus rattacher un périphérique à cette VM",
+        "en": "Stop reattaching a device to this VM",
+    },
+    "Show the mappings of this host": {
+        "fr": "Voir les correspondances de cet hôte",
+        "en": "Show the mappings of this host",
+    },
+    "Remove the udev rule and the unit": {
+        "fr": "Retirer la règle udev et l'unité",
+        "en": "Remove the udev rule and the unit",
+    },
+    "Use the Proxmox VE menu; a Proxmox USB assignment": {
+        "fr": "Passez par le menu Proxmox VE ; une attribution USB Proxmox",
+        "en": "Use the Proxmox VE menu; a Proxmox USB assignment",
+    },
+    "is always persistent (no live or config choice).": {
+        "fr": "est toujours persistante (pas de choix live ou config).",
+        "en": "is always persistent (no live or config choice).",
+    },
+    "Cannot read this VM through libvirt:": {
+        "fr": "Impossible de lire cette VM par libvirt :",
+        "en": "Cannot read this VM through libvirt:",
+    },
+    "Stream Deck": {
+        "fr": "Stream Deck",
+        "en": "Stream Deck",
+    },
+    "No USB device to pass on this host.": {
+        "fr": "Aucun périphérique USB à passer sur cet hôte.",
+        "en": "No USB device to pass on this host.",
+    },
+    "No Stream Deck plugged in here.": {
+        "fr": "Aucun Stream Deck branché ici.",
+        "en": "No Stream Deck plugged in here.",
+    },
+    "Two identical devices: this one is pinned by": {
+        "fr": "Deux périphériques identiques : celui-ci est épinglé par",
+        "en": "Two identical devices: this one is pinned by",
+    },
+    "its address, which changes when it is replugged.": {
+        "fr": "son adresse, qui change quand on le rebranche.",
+        "en": "its address, which changes when it is replugged.",
+    },
+    "In the VM, ERPLibre Home takes the deck when its": {
+        "fr": "Dans la VM, ERPLibre Home prend le deck quand son",
+        "en": "In the VM, ERPLibre Home takes the deck when its",
+    },
+    "service autostarts (ERPLibre Home > Autostart).": {
+        "fr": "service démarre seul (ERPLibre Home > Démarrage auto).",
+        "en": "service autostarts (ERPLibre Home > Autostart).",
+    },
+    "Live only: the VM loses it at its next stop.": {
+        "fr": "Live seulement : la VM le perd à son prochain arrêt.",
+        "en": "Live only: the VM loses it at its next stop.",
+    },
+    "No USB device is attached to this VM.": {
+        "fr": "Aucun périphérique USB n'est attaché à cette VM.",
+        "en": "No USB device is attached to this VM.",
+    },
+    "USB controller:": {
+        "fr": "Contrôleur USB :",
+        "en": "USB controller:",
+    },
+    "Ready: virt-viewer offers USB redirection.": {
+        "fr": "Prête : virt-viewer offre la redirection USB.",
+        "en": "Ready: virt-viewer offers USB redirection.",
+    },
+    "Not ready: entry 6 enables it (VM shut off).": {
+        "fr": "Pas prête : l'entrée 6 l'active (VM éteinte).",
+        "en": "Not ready: entry 6 enables it (VM shut off).",
+    },
+    "Allowed vendors:": {
+        "fr": "Vendeurs autorisés :",
+        "en": "Allowed vendors:",
+    },
+    "virt-viewer opens the first display, not SPICE:": {
+        "fr": "virt-viewer ouvre le premier affichage, pas SPICE :",
+        "en": "virt-viewer opens the first display, not SPICE:",
+    },
+    "entry 6 puts SPICE first.": {
+        "fr": "l'entrée 6 place SPICE en tête.",
+        "en": "entry 6 puts SPICE first.",
+    },
+    "SPICE USB redirection is already set up.": {
+        "fr": "La redirection USB SPICE est déjà en place.",
+        "en": "SPICE USB redirection is already set up.",
+    },
+    "The VM must be shut off: a display change": {
+        "fr": "La VM doit être éteinte : un changement d'affichage",
+        "en": "The VM must be shut off: a display change",
+    },
+    "applies at the next start.": {
+        "fr": "prend effet au démarrage suivant.",
+        "en": "applies at the next start.",
+    },
+    "Shut it down now, and start it again after? (y/N): ": {
+        "fr": "L'arrêter maintenant, et la redémarrer ensuite ? (o/N) : ",
+        "en": "Shut it down now, and start it again after? (y/N): ",
+    },
+    "SPICE USB redirection enabled.": {
+        "fr": "Redirection USB SPICE activée.",
+        "en": "SPICE USB redirection enabled.",
+    },
+    "Auto-reattach is not installed on this host.": {
+        "fr": "Le rattachement auto n'est pas installé sur cet hôte.",
+        "en": "Auto-reattach is not installed on this host.",
+    },
+    "Auto-reattach removed.": {
+        "fr": "Rattachement auto retiré.",
+        "en": "Auto-reattach removed.",
+    },
+    "Auto-reattach is not installed on this host:": {
+        "fr": "Le rattachement auto n'est pas installé sur cet hôte :",
+        "en": "Auto-reattach is not installed on this host:",
+    },
+    "install the udev rule and the unit first.": {
+        "fr": "posez d'abord la règle udev et l'unité.",
+        "en": "install the udev rule and the unit first.",
+    },
+    "The ERPLibre Home deck service of this host also": {
+        "fr": "Le service deck d'ERPLibre Home de cet hôte",
+        "en": "The ERPLibre Home deck service of this host also",
+    },
+    "starts on replug: disable its autostart there.": {
+        "fr": "démarre aussi au rebranchement : coupez-y son démarrage auto.",
+        "en": "starts on replug: disable its autostart there.",
+    },
+    "No mapping for this VM.": {
+        "fr": "Aucune correspondance pour cette VM.",
+        "en": "No mapping for this VM.",
+    },
+    "Mapping removed.": {
+        "fr": "Correspondance retirée.",
+        "en": "Mapping removed.",
+    },
+    "No mapping on this host.": {
+        "fr": "Aucune correspondance sur cet hôte.",
+        "en": "No mapping on this host.",
+    },
+    "absent at start": {
+        "fr": "absent au démarrage",
+        "en": "absent at start",
+    },
+    "Restart the VM: its definition has SPICE": {
+        "fr": "Redémarrez la VM : sa définition a la redirection",
+        "en": "Restart the VM: its definition has SPICE",
+    },
+    "redirection, the running VM not yet.": {
+        "fr": "SPICE, la VM en marche pas encore.",
+        "en": "redirection, the running VM not yet.",
+    },
+    "This VM has no SPICE USB redirection yet:": {
+        "fr": "Cette VM n'a pas encore la redirection USB SPICE :",
+        "en": "This VM has no SPICE USB redirection yet:",
+    },
+    "entry 6 enables it.": {
+        "fr": "l'entrée 6 l'active.",
+        "en": "entry 6 enables it.",
+    },
+    "The VM is still running.": {
+        "fr": "La VM tourne encore.",
+        "en": "The VM is still running.",
+    },
+    "Unreadable mapping file:": {
+        "fr": "Fichier de correspondance illisible :",
+        "en": "Unreadable mapping file:",
+    },
+    "Auto-reattach installed.": {
+        "fr": "Rattachement auto installé.",
+        "en": "Auto-reattach installed.",
+    },
+    "Which device?": {
+        "fr": "Quel périphérique ?",
+        "en": "Which device?",
+    },
+    # Déploiement QEMU — USB : case « Stream Deck » du formulaire, question
+    # en ligne, et note du nœud Proxmox.
+    "Attach the plugged Stream Decks (USB passthrough + SPICE)": {
+        "fr": "Attacher les Stream Deck branchés (passage USB + SPICE)",
+        "en": "Attach the plugged Stream Decks (USB passthrough + SPICE)",
+    },
+    "Attach the plugged Stream Decks (USB passthrough)": {
+        "fr": "Attacher les Stream Deck branchés (passage USB)",
+        "en": "Attach the plugged Stream Decks (USB passthrough)",
+    },
+    "Attach the plugged Stream Decks (USB passthrough + SPICE)? (y/N): ": {
+        "fr": "Attacher les Stream Deck branchés (passage USB + SPICE) ?"
+        " (o/N) : ",
+        "en": "Attach the plugged Stream Decks (USB passthrough + SPICE)?"
+        " (y/N): ",
+    },
+    "Plugged into the host:": {
+        "fr": "Branchés sur l'hôte :",
+        "en": "Plugged into the host:",
+    },
+    "They go to the first graphical VM only.": {
+        "fr": "Ils vont à la première VM graphique seulement.",
+        "en": "They go to the first graphical VM only.",
+    },
+    "No Stream Deck plugged into the host.": {
+        "fr": "Aucun Stream Deck branché sur l'hôte.",
+        "en": "No Stream Deck plugged into the host.",
+    },
+    "SPICE redirection only.": {
+        "fr": "Redirection SPICE seulement.",
+        "en": "SPICE redirection only.",
+    },
+    "Read from the Proxmox node when the VM is created.": {
+        "fr": "Lus sur le nœud Proxmox à la création de la VM.",
+        "en": "Read from the Proxmox node when the VM is created.",
+    },
+    # ERPLibre Home — deck passé à une VM : état du poste
+    # (erplibre_home_status.py) quand QEMU tient un deck branché.
+    "passed to VM": {
+        "fr": "passé à la VM",
+        "en": "passed to VM",
+    },
+    "passed to a VM": {
+        "fr": "passé à une VM",
+        "en": "passed to a VM",
+    },
+    "idle, the deck is in a VM": {
+        "fr": "au repos, le deck est dans une VM",
+        "en": "idle, the deck is in a VM",
+    },
+    # Proxmox — redirection SPICE : un deck du poste vers une VM Proxmox
+    # (proxmox_menu._pve_usb_spice).
+    "Redirect a deck from this workstation (SPICE)": {
+        "fr": "Rediriger un deck de ce poste (SPICE)",
+        "en": "Redirect a deck from this workstation (SPICE)",
+    },
+    "No Stream Deck plugged into this workstation: one plugged in later is redirected too.": {
+        "fr": "Aucun Stream Deck branché sur ce poste : un deck branché plus tard est redirigé aussi.",
+        "en": "No Stream Deck plugged into this workstation: one plugged in later is redirected too.",
+    },
+    "Not enough free usbN ports for every deck; missing:": {
+        "fr": "Pas assez de ports usbN libres pour chaque deck ; il en manque :",
+        "en": "Not enough free usbN ports for every deck; missing:",
+    },
+    "Missing for SPICE USB redirection:": {
+        "fr": "Manque pour la redirection USB SPICE :",
+        "en": "Missing for SPICE USB redirection:",
+    },
+    "The display change takes effect at the next start of the VM (qm reboot, or stop and start), not at a reboot from inside the guest.": {
+        "fr": "Le changement d'affichage prend effet au prochain démarrage de la VM (qm reboot, ou arrêt puis démarrage), pas à un redémarrage depuis l'invité.",
+        "en": "The display change takes effect at the next start of the VM (qm reboot, or stop and start), not at a reboot from inside the guest.",
+    },
+    "The running VM does not use SPICE redirection yet: it needs a restart.": {
+        "fr": "La VM en marche n'utilise pas encore la redirection SPICE : elle doit redémarrer.",
+        "en": "The running VM does not use SPICE redirection yet: it needs a restart.",
+    },
+    "Restart the VM now (qm reboot)? (y/N): ": {
+        "fr": "Redémarrer la VM maintenant (qm reboot) ? (o/N) : ",
+        "en": "Restart the VM now (qm reboot)? (y/N): ",
+    },
+    "The VM is not running. Start it now? (y/N): ": {
+        "fr": "La VM n'est pas en marche. La démarrer maintenant ? (o/N) : ",
+        "en": "The VM is not running. Start it now? (y/N): ",
+    },
+    "No display here: run this entry on the workstation where the deck is plugged in. It opens:": {
+        "fr": "Aucun affichage ici : lancez cette entrée sur le poste où le deck est branché. Elle ouvre :",
+        "en": "No display here: run this entry on the workstation where the deck is plugged in. It opens:",
+    },
+    "remote-viewer is missing (package virt-viewer).": {
+        "fr": "remote-viewer est absent (paquet virt-viewer).",
+        "en": "remote-viewer is missing (package virt-viewer).",
+    },
+    "The SSH tunnel to the SPICE proxy of the node did not open.": {
+        "fr": "Le tunnel SSH vers le proxy SPICE du nœud ne s'est pas ouvert.",
+        "en": "The SSH tunnel to the SPICE proxy of the node did not open.",
+    },
+    "No SPICE ticket from the Proxmox node.": {
+        "fr": "Aucun billet SPICE reçu du nœud Proxmox.",
+        "en": "No SPICE ticket from the Proxmox node.",
+    },
+    "When the viewer is closed, restart the deck service:": {
+        "fr": "Une fois la fenêtre fermée, relancez le service deck :",
+        "en": "When the viewer is closed, restart the deck service:",
+    },
+    # Menu QEMU — USB : débranchement et service deck
+    "Detach unplugged {device} from {domain}": {
+        "fr": "Détacher {device} débranché de {domain}",
+        "en": "Detach unplugged {device} from {domain}",
+    },
+    "The deck goes back to the libvirt host, where the ERPLibre Home Stream Deck service is stopped. Run again with --yes to restart it, or --no-restart to leave it stopped.": {
+        "fr": "Le deck revient à l'hôte libvirt, où le service Stream Deck d'ERPLibre Home est arrêté. Relancez avec --yes pour le redémarrer, ou --no-restart pour le laisser arrêté.",
+        "en": "The deck goes back to the libvirt host, where the ERPLibre Home Stream Deck service is stopped. Run again with --yes to restart it, or --no-restart to leave it stopped.",
+    },
+    "Invalid unit instance: {name}": {
+        "fr": "Instance d'unité invalide : {name}",
+        "en": "Invalid unit instance: {name}",
+    },
+    "No mapping sends a deck to a VM anymore.": {
+        "fr": "Plus aucune correspondance n'envoie de deck à une VM.",
+        "en": "No mapping sends a deck to a VM anymore.",
+    },
+    # Tests longs — passage USB d'un deck simulé
+    "USB passthrough, emulated deck: plan only (dry-run)": {
+        "fr": "Passage USB, deck simulé : le plan seulement (à blanc)",
+        "en": "USB passthrough, emulated deck: plan only (dry-run)",
+    },
+    "USB passthrough, emulated deck: run it": {
+        "fr": "Passage USB, deck simulé : le lancer",
+        "en": "USB passthrough, emulated deck: run it",
     },
 }
 

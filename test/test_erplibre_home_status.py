@@ -19,7 +19,12 @@ Ce que ces tests gardent :
   ou repris par un autre processus), n'est jamais proposé à « kill » ;
 - sans le clone du programme du deck, qui porte deck_lock.py, collect()
   rend un verrou libre et deck_program faux, l'état le dit à la place du
-  verrou, et le diagnostic renvoie à l'installation Stream Deck.
+  verrou, et le diagnostic renvoie à l'installation Stream Deck ;
+- un deck passé à une VM se reconnaît sans root, par le propriétaire de
+  son nœud et les <hostdev> live que virsh rend en lecture seule ; l'état
+  nomme la VM, et le diagnostic ne compte pas comme une panne le service
+  de l'hôte qui n'a plus de deck à piloter. Un deck que le programme de
+  l'hôte tient par usbfs, son nœud resté à root, reste à l'hôte.
 
 La lecture du verrou par le vrai deck_lock.py du clone est sautée
 (SANS_DECK) quand il manque.
@@ -42,7 +47,7 @@ from streamdeck_deck import PRESENT as DECK_PRESENT  # noqa: E402
 from streamdeck_deck import SANS_DECK  # noqa: E402
 
 from script.todo import erplibre_home_status as statut  # noqa: E402
-from script.todo import todo_i18n  # noqa: E402
+from script.todo import qemu_usb, todo_i18n  # noqa: E402
 
 UNITE = "erplibre-home-streamdeck.service"
 INFO_ACTIVE = (
@@ -55,6 +60,20 @@ INFO_ERREUR = (
 )
 INFO_INCONNUE = "(@a{sv} {},)"
 JOURNAL_SAIN = "autre ligne\n[ERPLibreHome] enabled\n"
+# L'UID de l'utilisateur de QEMU sur un hôte simulé ; inventé.
+UID_QEMU = 64055
+UID_MOI = 1234
+DOMAINE_XML = (
+    "<domain type='kvm'><name>vm-essai</name><devices>"
+    "<hostdev mode='subsystem' type='usb' managed='yes'><source>"
+    "<vendor id='0x0fd9'/><product id='0x0080'/>"
+    "<address bus='3' device='5'/></source></hostdev>"
+    "<hostdev mode='subsystem' type='usb' managed='yes'>"
+    "<source startupPolicy='optional' missing='yes'>"
+    "<vendor id='0x0fd9'/><product id='0x006c'/>"
+    "<address bus='3' device='9'/></source></hostdev>"
+    "</devices></domain>"
+)
 JOURNAL_ECHEC = (
     "[ERPLibreHome] mount device failed: exemple\n"
     "[ERPLibreHome] mount pencil failed: exemple\n"
@@ -85,10 +104,46 @@ def faits(**changes):
         "lock": ("4242", "tiler"),
         "lock_running": True,
         "lock_pids": [4242],
-        "decks": [{"product": "Stream Deck MK.2", "id_product": "0080"}],
+        "decks": [deck()],
     }
     base.update(changes)
     return base
+
+
+def deck(**changes):
+    """Un deck MK.2 branché que usbhid tient, modifié par `changes`."""
+    base = {
+        "product": "Stream Deck MK.2",
+        "id_product": "0080",
+        "model": "Stream Deck MK.2",
+        "serial": "SERIE-ESSAI-1",
+        "sysname": "3-2",
+        "busnum": 3,
+        "devnum": 5,
+        "driver": "usbhid",
+        "owner_uid": 0,
+        "vm": None,
+    }
+    base.update(changes)
+    return base
+
+
+def ecrire_sysfs(sysfs, appareils):
+    """Pose sous `sysfs` les périphériques {sysname: {fichier: valeur}} ;
+    la clé "driver" d'un périphérique devient le lien du pilote de son
+    interface « :1.0 »."""
+    for nom, fichiers in appareils.items():
+        dossier = Path(sysfs, "bus/usb/devices", nom)
+        dossier.mkdir(parents=True)
+        for fichier, valeur in fichiers.items():
+            if fichier == "driver":
+                interface = Path(sysfs, "bus/usb/devices", nom + ":1.0")
+                interface.mkdir()
+                pilote = Path(sysfs, "bus/usb/drivers", valeur)
+                pilote.mkdir(parents=True, exist_ok=True)
+                (interface / "driver").symlink_to(pilote)
+            else:
+                (dossier / fichier).write_text(valeur + "\n")
 
 
 class LesLectures(unittest.TestCase):
@@ -121,27 +176,118 @@ class LesLectures(unittest.TestCase):
 
     def test_plugged_decks_read_sysfs(self):
         with tempfile.TemporaryDirectory() as sysfs:
-            appareils = {
-                "1-1": {"idVendor": "1d6b", "idProduct": "0002"},
-                "3-2": {
-                    "idVendor": "0fd9",
-                    "idProduct": "0080",
-                    "product": "Stream Deck MK.2",
+            ecrire_sysfs(
+                sysfs,
+                {
+                    "1-1": {"idVendor": "1d6b", "idProduct": "0002"},
+                    "3-2": {
+                        "idVendor": "0fd9",
+                        "idProduct": "0080",
+                        "product": "Stream Deck MK.2",
+                        "serial": "SERIE-ESSAI-1",
+                        "busnum": "3",
+                        "devnum": "5",
+                        "driver": "usbfs",
+                    },
+                    "3-4": {"idVendor": "0fd9", "idProduct": "006c"},
                 },
-                "3-4": {"idVendor": "0fd9", "idProduct": "006c"},
-            }
-            for nom, fichiers in appareils.items():
-                dossier = Path(sysfs, "bus/usb/devices", nom)
-                dossier.mkdir(parents=True)
-                for fichier, valeur in fichiers.items():
-                    (dossier / fichier).write_text(valeur + "\n")
+            )
+            noeuds = []
+
+            def proprietaire(chemin):
+                noeuds.append(chemin)
+                return UID_QEMU
+
             self.assertEqual(
                 [
-                    {"product": "Stream Deck MK.2", "id_product": "0080"},
-                    {"product": "", "id_product": "006c"},
+                    deck(driver="usbfs", owner_uid=UID_QEMU),
+                    {
+                        "product": "",
+                        "id_product": "006c",
+                        "model": "Stream Deck XL",
+                        "serial": "",
+                        "sysname": "3-4",
+                        "busnum": None,
+                        "devnum": None,
+                        "driver": "",
+                        "owner_uid": None,
+                        "vm": None,
+                    },
                 ],
-                statut.plugged_decks(sysfs),
+                statut.plugged_decks(sysfs, "/devfs-essai", proprietaire),
             )
+            self.assertEqual(["/devfs-essai/bus/usb/003/005"], noeuds)
+
+
+class LaVmQuiTientLeDeck(unittest.TestCase):
+    """deck_vm et ses deux sources : les <hostdev> live de libvirt et la
+    correspondance du rattachement automatique."""
+
+    ENTREES = [{"vid": "0fd9", "pid": "0080", "domain": "vm-correspondance"}]
+
+    def vm(self, holders=None, entries=(), **changes):
+        return statut.deck_vm(deck(**changes), holders, entries, UID_MOI)
+
+    def test_libvirt_names_the_domain_holding_the_address(self):
+        self.assertEqual(
+            "vm-essai",
+            self.vm({(3, 5): "vm-essai"}, driver="", owner_uid=UID_QEMU),
+        )
+
+    def test_a_deck_usbhid_holds_stays_on_the_host(self):
+        self.assertIsNone(self.vm({(3, 6): "vm-essai"}, self.ENTREES))
+
+    def test_the_host_deck_program_is_not_a_vm(self):
+        """Le programme du deck de l'hôte passe par usbfs, mais le nœud
+        reste à root, ou à l'utilisateur : ce n'est pas une VM, même
+        quand la correspondance attribue le deck à une VM."""
+        for proprio in (0, UID_MOI, None):
+            with self.subTest(proprio=proprio):
+                self.assertIsNone(
+                    self.vm(
+                        None, self.ENTREES, driver="usbfs", owner_uid=proprio
+                    )
+                )
+
+    def test_a_node_owned_by_qemu_takes_the_mapping_name(self):
+        for pilote in ("usbfs", ""):
+            with self.subTest(pilote=pilote):
+                self.assertEqual(
+                    "vm-correspondance",
+                    self.vm(
+                        None, self.ENTREES, driver=pilote, owner_uid=UID_QEMU
+                    ),
+                )
+        self.assertEqual(
+            "", self.vm({}, [], driver="usbfs", owner_uid=UID_QEMU)
+        )
+
+    def test_libvirt_holders_skip_missing_hostdevs(self):
+        appels = []
+
+        def run(argv):
+            appels.append(tuple(argv))
+            if tuple(argv) == statut.CMD_DOMAINS:
+                return 0, "vm-essai\n\n"
+            if tuple(argv) == statut.cmd_virsh("dumpxml", "vm-essai"):
+                return 0, DOMAINE_XML
+            return 1, ""
+
+        self.assertEqual({(3, 5): "vm-essai"}, statut.libvirt_usb_holders(run))
+        self.assertTrue(
+            all(a[:3] == ("timeout", "5", "virsh") for a in appels)
+        )
+        self.assertTrue(all("--readonly" in a for a in appels))
+        self.assertIsNone(statut.libvirt_usb_holders(lambda argv: (None, "")))
+
+    def test_an_unreadable_mapping_is_empty(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = Path(dossier, "usb-passthrough.json")
+            self.assertEqual([], statut.read_mapping(str(chemin)))
+            chemin.write_text("{pas du json")
+            self.assertEqual([], statut.read_mapping(str(chemin)))
+            chemin.write_text(qemu_usb.mapping_dumps(self.ENTREES))
+            self.assertEqual(self.ENTREES, statut.read_mapping(str(chemin)))
 
 
 class LaCollecte(unittest.TestCase):
@@ -160,7 +306,7 @@ class LaCollecte(unittest.TestCase):
 
         return run
 
-    def collecter(self, sorties, unite=False, racine=RACINE):
+    def collecter(self, sorties, unite=False, racine=RACINE, proprio=0):
         if unite:
             fichier = self.home / ".config/systemd/user" / UNITE
             fichier.parent.mkdir(parents=True)
@@ -172,7 +318,41 @@ class LaCollecte(unittest.TestCase):
             sysfs=str(self.tmp / "sys"),
             udev_rule=str(self.tmp / "absente.rules"),
             lock_path=str(self.tmp / "deck.lock"),
+            devfs=str(self.tmp / "dev"),
+            owner_of=lambda chemin: proprio,
+            mapping_path=str(self.tmp / "absente.json"),
+            uid=UID_MOI,
         )
+
+    def brancher_mk2(self, pilote):
+        ecrire_sysfs(
+            self.tmp / "sys",
+            {
+                "3-2": {
+                    "idVendor": "0fd9",
+                    "idProduct": "0080",
+                    "product": "Stream Deck MK.2",
+                    "busnum": "3",
+                    "devnum": "5",
+                    "driver": pilote,
+                }
+            },
+        )
+
+    def test_a_deck_in_a_vm_is_named_from_libvirt(self):
+        self.brancher_mk2("usbfs")
+        sorties = {
+            statut.CMD_DOMAINS: (0, "vm-essai\n"),
+            statut.cmd_virsh("dumpxml", "vm-essai"): (0, DOMAINE_XML),
+        }
+        recu = self.collecter(sorties, proprio=UID_QEMU)
+        self.assertEqual(["vm-essai"], [d["vm"] for d in recu["decks"]])
+
+    def test_virsh_is_not_called_for_a_deck_on_usbhid(self):
+        self.brancher_mk2("usbhid")
+        recu = self.collecter({})
+        self.assertEqual([None], [d["vm"] for d in recu["decks"]])
+        self.assertNotIn("timeout", [a[0] for a in self.appels])
 
     def test_a_bare_workstation(self):
         recu = self.collecter({})
@@ -356,7 +536,7 @@ class LEtat(unittest.TestCase):
                 unit_enabled="",
                 unit_active="",
                 lock=None,
-                decks=[{"product": "", "id_product": "006c"}],
+                decks=[deck(product="", id_product="006c", model="")],
             )
         )
         self.assertEqual(
@@ -371,6 +551,45 @@ class LEtat(unittest.TestCase):
                 "Stream Deck venv: missing",
             ],
             lignes,
+        )
+
+    def test_a_deck_passed_to_a_vm_is_named_and_the_service_idle(self):
+        lignes = statut.status_lines(
+            faits(
+                unit_active="inactive",
+                lock=None,
+                decks=[
+                    deck(vm="vm-essai", driver="usbfs"),
+                    deck(product="", model="Stream Deck XL", vm=""),
+                ],
+            )
+        )
+        self.assertIn(
+            "Service: enabled, inactive, program tiler"
+            " — idle, the deck is in a VM",
+            lignes,
+        )
+        self.assertIn(
+            "Decks plugged in: Stream Deck MK.2 (passed to VM vm-essai),"
+            " Stream Deck XL (passed to a VM)",
+            lignes,
+        )
+
+    def test_a_deck_left_on_the_host_keeps_the_service_line(self):
+        lignes = statut.status_lines(
+            faits(
+                unit_active="inactive",
+                decks=[deck(vm="vm-essai"), deck(sysname="3-3")],
+            )
+        )
+        self.assertIn("Service: enabled, inactive, program tiler", lignes)
+
+    def test_the_model_names_a_deck_without_product(self):
+        self.assertIn(
+            "Decks plugged in: Stream Deck XL",
+            statut.status_lines(
+                faits(decks=[deck(product="", model="Stream Deck XL")])
+            ),
         )
 
     def test_a_lock_naming_a_process_gone_says_so(self):
@@ -573,6 +792,27 @@ class LeDiagnostic(unittest.TestCase):
         for changes, attendu in cas:
             with self.subTest(changes=changes):
                 self.assertIn(attendu, self.corrections(**changes))
+
+    def test_a_deck_in_a_vm_is_not_a_stopped_service(self):
+        """Tous les decks dans une VM : le service de l'hôte, arrêté ou
+        tenu, n'est pas une panne. Un deck resté à l'hôte le redevient."""
+        dans_vm = [deck(vm="vm-essai", driver="usbfs")]
+        for tenu in (None, ("777", "controller")):
+            with self.subTest(tenu=tenu):
+                self.assertEqual(
+                    [],
+                    statut.diagnosis_lines(
+                        faits(unit_active="failed", lock=tenu, decks=dans_vm)
+                    ),
+                )
+        self.assertIn(
+            f"systemctl --user start {UNITE}",
+            self.corrections(
+                unit_active="failed",
+                lock=None,
+                decks=dans_vm + [deck(sysname="3-3")],
+            ),
+        )
 
     def test_the_holder_is_named(self):
         problemes = statut.diagnosis_lines(

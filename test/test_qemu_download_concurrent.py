@@ -177,8 +177,10 @@ class TestInstallationsSimultanees(unittest.TestCase):
     def test_une_somme_qui_ne_correspond_jamais_borne_les_reprises(self):
         """Miroir dont l'image et la somme publiée divergent : toutes les
         installations échouent, mais aucune ne tire l'image deux fois de
-        suite — au plus un téléchargement par installation."""
-        self.dest.write_bytes(b"ancienne version de l'image")
+        suite — au plus un téléchargement par installation. Les octets
+        refusés ne remplacent jamais l'image en place."""
+        ancienne = b"ancienne version de l'image"
+        self.dest.write_bytes(ancienne)
         with mock.patch.object(d, "expected_sum", return_value="0" * 64):
             erreurs = en_parallele(
                 6,
@@ -193,7 +195,8 @@ class TestInstallationsSimultanees(unittest.TestCase):
         self.assertEqual(6, len(erreurs))
         self.assertTrue(all(isinstance(e, SystemExit) for e in erreurs))
         self.assertLessEqual(len(self.serveur.demandes), 6)
-        self.assertFalse(self.dest.exists())
+        self.assertEqual(ancienne, self.dest.read_bytes())
+        self.assertFalse(self.dest.with_suffix(".qcow2.part").exists())
 
     def test_l_image_perimee_reste_lisible_pendant_la_reprise(self):
         """Une conversion lancée pendant la reprise trouve l'ancienne image
@@ -254,9 +257,10 @@ class TestInstallationsSimultanees(unittest.TestCase):
     def test_sans_descripteur_le_verrou_avertit(self):
         sortie = io.StringIO()
         refus = PermissionError(13, "Permission denied")
-        with mock.patch.object(
-            d.os, "open", side_effect=refus
-        ), contextlib.redirect_stdout(sortie):
+        with (
+            mock.patch.object(d.os, "open", side_effect=refus),
+            contextlib.redirect_stdout(sortie),
+        ):
             with d.verrou_image(self.dest):
                 pass
         self.assertIn("SANS verrou", sortie.getvalue())
