@@ -13,6 +13,8 @@ module tient la logique pure de ce moment-là.
                    — un plan vide quand rien ne change, et une ligne « skip »
                    expliquée quand une demande n'a pas d'objet.
 - build_want(...) / run_hardware_form(...) : le formulaire Textual.
+- parse_dommemstat(...) / live_ram_plan(...) : la RAM d'une VM ALLUMÉE,
+  déplacée par le ballon virtio entre ~0 et son <memory>, jamais au-delà.
 
 Aucune commande n'est lancée ici : `todo.py` les exécute, sous sudo, et les
 affiche avant. Le plan reste donc vérifiable sans hyperviseur.
@@ -75,6 +77,18 @@ EGL = "egl-headless"
 # même par défaut (« <memballoon model='virtio'/> ») ; libvirt y ajoute
 # lui-même freePageReporting à la définition.
 BALLOON_MODEL = "virtio"
+
+# Marge, en Mio, que le plan à chaud garde de part et d'autre : au-dessus de
+# la mémoire occupée de l'invité quand le ballon se gonfle, au-dessus de la
+# MemAvailable de l'hôte quand il se dégonfle. Sous elle, l'invité tue des
+# processus ou l'hôte se met à échanger.
+LIVE_MARGIN_MIB = 512
+
+# Âge maximal, en secondes, d'un relevé du pilote invité. Le ballon ne
+# publie « usable » et « available » qu'avec une période de collecte armée ;
+# sans elle, ils restent figés sur le dernier rapport, et une mémoire
+# occupée lue il y a une heure ne borne plus rien.
+LIVE_STATS_MAX_AGE = 30
 
 # libvirt écrit KiB pour la mémoire, mais le schéma autorise les deux systèmes
 # d'unités — KB vaut mille octets, KiB en vaut 1024. On convertit en octets
@@ -630,6 +644,154 @@ def hw_summary(state: dict) -> str:
     if state.get("cpu") and state["cpu"] != "host-passthrough":
         bits.append(f"CPU {state['cpu']}")
     return ", ".join(bits)
+
+
+def parse_dommemstat(text: str) -> dict:
+    """Sortie de « virsh dommemstat » -> {champ: valeur entière}.
+
+    Une ligne par champ, « actual 4194304 » ; les tailles sont en KiB,
+    « last_update » en secondes depuis l'époque, horloge de l'HÔTE (QEMU
+    l'horodate à la réception). Le tiret de « last-update », qu'écrivent
+    d'anciens libvirt, devient un souligné : une seule clé à lire.
+    """
+    stats = {}
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        try:
+            stats[parts[0].replace("-", "_")] = int(parts[1])
+        except ValueError:
+            continue
+    return stats
+
+
+def guest_reports(stats: dict, now=None) -> bool:
+    """Le pilote du ballon, DANS l'invité, publie-t-il ses compteurs ?
+
+    « actual » vient de QEMU et existe toujours ; « usable » et « available »
+    ne viennent que du pilote invité, et seulement quand une période de
+    collecte est armée. `now` (secondes, horloge de l'hôte) fait aussi
+    écarter un relevé plus vieux que LIVE_STATS_MAX_AGE : la mémoire occupée
+    qu'il annonce ne borne plus rien.
+    """
+    if "usable" not in stats or "available" not in stats:
+        return False
+    if now is None:
+        return True
+    last = stats.get("last_update") or 0
+    return bool(last) and now - last <= LIVE_STATS_MAX_AGE
+
+
+def meminfo_available_mib(text: str) -> int:
+    """MemAvailable de /proc/meminfo, en Mio ; 0 si absente ou illisible."""
+    for line in (text or "").splitlines():
+        if line.startswith("MemAvailable:"):
+            try:
+                return int(line.split()[1]) // 1024
+            except (IndexError, ValueError):
+                return 0
+    return 0
+
+
+def period_cmd(name: str, seconds: int = 5) -> list:
+    """Commande qui arme la collecte du pilote invité, à chaud seulement.
+
+    « --live » : la période ne s'écrit pas dans la définition, elle se perd
+    au prochain arrêt du domaine. Rien d'autre n'est modifié.
+    """
+    return [
+        "virsh",
+        "--connect",
+        CONNECT,
+        "dommemstat",
+        name,
+        "--period",
+        str(seconds),
+        "--live",
+    ]
+
+
+def live_ram_plan(state, stats, want_mib, host_avail_mib, now=None) -> dict:
+    """Plan de la RAM d'une VM ALLUMÉE, déplacée par le ballon.
+
+    `state` vient de hw_state (le plafond <memory> et le ballon), `stats` de
+    parse_dommemstat, `want_mib` est la cible, `host_avail_mib` la
+    MemAvailable de l'hôte. Rend {ok, reason, what, cmd, warnings} ; `cmd`
+    n'existe que si `ok`.
+
+    Le ballon déplace la RAM entre ~0 et le plafond fixé au démarrage,
+    jamais au-delà. Refusé : sans ballon ; sans compteurs du pilote invité ;
+    au-dessus du plafond ; sous la mémoire occupée de l'invité
+    (actual - usable) plus LIVE_MARGIN_MIB ; une hausse que la MemAvailable
+    de l'hôte ne couvre pas avec la même marge.
+
+    « setmem » reçoit la taille suffixée « M » — des mébioctets pour virsh,
+    sans suffixe il compterait en KiB — et « --live --config » : la cible
+    vaut tout de suite et survit au prochain démarrage.
+    """
+    name = state.get("name") or ""
+    out = {"ok": False, "reason": "", "what": "", "warnings": []}
+    if not name:
+        out["reason"] = t("Unreadable VM definition.")
+        return out
+    if not state.get("balloon"):
+        out["reason"] = t("this VM has no balloon device")
+        return out
+    if not guest_reports(stats, now):
+        out["reason"] = t("the guest balloon driver reports no statistics")
+        return out
+    want = positive_int(want_mib, 0)
+    if not want:
+        out["reason"] = t("unreadable RAM value")
+        return out
+    plafond = positive_int(state.get("max_mem_mib"), 0)
+    if plafond and want > plafond:
+        out["reason"] = (
+            t("above the RAM max of the VM")
+            + f" ({fmt_mib(plafond)}) — "
+            + t("raise the max with the VM shut off (hardware form)")
+        )
+        return out
+    actual = positive_int(stats.get("actual"), 0) // 1024
+    used = max(0, stats.get("actual", 0) - stats.get("usable", 0)) // 1024
+    floor = used + LIVE_MARGIN_MIB
+    if want < floor:
+        out["reason"] = (
+            t("below the memory the guest uses, plus a margin")
+            + f" ({fmt_mib(used)} + {LIVE_MARGIN_MIB} Mo)"
+        )
+        return out
+    if want == actual:
+        out["reason"] = t("Nothing to change.")
+        return out
+    if want > actual:
+        besoin = want - actual + LIVE_MARGIN_MIB
+        if positive_int(host_avail_mib, 0) < besoin:
+            out["reason"] = (
+                t("the host lacks available memory")
+                + f" ({fmt_mib(host_avail_mib)} < {fmt_mib(besoin)})"
+            )
+            return out
+    else:
+        out["warnings"].append(
+            t("the guest gives memory back gradually: read the new value")
+        )
+    out.update(
+        ok=True,
+        what=f"RAM {fmt_mib(actual)} → {fmt_mib(want)}",
+        cmd=[
+            "virsh",
+            "--connect",
+            CONNECT,
+            "setmem",
+            name,
+            f"{want}M",
+            "--live",
+            "--config",
+        ],
+    )
+    return out
 
 
 def cpu_choices(states) -> list:

@@ -26139,7 +26139,7 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
-    # Ballon mémoire virtio : RAM max.
+    # Ballon mémoire virtio : RAM max, et RAM d'une VM allumée.
     "RAM max": {
         "fr": "RAM max",
         "en": "RAM max",
@@ -26163,6 +26163,66 @@ TRANSLATIONS = {
     "balloon: the guest reserves ~1.6% of the max": {
         "fr": "ballon : l'invité réserve ~1,6 % du max",
         "en": "balloon: the guest reserves ~1.6% of the max",
+    },
+    "this VM has no balloon device": {
+        "fr": "cette VM n'a pas de ballon mémoire",
+        "en": "this VM has no balloon device",
+    },
+    "the guest balloon driver reports no statistics": {
+        "fr": "le pilote du ballon dans l'invité ne publie aucun relevé",
+        "en": "the guest balloon driver reports no statistics",
+    },
+    "unreadable RAM value": {
+        "fr": "valeur de RAM illisible",
+        "en": "unreadable RAM value",
+    },
+    "above the RAM max of the VM": {
+        "fr": "au-dessus de la RAM max de la VM",
+        "en": "above the RAM max of the VM",
+    },
+    "raise the max with the VM shut off (hardware form)": {
+        "fr": "relever le max VM éteinte (formulaire matériel)",
+        "en": "raise the max with the VM shut off (hardware form)",
+    },
+    "below the memory the guest uses, plus a margin": {
+        "fr": "sous la mémoire occupée par l'invité, marge comprise",
+        "en": "below the memory the guest uses, plus a margin",
+    },
+    "the host lacks available memory": {
+        "fr": "l'hôte manque de mémoire disponible",
+        "en": "the host lacks available memory",
+    },
+    "the guest gives memory back gradually: read the new value": {
+        "fr": "l'invité rend la mémoire peu à peu : lire la nouvelle valeur",
+        "en": "the guest gives memory back gradually: read the new value",
+    },
+    "Change RAM of a running VM (balloon)": {
+        "fr": "Changer la RAM d'une VM allumée (ballon)",
+        "en": "Change RAM of a running VM (balloon)",
+    },
+    "Not running, RAM left untouched:": {
+        "fr": "Pas allumée, RAM laissée telle quelle :",
+        "en": "Not running, RAM left untouched:",
+    },
+    "still no statistics from the guest:": {
+        "fr": "toujours aucun relevé de l'invité :",
+        "en": "still no statistics from the guest:",
+    },
+    "RAM left untouched": {
+        "fr": "RAM laissée telle quelle",
+        "en": "RAM left untouched",
+    },
+    "used by the guest": {
+        "fr": "occupée par l'invité",
+        "en": "used by the guest",
+    },
+    "New RAM (e.g. 6G):": {
+        "fr": "Nouvelle RAM (ex. 6G) :",
+        "en": "New RAM (e.g. 6G):",
+    },
+    "Balloon now at:": {
+        "fr": "Ballon maintenant à :",
+        "en": "Balloon now at:",
     },
 }
 
