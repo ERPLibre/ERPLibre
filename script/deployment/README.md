@@ -28,10 +28,11 @@ hosting server that reads an application from a single repository. Freeze the
 checkout first: `make repo_configure_all FREEZE=1` puts every project on its
 frozen commit, and the build refuses a project that still follows its branch.
 
-The directory holds the Odoo tree of the version without `.git` and without
-proprietary modules (OPL-1, OEEL-1, « Other proprietary »), one wheel per
-dependency in `roues/` with `requirements.lock.txt` naming each by its
-sha256, ERPLibre's version files, a `config.conf` whose `addons_path` is
+The directory holds the Odoo tree of the version, taken from each frozen
+commit with `git archive` (no `.git`, no uncommitted or ignored file) and
+without proprietary modules (OPL-1, OEEL-1, « Other proprietary »), one wheel
+per dependency in `roues/` (those installed from git included) with
+`requirements.lock.txt` naming each by its sha256, ERPLibre's version files, a `config.conf` whose `addons_path` is
 relative, the `erplibre_serve.py` launcher, and `PROVENANCE.lock` (the
 commit of each project and the excluded modules). The build ends with a
 proof: a fresh venv installed with `--no-index --require-hashes` must
@@ -43,4 +44,6 @@ own session and follows the journal to the verdict: a dropped connection
 stops only the follow-up, and the same command resumes it. TODO runs both on
 the selected SSH target with `Deploy › SSH › Build the offline bundle`
 (`make ssh_dist`, output in `SSH_DIST`, `~/erplibre-dist` by default) — a
-build machine, since its repositories are frozen.
+build machine, since its repositories are frozen. The output is emptied
+before each build except its `.git`, and only when it is a previous bundle
+that does not overlap the checkout.

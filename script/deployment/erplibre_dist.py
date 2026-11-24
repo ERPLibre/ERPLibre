@@ -9,7 +9,8 @@ son code par Google Repo depuis plus d'une centaine de dépôts, et tire ses
 dépendances de PyPI. Ce constructeur part d'un ERPLibre DÉJÀ installé (Google
 Repo synchronisé, venv posé) et en tire un dossier qui se suffit :
 
-- `odoo<v>/odoo` et `odoo<v>/addons/<org>_<dépôt>`, sans `.git`, des seuls
+- `odoo<v>/odoo` et `odoo<v>/addons/<org>_<dépôt>`, tirés du commit par
+  `git archive` — ni `.git`, ni fichier local non commité —, des seuls
   projets de l'arbre Odoo de la version, dans les groupes demandés (le cœur
   et `base`, `addons` par défaut), à leur commit figé EXACT : un projet qui
   suit sa branche fait refuser. `make repo_configure_all FREEZE=1` pose ces
@@ -47,6 +48,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -178,30 +180,123 @@ def addons_path_relatif(chemins_absolus: str, racine: str, copies) -> str:
 
     Seules restent les entrées qui tombent dans un projet de `copies` : une
     entrée hors de la racine, ou dans un dossier que le livrable ne porte
-    pas, nommerait un chemin absent, qu'Odoo refuse au démarrage."""
-    prefixe = racine.rstrip("/") + "/"
+    pas, nommerait un chemin absent, qu'Odoo refuse au démarrage.
+
+    La configuration d'ERPLibre écrit le chemin LOGIQUE du checkout ; la
+    racine reçue peut être son chemin physique. Une entrée est donc lue
+    sous ses deux formes, telle quelle et résolue."""
+    prefixes = {
+        racine.rstrip("/") + "/",
+        os.path.realpath(racine).rstrip("/") + "/",
+    }
     rendu = []
     for entree in chemins_absolus.split(","):
         entree = entree.strip().rstrip("/")
-        if not entree.startswith(prefixe):
+        relatif = None
+        for forme in (entree, os.path.realpath(entree)):
+            prefixe = next((p for p in prefixes if forme.startswith(p)), None)
+            if prefixe:
+                relatif = forme[len(prefixe) :]
+                break
+        if relatif is None:
             continue
-        relatif = entree[len(prefixe) :]
         if any(relatif == c or relatif.startswith(c + "/") for c in copies):
             rendu.append(relatif)
     return ",".join(rendu)
 
 
-def ignore_pour(source: Path, modules):
-    """Ce que la copie d'un projet laisse : `.git` à tout niveau, et les
-    `modules` exclus, au premier niveau du projet seulement."""
+def extraire_commit(
+    source: Path, sha: str, dest: Path, popen=subprocess.Popen
+):
+    """Écrit dans `dest` l'arbre du commit `sha` du dépôt `source`, et rien
+    d'autre. Lève RuntimeError si git ou l'archive échoue.
 
-    def ignore(dossier, noms):
-        rendus = [n for n in noms if n == ".git"]
-        if Path(dossier) == source:
-            rendus += [n for n in noms if n in modules]
-        return rendus
+    Le COMMIT, pas l'arbre de travail : un correctif local non commité, un
+    fichier non suivi ou ignoré (un `.env`, des fichiers générés) restent
+    dehors, et le livrable est bien celui que PROVENANCE.lock nomme. Le
+    filtre « data » de tarfile refuse un lien qui sortirait de `dest`."""
+    dest.mkdir(parents=True, exist_ok=True)
+    # Le `with` ferme les deux tubes et attend git, même sur une exception.
+    with popen(
+        ["git", "-C", str(source), "archive", "--format=tar", sha],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as proc:
+        try:
+            with tarfile.open(fileobj=proc.stdout, mode="r|") as archive:
+                archive.extractall(dest, filter="data")
+        except (tarfile.TarError, OSError) as souci:
+            proc.kill()
+            erreur = proc.stderr.read().decode("utf-8", "replace")
+            raise RuntimeError(
+                f"{source} : {souci} {erreur[-300:]}"
+            ) from souci
+        erreur = proc.stderr.read().decode("utf-8", "replace")
+        code = proc.wait()
+    if code != 0:
+        raise RuntimeError(f"{source} : git archive — {erreur[-300:]}")
 
-    return ignore
+
+def retirer_proprietaires(dest: Path) -> list[tuple[str, str]]:
+    """Retire de `dest` ses modules propriétaires ; rend (module, licence).
+    Jugés sur ce qui a été extrait, donc sur ce qui serait livré."""
+    exclus = modules_proprietaires(dest)
+    for module, _licence in exclus:
+        shutil.rmtree(dest / module)
+    return exclus
+
+
+def ecarts_de_sortie(racine: Path, sortie: Path) -> list[str]:
+    """Pourquoi `sortie` ne peut pas être vidée puis remplie, ou [].
+
+    La sortie est vidée avant chaque construction : elle ne doit ni
+    contenir la racine, ni s'y trouver, ni être un dossier qui n'est pas un
+    livrable précédent — un `~` ou un checkout y passeraient en entier."""
+    r, s = racine.resolve(), sortie.resolve()
+    if s == r or s in r.parents or r in s.parents:
+        return [f"la sortie {s} chevauche la racine {r}"]
+    if (
+        s.is_dir()
+        and any(n.name != ".git" for n in s.iterdir())
+        and not (s / "PROVENANCE.lock").is_file()
+    ):
+        return [f"{s} n'est pas un livrable précédent : rien n'y est effacé"]
+    return []
+
+
+def vider_sortie(sortie: Path) -> None:
+    """Vide `sortie` en gardant son `.git` : le livrable est un dépôt, et
+    chaque reconstruction en devient un commit."""
+    sortie.mkdir(parents=True, exist_ok=True)
+    for entree in sortie.iterdir():
+        if entree.name == ".git":
+            continue
+        if entree.is_dir() and not entree.is_symlink():
+            shutil.rmtree(entree)
+        else:
+            entree.unlink()
+
+
+# Une ligne de `pip freeze` : `nom==version`, ou `nom @ url` pour une
+# dépendance tirée d'un dépôt git ou d'une URL (PEP 610).
+_LIGNE_GEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\[\],-]*(==| @ )\S")
+
+
+def lignes_du_gel(texte: str) -> tuple[list[str], list[str]]:
+    """(gardées, refusées) parmi les lignes de `pip freeze`.
+
+    Une dépendance tirée de git s'écrit `nom @ git+…@commit` : elle est
+    gardée, et sa roue se construit comme les autres. Une ligne d'une autre
+    forme n'a pas de version reproductible : elle est REFUSÉE, jamais
+    écartée en silence."""
+    gardees, refusees = [], []
+    for ligne in (lg.strip() for lg in texte.splitlines()):
+        if not ligne or ligne.startswith("#"):
+            continue
+        if re.match(r"^pkg[-_]resources==0\.0\.0$", ligne):
+            continue
+        (gardees if _LIGNE_GEL.match(ligne) else refusees).append(ligne)
+    return gardees, refusees
 
 
 def texte_provenance(liste, exclus, couple) -> str:
@@ -236,6 +331,7 @@ def construire(
     executer=subprocess.run,
     epreuve=True,
     dire=print,
+    popen=subprocess.Popen,
 ) -> list[str]:
     """Construit le livrable de `racine` dans `sortie`. Rend les écarts ;
     une liste vide veut dire un livrable construit ET éprouvé."""
@@ -262,20 +358,20 @@ def construire(
     if ecarts:
         return ecarts
 
-    if sortie.exists():
-        shutil.rmtree(sortie)
-    sortie.mkdir(parents=True)
+    ecarts = ecarts_de_sortie(racine, sortie)
+    if ecarts:
+        return ecarts
+    vider_sortie(sortie)
     exclus = []
     for p in liste:
-        source = racine / p.chemin
-        proprietaires = modules_proprietaires(source)
-        exclus += [(p.chemin, m, lic) for m, lic in proprietaires]
-        shutil.copytree(
-            source,
-            sortie / p.chemin,
-            symlinks=True,
-            ignore=ignore_pour(source, {m for m, _l in proprietaires}),
-        )
+        cible = sortie / p.chemin
+        try:
+            extraire_commit(racine / p.chemin, p.freeze, cible, popen)
+        except RuntimeError as souci:
+            return [f"copie : {souci}"]
+        exclus += [
+            (p.chemin, m, lic) for m, lic in retirer_proprietaires(cible)
+        ]
     dire(f"  · {len(liste)} projets copiés, {len(exclus)} modules exclus")
 
     for rel in FICHIERS_DE_VERSION:
@@ -299,16 +395,13 @@ def construire(
     gel = _jouer(
         executer, [str(python), "-m", "pip", "freeze", "--exclude-editable"]
     )
+    gardees, refusees = lignes_du_gel(gel)
+    if refusees:
+        return [
+            f"dépendance sans version reproductible : {l}" for l in refusees
+        ]
     requis = sortie / "requirements.txt"
-    requis.write_text(
-        "\n".join(
-            ligne
-            for ligne in gel.splitlines()
-            if "==" in ligne and not ligne.startswith("pkg_resources")
-        )
-        + "\n",
-        "utf-8",
-    )
+    requis.write_text("\n".join(gardees) + "\n", "utf-8")
     roues = sortie / "roues"
     _jouer(
         executer,
@@ -331,6 +424,8 @@ def construire(
     (sortie / "requirements.lock.txt").write_text(
         "\n".join(lignes) + "\n", "utf-8"
     )
+    if len(lignes) != len(gardees):
+        return [f"{len(gardees)} dépendances mais {len(lignes)} roues"]
     dire(f"  · {len(lignes)} roues")
     if not epreuve:
         return []
@@ -455,13 +550,27 @@ def vivant(pid: int) -> bool:
     return True
 
 
-def pid_en_cours(journal: Path, est_vivant=vivant) -> int | None:
-    """Le pid d'une construction encore en cours sur `journal`, ou None."""
+def est_constructeur(pid: int) -> bool:
+    """Le processus `pid` est-il un constructeur ? Un numéro se réattribue
+    après la fin d'un processus : vivant ne suffit pas à dire lequel. Sans
+    /proc, la question reste ouverte et la réponse est oui."""
+    try:
+        ligne = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return not Path("/proc/self").exists()
+    return b"erplibre_dist" in ligne
+
+
+def pid_en_cours(journal: Path, est_vivant=None, est_le_bon=None):
+    """Le pid d'une construction encore en cours sur `journal`, ou None.
+    Les deux juges sont lus à l'appel, pas à la définition."""
+    est_vivant = est_vivant or vivant
+    est_le_bon = est_le_bon or est_constructeur
     try:
         pid = int(fichier_pid(journal).read_text().strip())
     except (OSError, ValueError):
         return None
-    return pid if est_vivant(pid) else None
+    return pid if est_vivant(pid) and est_le_bon(pid) else None
 
 
 def lancer_detache(argv, journal: Path, popen=subprocess.Popen):
@@ -521,9 +630,40 @@ def suivre(journal: Path, termine, dormir=time.sleep, ecrire=None, pas=5.0):
         dormir(pas)
 
 
+def detacher(argv, journal: Path) -> int:
+    """Lance ou reprend la construction détachée de `journal`, la suit
+    jusqu'au verdict et le rend.
+
+    Le fichier pid dit qu'un verdict n'a pas encore été rendu. Encore
+    vivant, la construction est SUIVIE, pas relancée ; finie hors
+    connexion, son verdict est rendu au lieu d'être écrasé par une
+    construction neuve. Une fois rendu, le fichier est retiré, et l'appel
+    suivant construit à nouveau."""
+    if fichier_pid(journal).exists():
+        pid = pid_en_cours(journal)
+        if pid is not None:
+            print(f"construction déjà en cours, suivie : {journal}")
+            code = suivre(journal, lambda: not vivant(pid))
+        else:
+            print(
+                f"construction finie hors connexion, son verdict : {journal}"
+            )
+            code = suivre(journal, lambda: True)
+    else:
+        proc = lancer_detache(argv_enfant(argv), journal)
+        print(f"construction détachée, journal : {journal}")
+        code = suivre(journal, lambda: proc.poll() is not None)
+    fichier_pid(journal).unlink(missing_ok=True)
+    return code
+
+
 def principal(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
-    analyseur = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # Sans abréviation : `--detach` vaudrait `--detache`, que l'enfant ne
+    # se verrait pas retirer, et il se détacherait à son tour.
+    analyseur = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0], allow_abbrev=False
+    )
     analyseur.add_argument("--racine", type=Path, required=True)
     analyseur.add_argument("--sortie", type=Path, required=True)
     analyseur.add_argument("--groupes", default=",".join(GROUPES_DEFAUT))
@@ -535,14 +675,7 @@ def principal(argv=None) -> int:
     )
     args = analyseur.parse_args(argv)
     if args.detache:
-        journal = args.detache.expanduser().resolve()
-        pid = pid_en_cours(journal)
-        if pid is not None:
-            print(f"construction déjà en cours, suivie : {journal}")
-            return suivre(journal, lambda: not vivant(pid))
-        proc = lancer_detache(argv_enfant(argv), journal)
-        print(f"construction détachée, journal : {journal}")
-        return suivre(journal, lambda: proc.poll() is not None)
+        return detacher(argv, args.detache.expanduser().resolve())
     racine = args.racine.resolve()
     ecarts = figer(racine) if args.figer else []
     if not ecarts:

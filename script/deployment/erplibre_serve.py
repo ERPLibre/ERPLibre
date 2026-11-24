@@ -206,8 +206,15 @@ def base_vide(python: Path, env, executer=subprocess.run) -> bool | None:
 
 
 def version_du_code(racine: Path, executer=subprocess.run) -> str:
-    """Le commit du dépôt, ou la première ligne de `PROVENANCE.lock` d'un
-    livrable ; « » si aucun ne se lit, et alors rien n'est migré."""
+    """La première ligne de `PROVENANCE.lock` d'un livrable, sinon le
+    commit du dépôt ; « » si aucun ne se lit, et alors rien n'est migré.
+
+    PROVENANCE D'ABORD : un livrable est lui-même un dépôt, dont un commit
+    qui ne touche que sa documentation ne change pas le code servi, et ne
+    doit pas déclencher de migration."""
+    provenance = _lit(racine / "PROVENANCE.lock").split("\n", 1)[0].strip()
+    if provenance:
+        return provenance
     if (racine / ".git").exists():
         vu = executer(
             ["git", "-C", str(racine), "rev-parse", "HEAD"],
@@ -216,7 +223,7 @@ def version_du_code(racine: Path, executer=subprocess.run) -> str:
         )
         if vu.returncode == 0:
             return vu.stdout.strip()
-    return _lit(racine / "PROVENANCE.lock").split("\n", 1)[0].strip()
+    return ""
 
 
 def principal(argv=None, env=None, executer=subprocess.run, remplacer=None):

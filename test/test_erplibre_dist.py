@@ -16,6 +16,41 @@ from unittest import mock
 from script.deployment import erplibre_dist as X
 from script.deployment import erplibre_serve as S
 
+GIT = [
+    "git",
+    "-c",
+    "user.name=essai",
+    "-c",
+    "user.email=essai@invente.test",
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "init.defaultBranch=principale",
+]
+
+
+def depot(chemin: Path, fichiers: dict) -> str:
+    """Un vrai dépôt git d'un seul commit portant `fichiers` ; rend son SHA.
+    Une valeur `("lien", cible)` pose un lien symbolique."""
+    for rel, contenu in fichiers.items():
+        f = chemin / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(contenu, tuple):
+            f.symlink_to(contenu[1])
+        else:
+            f.write_text(contenu)
+    for argv in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "x"]):
+        subprocess.run([*GIT, "-C", str(chemin), *argv], check=True)
+    return subprocess.run(
+        ["git", "-C", str(chemin), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
 SHA_CŒUR = "a" * 40
 SHA_ADDONS = "b" * 40
 MANIFESTE = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -90,36 +125,60 @@ class LesLicences(unittest.TestCase):
         self.assertEqual("LGPL-3", X.licence_de("{'name': 'x'}"))
         self.assertEqual("", X.licence_de("pas un dict ("))
 
-    def test_proprietary_modules_and_git_are_not_copied(self):
+    def test_proprietary_modules_are_removed_from_what_is_shipped(self):
         d = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, d, True)
-        source = d / "Org_outils"
         for module, licence in (
             ("libre", "AGPL-3"),
             ("prive", "OPL-1"),
             ("ferme", "Other proprietary"),
             ("sans", None),
         ):
-            (source / module / ".git").mkdir(parents=True)
             texte = {"name": module}
             if licence:
                 texte["license"] = licence
-            (source / module / "__manifest__.py").write_text(repr(texte))
-        (source / ".git").mkdir()
-        exclus = X.modules_proprietaires(source)
+            (d / module).mkdir()
+            (d / module / "__manifest__.py").write_text(repr(texte))
         self.assertEqual(
-            [("ferme", "Other proprietary"), ("prive", "OPL-1")], exclus
-        )
-        shutil.copytree(
-            source,
-            d / "copie",
-            ignore=X.ignore_pour(source, {m for m, _l in exclus}),
+            [("ferme", "Other proprietary"), ("prive", "OPL-1")],
+            X.retirer_proprietaires(d),
         )
         self.assertEqual(
-            ["libre", "sans"],
-            sorted(p.name for p in (d / "copie").iterdir()),
+            ["libre", "sans"], sorted(p.name for p in d.iterdir())
         )
-        self.assertFalse(any((d / "copie").rglob(".git")))
+
+
+class LaCopie(unittest.TestCase):
+    """L'arbre du commit, extrait par git archive, avec un vrai dépôt."""
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, True)
+
+    def test_the_commit_is_copied_not_the_working_tree(self):
+        source = self.d / "projet"
+        sha = depot(source, {"a.txt": "v1", ".gitignore": ".env\n"})
+        (source / "a.txt").write_text("CORRECTIF LOCAL")
+        (source / ".env").write_text("SECRET=1")
+        (source / "non_suivi.txt").write_text("x")
+        X.extraire_commit(source, sha, self.d / "copie")
+        c = self.d / "copie"
+        self.assertEqual("v1", (c / "a.txt").read_text())
+        self.assertEqual(
+            [".gitignore", "a.txt"], sorted(p.name for p in c.iterdir())
+        )
+
+    def test_an_unknown_commit_raises(self):
+        source = self.d / "projet"
+        depot(source, {"a.txt": "v1"})
+        with self.assertRaises(RuntimeError):
+            X.extraire_commit(source, "0" * 40, self.d / "copie")
+
+    def test_a_link_leaving_the_tree_is_refused(self):
+        source = self.d / "projet"
+        sha = depot(source, {"sortie": ("lien", "../../../etc")})
+        with self.assertRaises(RuntimeError):
+            X.extraire_commit(source, sha, self.d / "copie")
 
 
 class LesPieces(unittest.TestCase):
@@ -147,6 +206,35 @@ class LesPieces(unittest.TestCase):
             ),
         )
 
+    def test_addons_path_through_a_symlinked_checkout(self):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "phys" / "odoo18.0" / "odoo" / "addons").mkdir(parents=True)
+        (d / "lien").symlink_to(d / "phys")
+        self.assertEqual(
+            "odoo18.0/odoo/addons",
+            X.addons_path_relatif(
+                f"{d}/lien/odoo18.0/odoo/addons",
+                str(d / "phys"),
+                ["odoo18.0/odoo"],
+            ),
+        )
+
+    def test_freeze_lines_kept_git_ones_included_odd_ones_refused(self):
+        gardees, refusees = X.lignes_du_gel(
+            "# en-tête\naaa==1.0\n"
+            "ccc @ git+https://forge.invente.test/ccc.git@" + "1" * 40 + "\n"
+            "pkg_resources==0.0.0\npkg-resources==0.0.0\n\nbizarre\n"
+        )
+        self.assertEqual(
+            [
+                "aaa==1.0",
+                "ccc @ git+https://forge.invente.test/ccc.git@" + "1" * 40,
+            ],
+            gardees,
+        )
+        self.assertEqual(["bizarre"], refusees)
+
     def test_the_launcher_resolves_relative_entries(self):
         self.assertEqual(
             "/srv/l/odoo18.0/odoo/addons,/abs",
@@ -168,15 +256,33 @@ class LesPieces(unittest.TestCase):
 
 
 class LaConstruction(unittest.TestCase):
-    """De bout en bout sur un faux ERPLibre, un faux exécuteur à la place de
-    git, pip et Odoo."""
+    """De bout en bout sur un faux ERPLibre aux VRAIS dépôts git, un faux
+    exécuteur à la place de pip et d'Odoo."""
 
     def setUp(self):
         self.d = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.d, True)
         r = self.racine = self.d / "erplibre"
+        sha_coeur = depot(r / "odoo18.0" / "odoo", {"odoo-bin": ""})
+        sha_outils = depot(
+            r / "odoo18.0" / "addons" / "Org_outils",
+            {
+                "libre/__manifest__.py": repr({"license": "AGPL-3"}),
+                "prive/__manifest__.py": repr({"license": "OPL-1"}),
+                ".gitignore": ".env\n",
+            },
+        )
+        sha_fige = depot(r / "odoo18.0" / "addons" / "Org_fige", {"L": "x"})
+        (r / "odoo18.0" / "odoo" / "odoo-bin").write_text("CORRECTIF LOCAL")
+        outils = r / "odoo18.0" / "addons" / "Org_outils"
+        (outils / ".env").write_text("SECRET=1")
+        (outils / "non_suivi.txt").write_text("x")
         (r / ".repo" / "local_manifests").mkdir(parents=True)
-        (r / X.MANIFESTE_FUSIONNE).write_text(MANIFESTE)
+        (r / X.MANIFESTE_FUSIONNE).write_text(
+            MANIFESTE.replace(SHA_CŒUR, sha_coeur)
+            .replace(SHA_ADDONS, sha_outils)
+            .replace("e" * 40, sha_fige)
+        )
         (r / ".erplibre-version").write_text("odoo18.0_python3.12.16")
         (r / ".odoo-version").write_text("18.0")
         (r / "conf").mkdir()
@@ -189,18 +295,18 @@ class LaConstruction(unittest.TestCase):
             f"[options]\naddons_path = {r}/odoo18.0/odoo/addons,"
             f"{r}/odoo18.0/addons/Org_outils\n"
         )
-        (r / "odoo18.0" / "odoo" / "odoo-bin").parent.mkdir(parents=True)
-        (r / "odoo18.0" / "odoo" / "odoo-bin").write_text("")
-        (r / "odoo18.0" / "odoo" / ".git").mkdir()
-        (r / "odoo18.0" / "addons" / "Org_fige").mkdir(parents=True)
-        outils = r / "odoo18.0" / "addons" / "Org_outils"
-        for module, licence in (("libre", "AGPL-3"), ("prive", "OPL-1")):
-            (outils / module).mkdir(parents=True)
-            (outils / module / "__manifest__.py").write_text(
-                repr({"license": licence})
-            )
         self.sortie = self.d / "dist"
         self.joues = []
+        self.gel = (
+            "aaa==1.0\nccc @ git+https://forge.invente.test/ccc.git@"
+            + "1" * 40
+            + "\nbbb==2.0\npkg_resources==0.0.0\n"
+        )
+        self.roues = [
+            "aaa-1.0-py3-none-any.whl",
+            "bbb-2.0-cp312-cp312-linux_x86_64.whl",
+            "ccc-3.0-py3-none-any.whl",
+        ]
 
     def executer(self, tetes=None, odoo_rc=0):
         tetes = tetes or {}
@@ -208,23 +314,17 @@ class LaConstruction(unittest.TestCase):
         def faux(argv, capture_output=False, text=False, **_k):
             self.joues.append(argv)
             if argv[0] == "git":
-                chemin = argv[2]
-                defaut = {"odoo": SHA_CŒUR, "Org_fige": "e" * 40}
-                sha = tetes.get(
-                    chemin, defaut.get(Path(chemin).name, SHA_ADDONS)
-                )
-                return subprocess.CompletedProcess(argv, 0, sha + "\n", "")
+                if argv[3:] == ["rev-parse", "HEAD"] and argv[2] in tetes:
+                    return subprocess.CompletedProcess(
+                        argv, 0, tetes[argv[2]] + "\n", ""
+                    )
+                return subprocess.run(argv, capture_output=True, text=True)
             if argv[1:3] == ["-m", "pip"] and argv[3] == "freeze":
-                return subprocess.CompletedProcess(
-                    argv, 0, "aaa==1.0\nbbb==2.0\npkg_resources==0.0.0\n", ""
-                )
+                return subprocess.CompletedProcess(argv, 0, self.gel, "")
             if argv[1:3] == ["-m", "pip"] and argv[3] == "wheel":
                 dossier = Path(argv[argv.index("-w") + 1])
                 dossier.mkdir(parents=True, exist_ok=True)
-                for nom in (
-                    "aaa-1.0-py3-none-any.whl",
-                    "bbb-2.0-cp312-cp312-linux_x86_64.whl",
-                ):
+                for nom in self.roues:
                     (dossier / nom).write_bytes(nom.encode())
                 return subprocess.CompletedProcess(argv, 0, "", "")
             if "-c" in argv and "_base_executable" in argv[-1]:
@@ -245,16 +345,22 @@ class LaConstruction(unittest.TestCase):
         )
         self.assertEqual([], ecarts)
         s = self.sortie
-        self.assertTrue((s / "odoo18.0/addons/Org_outils/libre").is_dir())
-        self.assertFalse((s / "odoo18.0/addons/Org_outils/prive").exists())
-        self.assertFalse((s / "odoo18.0/odoo/.git").exists())
+        outils = s / "odoo18.0/addons/Org_outils"
+        self.assertTrue((outils / "libre").is_dir())
+        self.assertFalse((outils / "prive").exists())
+        self.assertFalse(any(s.rglob(".git")))
+        self.assertEqual("", (s / "odoo18.0/odoo/odoo-bin").read_text())
+        self.assertFalse((outils / ".env").exists())
+        self.assertFalse((outils / "non_suivi.txt").exists())
         self.assertFalse((s / "odoo18.0/addons/Org_dev").exists())
-        self.assertTrue((s / "odoo18.0/addons/Org_fige").is_dir())
+        self.assertTrue((s / "odoo18.0/addons/Org_fige/L").is_file())
         self.assertFalse((s / "script/Org_outil").exists())
         verrou = (s / "requirements.lock.txt").read_text().splitlines()
-        self.assertEqual(2, len(verrou))
+        self.assertEqual(3, len(verrou))
         self.assertTrue(all("--hash=sha256:" in ligne for ligne in verrou))
-        self.assertNotIn("pkg_resources", (s / "requirements.txt").read_text())
+        requis = (s / "requirements.txt").read_text()
+        self.assertIn("ccc @ git+", requis)
+        self.assertNotIn("pkg_resources", requis)
         self.assertEqual(
             "odoo18.0/odoo/addons,odoo18.0/addons/Org_outils",
             S.addons_path_de((s / "config.conf").read_text()),
@@ -276,6 +382,49 @@ class LaConstruction(unittest.TestCase):
         )
         self.assertEqual(1, len(ecarts))
         self.assertFalse(self.sortie.exists())
+
+    def construit(self, **kw):
+        return X.construire(
+            self.racine,
+            kw.pop("sortie", self.sortie),
+            executer=self.executer(),
+            epreuve=False,
+            dire=lambda *_a: None,
+        )
+
+    def test_a_freeze_line_without_a_reproducible_version_refuses(self):
+        self.gel = "aaa==1.0\nbizarre\n"
+        ecarts = self.construit()
+        self.assertEqual(1, len(ecarts))
+        self.assertIn("bizarre", ecarts[0])
+
+    def test_a_dependency_without_its_wheel_is_an_ecart(self):
+        self.roues = self.roues[:2]
+        self.assertEqual(["3 dépendances mais 2 roues"], self.construit())
+
+    def test_an_output_overlapping_the_checkout_is_refused(self):
+        temoin = self.racine / "odoo18.0" / "odoo" / "odoo-bin"
+        for sortie in (self.racine, self.d, self.racine / "odoo18.0" / "x"):
+            with self.subTest(sortie=sortie):
+                ecarts = self.construit(sortie=sortie)
+                self.assertIn("chevauche", ecarts[0])
+                self.assertTrue(temoin.is_file())
+
+    def test_a_directory_that_is_no_bundle_is_never_emptied(self):
+        autre = self.d / "maison"
+        (autre / ".ssh").mkdir(parents=True)
+        ecarts = self.construit(sortie=autre)
+        self.assertIn("pas un livrable", ecarts[0])
+        self.assertTrue((autre / ".ssh").is_dir())
+
+    def test_a_rebuild_keeps_the_bundle_s_git_and_nothing_stale(self):
+        (self.sortie / ".git").mkdir(parents=True)
+        (self.sortie / ".git" / "HEAD").write_text("ref")
+        (self.sortie / "PROVENANCE.lock").write_text("ancien\n")
+        (self.sortie / "perime.txt").write_text("x")
+        self.assertEqual([], self.construit())
+        self.assertEqual("ref", (self.sortie / ".git" / "HEAD").read_text())
+        self.assertFalse((self.sortie / "perime.txt").exists())
 
     def test_the_proof_installs_offline_and_drops_its_base(self):
         ecarts = X.construire(
@@ -385,8 +534,10 @@ class LeDetachement(unittest.TestCase):
         self.assertEqual(
             "4242", X.fichier_pid(self.journal).read_text().strip()
         )
-        self.assertEqual(4242, X.pid_en_cours(self.journal, lambda _p: True))
-        self.assertIsNone(X.pid_en_cours(self.journal, lambda _p: False))
+        oui, non = (lambda _p: True), (lambda _p: False)
+        self.assertEqual(4242, X.pid_en_cours(self.journal, oui, oui))
+        self.assertIsNone(X.pid_en_cours(self.journal, non, oui))
+        self.assertIsNone(X.pid_en_cours(self.journal, oui, non))
 
     def test_the_follow_up_copies_the_journal_and_returns_its_verdict(self):
         self.journal.parent.mkdir(parents=True)
@@ -426,12 +577,23 @@ class LeDetachement(unittest.TestCase):
         self.assertEqual(0, X.verdict_du_journal(f"{X.MARQUE_FIN}0"))
 
     def test_a_running_build_is_followed_not_started_again(self):
+        """Suivie, elle est ATTENDUE : son verdict arrive après le début du
+        suivi, là où une construction finie se lit d'un coup."""
         self.journal.parent.mkdir(parents=True)
         X.fichier_pid(self.journal).write_text("77\n")
-        self.journal.write_text(f"{X.MARQUE_FIN}0\n")
+        self.journal.write_text("== début\n")
+        appels = []
+
+        def vivant(_p):
+            appels.append(1)
+            if len(appels) == 2:
+                self.journal.write_text(f"== début\n{X.MARQUE_FIN}0\n")
+            return True
+
         lances = []
         with (
-            mock.patch.object(X, "vivant", lambda _p: True),
+            mock.patch.object(X, "vivant", vivant),
+            mock.patch.object(X, "est_constructeur", lambda _p: True),
             mock.patch.object(
                 X, "lancer_detache", lambda *a: lances.append(a)
             ),
@@ -448,6 +610,62 @@ class LeDetachement(unittest.TestCase):
             )
         self.assertEqual(0, code)
         self.assertEqual([], lances)
+        self.assertFalse(X.fichier_pid(self.journal).exists())
+
+    def detache(self, vivant, constructeur, lances):
+        class Proc:
+            pid = 99
+
+            def poll(self_inner):
+                return 0
+
+        def lancer(_argv, journal):
+            lances.append(journal)
+            journal.write_text(f"{X.MARQUE_FIN}0\n")
+            X.fichier_pid(journal).write_text("99\n")
+            return Proc()
+
+        with (
+            mock.patch.object(X, "vivant", lambda _p: vivant),
+            mock.patch.object(X, "est_constructeur", lambda _p: constructeur),
+            mock.patch.object(X, "lancer_detache", lancer),
+        ):
+            return X.principal(
+                [
+                    "--racine",
+                    ".",
+                    "--sortie",
+                    "/s",
+                    "--detache",
+                    str(self.journal),
+                ]
+            )
+
+    def test_a_build_finished_offline_gives_its_verdict_once(self):
+        self.journal.parent.mkdir(parents=True)
+        X.fichier_pid(self.journal).write_text("77\n")
+        self.journal.write_text(f"✗ x\n{X.MARQUE_FIN}1\n")
+        lances = []
+        self.assertEqual(1, self.detache(False, True, lances))
+        self.assertEqual([], lances)
+        self.assertFalse(X.fichier_pid(self.journal).exists())
+        self.assertEqual(0, self.detache(False, True, lances))
+        self.assertEqual(1, len(lances))
+
+    def test_a_reused_pid_is_not_taken_for_the_build(self):
+        self.journal.parent.mkdir(parents=True)
+        X.fichier_pid(self.journal).write_text("77\n")
+        self.journal.write_text("== début\n")
+        lances = []
+        self.assertEqual(1, self.detache(True, False, lances))
+        self.assertEqual([], lances)
+
+    def test_an_abbreviated_detach_is_refused(self):
+        with (
+            self.assertRaises(SystemExit),
+            mock.patch("sys.stderr"),
+        ):
+            X.principal(["--racine", ".", "--sortie", "/s", "--detach", "/j"])
 
     def test_a_marked_build_writes_its_code_last(self):
         with (

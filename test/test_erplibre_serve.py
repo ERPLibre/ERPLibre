@@ -236,5 +236,33 @@ class LeDemarrage(unittest.TestCase):
         self.assertEqual([], remplace)
 
 
+class LaVersionDuCode(unittest.TestCase):
+    def test_a_bundle_s_provenance_wins_over_its_own_git(self):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / ".git").mkdir()
+        (d / "PROVENANCE.lock").write_text("odoo18.0_python3.12.16-abc\n")
+        joues = []
+        self.assertEqual(
+            "odoo18.0_python3.12.16-abc",
+            S.version_du_code(d, lambda argv, **_k: joues.append(argv)),
+        )
+        self.assertEqual([], joues)
+
+    def test_without_provenance_the_checkout_s_commit_is_read(self):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / ".git").mkdir()
+        self.assertEqual(
+            "c0ffee",
+            S.version_du_code(
+                d,
+                lambda argv, **_k: subprocess.CompletedProcess(
+                    argv, 0, "c0ffee\n", ""
+                ),
+            ),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

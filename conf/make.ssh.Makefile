@@ -122,6 +122,8 @@ ssh_make:
 # Build the offline ERPLibre bundle ON the remote host: frozen repositories,
 # wheels, offline proof (script/deployment/erplibre_dist.py). Detached there:
 # a dropped connection only stops the follow-up, and the same verb resumes it.
+# The journal lives in the checkout (*.log is ignored): two checkouts on one
+# host never follow each other's build.
 SSH_DIST ?= ~/erplibre-dist
 .PHONY: ssh_dist
 ssh_dist:
@@ -129,7 +131,7 @@ ssh_dist:
 	$(_SSH_CMD) $(SSH_USER)@$(SSH_HOST) \
 		"cd $(SSH_PATH) && python3 script/deployment/erplibre_dist.py \
 		--racine . --sortie $(SSH_DIST) --figer \
-		--detache ~/.erplibre-dist/journal.log"
+		--detache .erplibre-dist.log"
 
 # Install systemd service on remote server
 .PHONY: ssh_install_systemd
