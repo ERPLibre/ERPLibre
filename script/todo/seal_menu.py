@@ -38,6 +38,7 @@ import stat
 import subprocess
 import tempfile
 
+from script.todo import ui
 from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
@@ -555,10 +556,10 @@ class SealMenuMixin:
                 " (PAdES) section."
             )
         )
-        if vides and self._is_yes(
-            input(
-                f"💬 {t('Remove the %s folders without a seal from the registry? (y/N): ') % len(vides)}"
-            )
+        if vides and ui.confirm(
+            t("Remove the %s folders without a seal from the registry?")
+            % len(vides),
+            default=False,
         ):
             try:
                 retirer_du_registre(vides)
@@ -702,10 +703,13 @@ class SealMenuMixin:
             ),
         ):
             print(f"\t• {point}")
-        externe = self._is_yes(
-            input(
-                f"\n💬 {t('Are the sealed PDFs opened outside the organisation, in a reader nobody configures? (y/N): ')}"
-            )
+        print()
+        externe = ui.confirm(
+            t(
+                "Are the sealed PDFs opened outside the organisation, in a"
+                " reader nobody configures?"
+            ),
+            default=False,
         )
         if externe:
             self._seal_guide_external()
@@ -829,7 +833,7 @@ class SealMenuMixin:
             print(t("A seal already exists here:"))
             for p in existants:
                 print(f"\t{p}")
-            if not self._is_yes(input(f"💬 {t('Replace it? (y/N): ')}")):
+            if not ui.confirm(t("Replace it?"), default=False):
                 return None
         return dossier
 

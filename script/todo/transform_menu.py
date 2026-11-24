@@ -18,14 +18,13 @@ savoir ce qui sera touché n'est pas un consentement : c'est un pari ».
 
 Ce que ce mixin EMPRUNTE à `TODO`
 ---------------------------------
-`_is_yes`, `_is_yes_default_yes`, `execute`, et — pour l'anonymisation
-d'une base — `_database_source`, qui choisit, restaure ou télécharge la
-base, et `_monitoring_write_flow`. `_dir_path`, que remplit le
-navigateur de fichiers, est un état du mixin, et non un emprunt. La
-liste est écrite ici parce qu'un emprunt tacite se casse en silence :
-une méthode renommée dans `todo.py` ne lève qu'à l'exécution de
-l'entrée, et un bouchon de test qui ne la fournit pas passe au vert sans
-rien éprouver.
+`execute`, et — pour l'anonymisation d'une base — `_database_source`, qui
+choisit, restaure ou télécharge la base, et `_monitoring_write_flow`.
+`_dir_path`, que remplit le navigateur de fichiers, est un état du mixin,
+et non un emprunt. La liste est écrite ici parce qu'un emprunt tacite se
+casse en silence : une méthode renommée dans `todo.py` ne lève qu'à
+l'exécution de l'entrée, et un bouchon de test qui ne la fournit pas passe
+au vert sans rien éprouver.
 
 Les deux emprunts de `monitoring` sont VOULUS : `anonymize.py` sait déjà
 remplacer les données d'une base, et `_monitoring_write_flow` sait déjà
@@ -42,7 +41,7 @@ import shlex
 import shutil
 import subprocess
 
-from script.todo import transform_setup
+from script.todo import transform_setup, ui
 from script.todo.menus import run as menus_run
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
@@ -358,22 +357,24 @@ class TransformMenuMixin:
     # ------------------------------------------------------------------
     @staticmethod
     def _transform_ask(libelle):
-        """La réponse, ou None quand l'opérateur tape « 0 ».
+        """La réponse à une question texte, ou None quand l'opérateur tape
+        « 0 ».
 
         Une sortie doit exister à CHAQUE question : s'apercevoir à la
         onzième qu'on a ouvert le mauvais fichier ne doit pas obliger à
-        répondre à tout puis à refuser un nom de fichier.
+        répondre à tout puis à refuser un nom de fichier. Une question
+        oui/non du formulaire en donne une par `back` : Ctrl+D, ou
+        l'Annuler de la page, y rend None.
         """
         reponse = input(libelle).strip()
         return None if reponse == "0" else reponse
 
     def _transform_ask_options(self, rapport):
         """Les réponses, ou None si l'opérateur renonce."""
-        print(f"   {t('0 to cancel')}")
         options = {}
-        reponse = self._transform_ask(t("Anonymise this file? (y/N): "))
-        if reponse is None or not self._is_yes(reponse):
+        if not ui.confirm(t("Anonymise this file?"), default=False):
             return None
+        print(f"   {t('0 to cancel, Ctrl+D or Cancel at a yes/no question')}")
 
         cible = self._transform_ask(
             t("Convert at the same time? (xlsx/csv/json/xml, empty = keep): ")
@@ -409,10 +410,10 @@ class TransformMenuMixin:
             return None
         options.update(ecran)
 
-        reponse = self._transform_ask(t("Advanced options? (y/N): "))
+        reponse = ui.confirm(t("Advanced options?"), default=False, back=True)
         if reponse is None:
             return None
-        if not self._is_yes(reponse):
+        if not reponse:
             # L'écran a pu répondre par feuille : ses réponses passent
             # AVANT les défauts, sans quoi refuser les options avancées
             # effacerait ce qu'on vient de cocher.
@@ -463,30 +464,32 @@ class TransformMenuMixin:
                 c.strip() for c in reponse.split(",") if c.strip()
             ]
 
-        reponse = self._transform_ask(t("Replace numbers? (Y/n): "))
+        reponse = ui.confirm(t("Replace numbers?"), default=True, back=True)
         if reponse is None:
             return None
-        options["nombres"] = self._is_yes_default_yes(reponse)
-        if options["nombres"]:
+        options["nombres"] = reponse
+        if reponse:
             # Posée SOUS la question des nombres : sans eux elle n'a pas
             # d'objet, et une invite qui ne change rien apprend à passer
             # les invites.
-            reponse = self._transform_ask(t("Keep the digit count? (y/N): "))
+            reponse = ui.confirm(
+                t("Keep the digit count?"), default=False, back=True
+            )
             if reponse is None:
                 return None
-            options["calibre_chiffres"] = self._is_yes(reponse)
+            options["calibre_chiffres"] = reponse
 
-        reponse = self._transform_ask(t("Replace text? (Y/n): "))
+        reponse = ui.confirm(t("Replace text?"), default=True, back=True)
         if reponse is None:
             return None
-        options["texte"] = self._is_yes_default_yes(reponse)
+        options["texte"] = reponse
 
-        reponse = self._transform_ask(
-            t("Anonymise the header row too? (y/N): ")
+        reponse = ui.confirm(
+            t("Anonymise the header row too?"), default=False, back=True
         )
         if reponse is None:
             return None
-        options["entetes"] = self._is_yes(reponse)
+        options["entetes"] = reponse
 
         reponse = self._transform_ask(
             t("Random seed (empty = not reproducible): ")
@@ -510,19 +513,19 @@ class TransformMenuMixin:
         hors = rapport.get("hors_cellules") or {}
         garde_xlsm = (options["conversion"] or rapport["format"]) == "xlsx"
         if hors.get("macros") and garde_xlsm:
-            reponse = self._transform_ask(
-                t("Keep the VBA macros in the copy? (y/N): ")
+            reponse = ui.confirm(
+                t("Keep the VBA macros in the copy?"), default=False, back=True
             )
             if reponse is None:
                 return None
-            options["garder_macros"] = self._is_yes(reponse)
+            options["garder_macros"] = reponse
         if hors.get("graphiques") and garde_xlsm:
-            reponse = self._transform_ask(
-                t("Keep the charts in the copy? (y/N): ")
+            reponse = ui.confirm(
+                t("Keep the charts in the copy?"), default=False, back=True
             )
             if reponse is None:
                 return None
-            options["garder_graphiques"] = self._is_yes(reponse)
+            options["garder_graphiques"] = reponse
         return options
 
     @staticmethod
@@ -583,10 +586,12 @@ class TransformMenuMixin:
         """
         if not (rapport.get("feuilles") or []):
             return {}
-        reponse = self._transform_ask(t("Open the TUI for setup? (Y/n): "))
+        reponse = ui.confirm(
+            t("Open the TUI for setup?"), default=True, back=True
+        )
         if reponse is None:
             return None
-        if not self._is_yes_default_yes(reponse):
+        if not reponse:
             return {}
         try:
             from script.todo import transform_form
@@ -718,7 +723,7 @@ class TransformMenuMixin:
                 print(f"   → {fichier}")
         for avertissement in apercu.get("avertissements") or []:
             print(f"   ⚠ {t(avertissement)}")
-        return self._is_yes_default_yes(input(t("Write? (Y/n): ")))
+        return ui.confirm(t("Write?"), default=True)
 
     # ------------------------------------------------------------------
     # La destination
@@ -1286,10 +1291,9 @@ class TransformMenuMixin:
         if not produites:
             print(t("Nothing to do."))
             return
-        reponse = input(
-            t("Delete all copies in private/transform/? (y/N): ")
-        ).strip()
-        if not self._is_yes(reponse):
+        if not ui.confirm(
+            t("Delete all copies in private/transform/?"), default=False
+        ):
             print(t("Nothing to do."))
             return
         for nom, _taille in produites:

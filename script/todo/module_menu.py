@@ -23,8 +23,6 @@ import os
 import shlex
 import sys
 
-import click
-
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
@@ -93,7 +91,7 @@ class ModuleMenuMixin:
             f" .venv.erplibre/stat_repo — {t('network, several GB, long the first time.')}"
         )
         print(f"  {t('Will execute:')} {shlex.join(commande)}")
-        if not click.confirm(f"  {t('Continue?')}", default=False):
+        if not ui.confirm(t("Continue?"), default=False):
             return None
         return self.execute.exec_command_live(
             shlex.join(commande), source_erplibre=False
@@ -153,12 +151,15 @@ class ModuleMenuMixin:
         )
         if not choisis:
             return None
-        commit = click.confirm(
-            f"  {t('Commit the changed manifests in each repository (current branch)?')}",
+        commit = ui.confirm(
+            t(
+                "Commit the changed manifests in each repository (current"
+                " branch)?"
+            ),
             default=False,
         )
-        push = commit and click.confirm(
-            f"  {t('Push each commit to its tracked branch?')}", default=False
+        push = commit and ui.confirm(
+            t("Push each commit to its tracked branch?"), default=False
         )
         print(f"  {len(choisis)} {t('repositories, in parallel…')}")
         resultats = repo_remove_auto_install.traiter(
@@ -221,7 +222,7 @@ class ModuleMenuMixin:
                 print(
                     f"   {t('Outside any freeze, they compare to their branch.')}"
                 )
-            if click.confirm(f"  {t('Include them?')}", default=True):
+            if ui.confirm(t("Include them?"), default=True):
                 depots += [
                     git_module_diff.depot_hors_manifeste(RACINE, d)
                     for d in hors_manifeste

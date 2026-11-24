@@ -70,18 +70,15 @@ class _Bases:
 
 
 def _menu(**kw):
-    """Le mixin, monté sur les aides que `TODO` lui fournit.
+    """Le mixin, monté sur la question de la provenance que `TODO` lui
+    fournit.
 
-    Les aides d'oui/non et la question de la provenance sont PRISES sur
-    la vraie classe : « o », « oui », « y », la différence entre un défaut
-    oui et un défaut non, et les provenances offertes sont sa règle, et
-    une copie dériverait sans qu'un test le voie.
+    Elle est PRISE sur la vraie classe : les provenances offertes sont sa
+    règle, et une copie dériverait sans qu'un test le voie.
     """
     from script.todo.todo import TODO
 
     class Bouchon(_tm().TransformMenuMixin):
-        _is_yes = staticmethod(TODO._is_yes)
-        _is_yes_default_yes = staticmethod(TODO._is_yes_default_yes)
         _database_source = TODO._database_source
 
         def __init__(self):

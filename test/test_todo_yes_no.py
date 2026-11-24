@@ -437,6 +437,26 @@ CONFIRM_DEFAULTS = {
         "modem_probe_heard",
     ): [False],
     (
+        "script/todo/module_menu.py",
+        "ModuleMenuMixin._module_analysis_diff",
+        "Include them?",
+    ): [True],
+    (
+        "script/todo/module_menu.py",
+        "ModuleMenuMixin._module_auto_install",
+        "Commit the changed manifests in each repository (current branch)?",
+    ): [False],
+    (
+        "script/todo/module_menu.py",
+        "ModuleMenuMixin._module_auto_install",
+        "Push each commit to its tracked branch?",
+    ): [False],
+    (
+        "script/todo/module_menu.py",
+        "ModuleMenuMixin._module_statistique",
+        "Continue?",
+    ): [False],
+    (
         "script/todo/proxmox_menu.py",
         "ProxmoxMenuMixin._pve_add_hostkey",
         "Record it?",
@@ -787,6 +807,21 @@ CONFIRM_DEFAULTS = {
         "Run the diagnostics first?",
     ): [False],
     (
+        "script/todo/seal_menu.py",
+        "SealMenuMixin._seal_ask_folder",
+        "Replace it?",
+    ): [False],
+    (
+        "script/todo/seal_menu.py",
+        "SealMenuMixin.execute_seal_guide",
+        "Are the sealed PDFs opened outside the organisation, in a reader nobody configures?",
+    ): [False],
+    (
+        "script/todo/seal_menu.py",
+        "SealMenuMixin.execute_seal_status",
+        "Remove the %s folders without a seal from the registry?",
+    ): [False],
+    (
         "script/todo/sms/menu.py",
         "_appairer_par_usb",
         "sms_pair_confirm",
@@ -863,8 +898,63 @@ CONFIRM_DEFAULTS = {
     ): [False],
     (
         "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_hors_cellules",
+        "Keep the VBA macros in the copy?",
+    ): [False],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_hors_cellules",
+        "Keep the charts in the copy?",
+    ): [False],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_options",
+        "Advanced options?",
+    ): [False],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_options",
+        "Anonymise the header row too?",
+    ): [False],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_options",
+        "Anonymise this file?",
+    ): [False],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_options",
+        "Keep the digit count?",
+    ): [False],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_options",
+        "Replace numbers?",
+    ): [True],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ask_options",
+        "Replace text?",
+    ): [True],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_copies",
+        "Delete all copies in private/transform/?",
+    ): [False],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_ecran",
+        "Open the TUI for setup?",
+    ): [True],
+    (
+        "script/todo/transform_menu.py",
         "TransformMenuMixin._transform_install_env",
         "Create it now?",
+    ): [True],
+    (
+        "script/todo/transform_menu.py",
+        "TransformMenuMixin._transform_preview",
+        "Write?",
     ): [True],
     (
         "script/todo/vpn_menu.py",

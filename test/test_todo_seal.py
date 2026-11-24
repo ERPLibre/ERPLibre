@@ -249,9 +249,8 @@ class TestGeneration(unittest.TestCase):
 
 
 class _Menu(SealMenuMixin):
-    @staticmethod
-    def _is_yes(reponse):
-        return reponse.strip().lower() in ("y", "o")
+    """Le mixin seul : ses questions oui/non passent par `ui.confirm`, qui
+    lit `input` au terminal."""
 
 
 class _Isole(unittest.TestCase):

@@ -5,7 +5,7 @@
 par année, lancée seulement après confirmation, car elle clone chaque dépôt
 amont des manifestes.
 
-La commande n'est jamais exécutée : `execute` et la confirmation sont
+La commande n'est jamais exécutée : `execute` et `ui.confirm` sont
 remplacés.
 """
 
@@ -39,7 +39,9 @@ class TestLaStatistique(unittest.TestCase):
         todo = self.todo()
         with (
             mock.patch("click.prompt", side_effect=saisies) as prompt,
-            mock.patch("click.confirm", return_value=confirme),
+            mock.patch.object(
+                module_menu.ui, "confirm", return_value=confirme
+            ),
             mock.patch("builtins.print"),
         ):
             todo.prompt_execute_module_analysis()

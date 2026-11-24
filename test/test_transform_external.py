@@ -77,18 +77,12 @@ def _tm():
 
 
 def _MenuBouchon():
-    """Le mixin, monté sur les aides que `TODO` lui fournit.
-
-    Les aides sont PRISES sur la vraie classe et non recopiées : « o »,
-    « oui », « y », « yes » et la différence entre un défaut oui et un
-    défaut non sont sa règle, et une copie dériverait sans qu'un test le
-    voie.
-    """
-    from script.todo.todo import TODO
+    """Le mixin seul : ses questions oui/non passent par `ui.confirm`, qui
+    lit `input` au terminal, et il n'emprunte rien d'autre à `TODO` pour
+    les poser."""
 
     class Bouchon(_tm().TransformMenuMixin):
-        _is_yes = staticmethod(TODO._is_yes)
-        _is_yes_default_yes = staticmethod(TODO._is_yes_default_yes)
+        pass
 
     return Bouchon()
 
@@ -96,8 +90,9 @@ def _MenuBouchon():
 class _Entrees:
     """`input()` bouchonné, et la trace de ce qui a été demandé.
 
-    Rend les réponses dans l'ordre. Une question de plus que de réponses
-    lève : un test qui répondrait « à côté » passerait sinon en silence.
+    Rend les réponses dans l'ordre ; une réponse qui est une exception est
+    levée (EOFError, Ctrl+D). Une question de plus que de réponses lève :
+    un test qui répondrait « à côté » passerait sinon en silence.
     """
 
     def __init__(self, *reponses):
@@ -111,7 +106,10 @@ class _Entrees:
                 "question sans réponse : %r après %d"
                 % (invite, len(self.demandes) - 1)
             )
-        return self.reponses.pop(0)
+        reponse = self.reponses.pop(0)
+        if isinstance(reponse, BaseException):
+            raise reponse
+        return reponse
 
 
 class TestMenuFonctionsPures(unittest.TestCase):
@@ -414,9 +412,24 @@ class TestMenuQuestions(unittest.TestCase):
             self.sortie.getvalue(),
         )
 
-    def test_zero_annule_a_la_porte_des_options_avancees(self):
-        self._repondre("o", "", "", "0")
+    def test_ctrl_d_annule_a_la_porte_des_options_avancees(self):
+        self._repondre("o", "", "", EOFError())
         self.assertIsNone(self.menu._transform_ask_options(self.RAPPORT))
+
+    def test_zero_a_une_question_oui_non_est_une_faute(self):
+        """« 0 » annule une question texte ; à une question oui/non, il est
+        dit, et la même question revient. Le bandeau nomme la sortie de
+        ces questions-là, Ctrl+D ou Annuler."""
+        entrees = self._repondre("o", "", "", "0", "n")
+        self.assertIsNotNone(self.menu._transform_ask_options(self.RAPPORT))
+        self.assertEqual(len(entrees.demandes), 5)
+        self.assertIn(
+            f"{todo_i18n.t('Answer yes or no: ')}0", self.sortie.getvalue()
+        )
+        self.assertIn(
+            todo_i18n.t("0 to cancel, Ctrl+D or Cancel at a yes/no question"),
+            self.sortie.getvalue(),
+        )
 
     def test_un_defaut_vide_ne_convertit_ni_ne_restreint(self):
         self._repondre("oui", "", "", "o", "", "", "n", "n", "o", "")
@@ -433,13 +446,17 @@ class TestMenuQuestions(unittest.TestCase):
         self.assertIsNone(self.menu._transform_ask_options(self.RAPPORT))
         self.assertEqual(len(entrees.demandes), 1)
 
-    def test_zero_annule_a_CHAQUE_question(self):
-        """Une réponse valide jusqu'au rang N, puis « 0 »."""
-        # L'ordre du dialogue, la table venant maintenant en troisième.
+    def test_une_sortie_a_CHAQUE_question(self):
+        """Une réponse valide jusqu'au rang N, puis « 0 » à une question
+        texte, Ctrl+D à une question oui/non."""
+        # L'ordre du dialogue, la table venant en troisième ; `oui_non`
+        # marque d'un 1 chaque question oui/non.
         valides = ["o", "csv", "", "o", "Ventes", "", "", "", "", "", "42"]
+        oui_non = [1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0]
         for rang in range(len(valides)):
             with self.subTest(rang=rang):
-                entrees = self._repondre(*(valides[:rang] + ["0"]))
+                sortie = EOFError() if oui_non[rang] else "0"
+                entrees = self._repondre(*(valides[:rang] + [sortie]))
                 self.assertIsNone(
                     self.menu._transform_ask_options(self.RAPPORT)
                 )
@@ -1076,9 +1093,11 @@ class TestMenuEffacement(unittest.TestCase):
         self.assertTrue(os.path.exists(self.etranger))
 
     def test_non_n_efface_rien(self):
-        for reponse in ("n", "", "0", "x"):
-            with self.subTest(reponse=reponse):
-                builtins.input = lambda invite="", r=reponse: r
+        """Ni « n », ni Entrée, ni une faute suivie de Ctrl+D, ni Ctrl+D :
+        la faute est redemandée, Ctrl+D vaut non."""
+        for reponses in (["n"], [""], ["0", EOFError()], [EOFError()]):
+            with self.subTest(reponses=reponses):
+                builtins.input = _Entrees(*reponses)
                 self.menu._transform_copies()
                 self.assertTrue(os.path.exists(self.copie))
                 self.assertTrue(os.path.exists(self.dossier))
@@ -2729,8 +2748,8 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self._repondre("n")
         self.assertEqual(self.menu._transform_ecran(self.RAPPORT), {})
 
-    def test_zero_annule_tout(self):
-        self._repondre("0")
+    def test_ctrl_d_annule_tout(self):
+        builtins.input = _Entrees(EOFError())
         self.assertIsNone(self.menu._transform_ecran(self.RAPPORT))
 
     def test_un_rapport_sans_feuille_ne_pose_pas_la_question(self):
@@ -6298,25 +6317,6 @@ class TestI18n(unittest.TestCase):
             entree = todo_i18n.TRANSLATIONS[cle]
             self.assertTrue(entree.get("fr"), cle)
             self.assertTrue(entree.get("en"), cle)
-
-    def test_les_libelles_correspondent_a_leur_parseur(self):
-        """Un « (O/n) » lu par _is_yes promet oui et vaut non.
-
-        La convention du dépôt : `(Y/n)` / `(O/n)` se lit par
-        `_is_yes_default_yes`, `(y/N)` / `(o/N)` par `_is_yes`.
-        """
-        # SEULEMENT les clés de ce module : le dépôt en compte des
-        # milliers, et d'autres menus formulent légitimement autrement.
-        verifiees = 0
-        for cle in _cles_du_menu():
-            entree = todo_i18n.TRANSLATIONS[cle]
-            if "(Y/n)" in cle:
-                self.assertIn("(O/n)", entree["fr"], cle)
-                verifiees += 1
-            if "(y/N)" in cle:
-                self.assertIn("(o/N)", entree["fr"], cle)
-                verifiees += 1
-        self.assertGreater(verifiees, 4, "le test ne vérifie rien")
 
 
 class TestEnvironnement(unittest.TestCase):

@@ -1495,9 +1495,9 @@ TRANSLATIONS = {
         "fr": "Git ne répond pas dans %s : ses fichiers de clé ne sont pas vérifiés.",
         "en": "Git cannot be queried in %s: its key files are not checked.",
     },
-    "Remove the %s folders without a seal from the registry? (y/N): ": {
-        "fr": "Retirer du registre les %s dossiers sans sceau ? (o/N) : ",
-        "en": "Remove the %s folders without a seal from the registry? (y/N): ",
+    "Remove the %s folders without a seal from the registry?": {
+        "fr": "Retirer du registre les %s dossiers sans sceau ?",
+        "en": "Remove the %s folders without a seal from the registry?",
     },
     "Cannot update the registry:": {
         "fr": "Impossible de mettre à jour le registre :",
@@ -1651,9 +1651,9 @@ TRANSLATIONS = {
         "fr": "Validité :",
         "en": "Validity:",
     },
-    "Are the sealed PDFs opened outside the organisation, in a reader nobody configures? (y/N): ": {
-        "fr": "Les PDF scellés sont-ils ouverts hors de l'organisation, dans un lecteur que personne ne configure ? (o/N) : ",
-        "en": "Are the sealed PDFs opened outside the organisation, in a reader nobody configures? (y/N): ",
+    "Are the sealed PDFs opened outside the organisation, in a reader nobody configures?": {
+        "fr": "Les PDF scellés sont-ils ouverts hors de l'organisation, dans un lecteur que personne ne configure ?",
+        "en": "Are the sealed PDFs opened outside the organisation, in a reader nobody configures?",
     },
     "Non repudiation key usage": {
         "fr": "Usage de clé non-répudiation",
@@ -1710,10 +1710,6 @@ TRANSLATIONS = {
     "A seal already exists here:": {
         "fr": "Un sceau existe déjà ici :",
         "en": "A seal already exists here:",
-    },
-    "Replace it? (y/N): ": {
-        "fr": "Le remplacer ? (o/N) : ",
-        "en": "Replace it? (y/N): ",
     },
     "Replace it?": {"fr": "Le remplacer ?", "en": "Replace it?"},
     "Certificate name (default: %s): ": {
@@ -20874,9 +20870,9 @@ TRANSLATIONS = {
         "fr": "Passer par Database pour en détruire une.",
         "en": "Use Database to drop one.",
     },
-    "Advanced options? (y/N): ": {
-        "fr": "Options avancées ? (o/N) : ",
-        "en": "Advanced options? (y/N): ",
+    "Advanced options?": {
+        "fr": "Options avancées ?",
+        "en": "Advanced options?",
     },
     "every sheet": {
         "fr": "toutes les feuilles",
@@ -21175,13 +21171,13 @@ TRANSLATIONS = {
         "fr": "Seuls 20 mots de repli sont disponibles : randomwordfr est absent.",
         "en": "Only 20 fallback words are available: randomwordfr is missing.",
     },
-    "0 to cancel": {
-        "fr": "0 pour annuler",
-        "en": "0 to cancel",
+    "0 to cancel, Ctrl+D or Cancel at a yes/no question": {
+        "fr": "0 pour annuler, Ctrl+D ou Annuler à une question oui/non",
+        "en": "0 to cancel, Ctrl+D or Cancel at a yes/no question",
     },
-    "Anonymise this file? (y/N): ": {
-        "fr": "Anonymiser ce fichier ? (o/N) : ",
-        "en": "Anonymise this file? (y/N): ",
+    "Anonymise this file?": {
+        "fr": "Anonymiser ce fichier ?",
+        "en": "Anonymise this file?",
     },
     "Convert at the same time? (xlsx/csv/json/xml, empty = keep): ": {
         "fr": "Convertir en même temps ? (xlsx/csv/json/xml, vide = garder) : ",
@@ -21211,17 +21207,21 @@ TRANSLATIONS = {
         "fr": "Garder le nombre de chiffres ? (o/N) : ",
         "en": "Keep the digit count? (y/N): ",
     },
-    "Replace numbers? (Y/n): ": {
-        "fr": "Remplacer les nombres ? (O/n) : ",
-        "en": "Replace numbers? (Y/n): ",
+    "Keep the digit count?": {
+        "fr": "Garder le nombre de chiffres ?",
+        "en": "Keep the digit count?",
     },
-    "Replace text? (Y/n): ": {
-        "fr": "Remplacer le texte ? (O/n) : ",
-        "en": "Replace text? (Y/n): ",
+    "Replace numbers?": {
+        "fr": "Remplacer les nombres ?",
+        "en": "Replace numbers?",
     },
-    "Anonymise the header row too? (y/N): ": {
-        "fr": "Anonymiser aussi la ligne d'en-tête ? (o/N) : ",
-        "en": "Anonymise the header row too? (y/N): ",
+    "Replace text?": {
+        "fr": "Remplacer le texte ?",
+        "en": "Replace text?",
+    },
+    "Anonymise the header row too?": {
+        "fr": "Anonymiser aussi la ligne d'en-tête ?",
+        "en": "Anonymise the header row too?",
     },
     "Random seed (empty = not reproducible): ": {
         "fr": "Graine aléatoire (vide = non reproductible) : ",
@@ -21231,13 +21231,13 @@ TRANSLATIONS = {
         "fr": "Table de correspondance à réutiliser (vide = nouvelle) : ",
         "en": "Mapping table to reuse (empty = a new one): ",
     },
-    "Keep the VBA macros in the copy? (y/N): ": {
-        "fr": "Garder les macros VBA dans la copie ? (o/N) : ",
-        "en": "Keep the VBA macros in the copy? (y/N): ",
+    "Keep the VBA macros in the copy?": {
+        "fr": "Garder les macros VBA dans la copie ?",
+        "en": "Keep the VBA macros in the copy?",
     },
-    "Keep the charts in the copy? (y/N): ": {
-        "fr": "Garder les graphiques dans la copie ? (o/N) : ",
-        "en": "Keep the charts in the copy? (y/N): ",
+    "Keep the charts in the copy?": {
+        "fr": "Garder les graphiques dans la copie ?",
+        "en": "Keep the charts in the copy?",
     },
     "Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.": {
         "fr": "Les macros sont gardées, donc la copie se nomme .xlsm : Excel refuse un .xlsx qui porte un projet VBA.",
@@ -21255,9 +21255,9 @@ TRANSLATIONS = {
         "fr": "Une colonne d'entiers est saturée : la copie porte le même ensemble de valeurs, seulement redistribuées.",
         "en": "An integer column is saturated: the copy holds the same set of values, only reshuffled.",
     },
-    "Open the TUI for setup? (Y/n): ": {
-        "fr": "Ouvrir l'interface TUI pour paramétrage ? (O/n) : ",
-        "en": "Open the TUI for setup? (Y/n): ",
+    "Open the TUI for setup?": {
+        "fr": "Ouvrir l'interface TUI pour paramétrage ?",
+        "en": "Open the TUI for setup?",
     },
     "Transform — anonymisation scope": {
         "fr": "Transform — périmètre de l'anonymisation",
@@ -21351,9 +21351,9 @@ TRANSLATIONS = {
         "fr": "Aperçu — rien n'est encore écrit",
         "en": "Preview — nothing written yet",
     },
-    "Write? (Y/n): ": {
-        "fr": "Écrire ? (O/n) : ",
-        "en": "Write? (Y/n): ",
+    "Write?": {
+        "fr": "Écrire ?",
+        "en": "Write?",
     },
     "Destination": {
         "fr": "Destination",
@@ -21411,9 +21411,9 @@ TRANSLATIONS = {
         "fr": "Le nom du fichier n'est pas anonymisé ; le défaut ne le reprend pas.",
         "en": "The file name is not anonymised; the default does not reuse it.",
     },
-    "Delete all copies in private/transform/? (y/N): ": {
-        "fr": "Supprimer toutes les copies de private/transform/ ? (o/N) : ",
-        "en": "Delete all copies in private/transform/? (y/N): ",
+    "Delete all copies in private/transform/?": {
+        "fr": "Supprimer toutes les copies de private/transform/ ?",
+        "en": "Delete all copies in private/transform/?",
     },
     "private/ is tracked by git — this file will show in « git status ».": {
         "fr": "private/ est suivi par git — ce fichier apparaîtra dans « git status ».",
