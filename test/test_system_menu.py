@@ -9,10 +9,12 @@ commandes installées là où il tourne.
 """
 
 import asyncio
+import io
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 sys.argv = ["todo.py"]
@@ -438,6 +440,35 @@ class TestLesCachesSudo(unittest.TestCase):
     def test_ctrl_d_at_the_confirmation_runs_nothing(self):
         self.assertEqual(self.lancer(["1", EOFError()]), [])
         self.assertIn("Rien n'a été effacé.", self.vu)
+
+    def test_ctrl_d_at_the_confirmation_ends_its_line_once(self):
+        # Au terminal, le port finit la ligne de l'invite que Ctrl+D laisse
+        # ouverte ; aucune ligne vide ne s'ajoute avant le refus.
+        from script.todo import ui
+        from script.todo.todo import TODO
+        from script.todo.ui import port
+
+        todo = TODO.__new__(TODO)
+        todo.execute = mock.Mock()
+        out = io.StringIO()
+        with (
+            mock.patch.object(
+                sc, "caches_systeme", return_value=self.CACHES[:1]
+            ),
+            mock.patch.object(sc, "mesurer", return_value=(0, [])),
+            mock.patch.dict(
+                port.ORIGINAL,
+                {"input": mock.Mock(side_effect=["1", EOFError()])},
+            ),
+            ui.bind(port.TerminalPort()),
+            redirect_stdout(out),
+        ):
+            todo._system_caches_sudo()
+        self.assertTrue(
+            out.getvalue().endswith("--noconfirm\n\n  Rien n'a été effacé.\n"),
+            out.getvalue(),
+        )
+        todo.execute.exec_command_live.assert_not_called()
 
     def test_the_chosen_command_runs_after_a_yes(self):
         self.assertEqual(

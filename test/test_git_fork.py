@@ -8,10 +8,12 @@ GitHub est remplacé par une fausse session, les manifestes sont fabriqués
 dans un répertoire jetable : rien ne va sur le réseau ni dans manifest/.
 """
 
+import io
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 sys.argv = ["todo.py"]
@@ -489,6 +491,27 @@ LECTEURS = {
 }
 # Les trois retours d'un choix sans défaut : [0], une réponse vide, Ctrl+D.
 RETOURS = ("0", "", EOFError())
+
+
+class TestCtrlDALaSaisie(unittest.TestCase):
+    """Au terminal, Ctrl+D à une réponse tapée du menu git laisse un seul
+    saut de ligne : celui du port, qui finit la ligne de l'invite."""
+
+    def test_ctrl_d_ends_the_line_once(self):
+        from script.todo import ui
+        from script.todo.ui import port
+
+        out = io.StringIO()
+        with (
+            ui.bind(port.TerminalPort()),
+            mock.patch.dict(
+                port.ORIGINAL, {"input": mock.Mock(side_effect=EOFError)}
+            ),
+            redirect_stdout(out),
+        ):
+            reponse = gm.GitForkMenuMixin()._git_repondre("Filtre : ")
+        self.assertIsNone(reponse)
+        self.assertEqual(out.getvalue(), "\n")
 
 
 class LeMenuGit(unittest.TestCase):

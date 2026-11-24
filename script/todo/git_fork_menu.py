@@ -107,7 +107,6 @@ class GitForkMenuMixin:
         try:
             return ui.ask(question).strip()
         except EOFError:
-            print()
             return None
 
     def _git_filtrer(self, elements, texte, nom=None):

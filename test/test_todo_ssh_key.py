@@ -17,12 +17,12 @@ import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from script.todo import ssh_key_menu, ui
 from script.todo.ssh_key_menu import SshKeyMenuMixin, commande_ssh_keygen
 from script.todo.todo_i18n import t
-from script.todo.ui.port import ScriptedPort
+from script.todo.ui.port import ORIGINAL, ScriptedPort, TerminalPort
 
 SSH_KEYGEN = shutil.which("ssh-keygen")
 
@@ -133,6 +133,22 @@ class TestLeRetour(unittest.TestCase):
         dossier = os.path.join(self.tmp, "ssh")
         self._lance(["rsa", os.path.join(dossier, "id_lagune"), EOFError()])
         self.assertFalse(os.path.lexists(dossier))
+
+
+class TestCtrlDALaSaisie(unittest.TestCase):
+    """Au terminal, Ctrl+D à une réponse tapée laisse un seul saut de
+    ligne : celui du port, qui finit la ligne de l'invite."""
+
+    def test_ctrl_d_ends_the_line_once(self):
+        out = io.StringIO()
+        with (
+            ui.bind(TerminalPort()),
+            patch.dict(ORIGINAL, {"input": Mock(side_effect=EOFError)}),
+            redirect_stdout(out),
+        ):
+            reponse = SshKeyMenuMixin._ssh_key_repondre("Fichier : ")
+        self.assertIsNone(reponse)
+        self.assertEqual(out.getvalue(), "\n")
 
 
 @unittest.skipUnless(SSH_KEYGEN, "ssh-keygen absent")

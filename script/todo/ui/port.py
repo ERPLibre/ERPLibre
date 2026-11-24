@@ -416,6 +416,17 @@ def _colour_back(screen) -> str:
     )
 
 
+def _line(read, *args) -> str:
+    """`read(*args)`, une lecture du terminal ; à Ctrl+D (EOFError), un
+    saut de ligne finit celle de l'invite, que la lecture laisse ouverte,
+    puis l'EOFError remonte telle quelle."""
+    try:
+        return read(*args)
+    except EOFError:
+        print()
+        raise
+
+
 class TerminalPort(BasePort):
     """Le terminal, comme au CLI : `input`, `getpass` et le compte à
     rebours d'auto_ask d'origine, `print`, `Execute.exec_command_live`."""
@@ -429,17 +440,17 @@ class TerminalPort(BasePort):
             if view.get("kind") == "choose":
                 screen = _colour_back(screen)
             print(screen)
-        return ORIGINAL.get("input", builtins.input)(invite)
+        return _line(ORIGINAL.get("input", builtins.input), invite)
 
     def ask(self, text, default=None, kind="text", timeout=None) -> str:
         if kind == "secret":
-            return ORIGINAL.get("getpass", getpass.getpass)(text)
+            return _line(ORIGINAL.get("getpass", getpass.getpass), text)
         if kind == "countdown":
             from script.todo import auto_ask
 
             countdown = ORIGINAL.get("auto_ask.ask", auto_ask.ask)
-            return countdown(text, default or "", timeout)
-        return ORIGINAL.get("input", builtins.input)(text)
+            return _line(countdown, text, default or "", timeout)
+        return _line(ORIGINAL.get("input", builtins.input), text)
 
     def pick_path(self, start, directory=False):
         """Le navigateur urwid de TODO, plein écran, par sa boucle

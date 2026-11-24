@@ -179,6 +179,50 @@ class TestTerminalPort(unittest.TestCase):
         # Le menu s'imprime au-dessus de son invite, seule passée à input.
         self.assertEqual(out.getvalue(), "[1] One\n")
 
+    def stop_with(self, error):
+        """Chaque fonction d'origine du terminal lève `error`, comme
+        Ctrl+D (EOFError) ou Ctrl+C (KeyboardInterrupt) à son invite."""
+
+        def stopped(*args):
+            raise error
+
+        self.originals(input=stopped, getpass=stopped)
+        self.originals(**{"auto_ask.ask": stopped})
+
+    def test_ctrl_d_at_a_menu_ends_the_line(self):
+        self.stop_with(EOFError())
+        view = port.menu_view("[1] One\n: ", [])
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(EOFError):
+            port.TerminalPort().menu(view)
+        self.assertEqual(out.getvalue(), "[1] One\n\n")
+
+    def test_ctrl_d_at_a_text_question_ends_the_line(self):
+        self.stop_with(EOFError())
+        for kind in ("text", "secret", "countdown"):
+            with self.subTest(kind=kind):
+                out = io.StringIO()
+                with redirect_stdout(out), self.assertRaises(EOFError):
+                    port.TerminalPort().ask("Name: ", "n", kind, 5)
+                self.assertEqual(out.getvalue(), "\n")
+
+    def test_ctrl_c_at_a_question_prints_nothing(self):
+        self.stop_with(KeyboardInterrupt())
+        view = port.menu_view(": ", [])
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(KeyboardInterrupt):
+            port.TerminalPort().menu(view)
+        self.assertEqual(out.getvalue(), "")
+        for kind in ("text", "secret", "countdown"):
+            with self.subTest(kind=kind):
+                out = io.StringIO()
+                with (
+                    redirect_stdout(out),
+                    self.assertRaises(KeyboardInterrupt),
+                ):
+                    port.TerminalPort().ask("Name: ", "n", kind, 5)
+                self.assertEqual(out.getvalue(), "")
+
     def test_a_choice_is_asked_by_number_through_input(self):
         texts = []
 

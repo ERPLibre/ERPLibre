@@ -407,7 +407,6 @@ class SystemMenuMixin:
         try:
             reponse = ui.ask(question)
         except EOFError:
-            print()
             return False
         return self._is_yes(reponse)
 

@@ -107,7 +107,6 @@ class SshKeyMenuMixin:
         try:
             return ui.ask(question).strip()
         except EOFError:
-            print()
             return None
 
     def _ssh_key_ask_type(self):

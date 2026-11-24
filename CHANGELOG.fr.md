@@ -664,6 +664,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le premier lancement, qui demande la langue, dit [0] Retour et une réponse invalide en français et en anglais, comme sa question, là où ils venaient dans la langue par défaut
 - Ctrl+C pendant une commande d'Exécution › Python › Versions Python (aussi sous Installation › Mise à jour) ou d'Exécution › Système › Caches du système (sudo) arrête la suite à cet endroit au lieu de passer à la version ou au cache suivant : la version interrompue est marquée ❌ et n'est pas inscrite comme installée, et le retour à l'Odoo de départ se lance quand même si la dernière version commencée est d'un autre Odoo, jamais vers un venv laissé à moitié
 - Ctrl+D à une question d'Installation › Mise à jour › Resynchroniser les dépôts avec les manifestes ne laisse plus les clones suivants à l'écart, là où TODO s'arrêtait sur une erreur : avant la synchronisation, il renonce et ne déplace rien ; après, il vaut non pour le clone visé, dont l'ancien clone est gardé, avec une ligne qui dit où, et chaque clone déplacé suivant est encore remis à son chemin ou proposé à la copie
+- Ctrl+D à une question de TODO finit la ligne de l'invite : la suite ne s'écrit plus à sa suite
 
 ## Retiré
 
