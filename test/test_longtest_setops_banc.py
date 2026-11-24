@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -5415,6 +5416,43 @@ class TestLaVeilleVideLeCacheDuTerrain(unittest.TestCase):
         self.assertGreaterEqual(len(appels), 3)
         self.assertEqual(1, sum("⚠" in d for d in dits))
         self.assertEqual(0, v.vidages)
+
+    def veille_bloquee(self, interrompre):
+        """Une veille dont le vidage dure 3 s, quittée pendant qu'il tourne :
+        rend la durée de la sortie et si le vidage avait fini."""
+        en_cours, fini = threading.Event(), threading.Event()
+
+        def joue(terrain, cmds, elevation, delai=0):
+            en_cours.set()
+            threading.Event().wait(3)
+            fini.set()
+            return B.Fait(0, "", 1)
+
+        patch = mock.patch.object(B, "joue_sur", joue)
+        patch.start()
+        self.addCleanup(patch.stop)
+        debut = None
+        try:
+            with B.VeilleDuCache("t", B.ELEVE, lambda *_a: None, 0.01):
+                en_cours.wait(2)
+                debut = time.monotonic()
+                if interrompre:
+                    raise KeyboardInterrupt
+        except KeyboardInterrupt:
+            pass
+        return time.monotonic() - debut, fini.is_set()
+
+    def test_an_interrupt_does_not_wait_for_the_running_drop(self):
+        """Un Ctrl-C au milieu d'un vidage sort sans l'attendre."""
+        duree, fini = self.veille_bloquee(interrompre=True)
+        self.assertLess(duree, 2)
+        self.assertFalse(fini)
+
+    def test_a_normal_end_waits_for_the_running_drop(self):
+        """Sans exception, le vidage en cours finit et compte."""
+        duree, fini = self.veille_bloquee(interrompre=False)
+        self.assertGreaterEqual(duree, 2)
+        self.assertTrue(fini)
 
 
 class TestLEtapeDeposeSaSortie(unittest.TestCase):

@@ -5515,9 +5515,13 @@ class VeilleDuCache:
         self._fil.start()
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, type_exc, *_exc):
         self._fin.set()
-        self._fil.join(timeout=90)
+        # SORTIE SUR EXCEPTION — un Ctrl-C le plus souvent — SANS ATTENDRE :
+        # le fil peut être au milieu d'un vidage borné à 60 s, et l'attendre
+        # retient l'arrêt d'autant. Le fil est un démon, il meurt avec le
+        # banc ; son vidage en cours, dans sa propre session, finit seul.
+        self._fil.join(timeout=1 if type_exc else 90)
         if self.vidages:
             self.dire(f"  · cache du terrain vidé {self.vidages} fois")
         return False
