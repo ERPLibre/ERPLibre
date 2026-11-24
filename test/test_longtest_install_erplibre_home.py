@@ -557,6 +557,7 @@ class LesEtapes(unittest.TestCase):
                     "udev",
                     "deck-clone",
                     "venv",
+                    "games",
                     "service-unit",
                     "service-enabled",
                     "service-condition",
@@ -1897,8 +1898,9 @@ class VMSimulee:
 
     def __init__(self, journaux, echoue=(), apres=None, **etat):
         self.regle = self.venv = self.service = self.autostart = False
-        # Le clone du deck : aucune désinstallation ne le retire.
-        self.deck = False
+        # Le clone du deck et les jeux clonés : aucune désinstallation ne
+        # les retire.
+        self.deck = self.jeux = False
         # L'extension que la base a clonée à la révision de son manifeste.
         self.extension = True
         self.lien = self.uuid = self.actif = True
@@ -1933,7 +1935,8 @@ class VMSimulee:
         else:
             self.lien = self.uuid = True
             if "--stream-deck" in options:
-                self.regle = self.venv = self.service = self.deck = True
+                self.regle = self.venv = self.service = True
+                self.deck = self.jeux = True
                 self.autostart = "--autostart" in options
         self.__dict__.update(self.apres.get(options, {}))
         return 0, ""
@@ -1954,6 +1957,7 @@ class VMSimulee:
             sd.CMD_UDEV: "ok" if self.regle else "",
             sd.CMD_VENV: "ok" if self.venv else "",
             sd.CMD_DECK: "ok" if self.deck else "",
+            sd.CMD_JEUX: "ok" if self.jeux else "",
             sd.CMD_EXTENSION: "ok" if self.extension else "",
             sd.CMD_LIEN: "ok" if self.lien else "",
             sd.CMD_SANS_LIEN: "" if self.lien else "ok",
@@ -2167,6 +2171,7 @@ class LesCinqEtapes(unittest.TestCase):
             ({"regle": False}, "udev"),
             ({"deck": False}, "deck-clone"),
             ({"venv": False}, "venv"),
+            ({"jeux": False}, "games"),
             ({"service": False}, "service-unit"),
             ({"autostart": False}, "service-enabled"),
             ({"condition": False}, "service-condition"),

@@ -123,6 +123,20 @@ class LeCheck(Copie):
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertEqual("", fini.stdout)
 
+    def test_games_off_never_gates_the_deck_entry_point(self):
+        """GAMES ne touche pas le programme du deck : --check rend la même
+        chose avec GAMES=off qu'avec GAMES=on."""
+        self.venv()
+        self.usb("1-1", "1d6b")
+        self.usb("3-2", "0fd9")
+        rendu = {}
+        for valeur in ("on", "off"):
+            self.regler(f"GAMES={valeur}\n")
+            fini = self.lancer("--check")
+            rendu[valeur] = (fini.returncode, fini.stdout)
+        self.assertEqual(0, rendu["on"][0])
+        self.assertEqual(rendu["on"], rendu["off"])
+
     def test_no_deck_exits_one_and_says_so(self):
         self.venv()
         self.usb("1-1", "1d6b")
@@ -258,6 +272,20 @@ class LeLancement(Copie):
         sortie, _ = proc.communicate(timeout=30)
         self.assertEqual(str(proc.pid), sortie.strip())
 
+    def test_games_off_or_unknown_never_gates_the_launch(self):
+        """GAMES ne coupe que les jeux : sans option, le programme du deck
+        démarre quelle que soit sa valeur."""
+        self.venv()
+        for valeur in ("off", "yes"):
+            with self.subTest(valeur=valeur):
+                self.regler(f"GAMES={valeur}\n")
+                fini = self.lancer()
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                self.assertEqual(
+                    str(self.clone / "erplibre_streamdeck"),
+                    fini.stdout.splitlines()[-1],
+                )
+
     def test_none_runs_nothing(self):
         self.venv()
         self.regler("DECK_PROGRAM=none\n")
@@ -311,11 +339,11 @@ class LesReglages(Copie):
         self.regler(
             "# DECK_PROGRAM=none\n"
             "DECK_PROGRAM=tiler\n"
-            "DECK_PLUGINS_OFF=sound\n"
+            "RESTART_AFTER_GAME=no\n"
             "DECK_PROGRAM=controller"
         )
         self.assertEqual("controller", self.lire("DECK_PROGRAM", "tiler"))
-        self.assertEqual("sound", self.lire("DECK_PLUGINS_OFF", ""))
+        self.assertEqual("no", self.lire("RESTART_AFTER_GAME", "yes"))
 
     def test_a_key_prefix_is_not_the_key(self):
         self.regler("DECK_PROGRAM_OLD=none\n")

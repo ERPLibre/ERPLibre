@@ -355,6 +355,7 @@ même la base et n'envoie rien.
 | [MIGRATION](doc/MIGRATION.md) | Migration de base de données entre versions |
 | [GIT_REPO](doc/GIT_REPO.md) | Gestion des dépôts Git |
 | [IMPROVE_ODOO](doc/improve_odoo.fr.md) | Le fork Odoo d'ERPLibre et ses correctifs |
+| [streamdeck_game](doc/streamdeck_game.fr.md) | Les jeux Stream Deck, un dépôt à part |
 | [erplibre_home_gnome_extension](doc/erplibre_home_gnome_extension.fr.md) | L'extension GNOME ERPLibre Home, un dépôt à part |
 | [erplibre_streamdeck_deck](doc/erplibre_streamdeck_deck.fr.md) | Le programme du deck Stream Deck, un dépôt à part |
 | [POETRY](doc/POETRY.md) | Gestion des dépendances Python |

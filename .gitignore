@@ -87,3 +87,14 @@ private/todo/todo_override_private.json
 # Ce que l'installateur met de côté avant la pose par repo
 # (deck.avant-repo-<date>).
 /script/stream_deck/deck.*/
+
+# Les jeux du Stream Deck : un dépôt à part, posé ici par Google Repo, par
+# make ou par install_erplibre_home.sh --stream-deck
+# (manifest/git_manifest_streamdeck_game.xml).
+/script/stream_deck/games/
+# Ce que l'installateur met de côté avant la pose par repo
+# (games.avant-repo-<date>).
+/script/stream_deck/games.*/
+# L'ancien emplacement des sauvegardes des jeux, qu'un checkout garde tant
+# que les jeux ne les ont pas déplacées dans games/save/.
+script/stream_deck/save/

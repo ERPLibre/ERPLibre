@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le menu ERPLibre Home de TODO : extension GNOME et Stream Deck.
+"""Le menu ERPLibre Home de TODO : extension GNOME, Stream Deck, jeux.
 
 Il réunit sous une entrée d'Exécution les deux niveaux d'ERPLibre Home :
 l'extension GNOME, son installation locale, son rechargement et la
 désinstallation complète ; le Stream Deck, outil de bureau posé par-dessus
 l'extension, son installation, la désinstallation de son seul niveau, le
 service systemd --user erplibre-home-streamdeck.service et ses réglages ;
-enfin l'état du poste et son diagnostic.
+l'état du poste et son diagnostic ; enfin les jeux, en dernière section.
 
 Les commandes longues ou interactives (systemctl, journalctl -f,
 l'installateur, make) passent par self.execute.exec_command_live, en
@@ -42,9 +42,10 @@ EXTENSION_UUID = "erplibre-home@technolibre.ca"
 
 class StreamDeckMenuMixin:
     def prompt_execute_streamdeck(self):
-        # Cinq entrées au plus par section ; une section ne consomme pas
-        # de numéro. L'extension GNOME vient d'abord, parce que le Stream
-        # Deck s'installe par-dessus elle.
+        # Cinq sections de cinq entrées au plus ; une section ne consomme
+        # pas de numéro. L'extension GNOME vient d'abord, parce que le
+        # Stream Deck s'installe par-dessus elle ; les jeux ferment le menu,
+        # seule section qui en parle.
         choices = [
             {"section": t("GNOME extension")},
             {"prompt_description": t("Install the GNOME extension (local)")},
@@ -94,6 +95,13 @@ class StreamDeckMenuMixin:
                     "Diagnosis - What is wrong and how to fix it"
                 )
             },
+            {"section": t("Games")},
+            {"prompt_description": t("Games - Stream Deck games")},
+            {
+                "prompt_description": t(
+                    "Games on/off - Enable or disable the games"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -125,6 +133,10 @@ class StreamDeckMenuMixin:
                 self._streamdeck_status()
             elif status == "12":
                 self._streamdeck_diagnosis()
+            elif status == "13":
+                self.prompt_execute_streamdeck_games()
+            elif status == "14":
+                self._streamdeck_games_setting()
             else:
                 print(t("Command not found !"))
 
@@ -318,6 +330,34 @@ class StreamDeckMenuMixin:
         if code == 0:
             self._streamdeck_systemctl("restart", service.UNIT_NAME)
 
+    def _streamdeck_games_setting(self):
+        """Réécrit GAMES. Il ne faut pas l'unité, et rien ne redémarre :
+        la galerie, make et la passation relisent le fichier à chaque jeu.
+        La valeur en vigueur, celle du fichier ou « on » quand la clé
+        manque, n'écrit rien ; une valeur invalide se montre comme telle et
+        n'a pas de défaut, si bien qu'Entrée ne la remplace pas."""
+        chemin = service.settings_path()
+        actuel = service.read_settings(chemin)["GAMES"]
+        libelles = (("on", t("Enabled")), ("off", t("Disabled")))
+        connus = dict(libelles)
+        affiche = connus.get(actuel, "%r (%s)" % (actuel, t("invalid")))
+        defaut = (
+            str(service.GAMES_VALUES.index(actuel) + 1)
+            if actuel in service.GAMES_VALUES
+            else None
+        )
+        choix = self._streamdeck_choice(
+            f"{t('Games:')} {affiche}", libelles, defaut
+        )
+        if choix is None:
+            return
+        if choix == actuel or not self._streamdeck_write(
+            chemin, {"GAMES": choix}
+        ):
+            print(t("Unchanged."))
+            return
+        print(f"{t('Games:')} {connus[choix]}")
+
     def _streamdeck_plugins_setting(self):
         """Bascule un plugin du deck dans DECK_PLUGINS_OFF. Les plugins
         sont ceux que deck_plugin_ids trouve sur disque, chacun avec son
@@ -459,11 +499,12 @@ class StreamDeckMenuMixin:
     # Questions de l'installation Stream Deck
 
     def _erplibre_home_streamdeck_options(self):
-        """Les deux questions de l'installation Stream Deck, chacune
-        devenue une option de l'installateur. Le programme passe toujours
-        son option, défaut compris : son défaut est la valeur des réglages
-        en place, si bien qu'Entrée la réécrit telle quelle ; sans
-        réglages, c'est celle de DEFAULTS. Un programme invalide dans les réglages se montre avec
+        """Les trois questions de l'installation Stream Deck, chacune
+        devenue une option de l'installateur. Le programme et la relance
+        après un jeu passent toujours leur option, défaut compris : leurs
+        défauts sont les valeurs des réglages en place, si bien qu'Entrée
+        partout les réécrit telles quelles ; sans réglages, ce sont ceux de
+        DEFAULTS. Un programme invalide dans les réglages se montre avec
         la question, sans défaut. Un autre programme que celui en place,
         quand l'Odoo pilote le verrouille, s'annonce par une ligne sitôt
         choisi, et l'option part quand même. Le démarrage automatique n'a
@@ -494,4 +535,16 @@ class StreamDeckMenuMixin:
         )
         if self._is_yes(input(demande)):
             options.append("--autostart")
+        if reglages["RESTART_AFTER_GAME"] == "no":
+            relance = self._is_yes(
+                input(t("Restart the deck program after a game? (y/N): "))
+            )
+        else:
+            relance = not self._is_no(
+                input(t("Restart the deck program after a game? (Y/n): "))
+            )
+        if relance:
+            options.append("--restart-after-game")
+        else:
+            options.append("--no-restart-after-game")
         return options

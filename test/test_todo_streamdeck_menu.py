@@ -11,9 +11,9 @@ Aucune commande ne part.
 Ce que ces tests gardent :
 
 - les trois questions de l'installation Stream Deck deviennent des
-  options, le programme toujours explicite, son défaut pris dans les
-  réglages en place, la commande s'affiche une fois, par l'annonce du
-  lanceur, et 0 n'installe rien ;
+  options, le programme et la relance toujours explicites, leurs défauts
+  pris dans les réglages en place, la commande s'affiche une fois, par
+  l'annonce du lanceur, et 0 n'installe rien ;
 - une réponse hors liste est signalée et la question reposée ;
 - service, autostart et programme disent quoi installer sans unité, et
   appellent systemctl --user sinon ; le programme change le réglage et ne
@@ -28,7 +28,8 @@ Ce que ces tests gardent :
 - l'état et le diagnostic affichent ce que rend erplibre_home_status ;
 - chaque libellé a ses deux langues, les valeurs passées aux commandes
   restant celles de systemctl et des réglages ;
-- le sous-menu tient en quatre sections de cinq entrées au plus.
+- l'entrée d'Exécution et le sous-menu présentent le Stream Deck comme un
+  outil de bureau : seule la section Jeux, la dernière, parle de jeux.
 """
 
 import contextlib
@@ -166,15 +167,25 @@ class Menu(unittest.TestCase):
 
 class LInstallationStreamDeck(Menu):
     def test_each_answer_becomes_an_option(self):
-        """Deux questions, le programme et le démarrage automatique : celle
-        des outils facultatifs, l'installateur la pose lui-même, avec la
-        commande du système. Une troisième question épuiserait les
-        réponses et lèverait StopIteration."""
+        """Trois questions, le programme, le démarrage automatique et la
+        relance après un jeu : celle des outils facultatifs, l'installateur
+        la pose lui-même, avec la commande du système. Une quatrième
+        question épuiserait les réponses et lèverait StopIteration."""
         cas = (
-            (("", ""), " --deck-program=tiler"),
-            (("2", "y"), " --deck-program=controller --autostart"),
-            (("3", ""), " --deck-program=none"),
-            (("1", "o"), " --deck-program=tiler --autostart"),
+            (("", "", ""), " --deck-program=tiler --restart-after-game"),
+            (
+                ("2", "y", "n"),
+                " --deck-program=controller --autostart"
+                " --no-restart-after-game",
+            ),
+            (
+                ("3", "", ""),
+                " --deck-program=none --restart-after-game",
+            ),
+            (
+                ("1", "o", ""),
+                " --deck-program=tiler --autostart --restart-after-game",
+            ),
         )
         for reponses, options in cas:
             with self.subTest(reponses=reponses):
@@ -191,10 +202,18 @@ class LInstallationStreamDeck(Menu):
 
     def test_enter_keeps_the_settings_in_place(self):
         self.reglages.parent.mkdir(parents=True)
-        self.reglages.write_text("DECK_PROGRAM=controller\n")
+        self.reglages.write_text(
+            "DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n"
+        )
         cas = (
-            (("", ""), " --deck-program=controller"),
-            (("1", ""), " --deck-program=tiler"),
+            (
+                ("", "", ""),
+                " --deck-program=controller --no-restart-after-game",
+            ),
+            (
+                ("1", "", "y"),
+                " --deck-program=tiler --restart-after-game",
+            ),
         )
         for reponses, options in cas:
             with self.subTest(reponses=reponses):
@@ -368,13 +387,17 @@ class LeProgramme(Menu):
         self.reglages.parent.mkdir(parents=True)
         self.reglages.write_text("DECK_PROGRAM=exemple\n")
         commandes, sortie, _ = self.jouer(
-            "_erplibre_home_streamdeck_install_local", ("", "3", "", "")
+            "_erplibre_home_streamdeck_install_local", ("", "3", "", "", "")
         )
         self.assertIn("Deck program: exemple (invalid)", sortie)
         self.assertNotIn("*", sortie)
         self.assertEqual(1, sortie.count("Invalid selection!"))
         self.assertEqual(
-            [f"{INSTALLATEUR} --stream-deck --deck-program=none"], commandes
+            [
+                f"{INSTALLATEUR} --stream-deck --deck-program=none"
+                " --restart-after-game"
+            ],
+            commandes,
         )
 
 
@@ -478,6 +501,34 @@ class LAffichageUnique(Menu):
                 self.assertNotIn("Executed", sortie)
 
 
+class LeJeuLanceUneFois(Menu):
+    """Le jeu choisi s'affiche une fois, comme les autres commandes."""
+
+    def test_the_game_command_shows_once(self):
+        jeu = {"name": "g", "path": "script/stream_deck/game_g.py"}
+        todo_mod = sys.modules[TODO.__module__]
+        with (
+            mock.patch.object(todo_mod.os, "access", return_value=True),
+            # Les jeux sont un dépôt à part, que le checkout peut ne pas
+            # avoir : leur témoin pointe sur un fichier qui existe.
+            mock.patch.object(todo_mod, "STREAMDECK_GAMES_CLI", __file__),
+            mock.patch.object(
+                TODO,
+                "_scan_streamdeck_games",
+                return_value=[dict(jeu, description="g")],
+            ),
+            mock.patch.object(
+                todo_mod.click, "prompt", side_effect=["1", "0"]
+            ),
+        ):
+            commandes, sortie, _ = self.jouer(
+                "prompt_execute_streamdeck_games", (), ExecuteBannieres()
+            )
+        (commande,) = commandes
+        self.assertEqual(1, sortie.count(commande + "\n"), sortie)
+        self.assertNotIn("Executed", sortie)
+
+
 class LEtatEtLeDiagnostic(Menu):
     FAITS = {"exemple": True}
 
@@ -542,6 +593,10 @@ class LesLibelles(Menu):
         self.assertIn("[2] Désactiver", sortie)
 
 
+# Un mot de jeu, dans l'une ou l'autre langue.
+MOT_DE_JEU = re.compile(r"\bgames?\b|\bjeux?\b", re.IGNORECASE)
+
+
 def rendre_menus():
     """(sous-menu ERPLibre Home, section ERPLibre Home du menu
     Exécution), tels qu'ils s'affichent dans la langue courante : chaque
@@ -563,15 +618,34 @@ def rendre_menus():
     return sous_menu, execution[debut:fin]
 
 
-class LesSectionsDuSousMenu(unittest.TestCase):
+class LesJeuxRestentDansLeurSection(unittest.TestCase):
+    """Le Stream Deck est un outil de bureau : ni l'entrée d'Exécution ni
+    une section autre que Jeux ne le décrivent par ses jeux, et Jeux est la
+    dernière section du sous-menu."""
+
     def setUp(self):
         self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+
+    def test_only_the_games_section_mentions_games(self):
+        for langue in ("fr", "en"):
+            with self.subTest(langue=langue):
+                todo_i18n._current_lang = langue
+                sous_menu, execution = rendre_menus()
+                self.assertIsNone(MOT_DE_JEU.search(execution), execution)
+                titre = "── %s ──" % todo_i18n.t("Games")
+                self.assertEqual(1, sous_menu.count(titre), sous_menu)
+                avant, apres = sous_menu.split(titre)
+                self.assertIsNone(MOT_DE_JEU.search(avant), avant)
+                self.assertNotIn("── ", apres, "Jeux n'est pas la dernière")
+                self.assertEqual(
+                    2, len(re.findall(r"^\[[1-9]\d*\] ", apres, re.M)), apres
+                )
 
     def test_each_section_holds_five_entries_at_most(self):
         todo_i18n._current_lang = "en"
         sous_menu, _ = rendre_menus()
         sections = sous_menu.split("\n── ")[1:]
-        self.assertEqual(4, len(sections))
+        self.assertEqual(5, len(sections))
         for section in sections:
             with self.subTest(section=section.splitlines()[0]):
                 entrees = re.findall(r"^\[[1-9]\d*\] ", section, re.M)
@@ -623,6 +697,8 @@ POSITIONS = (
     ("10", "Session refresh - ", "_streamdeck_session_refresh_setting"),
     ("11", "Status - ", "_streamdeck_status"),
     ("12", "Diagnosis - ", "_streamdeck_diagnosis"),
+    ("13", "Games - ", "prompt_execute_streamdeck_games"),
+    ("14", "Games on/off - ", "_streamdeck_games_setting"),
 )
 
 
@@ -652,6 +728,64 @@ class LesPositionsDuSousMenu(Menu):
                 ]
                 self.assertEqual(1, len(ligne), ligne)
                 self.assertIn(libelle, ligne[0])
+
+
+class LeReglageDesJeux(Menu):
+    def test_it_writes_off_without_the_unit_and_restarts_nothing(self):
+        commandes, _, _ = self.jouer("_streamdeck_games_setting", ("2",))
+        self.assertEqual("GAMES=off\n", self.reglages.read_text())
+        self.assertEqual([], commandes)
+        self.assertEqual([], self.sondes)
+
+    def test_keeping_the_current_value_writes_nothing(self):
+        _, sortie, _ = self.jouer("_streamdeck_games_setting", ("",))
+        self.assertFalse(self.reglages.exists())
+        self.assertIn("Unchanged.", sortie)
+
+    def test_an_invalid_value_needs_an_explicit_choice(self):
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("GAMES=peut-etre\n")
+        _, sortie, _ = self.jouer("_streamdeck_games_setting", ("", "1"))
+        self.assertIn("invalid", sortie)
+        self.assertEqual("GAMES=on\n", self.reglages.read_text())
+
+    def test_enter_does_not_replace_an_invalid_value(self):
+        """Une valeur invalide n'a pas de défaut : Entrée est hors liste,
+        aucune option n'est marquée, et seul le choix tapé s'écrit."""
+        self.reglages.parent.mkdir(parents=True)
+        self.reglages.write_text("GAMES=peut-etre\n")
+        _, sortie, _ = self.jouer("_streamdeck_games_setting", ("", "2"))
+        self.assertIn("Invalid selection!", sortie)
+        self.assertNotIn(" *", sortie)
+        self.assertEqual("GAMES=off\n", self.reglages.read_text())
+
+    def test_the_entry_shows_the_current_value(self):
+        for texte, attendu in (
+            (None, "Games: Enabled"),
+            ("GAMES=on\n", "Games: Enabled"),
+            ("GAMES=off\n", "Games: Disabled"),
+        ):
+            with self.subTest(texte=texte):
+                if texte is None:
+                    if self.reglages.exists():
+                        self.reglages.unlink()
+                else:
+                    self.reglages.parent.mkdir(parents=True, exist_ok=True)
+                    self.reglages.write_text(texte)
+                _, sortie, _ = self.jouer("_streamdeck_games_setting", ("0",))
+                self.assertEqual(attendu, sortie.splitlines()[0])
+
+    def test_the_submenu_offers_the_entry(self):
+        todo = TODO.__new__(TODO)
+        with (
+            mock.patch.object(TODO, "_streamdeck_games_setting") as entree,
+            mock.patch.object(
+                streamdeck_menu.click, "prompt", side_effect=["14", "0"]
+            ),
+            mock.patch.object(TODO, "fill_help_info", return_value=""),
+        ):
+            todo.prompt_execute_streamdeck()
+        entree.assert_called_once_with()
 
 
 class LeReglageDesPlugins(Menu):
@@ -688,11 +822,11 @@ class LeReglageDesPlugins(Menu):
     def test_choosing_an_off_id_turns_it_on_and_keeps_the_others(self):
         self.reglages.parent.mkdir(parents=True)
         self.reglages.write_text(
-            "DECK_PROGRAM=controller\nDECK_PLUGINS_OFF=tiling,ghost,sound\n"
+            "GAMES=off\nDECK_PLUGINS_OFF=tiling,ghost,sound\n"
         )
         self.jouer("_streamdeck_plugins_setting", ("2",))
         self.assertEqual(
-            "DECK_PROGRAM=controller\nDECK_PLUGINS_OFF=ghost,sound\n",
+            "GAMES=off\nDECK_PLUGINS_OFF=ghost,sound\n",
             self.reglages.read_text(),
         )
 
@@ -701,9 +835,10 @@ class LeReglageDesPlugins(Menu):
         self.assertFalse(self.reglages.exists())
 
     def test_an_active_unit_is_restarted(self):
-        self.reponses_sondes[
-            ("systemctl", "--user", "is-active", UNITE)
-        ] = (0, "active\n")
+        self.reponses_sondes[("systemctl", "--user", "is-active", UNITE)] = (
+            0,
+            "active\n",
+        )
         commandes, _, _ = self.jouer("_streamdeck_plugins_setting", ("1",))
         self.assertEqual([f"systemctl --user restart {UNITE}"], commandes)
 
@@ -774,13 +909,13 @@ class LeReglageDeLaPeriode(Menu):
                     todo_i18n._current_lang = langue
                     self.reglages.parent.mkdir(parents=True, exist_ok=True)
                     self.reglages.write_text(
-                        "DECK_PROGRAM=controller\nDECK_SESSION_REFRESH_SEC=3\n"
+                        "GAMES=off\nDECK_SESSION_REFRESH_SEC=3\n"
                     )
                     commandes, sortie, _ = self.jouer(
                         "_streamdeck_session_refresh_setting", (reponse,)
                     )
                     self.assertEqual(
-                        "DECK_PROGRAM=controller\nDECK_SESSION_REFRESH_SEC=3\n",
+                        "GAMES=off\nDECK_SESSION_REFRESH_SEC=3\n",
                         self.reglages.read_text(),
                     )
                     self.assertIn(bornes, sortie)
@@ -789,9 +924,7 @@ class LeReglageDeLaPeriode(Menu):
 
     def test_an_empty_answer_keeps_the_value(self):
         todo_i18n._current_lang = "en"
-        _, sortie, _ = self.jouer(
-            "_streamdeck_session_refresh_setting", ("",)
-        )
+        _, sortie, _ = self.jouer("_streamdeck_session_refresh_setting", ("",))
         self.assertFalse(self.reglages.exists())
         self.assertIn("Unchanged.", sortie)
 
@@ -799,15 +932,14 @@ class LeReglageDeLaPeriode(Menu):
         todo_i18n._current_lang = "en"
         self.reglages.parent.mkdir(parents=True)
         self.reglages.write_text("DECK_SESSION_REFRESH_SEC=abc\n")
-        _, sortie, _ = self.jouer(
-            "_streamdeck_session_refresh_setting", ("",)
-        )
+        _, sortie, _ = self.jouer("_streamdeck_session_refresh_setting", ("",))
         self.assertIn("'abc' (invalid) s", sortie)
 
     def test_an_active_unit_is_restarted(self):
-        self.reponses_sondes[
-            ("systemctl", "--user", "is-active", UNITE)
-        ] = (0, "active\n")
+        self.reponses_sondes[("systemctl", "--user", "is-active", UNITE)] = (
+            0,
+            "active\n",
+        )
         commandes, _, _ = self.jouer(
             "_streamdeck_session_refresh_setting", ("0.5",)
         )

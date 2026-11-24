@@ -26,13 +26,13 @@ CE QU'IL INSTALLE : HEAD, ET RIEN D'AUTRE
 
 Le code part du checkout par « git bundle create … HEAD », et la VM ne joint
 jamais GitHub pour lui. Un fichier suivi et modifié fait refuser la course :
-ce qui serait installé ne serait pas ce qui est commité. Seuls deux dépôts à
-part, que le bundle ne porte pas, viennent de GitHub par repo sync, chacun
-à la révision que son manifeste nomme : l'extension GNOME, que la base pose,
-vérifiée par le contrôle « extension-clone », et le programme du deck, que
-le niveau Stream Deck pose, vérifié par le contrôle « deck-clone ». La VM
-installe donc le main publié de chacun, et non une copie locale qui n'est
-pas poussée.
+ce qui serait installé ne serait pas ce qui est commité. Seuls trois dépôts
+à part, que le bundle ne porte pas, viennent de GitHub par repo sync,
+chacun à la révision que son manifeste nomme : l'extension GNOME, que la
+base pose, vérifiée par le contrôle « extension-clone », le programme du
+deck et les jeux du Stream Deck, que le niveau Stream Deck pose, vérifiés
+par les contrôles « deck-clone » et « games ». La VM installe donc le main
+publié de chacun, et non une copie locale qui n'est pas poussée.
 
   ./long_test/install_erplibre_home.py                 # toute la matrice
   ./long_test/install_erplibre_home.py --only ubuntu:24.04,fedora:44
@@ -247,6 +247,12 @@ CMD_DECK = cmd_clone(
     "erplibre_streamdeck/__main__.py",
     "git_manifest_erplibre_streamdeck_deck.xml",
 )
+# Les jeux, de même, que --stream-deck pose aussi.
+CMD_JEUX = cmd_clone(
+    "script/stream_deck/games",
+    "games_cli.py",
+    "git_manifest_streamdeck_game.xml",
+)
 # L'extension, de même, que la base pose.
 CMD_EXTENSION = cmd_clone(
     "script/gnome-extension/erplibre_home",
@@ -436,6 +442,7 @@ ETAPES = (
             "udev",
             "deck-clone",
             "venv",
+            "games",
             "service-unit",
             "service-enabled",
             "service-condition",
@@ -1499,6 +1506,8 @@ def _etape_stream_deck(cible, log):
         return "deck-clone", None
     if not constat(cible, log, "venv", CMD_VENV, DELAIS_CONTROLE["venv"]):
         return "venv", None
+    if not constat(cible, log, "games", CMD_JEUX):
+        return "games", None
     if not constat(cible, log, "service-unit", CMD_UNITE):
         return "service-unit", None
     controle = Controle(cible, log, "service-enabled")

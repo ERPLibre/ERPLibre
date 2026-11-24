@@ -741,6 +741,47 @@ TRANSLATIONS = {
         "fr": "🏠 ERPLibre Home - Extension GNOME et Stream Deck",
         "en": "🏠 ERPLibre Home - GNOME extension and Stream Deck",
     },
+    "Games - Stream Deck games": {
+        "fr": "🎮 Jeux - Jeux sur Stream Deck",
+        "en": "🎮 Games - Stream Deck games",
+    },
+    "Stream Deck games! Choose a game to play.": {
+        "fr": "Jeux Stream Deck! Choisis un jeu.",
+        "en": "Stream Deck games! Choose a game to play.",
+    },
+    "No Stream Deck games found.": {
+        "fr": "Aucun jeu Stream Deck trouvé.",
+        "en": "No Stream Deck games found.",
+    },
+    "Stream Deck games are disabled (GAMES): enable them in"
+    " TODO › ERPLibre Home › Games on/off, or set GAMES=on in {path}": {
+        "fr": "Les jeux Stream Deck sont désactivés (GAMES) : activez-les"
+        " dans TODO › ERPLibre Home › Jeux on/off, ou mettez GAMES=on"
+        " dans {path}",
+        "en": "Stream Deck games are disabled (GAMES): enable them in"
+        " TODO › ERPLibre Home › Games on/off, or set GAMES=on in {path}",
+    },
+    "Stream Deck games are not installed"
+    " (no games_cli.py in script/stream_deck/games/):"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "Les jeux Stream Deck ne sont pas installés"
+        " (pas de games_cli.py dans script/stream_deck/games/) :"
+        " make erplibre_home_streamdeck_install",
+        "en": "Stream Deck games are not installed"
+        " (no games_cli.py in script/stream_deck/games/):"
+        " make erplibre_home_streamdeck_install",
+    },
+    "ERPLibre Home Stream Deck is not installed:"
+    " make erplibre_home_streamdeck_install": {
+        "fr": "ERPLibre Home Stream Deck n'est pas installé :"
+        " make erplibre_home_streamdeck_install",
+        "en": "ERPLibre Home Stream Deck is not installed:"
+        " make erplibre_home_streamdeck_install",
+    },
+    "Launching game:": {
+        "fr": "Lancement du jeu :",
+        "en": "Launching game:",
+    },
     "Install the GNOME extension (local)": {
         "fr": "📦 Installer l'extension GNOME (local)",
         "en": "📦 Install the GNOME extension (local)",
@@ -760,6 +801,10 @@ TRANSLATIONS = {
     "Deck settings": {
         "fr": "Réglages du deck",
         "en": "Deck settings",
+    },
+    "Games": {
+        "fr": "Jeux",
+        "en": "Games",
     },
     "ERPLibre Home not supported on this system:": {
         "fr": "ERPLibre Home non pris en charge sur ce système :",
@@ -904,6 +949,14 @@ TRANSLATIONS = {
         "en": "Start the deck program at login and when the deck is"
         " plugged in? (y/N): ",
     },
+    "Restart the deck program after a game? (Y/n): ": {
+        "fr": "Relancer le programme du deck après un jeu ? (O/n) : ",
+        "en": "Restart the deck program after a game? (Y/n): ",
+    },
+    "Restart the deck program after a game? (y/N): ": {
+        "fr": "Relancer le programme du deck après un jeu ? (o/N) : ",
+        "en": "Restart the deck program after a game? (y/N): ",
+    },
     # Stream Deck: status and diagnosis (script/todo/erplibre_home_status.py)
     "Level: not installed": {
         "fr": "Niveau : non installé",
@@ -1041,6 +1094,23 @@ TRANSLATIONS = {
         "fr": "TODO › ERPLibre Home › Programme du deck",
         "en": "TODO › ERPLibre Home › Deck program",
     },
+    "Games on/off - Enable or disable the games": {
+        "fr": "🎚️ Jeux on/off - Activer ou désactiver les jeux",
+        "en": "🎚️ Games on/off - Enable or disable the games",
+    },
+    "Games:": {"fr": "Jeux :", "en": "Games:"},
+    "Games: unknown value": {
+        "fr": "Jeux : valeur inconnue",
+        "en": "Games: unknown value",
+    },
+    "Unknown GAMES value:": {
+        "fr": "Valeur GAMES inconnue :",
+        "en": "Unknown GAMES value:",
+    },
+    "TODO › ERPLibre Home › Games on/off": {
+        "fr": "TODO › ERPLibre Home › Jeux on/off",
+        "en": "TODO › ERPLibre Home › Games on/off",
+    },
     "Plugins on/off - Enable or disable deck plugins": {
         "fr": "🧩 Plugins on/off - Activer ou désactiver les plugins du deck",
         "en": "🧩 Plugins on/off - Enable or disable deck plugins",
@@ -1108,9 +1178,17 @@ TRANSLATIONS = {
         "fr": "le fermer",
         "en": "close it",
     },
+    "close the game": {
+        "fr": "fermer le jeu",
+        "en": "close the game",
+    },
     "close it, or:": {
         "fr": "le fermer, ou :",
         "en": "close it, or:",
+    },
+    "close the game; as a last resort:": {
+        "fr": "fermer le jeu ; en dernier recours :",
+        "en": "close the game; as a last resort:",
     },
     "The deck service is not running": {
         "fr": "Le service du deck ne tourne pas",
@@ -1123,6 +1201,183 @@ TRANSLATIONS = {
     "run it from the desktop session": {
         "fr": "le lancer depuis la session du bureau",
         "en": "run it from the desktop session",
+    },
+    # Stream Deck game descriptions (42 games)
+    "game_2048": {
+        "en": "Merge tiles to reach 2048! Corner buttons = directions.",
+        "fr": "Fusionne les tuiles pour atteindre 2048! Coins = directions.",
+    },
+    "game_battleship": {
+        "en": "Find hidden ships! Hit = keep turn. 1P solo or 2P.",
+        "fr": "Trouve les bateaux cachés! Touché = garde ton tour. 1P ou 2P.",
+    },
+    "game_bomberman": {
+        "en": "Place bombs, destroy walls, survive! 1P or 2P.",
+        "fr": "Pose des bombes, détruis les murs, survie! 1P ou 2P.",
+    },
+    "game_breakout": {
+        "en": "Break bricks! SD+ touchscreen, items, multi-ball, ammo.",
+        "fr": "Casse les briques! Écran tactile SD+, items, multi-balle.",
+    },
+    "game_checkers": {
+        "en": "Simplified checkers. Jump to capture! 1P vs AI or 2P.",
+        "fr": "Dames simplifiées. Saute pour capturer! 1P vs IA ou 2P.",
+    },
+    "game_colormatch": {
+        "en": "Flip cards, find matching pairs! 1P or 2P race.",
+        "fr": "Retourne les cartes, trouve les paires! 1P ou 2P course.",
+    },
+    "game_colormixer": {
+        "en": "Mix RGB with 3 dials to match target color. SD+.",
+        "fr": "Mixe RVB avec 3 dials pour matcher la couleur cible. SD+.",
+    },
+    "game_connect4": {
+        "en": "Drop pieces, get 4 in a row! 1P vs AI or 2P.",
+        "fr": "Lâche des pièces, aligne-en 4! 1P vs IA ou 2P.",
+    },
+    "game_djscratch": {
+        "en": "Scratch vinyl with dials. Waveforms on touchscreen. SD+.",
+        "fr": "Scratche du vinyl avec les dials. Waveforms sur écran. SD+.",
+    },
+    "game_fishing": {
+        "en": "Cast, wait for bite, reel in! Don't snap the line. SD+.",
+        "fr": "Lance, attends la touche, mouline! Ne casse pas la ligne. SD+.",
+    },
+    "game_flappy": {
+        "en": "Press any button to flap up. Avoid obstacles!",
+        "fr": "Appuie pour monter. Évite les obstacles!",
+    },
+    "game_floodfill": {
+        "en": "Pick colors to flood-fill from corner. Fill the grid! 1P or 2P.",
+        "fr": "Choisis des couleurs pour remplir depuis le coin. 1P ou 2P.",
+    },
+    "game_frogger": {
+        "en": "Cross traffic lanes to reach the top! Hop between cars.",
+        "fr": "Traverse la route pour atteindre le haut! Saute entre les voitures.",
+    },
+    "game_hangman": {
+        "en": "Guess the word, one letter at a time. 6 wrong = game over.",
+        "fr": "Devine le mot, une lettre à la fois. 6 erreurs = perdu.",
+    },
+    "game_langton": {
+        "en": "Langton's Ant automaton. Watch emergent patterns!",
+        "fr": "Automate de Langton. Observe les motifs émergents!",
+    },
+    "game_life": {
+        "en": "Conway's Game of Life. Toggle cells, play/pause.",
+        "fr": "Jeu de la Vie de Conway. Toggle les cellules, play/pause.",
+    },
+    "game_lightsout": {
+        "en": "Toggle button + neighbors. Turn all off! 1P or 2P coop.",
+        "fr": "Toggle bouton + voisins. Éteins tout! 1P ou 2P coop.",
+    },
+    "game_mastermind": {
+        "en": "Guess the secret color code. Feedback after each try.",
+        "fr": "Devine le code couleur secret. Feedback après chaque essai.",
+    },
+    "game_maze": {
+        "en": "Navigate a random maze from top-left to bottom-right.",
+        "fr": "Navigue un labyrinthe aléatoire du coin haut-gauche au bas-droite.",
+    },
+    "game_minesweeper": {
+        "en": "Classic minesweeper (1P) or mine hunter VS (2P).",
+        "fr": "Démineur classique (1P) ou chasseur de mines VS (2P).",
+    },
+    "game_numberguess": {
+        "en": "Guess 1-100 with hot/cold colors. Fewer tries = better!",
+        "fr": "Devine 1-100 avec couleurs chaud/froid. Moins d'essais = mieux!",
+    },
+    "game_pacman": {
+        "en": "Eat dots, power pellets, eat ghosts! SD+ touchscreen.",
+        "fr": "Mange les points, power pellets, mange les fantômes! SD+.",
+    },
+    "game_piano": {
+        "en": "Play piano keys on bottom row. Dial = octave. SD+.",
+        "fr": "Joue du piano sur la rangée du bas. Dial = octave. SD+.",
+    },
+    "game_pong": {
+        "en": "Pong with SD+ touchscreen support. 1P vs AI or 2P.",
+        "fr": "Pong avec support écran tactile SD+. 1P vs IA ou 2P.",
+    },
+    "game_reaction": {
+        "en": "Hit the green button ASAP! 5 rounds. 1P or 2P.",
+        "fr": "Tape le bouton vert vite! 5 rounds. 1P ou 2P.",
+    },
+    "game_reversi": {
+        "en": "Place pieces to flip opponent's. Most pieces wins! 1P or 2P.",
+        "fr": "Place des pièces pour retourner celles de l'adversaire. 1P ou 2P.",
+    },
+    "game_rps": {
+        "en": "Rock Paper Scissors! Best of 5. 1P vs AI or 2P.",
+        "fr": "Pierre Papier Ciseaux! Best of 5. 1P vs IA ou 2P.",
+    },
+    "game_safecracker": {
+        "en": "Turn 4 dials to guess the combo. Hot/cold hints. SD+.",
+        "fr": "Tourne 4 dials pour deviner la combo. Indices chaud/froid. SD+.",
+    },
+    "game_simon": {
+        "en": "Memorize and repeat the light sequence! 1P or 2P.",
+        "fr": "Mémorise et reproduis la séquence lumineuse! 1P ou 2P.",
+    },
+    "game_slots": {
+        "en": "Spin reels with dials, stop to match symbols! SD+.",
+        "fr": "Tourne les roues avec les dials, stoppe pour matcher! SD+.",
+    },
+    "game_snake": {
+        "en": "Classic snake. Eat, grow, don't crash! 1P or 2P VS.",
+        "fr": "Snake classique. Mange, grandit, crash pas! 1P ou 2P VS.",
+    },
+    "game_sokoban": {
+        "en": "Push boxes onto targets. Think before you move!",
+        "fr": "Pousse les boîtes sur les cibles. Réfléchis avant de bouger!",
+    },
+    "game_spaceinvaders": {
+        "en": "Shoot aliens before they reach the bottom!",
+        "fr": "Tire sur les aliens avant qu'ils atteignent le bas!",
+    },
+    "game_sudoku": {
+        "en": "Fill the 3x3 grid. No repeats in rows/columns!",
+        "fr": "Remplis la grille 3x3. Pas de répétitions en lignes/colonnes!",
+    },
+    "game_taquin": {
+        "en": "Slide tiles to order them 1 to N. Classic puzzle!",
+        "fr": "Glisse les tuiles pour les ordonner 1 à N. Classique!",
+    },
+    "game_tetris": {
+        "en": "Pieces fall from right. Rotate, move, drop!",
+        "fr": "Les pièces tombent de la droite. Rotation, déplace, drop!",
+    },
+    "game_thermometer": {
+        "en": "Guess the secret temperature with dial. Hot/cold bar. SD+.",
+        "fr": "Devine la température secrète avec le dial. Barre chaud/froid. SD+.",
+    },
+    "game_tictactoe": {
+        "en": "Tic-Tac-Toe on 3x3 grid. 1P hot seat or 2P.",
+        "fr": "Morpion sur grille 3x3. 1P hot seat ou 2P.",
+    },
+    "game_towerdefense": {
+        "en": "Place towers to stop enemies crossing! Survive 5 waves.",
+        "fr": "Place des tours pour bloquer les ennemis! Survie 5 vagues.",
+    },
+    "game_whackamole": {
+        "en": "Hit moles before they vanish! 30s. 1P or 2P VS.",
+        "fr": "Tape les taupes avant qu'elles disparaissent! 30s. 1P ou 2P VS.",
+    },
+    "game_wordle": {
+        "en": "Guess a 5-letter word. Green/yellow/grey hints. 6 tries.",
+        "fr": "Devine un mot de 5 lettres. Indices vert/jaune/gris. 6 essais.",
+    },
+    "game_racer": {
+        "en": "Dodge obstacles on a scrolling road! Speed increases.",
+        "fr": "Esquive les obstacles sur une route qui défile! Vitesse croissante.",
+    },
+    "game_dragrace": {
+        "en": "Shift gears at the right RPM! Too early or late = slow. 1P or 2P.",
+        "fr": "Passe les vitesses au bon régime! Trop tôt ou tard = lent. 1P ou 2P.",
+    },
+    "game_racingplus": {
+        "en": "Top-down race on touchscreen! Dial = steering. Avoid walls. SD+.",
+        "fr": "Course vue de haut sur écran tactile! Dial = volant. Évite les murs. SD+.",
     },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
@@ -11161,9 +11416,9 @@ TRANSLATIONS = {
         "fr": "extension GNOME, sans Stream Deck",
         "en": "GNOME extension, no Stream Deck",
     },
-    "deck controller, GNOME extension": {
-        "fr": "contrôleur du deck, extension GNOME",
-        "en": "deck controller, GNOME extension",
+    "deck controller, games, GNOME extension": {
+        "fr": "contrôleur du deck, jeux, extension GNOME",
+        "en": "deck controller, games, GNOME extension",
     },
     "script/install/install_erplibre_home.sh in the VM's checkout": {
         "fr": "script/install/install_erplibre_home.sh dans le checkout de la VM",

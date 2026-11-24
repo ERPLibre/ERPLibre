@@ -5,7 +5,8 @@
 réglages, le fichier pilote de l'extension, et l'appel d'une commande.
 
 Les mêmes règles que script/install/erplibre_home_settings.sh, que lisent
-l'installateur et le point d'entrée du service : lignes « CLÉ=valeur », jamais sourcées, la dernière ligne d'une clé
+l'installateur, le point d'entrée du service et l'outil de passation :
+lignes « CLÉ=valeur », jamais sourcées, la dernière ligne d'une clé
 l'emporte, $XDG_CONFIG_HOME prime sur ~/.config. Les fonctions prennent
 `environ` pour que les tests désignent un HOME jetable.
 """
@@ -20,8 +21,11 @@ UNIT_NAME = "erplibre-home-streamdeck.service"
 # Le programme du deck, un dépôt à part cloné là, relatif à la racine.
 DECK_REPO_DIR = "script/stream_deck/deck"
 PROGRAMS = ("tiler", "controller", "none")
+GAMES_VALUES = ("on", "off")
 DEFAULTS = {
     "DECK_PROGRAM": "tiler",
+    "RESTART_AFTER_GAME": "yes",
+    "GAMES": "on",
     "DECK_PLUGINS_OFF": "",
     "DECK_SESSION_REFRESH_SEC": "1",
 }
@@ -34,12 +38,20 @@ CONFIG_LINES = {
     "deck_program": "DECK_PROGRAM",
     "plugins_off": "DECK_PLUGINS_OFF",
     "session_refresh_sec": "DECK_SESSION_REFRESH_SEC",
+    "games": "GAMES",
 }
 # Un identifiant de plugin que le fil accepte dans DECK_PLUGINS_OFF.
 PLUGIN_ID_PATTERN = r"[a-z][a-z0-9_]{0,63}"
 _PLUGIN_ID = re.compile(PLUGIN_ID_PATTERN)
 # pilot.json tient en quelques centaines d'octets ; au-delà, il est faux.
 _PILOT_MAX_BYTES = 65536
+
+
+def games_enabled(settings):
+    """Vrai quand les réglages lus par read_settings activent les jeux :
+    GAMES vaut « on », ou manque (DEFAULTS). « off » et toute autre valeur
+    les coupent, comme deck_games_enabled du shell."""
+    return settings.get("GAMES", DEFAULTS["GAMES"]) == "on"
 
 
 def plugins_off(settings):

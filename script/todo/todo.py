@@ -56,6 +56,23 @@ def _read_conf(name, fallback):
 VENV_ERPLIBRE = _read_conf("python-erplibre-venv", ".venv.erplibre")
 VENV_DIR = os.path.join(new_path, VENV_ERPLIBRE)
 VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python")
+# Interpréteur du venv dédié au Stream Deck. Les jeux tournent sous lui et
+# non par leur shebang : un shebang ne peut pas nommer un chemin relatif au
+# checkout, et le python du système n'a pas les modules du deck.
+VENV_STREAMDECK_PYTHON = os.path.join(
+    new_path, ".venv.streamdeck", "bin", "python"
+)
+# Passe le deck du service Stream Deck au jeu, puis le lui rend.
+ERPLIBRE_HOME_STREAMDECK_HANDOVER = os.path.join(
+    new_path, "script", "install", "erplibre_home_streamdeck_handover.sh"
+)
+# Les jeux sont un dépôt à part, que Google Repo pose dans
+# script/stream_deck/games/ ; games_cli.py, que chaque jeu importe,
+# témoigne qu'ils sont installés, comme deck_games_present de
+# erplibre_home_settings.sh.
+STREAMDECK_GAMES_CLI = os.path.join(
+    new_path, "script", "stream_deck", "games", "games_cli.py"
+)
 
 
 def _in_venv():
@@ -154,6 +171,7 @@ from script.todo import (
     todo_journal,
     todo_prefs,
 )
+from script.todo import erplibre_home_service as service
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
@@ -1373,6 +1391,7 @@ class TODO(
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
         "prompt_execute_streamdeck": "ERPLibre Home",
+        "prompt_execute_streamdeck_games": "Games",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_configuration": "Configuration",
@@ -2639,6 +2658,141 @@ class TODO(
                 input(f"  {t('Discard everything and start over? (y/N): ')}")
             ):
                 return False
+
+    def prompt_execute_streamdeck_games(self):
+        # Seul le niveau Stream Deck de l'installateur crée .venv.streamdeck :
+        # sans lui, aucun jeu ne démarre, et le menu dit quelle commande
+        # l'ajoute au lieu d'en lancer un.
+        if not os.access(VENV_STREAMDECK_PYTHON, os.X_OK):
+            print(
+                t(
+                    "ERPLibre Home Stream Deck is not installed:"
+                    " make erplibre_home_streamdeck_install"
+                )
+            )
+            return False
+        if not os.path.isfile(STREAMDECK_GAMES_CLI):
+            print(
+                t(
+                    "Stream Deck games are not installed"
+                    " (no games_cli.py in script/stream_deck/games/):"
+                    " make erplibre_home_streamdeck_install"
+                )
+            )
+            return False
+        # GAMES=off, ou une valeur inconnue, coupe la bibliothèque de jeux ;
+        # le programme du deck n'en dépend pas.
+        if not service.games_enabled(
+            service.read_settings(service.settings_path())
+        ):
+            print(
+                t(
+                    "Stream Deck games are disabled (GAMES): enable them in"
+                    " TODO › ERPLibre Home › Games on/off, or set GAMES=on"
+                    " in {path}"
+                ).format(path=service.settings_path())
+            )
+            return False
+        print(f"🎮 {t('Stream Deck games! Choose a game to play.')}")
+        games = self._scan_streamdeck_games()
+        if not games:
+            print(t("No Stream Deck games found."))
+            return False
+
+        choices = [
+            {"prompt_description": g["description"]}
+            for g in games
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            try:
+                idx = int(status) - 1
+                if 0 <= idx < len(games):
+                    game = games[idx]
+                    print(
+                        f"{t('Launching game:')} {game['name']}"
+                    )
+                    try:
+                        self.execute.exec_command_live(
+                            self._streamdeck_game_command(game["path"]),
+                            source_erplibre=False,
+                            recap=False,
+                        )
+                    except KeyboardInterrupt:
+                        print()
+                else:
+                    print(t("Command not found !"))
+            except ValueError:
+                print(t("Command not found !"))
+
+    def _streamdeck_game_command(self, path):
+        """Rend la commande shell qui lance le jeu `path` sous le python de
+        .venv.streamdeck, à travers erplibre_home_streamdeck_handover.sh :
+        le service du deck s'arrête pendant la partie et revient après. Les
+        trois chemins sont cités pour bash."""
+        return (
+            f"{shlex.quote(ERPLIBRE_HOME_STREAMDECK_HANDOVER)}"
+            f" {shlex.quote(VENV_STREAMDECK_PYTHON)} {shlex.quote(path)}"
+        )
+
+    def _scan_streamdeck_games(self):
+        """Scan script/stream_deck/games/game_*.py and extract descriptions."""
+        import glob
+
+        game_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "stream_deck",
+            "games",
+        )
+        pattern = os.path.join(game_dir, "game_*.py")
+        games = []
+
+        for filepath in sorted(glob.glob(pattern)):
+            name = (
+                os.path.basename(filepath)
+                .replace("game_", "")
+                .replace(".py", "")
+                .replace("_", " ")
+                .title()
+            )
+            # Try i18n key first, fallback to docstring
+            game_key = os.path.basename(filepath).replace(".py", "")
+            i18n_desc = t(game_key)
+            if i18n_desc != game_key:
+                description = i18n_desc
+            else:
+                description = ""
+                try:
+                    with open(filepath) as f:
+                        in_doc = False
+                        for line in f:
+                            if not in_doc and line.startswith('"""'):
+                                in_doc = True
+                                continue
+                            if in_doc:
+                                stripped = line.strip()
+                                if stripped.startswith('"""'):
+                                    break
+                                if stripped and not description:
+                                    description = stripped
+                                    break
+                except Exception:
+                    pass
+            if not description:
+                description = name
+            games.append(
+                {
+                    "name": name,
+                    "description": f"{name} — {description}",
+                    "path": filepath,
+                }
+            )
+        return games
 
     # install_erplibre_home.sh sort en 2 pour un système hors périmètre
     # (distribution, version de GNOME) et en écrit la raison sur une ligne

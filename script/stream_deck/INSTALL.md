@@ -29,24 +29,26 @@ The third one, for a workstation with a Stream Deck, adds the Stream Deck
 packages, writes the udev rule, has Google Repo bring the deck program, a
 repository of its own, into `script/stream_deck/deck/` (see
 [the deck program in ERPLibre](../../doc/erplibre_streamdeck_deck.md)),
-then creates `.venv.streamdeck` from its `requirements.txt`. Then log out
-and back in: under Wayland, GNOME Shell loads a new extension only at
-session start. Without the Stream Deck level, the extension's `device` and
+and the games (see below), then creates `.venv.streamdeck` from the
+`requirements.txt` of the deck program and of the games. Then log out and
+back in: under Wayland, GNOME Shell loads a new extension only at session
+start. Without the Stream Deck level, the extension's `device` and
 `controller` indicators say that ERPLibre Home Stream Deck is not installed
 and name `make erplibre_home_streamdeck_install`.
 
-Each run adds the extension, and with `--stream-deck` the deck program, to
-`.repo/local_manifests/erplibre_manifest.xml`, removing nothing from it,
-and runs `repo sync` on each path alone: both follow the last commit of
-their `main`, and a later run changes nothing else. `git` is required.
-Laying down `.venv.erplibre/bin/repo` and the first `repo init` of a
-checkout reach Google's hosts for `repo` itself (`storage.googleapis.com`,
-`gerrit.googlesource.com`); every sync reaches GitHub for the two projects. A directory there that is not a
+Each run adds the extension, and with `--stream-deck` the deck program and
+the games, to `.repo/local_manifests/erplibre_manifest.xml`, removing
+nothing from it, and runs `repo sync` on each path alone: each follows the
+last commit of its `main`, and a later run changes nothing else. `git` is
+required. Laying down `.venv.erplibre/bin/repo` and the first `repo init`
+of a checkout reach Google's hosts for `repo` itself
+(`storage.googleapis.com`, `gerrit.googlesource.com`); every sync reaches
+GitHub for these projects. A directory there that is not a
 repo checkout, a plain git clone or a copy, is moved aside whole to
 `<dir>.avant-repo-<date>` beside it, named in the summary, and put back
 when the sync fails. On a repo checkout, a failed sync, offline for
 instance, leaves the project as it is: the summary says "NOT updated" and
-the install goes on. To change either project, work on a branch that
+the install goes on. To change one of the projects, work on a branch that
 `repo start <branch> <dir>` starts; a detached HEAD moves to `main` at the
 next sync.
 
@@ -64,7 +66,8 @@ script takes these options:
 | `--no-extras` | never ask about the optional tools and install none, for scripts; not with `--with-extras` |
 | `--deck-program=tiler\|controller\|none` | with `--stream-deck`: the program the deck service runs (default `tiler`) |
 | `--autostart` | with `--stream-deck`: enable the deck service at login and when a deck is plugged in (default: not enabled) |
-| `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages, `.repo`, the local manifest and the checkouts of the extension and of the deck always stay |
+| `--restart-after-game`, `--no-restart-after-game` | with `--stream-deck`: the deck service comes back after a game, or not (default: it does); the two exclude each other |
+| `--uninstall` | remove everything: disable the extension, remove its link, the deck service and its settings, the udev rule and `.venv.streamdeck`; with `--stream-deck`, everything but the extension, which stays enabled; system packages, `.repo`, the local manifest and the checkouts of the extension, of the deck and of the games always stay |
 | `--dry-run` | print what would be done, change nothing |
 
 Without `--with-extras` or `--no-extras`, an install run from a terminal
@@ -84,6 +87,24 @@ starting with `UNSUPPORTED:`), `1` any other failure, including an
 `enabled-extensions`.
 `make erplibre_home_uninstall` runs `--uninstall`, and
 `make erplibre_home_streamdeck_uninstall` runs `--uninstall --stream-deck`.
+
+### The games
+
+The games and their gallery are a separate repository,
+[streamdeck_game](https://github.com/TechnoLibre/streamdeck_game), a Google
+Repo project at `script/stream_deck/games/` on the `main` branch that
+`manifest/git_manifest_streamdeck_game.xml` names. `--stream-deck` adds it
+to the local manifest and syncs it like the deck program, then installs
+their `requirements.txt` in `.venv.streamdeck`. A `games/` that is not a
+repo checkout is set aside whole to `games.avant-repo-<date>`, the saves of
+an older layout in its `save/` included. `--uninstall` never removes them.
+Their saves live in `$XDG_DATA_HOME/erplibre-home/streamdeck/save/`
+(`~/.local/share` when `XDG_DATA_HOME` is unset). How to change them is in
+[doc/streamdeck_game.md](../../doc/streamdeck_game.md).
+
+Without the games, the deck program, the controller and the service work;
+the TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
+refuse with one line naming `make erplibre_home_streamdeck_install`.
 
 ### System packages, for reference
 
@@ -140,6 +161,7 @@ program from this checkout, and its settings
 
 ```
 DECK_PROGRAM=tiler
+RESTART_AFTER_GAME=yes
 ```
 
 `DECK_PROGRAM` is `tiler` (the package `script/stream_deck/deck/erplibre_streamdeck`),
@@ -162,6 +184,14 @@ when a deck is plugged in later.
 Without a reachable user manager (an install over ssh with no session), the
 summary names the command to run after the next login.
 
+`GAMES=on|off` turns the Stream Deck game library on or off. `on`, or no
+`GAMES` line, enables it; `off` disables it; any other value disables it
+too and TODO › ERPLibre Home › Diagnosis names it. With the games off, the
+TODO games menu, the gallery, `make streamdeck_<game>` and the hand-over
+refuse to start a game and say how to enable them; the deck program, the
+controller and the service are never affected. Set it from
+TODO › ERPLibre Home › Games on/off, or by hand in this file.
+
 `DECK_PLUGINS_OFF=<id>,<id>` lists the deck program plugins that are not
 loaded (empty or absent: all load). Set it from TODO › ERPLibre Home ›
 Plugins on/off, or by hand in this file; TODO › ERPLibre Home › Diagnosis
@@ -176,13 +206,22 @@ is not a number, or out of range, gives 1, and TODO › ERPLibre Home ›
 Diagnosis names it. Set it from TODO › ERPLibre Home › Session refresh
 (which offers to restart the deck service), or by hand in this file.
 
-The deck has a lock, `$XDG_RUNTIME_DIR/erplibre-home/deck.lock`: the window
-tiler and the controller take it. A second holder exits with code 2 and
-names the program and PID that hold the deck, so the service, or **Start
-deck program** in the panel, stays down while another deck program runs.
-To free the deck, close that program; as a last resort, TODO's Stream Deck
-diagnosis names the processes that hold the lock, for one `kill`.
-`systemctl --user` controls the service:
+Games take the deck over: TODO's games menu, the gallery and
+`make streamdeck_<game>` run each game through
+`script/install/erplibre_home_streamdeck_handover.sh`, which stops
+the service, runs the game, and starts the service again when the game
+ends, unless `RESTART_AFTER_GAME=no`. The deck has a lock,
+`$XDG_RUNTIME_DIR/erplibre-home/deck.lock`: the window tiler and the
+controller take it, and the hand-over takes it as `game` and passes it to
+the game, so it stays held while any process of the game runs. A second
+holder exits with code 2 and names the program and PID that hold the deck,
+so the service, or **Start deck program** in the panel, stays down while a
+game runs. Inside a game, one deck program runs at a time: a second one
+exits with code 2 and names the first. To free the deck, close the game.
+As a last resort, TODO's Stream Deck diagnosis names every process that
+holds the lock, the whole game, for one `kill`; a `kill` on the PID the
+lock names also reaches every process of the game. `systemctl --user`
+controls the service:
 
 ```
 systemctl --user status erplibre-home-streamdeck.service
@@ -197,16 +236,17 @@ which both the session and the user manager read, not only in the shell's
 rc file: otherwise the unit is written where systemd does not look, and the
 service reads its default settings instead of the saved ones.
 
-TODO's **Execute › ERPLibre Home** menu has four sections. GNOME
+TODO's **Execute › ERPLibre Home** menu has five sections. GNOME
 extension: its local install alone, its reload and preferences, and the
 uninstall of everything. Stream Deck (office tool): its install, which adds
 the extension when missing, the uninstall of the Stream Deck level alone,
 and the service. Deck settings: program, autostart, plugins and session
 refresh. State: a status view and a diagnosis that names the command
-fixing each problem. The Stream Deck install asks for the program and
-autostart, the program defaulting to the current setting, then prints the
-installer command before running it; the installer itself asks about the
-missing optional tools, with their command.
+fixing each problem. Games come last. The Stream Deck install asks for
+the program, autostart and the restart after a game, the program and the
+restart defaulting to the current settings, then prints the installer
+command before running it; the installer itself asks about the missing
+optional tools, with their command.
 
 ## mpv film launcher — yt-dlp backend
 The film indicator's `mpv` launcher passes URLs to mpv, which

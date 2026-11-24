@@ -86,7 +86,8 @@ doc_clean_user:
 # « mobile/ » est un AUTRE depot git, avec sa propre generation : ratisser
 # dedans fait qu'un make d'ici reecrit ses fichiers, et emporte ce qui aurait
 # ete ajoute a un .md genere au lieu de son .base.md. De meme pour les clones
-# de l'extension GNOME et du programme du deck, sous script/.
+# de l'extension GNOME, du programme du deck et des jeux du Stream Deck,
+# sous script/.
 .PHONY: doc_markdown
 doc_markdown:
 	source ./.venv.erplibre/bin/activate && \
@@ -99,4 +100,5 @@ doc_markdown:
 		  -not -path "./mobile/*" \
 		  -not -path "./script/gnome-extension/erplibre_home/*" \
 		  -not -path "./script/stream_deck/deck/*" \
+		  -not -path "./script/stream_deck/games/*" \
 		  | parallel mmg --verbose --yes {}

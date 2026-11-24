@@ -117,8 +117,13 @@ suite) and `streamdeck_translator_unittest` run a file of the checkout and
 stop the same way. TODO › ERPLibre Home reads the deck lock through the
 checkout's `deck_lock.py`, lists the plugins of
 `erplibre_streamdeck/plugins/`, and says "Deck program: not installed"
-without it. The GNOME extension looks for the deck program in
-`script/stream_deck/deck/` first (its contract 1.5).
+without it. The hand-over from the service to a game,
+`script/install/erplibre_home_streamdeck_handover.sh`, runs
+`python3 -I script/stream_deck/deck/deck_lock.py game <command>`, the
+command line of contract 1.1; on a checkout whose contract has another
+MAJOR or a lower MINOR than `deck_contract`, it exits 5 before stopping
+anything, naming both versions. The GNOME extension looks for the deck
+program in `script/stream_deck/deck/` first (its contract 1.5).
 
 ## Changing the deck program
 
@@ -159,8 +164,14 @@ deck) et `streamdeck_translator_unittest` lancent un fichier du checkout et
 s'arrêtent de même. TODO › ERPLibre Home lit le verrou du deck par le
 `deck_lock.py` du checkout, liste les plugins de
 `erplibre_streamdeck/plugins/`, et dit « Programme du deck : pas installé »
-sans lui. L'extension GNOME cherche le programme du deck d'abord dans
-`script/stream_deck/deck/` (son contrat 1.5).
+sans lui. La passation du service à un jeu,
+`script/install/erplibre_home_streamdeck_handover.sh`, lance
+`python3 -I script/stream_deck/deck/deck_lock.py game <commande>`, la ligne
+de commande du contrat 1.1 ; sur un checkout dont le contrat a une autre
+MAJEURE ou une MINEURE plus basse que `deck_contract`, elle sort en 5 avant
+d'arrêter quoi que ce soit, en nommant les deux versions. L'extension GNOME
+cherche le programme du deck d'abord dans `script/stream_deck/deck/` (son
+contrat 1.5).
 
 ## Modifier le programme du deck
 

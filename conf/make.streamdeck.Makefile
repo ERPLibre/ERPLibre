@@ -28,6 +28,22 @@ streamdeck_deck_present:
 		{ deck_repo_present || \
 		{ deck_repo_absent_message >&2; exit 1; }; }'
 
+# The games are a separate repository, a Google Repo project at
+# script/stream_deck/games/. streamdeck_games_present stops a target when
+# it is missing, with the command that installs it. A game target lists
+# streamdeck_games_guard, which also stops it with GAMES=off, or an unknown
+# value, in streamdeck.conf, with the reason. The deck program, the
+# controller and the translator tools are never gated.
+.PHONY: streamdeck_games_present
+streamdeck_games_present:
+	@bash -c '. script/install/erplibre_home_settings.sh && \
+		{ deck_games_present || { deck_games_absent_message >&2; exit 1; }; }'
+
+.PHONY: streamdeck_games_guard
+streamdeck_games_guard: streamdeck_games_present
+	@bash -c '. script/install/erplibre_home_settings.sh && \
+		{ deck_games_enabled || { deck_games_message >&2; exit 1; }; }'
+
 # The GNOME extension is a separate repository, a Google Repo project at
 # script/gnome-extension/erplibre_home/. A target that runs one of its
 # files lists erplibre_home_extension_present, which stops it, when the
@@ -43,6 +59,48 @@ erplibre_home_extension_present:
 streamdeck: $(STREAMDECK_PY) streamdeck_deck_present
 	$(STREAMDECK_PY) $(STREAMDECK_DECK)/erplibre_controller.py
 
+# The games, as the games repository ships them: every
+# script/stream_deck/games/game_<id>.py is a game, and the fragment names
+# none of them, so a game added there needs no change here.
+STREAMDECK_GAMES := script/stream_deck/games
+
+# make streamdeck_<id> runs game_<id>.py under the venv through the deck
+# hand-over, which stops the deck service for the game and starts it
+# again after, like the TODO menu and the gallery. An id with no file
+# stops on stderr with exit 2, naming streamdeck_games.
+#
+# make prefers an explicit rule to this pattern: every other streamdeck_*
+# target keeps its own recipe, and a recipe-less one (streamdeck_tiler)
+# is .PHONY, which skips the pattern search. The pattern target itself
+# cannot be .PHONY for the same reason; a file named streamdeck_<id>
+# cannot shadow it either, since streamdeck_games_guard is .PHONY and a
+# target with a .PHONY prerequisite is always remade.
+#
+# The pattern also catches a mistyped target: make streamdeck_translator_x
+# reports "Unknown Stream Deck game: translator_x", after the games guard
+# has run. A pattern stem is never empty, so a bare "make streamdeck_"
+# misses this rule and goes through make's built-in rules: they ask for
+# streamdeck_.o, which this rule matches with the stem ".o", and the
+# make stops on "Unknown Stream Deck game: .o", exit 2.
+streamdeck_%: $(STREAMDECK_PY) streamdeck_games_guard
+	@if [ ! -f "$(STREAMDECK_GAMES)/game_$*.py" ]; then \
+		echo "Unknown Stream Deck game: $*" >&2; \
+		echo "List the games with: make streamdeck_games" >&2; \
+		exit 2; \
+	fi
+	script/install/erplibre_home_streamdeck_handover.sh \
+		$(STREAMDECK_PY) $(STREAMDECK_GAMES)/game_$*.py
+
+# The ids of the games, sorted, read from the file names. `=`, not `:=`:
+# the directory is read when streamdeck_games runs, not on every make.
+STREAMDECK_GAME_IDS = $(sort $(patsubst $(STREAMDECK_GAMES)/game_%.py,%, \
+	$(wildcard $(STREAMDECK_GAMES)/game_*.py)))
+
+# Prints those ids, one per line.
+.PHONY: streamdeck_games
+streamdeck_games: streamdeck_games_present
+	@$(foreach id,$(STREAMDECK_GAME_IDS),echo $(id);)
+
 # The deck program of ERPLibre Home; streamdeck_tiler is its former name.
 .PHONY: streamdeck_erplibre
 streamdeck_erplibre: $(STREAMDECK_PY) streamdeck_deck_present
@@ -53,8 +111,8 @@ streamdeck_tiler: streamdeck_erplibre
 
 # ERPLibre Home, two levels. The base: the GNOME extension, its schemas
 # and translations, linked and enabled. The Stream Deck level adds the USB
-# packages, the udev rule, the deck program checkout and .venv.streamdeck,
-# and installs the base too.
+# packages, the udev rule, the deck program and games checkouts and
+# .venv.streamdeck, and installs the base too.
 # The installer holds every step; these targets only call it, so make and
 # the installer cannot disagree.
 .PHONY: erplibre_home_install
@@ -272,6 +330,10 @@ erplibre_home_reload_clean:
 	@echo "Re-enabled $(ERPLIBRE_HOME_EXT_UUID)."
 	@echo "Before re-login: main UUID runs cached (old) code."
 	@echo "After re-login:  main UUID loads the latest installed source."
+
+.PHONY: streamdeck_gallery
+streamdeck_gallery: $(STREAMDECK_PY) streamdeck_games_present
+	$(STREAMDECK_PY) $(STREAMDECK_GAMES)/gallery_server.py
 
 # ---------- Claude Code hooks ----------
 

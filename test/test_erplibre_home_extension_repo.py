@@ -141,12 +141,14 @@ class LeManifeste(unittest.TestCase):
 
     def test_only_its_own_list_names_it(self):
         """Les listes générales entrent dans toute fusion, celle d'un
-        serveur Odoo comprise."""
+        serveur Odoo comprise ; celle du Stream Deck n'a pas à l'amener :
+        la base d'ERPLibre Home s'installe sans le deck."""
         for liste, nomme in (
             (LISTE, True),
             ("git_manifest.csv", False),
             ("git_manifest_mobile.csv", False),
             ("git_manifest_odoo.csv", False),
+            ("git_manifest_streamdeck.csv", False),
         ):
             with self.subTest(liste=liste):
                 with open(ROOT / "conf" / liste, encoding="utf-8") as fh:
@@ -316,7 +318,8 @@ class LesChemins(unittest.TestCase):
         """Un chemin dont le répertoire manque au checkout appartient à un
         dépôt à part absent, le deck sans son clone par exemple : il n'est
         pas vérifié ici."""
-        chemins = self.chemins()
+        jeux = self.galerie()
+        chemins = self.chemins() - {jeux}
         for attendu in (
             "script/stream_deck/deck/erplibre_controller.py",
             "script/install/erplibre_home_deck.sh",
@@ -338,6 +341,17 @@ class LesChemins(unittest.TestCase):
             r'^VENV="\$\{RACINE\}/([^"]+)"$', installateur, re.M
         )
         self.assertIn("`%s/bin/python`" % venv, self.section)
+
+    def galerie(self):
+        (relatif,) = re.findall(
+            r"`(script/[\w./-]+/gallery_server\.py)`", self.section
+        )
+        return relatif
+
+    def test_the_gallery_is_the_one_of_the_games_clone(self):
+        reglages = texte(ROOT / "script/install/erplibre_home_settings.sh")
+        (jeux,) = re.findall(r'^DECK_GAMES_DIR="([^"]+)"$', reglages, re.M)
+        self.assertEqual(jeux + "/gallery_server.py", self.galerie())
 
     def test_the_deck_unit_and_install_target_are_erplibre_s(self):
         (unite,) = re.findall(r"`([\w-]+\.service)`", self.section)

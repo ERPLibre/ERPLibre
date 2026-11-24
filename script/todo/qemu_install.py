@@ -1615,7 +1615,7 @@ class QemuInstallMixin:
                 " .venv.streamdeck",
                 "log out and back in to load the extension",
             ),
-            "hint": "deck controller, GNOME extension",
+            "hint": "deck controller, games, GNOME extension",
             "disk_gb": 2,
             "arches": ("amd64",),
             "desktops": ("gnome",),

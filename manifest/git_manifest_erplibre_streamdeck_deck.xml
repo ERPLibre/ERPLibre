@@ -18,7 +18,7 @@
         path="script/stream_deck/deck"
         remote="TechnoLibre"
         revision="main"
-        freeze-revision="198bb45f0ca25501d1905bb36647cd1c40fbbea2"
+        freeze-revision="642dd918ba74c2782494e2f75348bd26569ea6e2"
         groups="streamdeck"
     />
 </manifest>
