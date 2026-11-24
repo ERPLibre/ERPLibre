@@ -100,7 +100,9 @@ Une version MINEURE ne demande rien d'autre ; la reporter dans
 casser les checkouts tant qu'ERPLibre ne suit pas : pousser le côté
 ERPLibre, avec `games_contract` à la nouvelle version, en même temps. Un
 nouveau jeu ne demande rien côté ERPLibre : `make streamdeck_<id>`, le menu
-TODO et la galerie trouvent chaque `game_<id>.py` du clone.
+TODO et la galerie trouvent chaque `game_<id>.py` du clone, et le menu prend
+la description du jeu dans son propre `GAME_META`, `description_fr` en
+français, lu sans lancer le jeu.
 
 `script/stream_deck/games/` est un projet Google Repo de streamdeck_game :
 son `.git` est un lien vers `.repo/`, et son remote porte le nom de celui

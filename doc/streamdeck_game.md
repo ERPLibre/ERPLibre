@@ -94,7 +94,9 @@ nothing else; record it in ERPLibre's `games_contract` when convenient. A
 MAJOR bump breaks the checkouts until ERPLibre follows: push the ERPLibre
 side, with `games_contract` set to the new version, together with it. A new
 game needs nothing on the ERPLibre side: `make streamdeck_<id>`, the TODO
-menu and the gallery find every `game_<id>.py` of the clone.
+menu and the gallery find every `game_<id>.py` of the clone, and the menu
+takes the game's description from its own `GAME_META`, `description_fr` in
+French, read without running the game.
 
 `script/stream_deck/games/` is a Google Repo project of streamdeck_game:
 its `.git` links into `.repo/`, and its remote is named after the

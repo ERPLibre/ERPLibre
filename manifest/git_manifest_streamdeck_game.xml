@@ -17,7 +17,7 @@
         path="script/stream_deck/games"
         remote="TechnoLibre"
         revision="main"
-        freeze-revision="8522cde0770c59eb202ae32049047635c8ff79f5"
+        freeze-revision="fe359934c3e28aaa6f9318ba27297d3bf28ad0de"
         groups="streamdeck"
     />
 </manifest>

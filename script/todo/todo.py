@@ -2740,8 +2740,70 @@ class TODO(
             f" {shlex.quote(VENV_STREAMDECK_PYTHON)} {shlex.quote(path)}"
         )
 
+    @staticmethod
+    def _streamdeck_game_description(filepath):
+        """Rend la description du jeu `filepath` dans la langue du menu :
+        description_fr de son GAME_META en français, description sinon ou
+        quand description_fr manque. GAME_META se lit dans l'arbre
+        syntaxique, sans lancer le jeu ni importer ses dépendances, qui ne
+        vivent que dans .venv.streamdeck. Sans GAME_META littéral, ou dans
+        un fichier que Python ne sait pas lire, rend la première ligne de
+        la docstring, et "" sans elle."""
+        try:
+            with open(filepath, encoding="utf-8") as f:
+                source = f.read()
+        except OSError:
+            return ""
+        try:
+            arbre = ast.parse(source)
+        except (SyntaxError, ValueError, MemoryError, RecursionError):
+            arbre = None
+        if arbre is not None:
+            for noeud in arbre.body:
+                if not (
+                    isinstance(noeud, ast.Assign)
+                    and any(
+                        isinstance(cible, ast.Name) and cible.id == "GAME_META"
+                        for cible in noeud.targets
+                    )
+                ):
+                    continue
+                try:
+                    meta = ast.literal_eval(noeud.value)
+                except (ValueError, TypeError, MemoryError, RecursionError):
+                    break
+                if not isinstance(meta, dict):
+                    break
+                for cle in (
+                    ("description_fr", "description")
+                    if get_lang() == "fr"
+                    else ("description",)
+                ):
+                    valeur = meta.get(cle)
+                    if isinstance(valeur, str) and valeur.strip():
+                        return valeur.strip()
+                break
+        # La docstring se lit ligne à ligne : un fichier que ast refuse la
+        # porte encore.
+        in_doc = False
+        for line in source.splitlines():
+            if not in_doc and line.startswith('"""'):
+                in_doc = True
+                continue
+            if in_doc:
+                stripped = line.strip()
+                if stripped.startswith('"""'):
+                    break
+                if stripped:
+                    return stripped
+        return ""
+
     def _scan_streamdeck_games(self):
-        """Scan script/stream_deck/games/game_*.py and extract descriptions."""
+        """Rend les jeux de script/stream_deck/games/game_*.py, triés par
+        fichier : {"name", "description", "path"}. Chaque fichier se lit
+        une fois par appel, donc une fois par affichage du menu des jeux.
+        Le nom vient de l'id du fichier, la description du jeu lui-même
+        (_streamdeck_game_description) : ERPLibre ne nomme aucun jeu."""
         import glob
 
         game_dir = os.path.join(
@@ -2760,31 +2822,7 @@ class TODO(
                 .replace("_", " ")
                 .title()
             )
-            # Try i18n key first, fallback to docstring
-            game_key = os.path.basename(filepath).replace(".py", "")
-            i18n_desc = t(game_key)
-            if i18n_desc != game_key:
-                description = i18n_desc
-            else:
-                description = ""
-                try:
-                    with open(filepath) as f:
-                        in_doc = False
-                        for line in f:
-                            if not in_doc and line.startswith('"""'):
-                                in_doc = True
-                                continue
-                            if in_doc:
-                                stripped = line.strip()
-                                if stripped.startswith('"""'):
-                                    break
-                                if stripped and not description:
-                                    description = stripped
-                                    break
-                except Exception:
-                    pass
-            if not description:
-                description = name
+            description = self._streamdeck_game_description(filepath) or name
             games.append(
                 {
                     "name": name,
