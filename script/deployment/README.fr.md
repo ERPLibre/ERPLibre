@@ -39,3 +39,10 @@ un venv neuf, installé en `--no-index --require-hashes`, doit initialiser
 `base` dans une base jetable. Les roues construites depuis les sources lient
 les bibliothèques de l'hôte de construction (libpq, libldap…) : la cible
 exécute le même système.
+
+`--figer` fige d'abord. `--detache <journal>` lance la construction dans sa
+propre session et suit le journal jusqu'au verdict : une connexion perdue
+n'arrête que le suivi, et la même commande le reprend. TODO joue les deux sur
+la cible SSH retenue par `Deploy › SSH › Construire le livrable hors ligne`
+(`make ssh_dist`, sortie dans `SSH_DIST`, `~/erplibre-dist` par défaut) —
+une machine de construction, puisque ses dépôts sont figés.

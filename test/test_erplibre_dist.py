@@ -7,9 +7,11 @@ module propriétaire, installable hors ligne."""
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from script.deployment import erplibre_dist as X
 from script.deployment import erplibre_serve as S
@@ -301,6 +303,161 @@ class LaConstruction(unittest.TestCase):
         self.assertEqual(1, len(ecarts))
         self.assertIn("épreuve", ecarts[0])
         self.assertEqual("dropdb", self.joues[-1][0])
+
+
+class LeFigeage(unittest.TestCase):
+    def test_freezing_runs_erplibre_s_own_target_in_the_checkout(self):
+        vus = []
+
+        def faux(argv, **kw):
+            vus.append((argv, kw.get("cwd")))
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        self.assertEqual([], X.figer(Path("/r"), faux, lambda *_a: None))
+        self.assertEqual(
+            [
+                (
+                    [
+                        "make",
+                        "--no-print-directory",
+                        "repo_configure_all",
+                        "FREEZE=1",
+                    ],
+                    "/r",
+                )
+            ],
+            vus,
+        )
+
+    def test_a_failed_freeze_is_an_ecart_and_nothing_is_built(self):
+        def faux(argv, **_kw):
+            return subprocess.CompletedProcess(argv, 2, "", "sync refusé")
+
+        ecarts = X.figer(Path("/r"), faux, lambda *_a: None)
+        self.assertEqual(1, len(ecarts))
+        self.assertIn("sync refusé", ecarts[0])
+        construit = []
+        with (
+            mock.patch.object(X, "figer", lambda _r: ["figer : non"]),
+            mock.patch.object(
+                X, "construire", lambda *a, **k: construit.append(1) or []
+            ),
+        ):
+            code = X.principal(["--racine", "/r", "--sortie", "/s", "--figer"])
+        self.assertEqual(1, code)
+        self.assertEqual([], construit)
+
+
+class LeDetachement(unittest.TestCase):
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d, True)
+        self.journal = self.d / "j" / "journal.log"
+
+    def test_the_child_is_the_same_command_without_detach_and_marked(self):
+        argv = X.argv_enfant(
+            [
+                "--racine",
+                ".",
+                "--detache",
+                "/j.log",
+                "--figer",
+                "--detache=/k.log",
+            ]
+        )
+        self.assertEqual(sys.executable, argv[0])
+        self.assertTrue(argv[1].endswith("erplibre_dist.py"))
+        self.assertEqual(["--racine", ".", "--figer", "--marquer"], argv[2:])
+
+    def test_the_child_runs_in_its_own_session_and_leaves_its_pid(self):
+        vus = {}
+
+        class Proc:
+            pid = 4242
+
+        def popen(argv, **kw):
+            vus.update(kw)
+            return Proc()
+
+        X.lancer_detache(["x"], self.journal, popen)
+        self.assertTrue(vus["start_new_session"])
+        self.assertEqual(subprocess.DEVNULL, vus["stdin"])
+        self.assertEqual(
+            "4242", X.fichier_pid(self.journal).read_text().strip()
+        )
+        self.assertEqual(4242, X.pid_en_cours(self.journal, lambda _p: True))
+        self.assertIsNone(X.pid_en_cours(self.journal, lambda _p: False))
+
+    def test_the_follow_up_copies_the_journal_and_returns_its_verdict(self):
+        self.journal.parent.mkdir(parents=True)
+        etapes = [
+            "== début\n",
+            "== début\n  · 462 roues\n",
+            f"== début\n  · 462 roues\n{X.MARQUE_FIN}0\n",
+        ]
+        ecrit = []
+
+        def dormir(_s):
+            self.journal.write_text(etapes.pop(0))
+
+        code = X.suivre(self.journal, lambda: False, dormir, ecrit.append)
+        self.assertEqual(0, code)
+        self.assertEqual(etapes, [])
+        self.assertIn("462 roues", "".join(ecrit))
+        self.assertEqual(1, "".join(ecrit).count("== début"))
+
+    def test_a_finished_child_without_verdict_is_a_failure(self):
+        self.journal.parent.mkdir(parents=True)
+        self.journal.write_text("== début\n")
+        ecrit = []
+        code = X.suivre(
+            self.journal, lambda: True, lambda _s: None, ecrit.append
+        )
+        self.assertEqual(1, code)
+        self.assertIn("interrompue", ecrit[-1])
+
+    def test_a_verdict_written_as_the_child_ends_is_still_read(self):
+        self.journal.parent.mkdir(parents=True)
+        self.journal.write_text(f"✗ x\n{X.MARQUE_FIN}1\n")
+        self.assertEqual(
+            1, X.suivre(self.journal, lambda: True, lambda _s: None, print)
+        )
+        self.assertEqual(None, X.verdict_du_journal("rien"))
+        self.assertEqual(0, X.verdict_du_journal(f"{X.MARQUE_FIN}0"))
+
+    def test_a_running_build_is_followed_not_started_again(self):
+        self.journal.parent.mkdir(parents=True)
+        X.fichier_pid(self.journal).write_text("77\n")
+        self.journal.write_text(f"{X.MARQUE_FIN}0\n")
+        lances = []
+        with (
+            mock.patch.object(X, "vivant", lambda _p: True),
+            mock.patch.object(
+                X, "lancer_detache", lambda *a: lances.append(a)
+            ),
+        ):
+            code = X.principal(
+                [
+                    "--racine",
+                    ".",
+                    "--sortie",
+                    "/s",
+                    "--detache",
+                    str(self.journal),
+                ]
+            )
+        self.assertEqual(0, code)
+        self.assertEqual([], lances)
+
+    def test_a_marked_build_writes_its_code_last(self):
+        with (
+            mock.patch.object(X, "construire", lambda *a, **k: []),
+            mock.patch("builtins.print") as imprime,
+        ):
+            X.principal(["--racine", "/r", "--sortie", "/s", "--marquer"])
+        self.assertEqual(
+            f"{X.MARQUE_FIN}0", imprime.call_args_list[-1].args[0]
+        )
 
 
 if __name__ == "__main__":

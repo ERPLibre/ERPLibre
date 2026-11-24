@@ -119,6 +119,18 @@ ssh_make:
 		(echo "Error: SSH_TARGET is required. Usage: make ssh_make SSH_HOST=hostname SSH_TARGET=make_target [SSH_JUMP=bastion]" && exit 1)
 	$(_SSH_CMD) $(SSH_USER)@$(SSH_HOST) "cd $(SSH_PATH) && make $(SSH_TARGET)"
 
+# Build the offline ERPLibre bundle ON the remote host: frozen repositories,
+# wheels, offline proof (script/deployment/erplibre_dist.py). Detached there:
+# a dropped connection only stops the follow-up, and the same verb resumes it.
+SSH_DIST ?= ~/erplibre-dist
+.PHONY: ssh_dist
+ssh_dist:
+	$(call _require_host)
+	$(_SSH_CMD) $(SSH_USER)@$(SSH_HOST) \
+		"cd $(SSH_PATH) && python3 script/deployment/erplibre_dist.py \
+		--racine . --sortie $(SSH_DIST) --figer \
+		--detache ~/.erplibre-dist/journal.log"
+
 # Install systemd service on remote server
 .PHONY: ssh_install_systemd
 ssh_install_systemd:

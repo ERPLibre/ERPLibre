@@ -37,3 +37,10 @@ commit of each project and the excluded modules). The build ends with a
 proof: a fresh venv installed with `--no-index --require-hashes` must
 initialise `base` in a throwaway database. Wheels built from source link the
 build host's libraries (libpq, libldap…): the target runs the same system.
+
+`--figer` runs the freeze first. `--detache <journal>` runs the build in its
+own session and follows the journal to the verdict: a dropped connection
+stops only the follow-up, and the same command resumes it. TODO runs both on
+the selected SSH target with `Deploy › SSH › Build the offline bundle`
+(`make ssh_dist`, output in `SSH_DIST`, `~/erplibre-dist` by default) — a
+build machine, since its repositories are frozen.

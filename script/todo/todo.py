@@ -2117,6 +2117,10 @@ class TODO(
                 "prompt_description": t("SSH - Choose the target machine"),
                 "method": "_deploy_ssh_targets",
             },
+            {
+                "prompt_description": t("SSH - Build the offline bundle"),
+                "method": "_deploy_ssh_dist",
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -3900,6 +3904,11 @@ class TODO(
 
     def _deploy_ssh_install_systemd(self):
         self._deploy_ssh_verb("ssh_install_systemd")
+
+    def _deploy_ssh_dist(self):
+        # La cible fige SES dépôts avant de construire : c'est une machine
+        # de construction, jamais un ERPLibre qu'on y développe.
+        self._deploy_ssh_verb("ssh_dist")
 
     def _deploy_ssh_install_nginx(self):
         self._deploy_ssh_verb("ssh_install_nginx", demander=self._ask_domain)

@@ -29,6 +29,12 @@ Repo synchronisé, venv posé) et en tire un dossier qui se suffit :
 L'ÉPREUVE suit la construction : un venv neuf, installé depuis `roues/` sans
 index, doit initialiser `base` dans une base jetable. Un livrable qui ne
 s'installe pas hors ligne n'est pas rendu comme prêt.
+
+`--figer` joue d'abord `make repo_configure_all FREEZE=1`. `--detache
+JOURNAL` relance le même constructeur hors de toute session, sa sortie dans
+JOURNAL, puis recopie ce journal jusqu'au verdict : une connexion perdue
+n'arrête que le suivi, et le relancer reprend le suivi de la construction
+en cours au lieu d'en démarrer une autre.
 """
 
 from __future__ import annotations
@@ -36,15 +42,21 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import NamedTuple
 
-from script.git.manifest_freeze import is_sha
+# Lancé comme script, le dossier du script ouvre sys.path, pas la racine du
+# dépôt : le paquet `script` ne s'y trouverait pas.
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
+from script.git.manifest_freeze import is_sha  # noqa: E402
 
 GROUPES_DEFAUT = ("odoo", "base", "addons")
 PROPRIETAIRES = frozenset({"OPL-1", "OEEL-1", "Other proprietary"})
@@ -60,6 +72,14 @@ FICHIERS_DE_VERSION = (
     "script/deployment/erplibre_serve.py",
 )
 BASE_EPREUVE = "erplibre_dist_epreuve"
+CIBLE_FIGER = (
+    "make",
+    "--no-print-directory",
+    "repo_configure_all",
+    "FREEZE=1",
+)
+# La dernière ligne d'un constructeur détaché : son code de sortie.
+MARQUE_FIN = "erplibre-dist rc="
 
 
 class Projet(NamedTuple):
@@ -393,24 +413,153 @@ def eprouver(
     return []
 
 
+def figer(racine: Path, executer=subprocess.run, dire=print) -> list[str]:
+    """Met chaque projet sur son commit figé par la cible d'ERPLibre, qui
+    fusionne le manifeste en mode figé et synchronise. Rend les écarts."""
+    vu = executer(
+        list(CIBLE_FIGER), cwd=str(racine), capture_output=True, text=True
+    )
+    if vu.returncode != 0:
+        return [f"figer : {(vu.stderr or vu.stdout)[-300:]}"]
+    dire("  · dépôts figés")
+    return []
+
+
+def argv_enfant(argv) -> list[str]:
+    """L'argv du constructeur détaché : le même, sans `--detache` ni sa
+    valeur, marqué pour écrire son verdict en dernière ligne."""
+    rendu, sauter = [], False
+    for mot in argv:
+        if sauter:
+            sauter = False
+        elif mot == "--detache":
+            sauter = True
+        elif not mot.startswith("--detache="):
+            rendu.append(mot)
+    return [sys.executable, str(Path(__file__).resolve()), *rendu, "--marquer"]
+
+
+def fichier_pid(journal: Path) -> Path:
+    return Path(f"{journal}.pid")
+
+
+def vivant(pid: int) -> bool:
+    """Le processus `pid` existe-t-il ? Un processus d'un autre compte
+    existe aussi : le signal refusé le prouve."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def pid_en_cours(journal: Path, est_vivant=vivant) -> int | None:
+    """Le pid d'une construction encore en cours sur `journal`, ou None."""
+    try:
+        pid = int(fichier_pid(journal).read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return pid if est_vivant(pid) else None
+
+
+def lancer_detache(argv, journal: Path, popen=subprocess.Popen):
+    """Lance `argv` dans une session à lui, sortie dans `journal`, et
+    écrit son pid à côté. Rend le processus.
+
+    Sa PROPRE session : un ssh qui se ferme envoie SIGHUP à son groupe, et
+    la construction ne doit pas en faire partie."""
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    with open(journal, "w", encoding="utf-8") as sortie:
+        proc = popen(
+            argv,
+            stdout=sortie,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            env=dict(os.environ, PYTHONUNBUFFERED="1"),
+        )
+    fichier_pid(journal).write_text(f"{proc.pid}\n")
+    return proc
+
+
+def verdict_du_journal(texte: str) -> int | None:
+    """Le code que la dernière marque de fin porte, ou None sans marque."""
+    for ligne in reversed(texte.splitlines()):
+        if ligne.startswith(MARQUE_FIN):
+            reste = ligne[len(MARQUE_FIN) :].strip()
+            return int(reste) if reste.isdigit() else 1
+    return None
+
+
+def suivre(journal: Path, termine, dormir=time.sleep, ecrire=None, pas=5.0):
+    """Recopie `journal` au fil de l'eau jusqu'à sa marque de fin, et rend
+    le code qu'elle porte.
+
+    `termine()` dit si le constructeur est fini. Fini SANS marque, il a été
+    interrompu : c'est un échec, jamais un silence qu'on attendrait."""
+    ecrire = ecrire or (lambda s: print(s, end="", flush=True))
+    lu = 0
+    while True:
+        fini = termine()
+        try:
+            texte = journal.read_text("utf-8", errors="replace")
+        except OSError:
+            texte = ""
+        if len(texte) > lu:
+            ecrire(texte[lu:])
+            lu = len(texte)
+        code = verdict_du_journal(texte)
+        if code is not None:
+            return code
+        # `fini` est lu AVANT le journal : un verdict écrit juste avant la
+        # fin est donc toujours vu.
+        if fini:
+            ecrire("✗ construction interrompue, aucun verdict écrit\n")
+            return 1
+        dormir(pas)
+
+
 def principal(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
     analyseur = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     analyseur.add_argument("--racine", type=Path, required=True)
     analyseur.add_argument("--sortie", type=Path, required=True)
     analyseur.add_argument("--groupes", default=",".join(GROUPES_DEFAUT))
     analyseur.add_argument("--sans-epreuve", action="store_true")
-    args = analyseur.parse_args(argv)
-    ecarts = construire(
-        args.racine.resolve(),
-        args.sortie.resolve(),
-        tuple(g for g in args.groupes.split(",") if g),
-        epreuve=not args.sans_epreuve,
+    analyseur.add_argument("--figer", action="store_true")
+    analyseur.add_argument("--detache", type=Path, metavar="JOURNAL")
+    analyseur.add_argument(
+        "--marquer", action="store_true", help=argparse.SUPPRESS
     )
-    for ecart in ecarts:
-        print(f"✗ {ecart}", file=sys.stderr)
+    args = analyseur.parse_args(argv)
+    if args.detache:
+        journal = args.detache.expanduser().resolve()
+        pid = pid_en_cours(journal)
+        if pid is not None:
+            print(f"construction déjà en cours, suivie : {journal}")
+            return suivre(journal, lambda: not vivant(pid))
+        proc = lancer_detache(argv_enfant(argv), journal)
+        print(f"construction détachée, journal : {journal}")
+        return suivre(journal, lambda: proc.poll() is not None)
+    racine = args.racine.resolve()
+    ecarts = figer(racine) if args.figer else []
     if not ecarts:
-        print(f"✓ livrable prêt : {args.sortie}")
-    return 1 if ecarts else 0
+        ecarts = construire(
+            racine,
+            args.sortie.resolve(),
+            tuple(g for g in args.groupes.split(",") if g),
+            epreuve=not args.sans_epreuve,
+        )
+    for ecart in ecarts:
+        print(f"✗ {ecart}", file=sys.stderr, flush=True)
+    if not ecarts:
+        print(f"✓ livrable prêt : {args.sortie}", flush=True)
+    code = 1 if ecarts else 0
+    if args.marquer:
+        print(f"{MARQUE_FIN}{code}", flush=True)
+    return code
 
 
 if __name__ == "__main__":

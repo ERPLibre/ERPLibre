@@ -54,6 +54,7 @@ VERBES = {
     "ssh_make": {"SSH_TARGET": "run"},
     "ssh_install_systemd": {},
     "ssh_install_nginx": {"SSH_DOMAIN": "site.example"},
+    "ssh_dist": {},
 }
 
 

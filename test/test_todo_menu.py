@@ -2495,6 +2495,7 @@ class TestDeploySshMenuNumbering(MenuCoherence, unittest.TestCase):
         # Déclarée par « method » : son rang n'entre pas dans le calcul, et
         # c'est pourquoi les onze qui la précèdent n'ont pas bougé.
         "SSH - Choose the target machine": "_deploy_ssh_targets",
+        "SSH - Build the offline bundle": "_deploy_ssh_dist",
     }
 
 

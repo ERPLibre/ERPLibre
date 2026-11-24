@@ -123,6 +123,7 @@ VERBES = {
     "_deploy_ssh_make": "ssh_make",
     "_deploy_ssh_install_systemd": "ssh_install_systemd",
     "_deploy_ssh_install_nginx": "ssh_install_nginx",
+    "_deploy_ssh_dist": "ssh_dist",
 }
 
 # LE FRAGMENT QUI FAIT AUTORITÉ sur ce que le menu doit savoir atteindre.

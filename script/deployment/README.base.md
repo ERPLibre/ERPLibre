@@ -69,6 +69,13 @@ proof: a fresh venv installed with `--no-index --require-hashes` must
 initialise `base` in a throwaway database. Wheels built from source link the
 build host's libraries (libpq, libldap…): the target runs the same system.
 
+`--figer` runs the freeze first. `--detache <journal>` runs the build in its
+own session and follows the journal to the verdict: a dropped connection
+stops only the follow-up, and the same command resumes it. TODO runs both on
+the selected SSH target with `Deploy › SSH › Build the offline bundle`
+(`make ssh_dist`, output in `SSH_DIST`, `~/erplibre-dist` by default) — a
+build machine, since its repositories are frozen.
+
 <!-- [fr] -->
 # erplibre_dist.py — construire un ERPLibre autonome
 
@@ -88,3 +95,10 @@ un venv neuf, installé en `--no-index --require-hashes`, doit initialiser
 `base` dans une base jetable. Les roues construites depuis les sources lient
 les bibliothèques de l'hôte de construction (libpq, libldap…) : la cible
 exécute le même système.
+
+`--figer` fige d'abord. `--detache <journal>` lance la construction dans sa
+propre session et suit le journal jusqu'au verdict : une connexion perdue
+n'arrête que le suivi, et la même commande le reprend. TODO joue les deux sur
+la cible SSH retenue par `Deploy › SSH › Construire le livrable hors ligne`
+(`make ssh_dist`, sortie dans `SSH_DIST`, `~/erplibre-dist` par défaut) —
+une machine de construction, puisque ses dépôts sont figés.

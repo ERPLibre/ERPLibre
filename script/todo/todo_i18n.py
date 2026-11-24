@@ -4467,6 +4467,11 @@ TRANSLATIONS = {
         "fr": "🎯 SSH - Choisir la machine visée",
         "en": "🎯 SSH - Choose the target machine",
     },
+    "SSH - Build the offline bundle": {
+        "fr": "📦 SSH - Construire le livrable hors ligne (figé, roues,"
+        " épreuve)",
+        "en": "📦 SSH - Build the offline bundle (frozen, wheels, proof)",
+    },
     "No backup target is configured.": {
         "fr": "Aucune cible de sauvegarde n'est configurée.",
         "en": "No backup target is configured.",
