@@ -43,8 +43,9 @@ Ce que ces tests gardent :
   option absente garde la valeur déjà en place, le défaut ne vaut que pour
   une clé absente ; il n'active l'unité qu'avec --autostart et ne la
   démarre jamais ; les deux désinstallations l'arrêtent et la retirent ;
-- les options du service exigent --stream-deck, et un dépôt dont le
-  chemin porte un caractère que systemd refuse arrête l'installation ;
+- les options du service exigent --stream-deck, --restart-after-game et
+  --no-restart-after-game s'excluent, et un dépôt dont le chemin porte un
+  caractère que systemd refuse arrête l'installation ;
 - un système non supporté sort en 2 avec UNE ligne « UNSUPPORTED: » sur la
   sortie d'erreur, celle que TODO et le test long affichent ; macOS se
   reconnaît à uname, avant os-release ;
@@ -3112,14 +3113,16 @@ class TestDesinstallation(unittest.TestCase):
 
 
 class LesOptionsDuService(Installateur):
-    """--deck-program et --autostart : au niveau Stream Deck seulement, et
-    ce que --dry-run en annonce."""
+    """--deck-program, --autostart, --[no-]restart-after-game : au niveau
+    Stream Deck seulement, et ce que --dry-run en annonce."""
 
     def test_help_lists_them(self):
         fini = self.lancer("--help")
         for option in (
             "--deck-program=tiler|controller|none",
             "--autostart",
+            "--restart-after-game",
+            "--no-restart-after-game",
         ):
             self.assertIn(option, fini.stdout)
 
@@ -3127,6 +3130,8 @@ class LesOptionsDuService(Installateur):
         for option in (
             "--deck-program=tiler",
             "--autostart",
+            "--restart-after-game",
+            "--no-restart-after-game",
         ):
             with self.subTest(option=option):
                 fini = self.lancer(option, "--dry-run")
@@ -3150,16 +3155,35 @@ class LesOptionsDuService(Installateur):
         self.assertIn("exemple", fini.stderr)
         self.assertEqual([], self.lignes(fini, "family="))
 
+    def test_both_restart_options_are_a_usage_error(self):
+        for ordre in (
+            ("--restart-after-game", "--no-restart-after-game"),
+            ("--no-restart-after-game", "--restart-after-game"),
+        ):
+            with self.subTest(ordre=ordre):
+                fini = self.lancer("--stream-deck", *ordre, "--dry-run")
+                self.assertEqual(1, fini.returncode, fini.stdout)
+                self.assertIn("--no-restart-after-game", fini.stderr)
+                self.assertEqual([], self.lignes(fini, "family="))
+
     def test_the_dry_run_shows_the_settings_kept_or_given(self):
         """Une option absente garde la valeur des réglages en place ; une
         option donnée la remplace."""
         Path(self.reglages).parent.mkdir(parents=True)
         Path(self.reglages).write_text(
-            "DECK_PROGRAM=controller\n", encoding="utf-8"
+            "DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n",
+            encoding="utf-8",
         )
         for options, attendus in (
-            ((), ["DECK_PROGRAM=controller"]),
-            (("--deck-program=tiler",), ["DECK_PROGRAM=tiler"]),
+            ((), ["DECK_PROGRAM=controller", "RESTART_AFTER_GAME=no"]),
+            (
+                ("--restart-after-game",),
+                ["DECK_PROGRAM=controller", "RESTART_AFTER_GAME=yes"],
+            ),
+            (
+                ("--deck-program=tiler",),
+                ["DECK_PROGRAM=tiler", "RESTART_AFTER_GAME=no"],
+            ),
         ):
             with self.subTest(options=options):
                 fini = self.lancer("--stream-deck", *options, "--dry-run")
@@ -3173,7 +3197,8 @@ class LesOptionsDuService(Installateur):
         self.assertIn(self.unite, ecrits)
         self.assertIn(self.reglages, ecrits)
         self.assertEqual(
-            ["DECK_PROGRAM=tiler"], self.lignes(fini, "setting: ")
+            ["DECK_PROGRAM=tiler", "RESTART_AFTER_GAME=yes"],
+            self.lignes(fini, "setting: "),
         )
         self.assertEqual(
             ["--user daemon-reload"], self.lignes(fini, "systemctl: ")
@@ -3184,11 +3209,13 @@ class LesOptionsDuService(Installateur):
             "--stream-deck",
             "--deck-program=controller",
             "--autostart",
+            "--no-restart-after-game",
             "--dry-run",
         )
         self.assertEqual(0, fini.returncode, fini.stderr)
         self.assertEqual(
-            ["DECK_PROGRAM=controller"], self.lignes(fini, "setting: ")
+            ["DECK_PROGRAM=controller", "RESTART_AFTER_GAME=no"],
+            self.lignes(fini, "setting: "),
         )
         self.assertEqual(
             ["--user daemon-reload", "--user enable " + UNITE],
@@ -3266,8 +3293,8 @@ class TestUniteDuService(unittest.TestCase):
 
     def test_a_stop_is_bounded(self):
         """Un fil non démon d'un programme du deck retient SystemExit après
-        SIGTERM : sans borne, systemctl stop (Deck program = none, la
-        désinstallation) attendrait le défaut de 90 s."""
+        SIGTERM : sans borne, systemctl stop (la passation, Deck program =
+        none, la désinstallation) attendrait le défaut de 90 s."""
         fait = sourcer('RACINE="/srv/exemple"\nunit_content\n')
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertIn("TimeoutStopSec=10", fait.stdout.splitlines())
@@ -3375,9 +3402,10 @@ class TestServiceInstalle(unittest.TestCase):
     """install_service sur un HOME temporaire et un systemctl simulé."""
 
     def jouer(self, dossier, apres="", env=None, reglages=None):
-        """Lance install_service, puis `apres`. T_PROGRAMME et T_AUTOSTART
-        dans `env` tiennent lieu des options ; T_PROGRAMME absent, l'option
-        n'a pas été donnée. Rend (fait, appels, unité, réglages)."""
+        """Lance install_service, puis `apres`. T_PROGRAMME, T_RELANCE et
+        T_AUTOSTART dans `env` tiennent lieu des options ; T_PROGRAMME ou
+        T_RELANCE absent, l'option n'a pas été donnée. Rend (fait, appels,
+        unité, réglages)."""
         unite = Path(dossier, "config/systemd/user", UNITE)
         conf = Path(dossier, "config/erplibre-home/streamdeck.conf")
         if reglages is not None:
@@ -3394,6 +3422,7 @@ class TestServiceInstalle(unittest.TestCase):
             'UNIT_FILE="$(deck_unit_file)"\n'
             'SETTINGS_FILE="$(deck_settings_file)"\n'
             'DECK_PROGRAM="${T_PROGRAMME:-}"\n'
+            'RESTART_AFTER_GAME="${T_RELANCE:-}"\n'
             'AUTOSTART="${T_AUTOSTART:-0}"\n'
             + SYSTEMCTL_FAUX
             + "install_service\nsummary\n"
@@ -3407,7 +3436,10 @@ class TestServiceInstalle(unittest.TestCase):
             fait, appels, unite, conf = self.jouer(dossier)
             self.assertEqual(fait.returncode, 0, fait.stderr)
             self.assertIn("ExecStart=", unite.read_text())
-            self.assertEqual("DECK_PROGRAM=tiler\n", conf.read_text())
+            self.assertEqual(
+                "DECK_PROGRAM=tiler\nRESTART_AFTER_GAME=yes\n",
+                conf.read_text(),
+            )
             self.assertEqual(["systemctl --user daemon-reload"], appels)
 
     def test_it_enables_only_with_autostart_and_never_starts(self):
@@ -3430,12 +3462,13 @@ class TestServiceInstalle(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dossier:
             fait, _appels, _unite, conf = self.jouer(
                 dossier,
-                env={"T_PROGRAMME": "controller"},
+                env={"T_PROGRAMME": "controller", "T_RELANCE": "no"},
                 reglages="# note\nEXEMPLE=1\nDECK_PROGRAM=none\n",
             )
             self.assertEqual(fait.returncode, 0, fait.stderr)
             self.assertEqual(
-                "# note\nEXEMPLE=1\nDECK_PROGRAM=controller\n",
+                "# note\nEXEMPLE=1\nDECK_PROGRAM=controller\n"
+                "RESTART_AFTER_GAME=no\n",
                 conf.read_text(),
             )
 
@@ -3446,11 +3479,11 @@ class TestServiceInstalle(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dossier:
             fait, _appels, _unite, conf = self.jouer(
                 dossier,
-                reglages="DECK_PROGRAM=controller\nDECK_PLUGINS_OFF=sound\n",
+                reglages="DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n",
             )
             self.assertEqual(fait.returncode, 0, fait.stderr)
             self.assertEqual(
-                "DECK_PROGRAM=controller\nDECK_PLUGINS_OFF=sound\n",
+                "DECK_PROGRAM=controller\nRESTART_AFTER_GAME=no\n",
                 conf.read_text(),
             )
 
@@ -3458,12 +3491,12 @@ class TestServiceInstalle(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dossier:
             fait, _appels, _unite, conf = self.jouer(
                 dossier,
-                env={"T_PROGRAMME": "controller"},
-                reglages="DECK_PROGRAM=none\nDECK_PLUGINS_OFF=sound\n",
+                env={"T_RELANCE": "yes"},
+                reglages="DECK_PROGRAM=none\nRESTART_AFTER_GAME=no\n",
             )
             self.assertEqual(fait.returncode, 0, fait.stderr)
             self.assertEqual(
-                "DECK_PROGRAM=controller\nDECK_PLUGINS_OFF=sound\n",
+                "DECK_PROGRAM=none\nRESTART_AFTER_GAME=yes\n",
                 conf.read_text(),
             )
 
@@ -3473,7 +3506,10 @@ class TestServiceInstalle(unittest.TestCase):
                 dossier, reglages="# note\nDECK_PROGRAM=\n"
             )
             self.assertEqual(fait.returncode, 0, fait.stderr)
-            self.assertEqual("# note\nDECK_PROGRAM=tiler\n", conf.read_text())
+            self.assertEqual(
+                "# note\nDECK_PROGRAM=tiler\nRESTART_AFTER_GAME=yes\n",
+                conf.read_text(),
+            )
 
     def test_a_second_identical_run_touches_nothing(self):
         with tempfile.TemporaryDirectory() as dossier:

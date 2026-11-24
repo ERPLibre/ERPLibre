@@ -23,7 +23,7 @@
 #   ./script/install/install_erplibre_home.sh [--stream-deck] [--no-enable]
 #       [--extension-only] [--with-extras|--no-extras] [--uninstall]
 #       [--dry-run] [--help] [--deck-program=tiler|controller|none]
-#       [--autostart]
+#       [--autostart] [--restart-after-game | --no-restart-after-game]
 #
 # Les outils facultatifs des indicateurs (extras_for) s'installent avec
 # --with-extras. Sans --with-extras ni --no-extras, une installation dont
@@ -88,12 +88,13 @@ NO_EXTRAS=0
 EXTRAS_ACCEPTED=""
 UNINSTALL=0
 DRY_RUN=0
-# Les options du service, au niveau Stream Deck seulement. DECK_PROGRAM
-# reste vide quand l'option manque : la valeur déjà dans les réglages est
-# alors gardée (voir service_setting). SERVICE_OPTIONS compte les options
-# données, pour refuser leur emploi ailleurs.
+# Les options du service, au niveau Stream Deck seulement. DECK_PROGRAM et
+# RESTART_AFTER_GAME restent vides quand l'option manque : la valeur déjà
+# dans les réglages est alors gardée (voir service_setting). SERVICE_OPTIONS
+# compte les options données, pour refuser leur emploi ailleurs.
 DECK_PROGRAM=""
 AUTOSTART=0
+RESTART_AFTER_GAME=""
 SERVICE_OPTIONS=0
 
 OS=""
@@ -153,6 +154,9 @@ remis en place si la pose échoue.
                     erplibre-home-streamdeck.service (défaut : tiler)
   --autostart       avec --stream-deck : active le service à l'ouverture de
                     session (défaut : non activé)
+  --restart-after-game, --no-restart-after-game
+                    avec --stream-deck : le service revient, ou non, après
+                    un jeu (défaut : il revient)
                     Une option du service absente garde la valeur déjà
                     dans les réglages ; le défaut ne vaut que pour une clé
                     qui n'y est pas.
@@ -191,6 +195,10 @@ parse_args() {
                 AUTOSTART=1
                 SERVICE_OPTIONS=$((SERVICE_OPTIONS + 1))
                 ;;
+            --restart-after-game | --no-restart-after-game)
+                set_restart_after_game "$1"
+                SERVICE_OPTIONS=$((SERVICE_OPTIONS + 1))
+                ;;
             -h | --help)
                 usage
                 exit 0
@@ -218,8 +226,21 @@ parse_args() {
         die "--uninstall ne se combine qu'avec --stream-deck et --dry-run"
     fi
     if [ "${SERVICE_OPTIONS}" -gt 0 ] && [ "${STREAM_DECK}" = 0 ]; then
-        die "--deck-program et --autostart demandent --stream-deck"
+        die "--deck-program, --autostart et --[no-]restart-after-game" \
+            "demandent --stream-deck"
     fi
+}
+
+# --restart-after-game pose RESTART_AFTER_GAME=yes, --no-restart-after-game
+# =no ; les deux ensemble se contredisent et sont une erreur d'usage.
+set_restart_after_game() {
+    local value=yes
+    [ "$1" = --restart-after-game ] || value=no
+    if [ -n "${RESTART_AFTER_GAME}" ] \
+        && [ "${RESTART_AFTER_GAME}" != "${value}" ]; then
+        die "--restart-after-game et --no-restart-after-game s'excluent"
+    fi
+    RESTART_AFTER_GAME="${value}"
 }
 
 check_not_root() {
@@ -1086,7 +1107,7 @@ check_checkout_path() {
 # cette ligne, l'arrêt laisserait l'unité « failed ». TimeoutStopSec=10 :
 # un fil non démon (animation, webcam du contrôleur) retient SystemExit, et
 # l'arrêt finit alors en SIGKILL au bout de 10 s au lieu des 90 s par
-# défaut. PYTHONUNBUFFERED : la
+# défaut, que la passation attendrait avant le jeu. PYTHONUNBUFFERED : la
 # sortie va au journal ligne par ligne, et non par blocs à la sortie.
 unit_content() {
     local dir entry
@@ -1189,11 +1210,13 @@ service_setting() {
     echo "${current:-${default}}"
 }
 
-# La ligne « CLÉ=valeur » que l'installation pose, selon service_setting.
+# Les deux lignes « CLÉ=valeur » que l'installation pose, selon
+# service_setting.
 service_pairs() {
-    local program
+    local program restart
     program="$(service_setting DECK_PROGRAM "${DECK_PROGRAM}" tiler)"
-    printf '%s\n' "DECK_PROGRAM=${program}"
+    restart="$(service_setting RESTART_AFTER_GAME "${RESTART_AFTER_GAME}" yes)"
+    printf '%s\n' "DECK_PROGRAM=${program}" "RESTART_AFTER_GAME=${restart}"
 }
 
 # install_file FICHIER remplace FICHIER par l'entrée standard, par un

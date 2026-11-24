@@ -5,7 +5,8 @@
 réglages, le fichier pilote de l'extension, et l'appel d'une commande.
 
 Les mêmes règles que script/install/erplibre_home_settings.sh, que lisent
-l'installateur et le point d'entrée du service : lignes « CLÉ=valeur », jamais sourcées, la dernière ligne d'une clé
+l'installateur, le point d'entrée du service et l'outil de passation :
+lignes « CLÉ=valeur », jamais sourcées, la dernière ligne d'une clé
 l'emporte, $XDG_CONFIG_HOME prime sur ~/.config. Les fonctions prennent
 `environ` pour que les tests désignent un HOME jetable.
 """
@@ -22,6 +23,7 @@ DECK_REPO_DIR = "script/stream_deck/deck"
 PROGRAMS = ("tiler", "controller", "none")
 DEFAULTS = {
     "DECK_PROGRAM": "tiler",
+    "RESTART_AFTER_GAME": "yes",
     "DECK_PLUGINS_OFF": "",
     "DECK_SESSION_REFRESH_SEC": "1",
 }

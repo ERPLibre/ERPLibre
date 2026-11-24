@@ -3,8 +3,9 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Les réglages du service Stream Deck, vus de TODO.
 
-TODO lit et réécrit le même fichier que l'installateur et le point
-d'entrée du service : ces tests gardent les mêmes règles des deux côtés, et comparent l'écriture de Python à celle de l'installateur sur
+TODO lit et réécrit le même fichier que l'installateur, le point d'entrée
+du service et l'outil de passation : ces tests gardent les mêmes règles des
+deux côtés, et comparent l'écriture de Python à celle de l'installateur sur
 les mêmes entrées.
 """
 
@@ -61,6 +62,7 @@ class LaLecture(unittest.TestCase):
         self.assertEqual(
             {
                 "DECK_PROGRAM": "tiler",
+                "RESTART_AFTER_GAME": "yes",
                 "DECK_PLUGINS_OFF": "",
                 "DECK_SESSION_REFRESH_SEC": "1",
             },
@@ -77,7 +79,7 @@ class LaLecture(unittest.TestCase):
             )
             reglages = service.read_settings(str(chemin))
         self.assertEqual("controller", reglages["DECK_PROGRAM"])
-        self.assertEqual("", reglages["DECK_PLUGINS_OFF"])
+        self.assertEqual("yes", reglages["RESTART_AFTER_GAME"])
 
     def test_python_and_the_shell_library_read_the_same_value(self):
         """read_settings et deck_setting de la bibliothèque shell rendent
@@ -88,10 +90,10 @@ class LaLecture(unittest.TestCase):
             "DECK_PROGRAM=none\n",
             "DECK_PROGRAM=a\nDECK_PROGRAM=controller",
             "# DECK_PROGRAM=none\nDECK_PROGRAM=\n",
-            "DECK_PROGRAM=none\rDECK_PLUGINS_OFF=sound\n",
-            "sans egal\nDECK_PLUGINS_OFF=sound\n",
+            "DECK_PROGRAM=none\rRESTART_AFTER_GAME=no\n",
+            "sans egal\nRESTART_AFTER_GAME=no\n",
             "# réglé à la main\nDECK_PROGRAM=none\n".encode("latin-1"),
-            "DECK_PROGRAM=été\nDECK_PLUGINS_OFF=sound\n".encode("latin-1"),
+            "DECK_PROGRAM=été\nRESTART_AFTER_GAME=no\n".encode("latin-1"),
         )
         for contenu in contenus:
             with self.subTest(contenu=contenu):
@@ -266,10 +268,10 @@ class LesPluginsCoupes(unittest.TestCase):
 class LEcriture(unittest.TestCase):
     def test_a_key_is_replaced_in_place_and_others_stay(self):
         self.assertEqual(
-            "# note\nDECK_PROGRAM=none\nEXEMPLE=1\nDECK_PLUGINS_OFF=sound\n",
+            "# note\nDECK_PROGRAM=none\nEXEMPLE=1\nRESTART_AFTER_GAME=no\n",
             service.settings_text(
                 "# note\nDECK_PROGRAM=tiler\nEXEMPLE=1\n",
-                {"DECK_PROGRAM": "none", "DECK_PLUGINS_OFF": "sound"},
+                {"DECK_PROGRAM": "none", "RESTART_AFTER_GAME": "no"},
             ),
         )
 
@@ -295,15 +297,15 @@ class LEcriture(unittest.TestCase):
         entrees = (
             "",
             "DECK_PROGRAM=none\n",
-            "# note\nEXEMPLE=1\nDECK_PLUGINS_OFF=tiling\nDECK_PROGRAM=tiler",
+            "# note\nEXEMPLE=1\nRESTART_AFTER_GAME=yes\nDECK_PROGRAM=tiler",
             "DECK_PROGRAM=none\r\nEXEMPLE=1\r\n",
-            "DECK_PROGRAM=none\rDECK_PLUGINS_OFF=tiling\n",
+            "DECK_PROGRAM=none\rRESTART_AFTER_GAME=yes\n",
             "EXEMPLE=a\x0bDECK_PROGRAM=none\n",
-            "EXEMPLE=a\x1cDECK_PLUGINS_OFF=tiling\x1d\x1e\x85\n",
+            "EXEMPLE=a\x1cRESTART_AFTER_GAME=yes\x1d\x1e\x85\n",
             "EXEMPLE=a\u2028DECK_PROGRAM=none\u2029\n",
             "\n\nEXEMPLE=1\n\n",
         )
-        maj = {"DECK_PROGRAM": "controller", "DECK_PLUGINS_OFF": "sound"}
+        maj = {"DECK_PROGRAM": "controller", "RESTART_AFTER_GAME": "no"}
         for entree in entrees:
             with self.subTest(entree=entree):
                 with tempfile.TemporaryDirectory() as dossier:
@@ -332,7 +334,7 @@ class LEcriture(unittest.TestCase):
                             "-c",
                             'ERPLIBRE_HOME_SOURCE_ONLY=1 . "$INSTALLEUR"\n'
                             'settings_content "$FICHIER"'
-                            " DECK_PROGRAM=controller DECK_PLUGINS_OFF=sound\n",
+                            " DECK_PROGRAM=controller RESTART_AFTER_GAME=no\n",
                         ],
                         capture_output=True,
                         env=env,
@@ -350,10 +352,10 @@ class LEcriture(unittest.TestCase):
         fichier. Une mise à jour qui ne change rien ne le réécrit pas."""
         commentaire = "# réglé à la main, ½\n".encode("latin-1")
         avant = commentaire + b"DECK_PROGRAM=tiler\nEXEMPLE=\xe9\n"
-        maj = {"DECK_PROGRAM": "none", "DECK_PLUGINS_OFF": "sound"}
+        maj = {"DECK_PROGRAM": "none", "RESTART_AFTER_GAME": "no"}
         attendu = (
             commentaire
-            + b"DECK_PROGRAM=none\nEXEMPLE=\xe9\nDECK_PLUGINS_OFF=sound\n"
+            + b"DECK_PROGRAM=none\nEXEMPLE=\xe9\nRESTART_AFTER_GAME=no\n"
         )
         with tempfile.TemporaryDirectory() as dossier:
             chemin = Path(dossier, "streamdeck.conf")
@@ -364,7 +366,7 @@ class LEcriture(unittest.TestCase):
             self.assertEqual(attendu, chemin.read_bytes())
             lu = service.read_settings(str(chemin))
             self.assertEqual("none", lu["DECK_PROGRAM"])
-            self.assertEqual("sound", lu["DECK_PLUGINS_OFF"])
+            self.assertEqual("no", lu["RESTART_AFTER_GAME"])
             mtime = chemin.stat().st_mtime_ns
             self.assertFalse(service.write_settings(str(chemin), maj))
             self.assertEqual(mtime, chemin.stat().st_mtime_ns)
@@ -385,7 +387,7 @@ class LEcriture(unittest.TestCase):
                     "-c",
                     'ERPLIBRE_HOME_SOURCE_ONLY=1 . "$INSTALLEUR"\n'
                     'settings_content "$FICHIER"'
-                    " DECK_PROGRAM=none DECK_PLUGINS_OFF=sound\n",
+                    " DECK_PROGRAM=none RESTART_AFTER_GAME=no\n",
                 ],
                 capture_output=True,
                 env=env,

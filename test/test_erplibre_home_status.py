@@ -96,6 +96,7 @@ def faits(**changes):
         "unit_active": "active",
         "settings": {
             "DECK_PROGRAM": "tiler",
+            "RESTART_AFTER_GAME": "yes",
             "DECK_PLUGINS_OFF": "",
             "DECK_SESSION_REFRESH_SEC": "1",
         },
@@ -370,6 +371,7 @@ class LaCollecte(unittest.TestCase):
                 "unit_active": "",
                 "settings": {
                     "DECK_PROGRAM": "tiler",
+                    "RESTART_AFTER_GAME": "yes",
                     "DECK_PLUGINS_OFF": "",
                     "DECK_SESSION_REFRESH_SEC": "1",
                 },

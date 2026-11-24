@@ -1,11 +1,11 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
-# Bibliothèque sourcée par l'installateur et le point d'entrée du service :
-# les noms et les chemins du service Stream Deck, et la lecture de ses
-# réglages. Elle ne lance rien et ne pose que des fonctions et les
-# constantes DECK_UNIT_NAME, DECK_REPO_DIR, DECK_GAMES_DIR et
-# ERPLIBRE_HOME_EXT_DIR.
+# Bibliothèque sourcée par l'installateur, le point d'entrée du service et
+# l'outil de passation : les noms et les chemins du service Stream Deck, et
+# la lecture de ses réglages. Elle ne lance rien et ne pose que des
+# fonctions et les constantes DECK_UNIT_NAME, DECK_REPO_DIR,
+# DECK_CONTRACT_FILE, DECK_GAMES_DIR et ERPLIBRE_HOME_EXT_DIR.
 #
 # Les réglages sont des lignes « CLÉ=valeur » ; une ligne qui ne commence pas
 # par « CLÉ= » est ignorée, si bien qu'un commentaire « # … » est permis.
@@ -77,6 +77,47 @@ deck_program_path() {
     esac
 }
 
+# deck_games_enabled sort en 0 quand GAMES vaut « on » ou manque, en 1 pour
+# « off », en 2 pour toute autre valeur, « GAMES= » compris : une valeur
+# inconnue coupe les jeux, comme un DECK_PROGRAM inconnu coupe le service.
+deck_games_enabled() {
+    case "$(deck_setting GAMES on)" in
+        on) return 0 ;;
+        off) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
+# deck_games_message écrit, sur une ligne, pourquoi un jeu ne démarre pas :
+# la valeur de GAMES, le fichier qui la porte, et comment les réactiver.
+# Les caractères de contrôle de la valeur sont rendus visibles : un « \r »
+# brut ramènerait le curseur en début de ligne et masquerait le message.
+deck_games_message() {
+    local value
+    value="$(deck_setting GAMES on)"
+    value="${value//$'\r'/\\r}"
+    value="${value//$'\t'/\\t}"
+    value="${value//$'\033'/\\e}"
+    echo "[ERPLibre Home] Stream Deck games are disabled" \
+        "(GAMES=${value} in $(deck_settings_file));" \
+        "enable them from TODO › ERPLibre Home › Games on/off, or set GAMES=on"
+}
+
+# deck_games_present [RACINE] sort en 0 quand les jeux sont installés sous
+# RACINE, le répertoire courant par défaut : games_cli.py, que chaque jeu
+# importe, en est le témoin, un répertoire vide ne suffit pas.
+deck_games_present() {
+    [ -f "${1:-.}/${DECK_GAMES_DIR}/games_cli.py" ]
+}
+
+# deck_games_absent_message écrit, sur une ligne, que les jeux manquent et
+# la commande qui les installe.
+deck_games_absent_message() {
+    echo "[ERPLibre Home] Stream Deck games are not installed" \
+        "(no games_cli.py in ${DECK_GAMES_DIR}/);" \
+        "install them with make erplibre_home_streamdeck_install"
+}
+
 # deck_repo_present [RACINE] sort en 0 quand le programme du deck est posé
 # sous RACINE, le répertoire courant par défaut : erplibre_streamdeck/
 # __main__.py en est le témoin. Un répertoire qui ne garde que des caches
@@ -91,6 +132,60 @@ deck_repo_absent_message() {
     echo "[ERPLibre Home] the deck program is not installed" \
         "(no erplibre_streamdeck/__main__.py in ${DECK_REPO_DIR}/);" \
         "install it with make erplibre_home_streamdeck_install"
+}
+
+# Le contrat qu'ERPLibre attend du programme du deck, relatif à la racine
+# du dépôt : une ligne « MAJEURE.MINEURE ».
+DECK_CONTRACT_FILE="script/stream_deck/deck_contract"
+
+# deck_contract_expected [RACINE] écrit la version de DECK_CONTRACT_FILE
+# sous RACINE, blancs retirés ; sort en 1, sans rien écrire, quand le
+# fichier manque ou ne porte pas « MAJEURE.MINEURE ».
+deck_contract_expected() {
+    local version
+    version="$(tr -d '[:space:]' <"${1:-.}/${DECK_CONTRACT_FILE}" \
+        2>/dev/null)" || return 1
+    [[ "${version}" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+    echo "${version}"
+}
+
+# deck_contract_cloned [RACINE] écrit la version du CONTRACT.md du clone,
+# celle de sa ligne « **Contract version: X.Y** » ; sort en 1, sans rien
+# écrire, quand le fichier manque ou ne porte pas exactement une telle
+# ligne.
+deck_contract_cloned() {
+    local versions
+    versions="$(sed -n \
+        's/^\*\*Contract version: \([0-9][0-9]*\.[0-9][0-9]*\)\*\*$/\1/p' \
+        "${1:-.}/${DECK_REPO_DIR}/CONTRACT.md" 2>/dev/null)" || return 1
+    [[ "${versions}" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+    echo "${versions}"
+}
+
+# deck_contract_ok [RACINE] sort en 0 quand le clone du programme du deck
+# sous RACINE remplit le contrat attendu : même MAJEURE que
+# DECK_CONTRACT_FILE, MINEURE au moins égale. Une MINEURE ajoute ce dont
+# ERPLibre se sert, comme la commande « game » de deck_lock.py en 1.1 : un
+# clone plus ancien ne l'a pas. Une version absente ou mal formée, d'un
+# côté ou de l'autre, sort en 1.
+deck_contract_ok() {
+    local attendue clone
+    attendue="$(deck_contract_expected "${1:-.}")" || return 1
+    clone="$(deck_contract_cloned "${1:-.}")" || return 1
+    [ "$((10#${clone%%.*}))" -eq "$((10#${attendue%%.*}))" ] \
+        && [ "$((10#${clone#*.}))" -ge "$((10#${attendue#*.}))" ]
+}
+
+# deck_contract_message [RACINE] écrit, sur une ligne, la version du clone,
+# celle qu'ERPLibre attend, et comment mettre le clone à jour.
+deck_contract_message() {
+    local attendue clone
+    attendue="$(deck_contract_expected "${1:-.}")" || attendue="?"
+    clone="$(deck_contract_cloned "${1:-.}")" || clone="?"
+    echo "[ERPLibre Home] the deck program in ${DECK_REPO_DIR}/ has" \
+        "contract ${clone}, ERPLibre needs ${attendue} or a later" \
+        "${attendue%%.*}.x; update it with make" \
+        "erplibre_home_streamdeck_install"
 }
 
 # erplibre_home_extension_present [RACINE] sort en 0 quand l'extension est
