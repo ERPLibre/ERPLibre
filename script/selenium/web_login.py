@@ -247,6 +247,57 @@ def run(
     return True
 
 
+def stdin_est_un_terminal():
+    """Rend True si l'entrée standard est un terminal.
+
+    Une entrée absente (None) ou déjà fermée n'en est pas un.
+    """
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def fenetre_ouverte(driver):
+    """Rend True tant que le navigateur garde au moins une fenêtre.
+
+    Une session close par la fermeture de sa dernière fenêtre fait lever le
+    pilote, ou rend son service injoignable : les deux valent fenêtre
+    fermée.
+    """
+    try:
+        return bool(driver.window_handles)
+    except Exception:
+        return False
+
+
+def garder_ouvert(driver, headless=False, pas=1.0):
+    """Garde le navigateur ouvert jusqu'à ce que l'utilisateur en ait fini.
+
+    Avec un terminal sur l'entrée standard, attend Entrée. Sans terminal —
+    lancé par un autre programme, l'entrée est un tube ou /dev/null —
+    input() bloquerait sur le tube, ou lèverait EOFError et fermerait le
+    navigateur aussitôt : le pilote est plutôt interrogé toutes les `pas`
+    secondes jusqu'à la fermeture de la dernière fenêtre. `headless` n'a
+    pas de fenêtre à fermer et n'attend pas. Ctrl+C et une fin d'entrée
+    terminent l'attente sans trace d'appel. Le pilote est ensuite quitté.
+    """
+    try:
+        if stdin_est_un_terminal():
+            input("Appuie sur Entrée pour fermer...")
+        elif not headless:
+            print("Ferme la fenêtre du navigateur pour terminer.")
+            while fenetre_ouverte(driver):
+                time.sleep(pas)
+    except (EOFError, KeyboardInterrupt):
+        print()
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+
 def compute_args(args):
     pass
 
@@ -270,7 +321,7 @@ def main():
     # Execute
     run(args, selenium_tool)
     selenium_tool.stop_record()
-    input("Appuie sur Entrée pour fermer...")
+    garder_ouvert(selenium_tool.driver, headless=args.headless)
     return 0
 
 
