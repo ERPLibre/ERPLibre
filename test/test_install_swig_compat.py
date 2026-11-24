@@ -61,6 +61,22 @@ APPEL_SWIG_43 = """
 PyObject *sonde(long v) { return PyInt_FromLong(v); }
 """
 
+# La garde de pythran (pythonic/types/int.hpp) : les deux derniers alias ne
+# sont définis que si le premier ne l'est pas encore.
+APPEL_PYTHRAN = """
+#include <Python.h>
+#ifndef PyInt_FromLong
+#define PyInt_FromLong PyLong_FromLong
+#ifndef PyInt_CheckExact
+#define PyInt_CheckExact PyLong_CheckExact
+#endif
+#ifndef PyInt_AsLong
+#define PyInt_AsLong PyLong_AsLong
+#endif
+#endif
+long sonde(PyObject *o) { return PyInt_CheckExact(o) ? PyInt_AsLong(o) : 0; }
+"""
+
 # Forme d'une règle de Makefile autotools : $(CPPFLAGS) recopié tel quel dans
 # la commande que make confie au shell.
 MAKEFILE_AUTOTOOLS = "all:\n\t@echo CC $(CPPFLAGS) sonde.lo\n"
@@ -252,12 +268,23 @@ class TestLeDrapeauCompile(unittest.TestCase):
             self.skipTest(sortie)
         self.assertTrue(ok, sortie[-400:])
 
+    def test_pythran_guard_still_finds_every_alias(self):
+        """pythran saute ses alias quand PyInt_FromLong existe déjà : l'en-tête
+        doit donc fournir ceux que pythran emploie."""
+        ok, sortie = _compile(APPEL_PYTHRAN, _drapeau_developpe())
+        if ok is None:
+            self.skipTest(sortie)
+        self.assertTrue(ok, sortie[-400:])
+
     def test_it_does_not_clash_with_an_older_swig(self):
         """Un hôte dont le SWIG écrit encore l'alias verrait, sinon, un
         avertissement de redéfinition par fichier compilé. En -Werror, ce
         serait un échec."""
         ok, sortie = _compile(
-            SWIG_42 + APPEL_SWIG_43, ["-Werror", *_drapeau_developpe()]
+            SWIG_42
+            + "\n#define PyInt_AsLong(x) PyLong_AsLong(x)"
+            + APPEL_SWIG_43,
+            ["-Werror", *_drapeau_developpe()],
         )
         if ok is None:
             self.skipTest(sortie)

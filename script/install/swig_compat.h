@@ -13,7 +13,20 @@
  *
  * Le corps est celui que SWIG 4.2 écrivait, token pour token : un wrapper qui
  * le redéfinit encore ne lève aucun avertissement de redéfinition.
+ *
+ * PyInt_FromLong ne vient jamais seul. pythran, qui génère une partie du C++
+ * de scipy, traite sa présence comme le signe que TOUS les alias existent :
+ * ses « PyInt_CheckExact » et « PyInt_AsLong » sont définis sous
+ * « #ifndef PyInt_FromLong ». Poser le premier sans les deux autres les lui
+ * fait sauter, et sa compilation s'arrête sur « ‘PyInt_AsLong’ was not
+ * declared ». Les trois sont donc posés ensemble.
  */
 #ifndef PyInt_FromLong
 #define PyInt_FromLong(x) PyLong_FromLong(x)
+#endif
+#ifndef PyInt_AsLong
+#define PyInt_AsLong(x) PyLong_AsLong(x)
+#endif
+#ifndef PyInt_CheckExact
+#define PyInt_CheckExact(x) PyLong_CheckExact(x)
 #endif
