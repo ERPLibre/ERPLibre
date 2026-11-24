@@ -174,6 +174,15 @@ def _tri_memoire(p):
     return (total is None, -(total or 0), p["pid"])
 
 
+def entier(texte):
+    """`texte` en entier s'il n'est fait que de chiffres ASCII ; None
+    sinon. str.isdigit() accepte aussi « ² » ou les chiffres d'autres
+    écritures, sur lesquels int() lève ValueError."""
+    if texte and texte.isascii() and texte.isdigit():
+        return int(texte)
+    return None
+
+
 def affichable(texte):
     """`texte` sans caractère de contrôle : chacun devient « ? ».
 
@@ -395,8 +404,9 @@ def choisir_en_ligne(candidats):
         return [i for i, c in enumerate(candidats) if c.coche]
     choisis = []
     for morceau in reponse.replace(" ", "").split(","):
-        if morceau.isdigit() and 1 <= int(morceau) <= len(candidats):
-            choisis.append(int(morceau) - 1)
+        numero = entier(morceau)
+        if numero is not None and 1 <= numero <= len(candidats):
+            choisis.append(numero - 1)
     return sorted(set(choisis))
 
 
@@ -869,9 +879,10 @@ class SystemMenuMixin:
                 note = f"✗ {t('not installed, unknown package manager')}"
             print(f"  [{i}] {o['nom']:<8} {note}")
         reponse = input(t("Tool number, Enter for none: ")).strip()
-        if not (reponse.isdigit() and 1 <= int(reponse) <= len(outils)):
+        numero = entier(reponse)
+        if numero is None or not 1 <= numero <= len(outils):
             return
-        outil = outils[int(reponse) - 1]
+        outil = outils[numero - 1]
         if outil["chemin"]:
             commande = [outil["chemin"]] + outil["args"]
         elif nix:
@@ -1161,10 +1172,11 @@ class SystemMenuMixin:
         reponse = input(
             t("Numbers to run (e.g. 1,2), Enter for none: ")
         ).strip()
+        numeros = [entier(m) for m in reponse.replace(" ", "").split(",")]
         choisis = [
-            caches[int(m) - 1]
-            for m in reponse.replace(" ", "").split(",")
-            if m.isdigit() and 1 <= int(m) <= len(caches)
+            caches[n - 1]
+            for n in numeros
+            if n is not None and 1 <= n <= len(caches)
         ]
         if not choisis:
             print(f"  {t('Nothing selected.')}")
@@ -1292,8 +1304,9 @@ class SystemMenuMixin:
                 f"  {t('priority')} {s['priority']}"
             )
         reponse = input(t("Swap number, Enter to cancel: ")).strip()
-        if reponse.isdigit() and 1 <= int(reponse) <= len(cibles):
-            return cibles[int(reponse) - 1]
+        numero = entier(reponse)
+        if numero is not None and 1 <= numero <= len(cibles):
+            return cibles[numero - 1]
         return None
 
     def _system_swap_taille(self, defaut=None):
