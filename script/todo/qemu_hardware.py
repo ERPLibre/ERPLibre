@@ -21,7 +21,9 @@ Deux pièges, appris sur l'hôte :
 
 - « virt-xml --memory N » ne change que <currentMemory>, la cible du ballon.
   Élever la RAM au-delà du maximum exige les deux champs à la fois, sinon la
-  VM plafonne en silence à son ancien maximum.
+  VM plafonne en silence à son ancien maximum. Le plan les écrit donc
+  toujours ensemble, et garde l'écart entre eux : c'est la marge que le
+  ballon peut rendre à chaud.
 - « --add-device --graphics type=egl-headless » n'est PAS idempotent : appelé
   deux fois, il pose deux affichages. D'où la lecture de l'état AVANT le plan.
 """
@@ -68,6 +70,11 @@ CPU_EXTRA = {"host-passthrough": ",check=none,migratable=on"}
 # il n'ouvre aucun port et n'existe que pour porter le contexte OpenGL.
 SCREEN_TYPES = ("vnc", "spice", "sdl", "desktop")
 EGL = "egl-headless"
+
+# Modèle du ballon posé quand un plafond dépasse la RAM. virt-install pose le
+# même par défaut (« <memballoon model='virtio'/> ») ; libvirt y ajoute
+# lui-même freePageReporting à la définition.
+BALLOON_MODEL = "virtio"
 
 # libvirt écrit KiB pour la mémoire, mais le schéma autorise les deux systèmes
 # d'unités — KB vaut mille octets, KiB en vaut 1024. On convertit en octets
@@ -157,6 +164,13 @@ def hw_state(xml: str, autostart=None) -> dict:
         # --network » modifie, et une VM du parc n'en a qu'une.
         "net": "",
         "autostart": bool(autostart),
+        # Modèle du ballon (« virtio »…) ; vide sans <memballoon> ET avec
+        # model='none', qui en tient lieu de refus explicite.
+        "balloon": "",
+        # Un <memballoon> existe-t-il, quel que soit son modèle ? Un second
+        # serait refusé par libvirt : model='none' se modifie en place.
+        "balloon_elem": False,
+        "free_page_reporting": False,
     }
     try:
         root = ET.fromstring(xml or "")
@@ -172,6 +186,12 @@ def hw_state(xml: str, autostart=None) -> dict:
     cpu = root.find("cpu")
     if cpu is not None:
         state["cpu"] = cpu.get("mode") or ""
+    balloon = root.find("./devices/memballoon")
+    if balloon is not None:
+        state["balloon_elem"] = True
+        model = balloon.get("model") or ""
+        state["balloon"] = "" if model == "none" else model
+        state["free_page_reporting"] = balloon.get("freePageReporting") == "on"
     iface = root.find("./devices/interface")
     if iface is not None:
         source = iface.find("source")
@@ -310,19 +330,7 @@ def hw_plan(state: dict, want: dict, node: str = "") -> list:
             }
         )
 
-    ram = positive_int(want.get("ram"), 0)
-    if ram and ram != state.get("mem_mib"):
-        plan.append(
-            {
-                "what": f"RAM {fmt_mib(state.get('mem_mib'))} → {fmt_mib(ram)}",
-                "cmd": _virt_xml(
-                    name,
-                    "--edit",
-                    "--memory",
-                    f"memory={ram},currentMemory={ram}",
-                ),
-            }
-        )
+    plan += _memory_plan(name, state, want)
 
     cpu = (want.get("cpu") or "").strip()
     if cpu and cpu != state.get("cpu"):
@@ -386,6 +394,72 @@ def hw_plan(state: dict, want: dict, node: str = "") -> list:
             {
                 "what": t("Autostart") + (" : on" if auto else " : off"),
                 "cmd": args + [name],
+            }
+        )
+    return plan
+
+
+def _memory_plan(name: str, state: dict, want: dict) -> list:
+    """Volet mémoire du plan : RAM, plafond, et ballon qui sépare les deux.
+
+    `want["ram"]` est <currentMemory>, `want["max_ram"]` est <memory>. Un
+    plafond absent, ou égal à l'actuel, vaut « n'y touche pas » : changer la
+    RAM seule garde alors le plafond, et le relève à la RAM quand elle le
+    dépasse. Un plafond CHOISI sous la RAM n'a pas de sens — libvirt refuse
+    currentMemory > memory — et devient une ligne « skip ».
+
+    Une seule commande écrit les deux valeurs : « --memory N » seul ne
+    toucherait que <currentMemory>. Quand le plafond dépasse la RAM, c'est
+    le ballon qui retient l'invité sous la RAM : sans lui, l'invité démarre
+    avec tout le plafond. Le plan en pose un s'il manque.
+    """
+    cur = positive_int(state.get("mem_mib"), 0)
+    old_max = positive_int(state.get("max_mem_mib"), 0) or cur
+    ram = positive_int(want.get("ram"), 0) or cur
+    wanted_max = positive_int(want.get("max_ram"), 0)
+    if not ram:
+        return []
+    if wanted_max and wanted_max != old_max:
+        if wanted_max < ram:
+            return [
+                {
+                    "what": f"{t('RAM max')} {fmt_mib(wanted_max)}",
+                    "skip": t("below the RAM of the VM")
+                    + f" ({fmt_mib(ram)})",
+                }
+            ]
+        new_max = wanted_max
+    else:
+        new_max = max(old_max, ram)
+    if ram == cur and new_max == old_max:
+        return []
+    quoi = []
+    if ram != cur:
+        quoi.append(f"RAM {fmt_mib(cur)} → {fmt_mib(ram)}")
+    if new_max != old_max:
+        quoi.append(f"{t('RAM max')} {fmt_mib(old_max)} → {fmt_mib(new_max)}")
+    what = ", ".join(quoi)
+    plan = [
+        {
+            "what": what,
+            "cmd": _virt_xml(
+                name,
+                "--edit",
+                "--memory",
+                f"memory={new_max},currentMemory={ram}",
+            ),
+        }
+    ]
+    if new_max > ram and not state.get("balloon"):
+        # model='none' est un élément existant : en ajouter un second serait
+        # refusé, on le modifie en place.
+        action = "--edit" if state.get("balloon_elem") else "--add-device"
+        plan.append(
+            {
+                "what": f"{t('Balloon')} : {BALLOON_MODEL}",
+                "cmd": _virt_xml(
+                    name, action, "--memballoon", f"model={BALLOON_MODEL}"
+                ),
             }
         )
     return plan
@@ -478,18 +552,31 @@ def _gpu_plan(name: str, state: dict, gpu: bool, node: str) -> list:
 
 
 def build_want(
-    state: dict, vcpus, ram, gpu, autostart, cpu="", heads="", net=""
+    state: dict,
+    vcpus,
+    ram,
+    gpu,
+    autostart,
+    cpu="",
+    heads="",
+    net="",
+    max_ram="",
 ) -> dict:
     """Valeurs de widgets -> intention, en retombant sur l'état actuel.
 
     Un champ vidé ou illisible ne veut pas dire « zéro vCPU » : il veut dire
     « n'y touche pas ». Sans ce repli, valider le formulaire sans rien saisir
     proposerait de rétrécir la VM à néant.
+
+    `max_ram` (le plafond <memory>) retombe sur le plafond actuel : hw_plan
+    lit cette égalité comme « inchangé », et relève alors le plafond à la
+    RAM au besoin plutôt que de refuser.
     """
     return {
         "name": state.get("name") or "",
         "vcpus": positive_int(vcpus, state.get("vcpus") or 0),
         "ram": parse_ram(ram) or state.get("mem_mib") or 0,
+        "max_ram": parse_ram(max_ram) or state.get("max_mem_mib") or 0,
         "gpu": bool(gpu),
         "autostart": bool(autostart),
         "cpu": (cpu or state.get("cpu") or "").strip(),
@@ -508,8 +595,21 @@ def gpu_allowed(state: dict, node: str) -> str:
 
 
 def hw_summary(state: dict) -> str:
-    """Ligne d'état lisible : « 8 vCPU, 32 Go, 3D on (renderD128) »."""
-    bits = [f"{state.get('vcpus') or '?'} vCPU", fmt_mib(state.get("mem_mib"))]
+    """Ligne d'état lisible : « 8 vCPU, 32 Go, 3D on (renderD128) ».
+
+    La RAM porte son plafond quand il la dépasse — « 4 Go (max 16 Go) » —
+    et le ballon est toujours nommé : c'est lui qui rend ce plafond
+    atteignable à chaud.
+    """
+    ram = fmt_mib(state.get("mem_mib"))
+    plafond = positive_int(state.get("max_mem_mib"), 0)
+    if plafond > positive_int(state.get("mem_mib"), 0):
+        ram += f" (max {fmt_mib(plafond)})"
+    bits = [f"{state.get('vcpus') or '?'} vCPU", ram]
+    if state.get("balloon"):
+        bits.append(f"{t('balloon')} {state['balloon']}")
+    else:
+        bits.append(t("no balloon"))
     if state.get("accel3d") or state.get("render"):
         node = state.get("render") or "?"
         marque = f"3D {node.rsplit('/', 1)[-1]}"
@@ -610,6 +710,9 @@ def run_hardware_form(rows, node: str = "", nets=None, run_app: bool = True):
            mais PAS son contenu — la valeur devient invisible, ce qui est pire
            qu'une troncature (on valide un champ qu'on croit vide). */
         .heads { width: 8; }
+        /* « RAM max » tient en neuf colonnes dans les deux langues. */
+        .lbl3 { width: 9; height: 3; content-align: right middle; }
+        .hint { width: 1fr; height: 3; content-align: left middle; }
         #bar { height: auto; padding: 1; }
         """
         BINDINGS = [
@@ -683,6 +786,20 @@ def run_hardware_form(rows, node: str = "", nets=None, run_app: bool = True):
                                 id=f"net{i}",
                                 classes="selnet",
                             )
+                    # Le plafond <memory> sur sa propre rangée : la RAM
+                    # (<currentMemory>) peut y monter à chaud par le ballon.
+                    with Horizontal(classes="row"):
+                        yield Static(t("RAM max"), classes="lbl3")
+                        yield Input(
+                            value=ram_field(st.get("max_mem_mib")),
+                            id=f"maxram{i}",
+                            classes="num",
+                            placeholder="Mo ou G",
+                        )
+                        yield Static(
+                            t("balloon: the guest reserves ~1.6% of the max"),
+                            classes="hint",
+                        )
                     if reason:
                         yield Static(f"⚠ {reason}", classes="warn")
             with Horizontal(id="bar"):
@@ -705,6 +822,7 @@ def run_hardware_form(rows, node: str = "", nets=None, run_app: bool = True):
                     cpu=self.query_one(f"#cpu{i}", Select).value or "",
                     heads=self.query_one(f"#heads{i}", Input).value,
                     net=net,
+                    max_ram=self.query_one(f"#maxram{i}", Input).value,
                 )
             self.want = want
             self.exit()

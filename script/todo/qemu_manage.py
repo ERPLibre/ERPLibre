@@ -1061,6 +1061,18 @@ class QemuManageMixin:
             print(f"\n  {r['name']} — {hw.hw_summary(r)}")
             vcpus = input(f"    vCPU [{r.get('vcpus')}] : ")
             ram = input(f"    RAM [{hw.fmt_mib(r.get('mem_mib'))}] : ")
+            # Le plafond n'est demandé que si la RAM vient d'être saisie, ou
+            # si la VM a déjà une marge au-dessus d'elle : une réponse vide à
+            # la RAM laisse sinon la mémoire entière en l'état, sans question
+            # de plus.
+            max_ram = ""
+            if ram.strip() or (r.get("max_mem_mib") or 0) > (
+                r.get("mem_mib") or 0
+            ):
+                max_ram = input(
+                    f"    {t('RAM max')} [{hw.fmt_mib(r.get('max_mem_mib'))}]"
+                    " : "
+                )
             reason = hw.gpu_allowed(r, node)
             if reason:
                 print(f"    ⚠ {t('3D acceleration (host GPU)')} : {reason}")
@@ -1088,7 +1100,15 @@ class QemuManageMixin:
                     labels=[lab for _tok, lab in reseaux],
                 )
             want[r["name"]] = hw.build_want(
-                r, vcpus, ram, gpu, auto, cpu=cpu, heads=heads, net=net
+                r,
+                vcpus,
+                ram,
+                gpu,
+                auto,
+                cpu=cpu,
+                heads=heads,
+                net=net,
+                max_ram=max_ram,
             )
         return want
 
