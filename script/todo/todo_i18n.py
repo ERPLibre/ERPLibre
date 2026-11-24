@@ -397,9 +397,9 @@ TRANSLATIONS = {
         "fr": "Venv à vérifier :",
         "en": "Venv to check:",
     },
-    "Install the missing requirements (y/N, default: N)? ": {
-        "fr": "Installer les exigences manquantes (o/N, défaut : N) ? ",
-        "en": "Install the missing requirements (y/N, default: N)? ",
+    "Install the missing requirements?": {
+        "fr": "Installer les exigences manquantes ?",
+        "en": "Install the missing requirements?",
     },
     "The venv satisfies its requirements:": {
         "fr": "Le venv respecte ses exigences :",
@@ -512,9 +512,9 @@ TRANSLATIONS = {
         "fr": "Hors du lock, laissés tels quels par la mise à jour :",
         "en": "Outside the lock, left untouched by the update:",
     },
-    "Update the venv to match the lock (y/N, default: N)? ": {
-        "fr": "Mettre le venv à jour selon le lock (o/N, défaut : N) ? ",
-        "en": "Update the venv to match the lock (y/N, default: N)? ",
+    "Update the venv to match the lock?": {
+        "fr": "Mettre le venv à jour selon le lock ?",
+        "en": "Update the venv to match the lock?",
     },
     "To update it later: %s": {
         "fr": "Pour le mettre à jour plus tard : %s",
@@ -709,10 +709,7 @@ TRANSLATIONS = {
         "fr": "Pour les dépendances du lock, voir [1].",
         "en": "For the dependencies of the lock, see [1].",
     },
-    "Run them now (y/N, default: N)? ": {
-        "fr": "Les lancer maintenant (o/N, défaut : N) ? ",
-        "en": "Run them now (y/N, default: N)? ",
-    },
+    "Run them now?": {"fr": "Les lancer maintenant ?", "en": "Run them now?"},
     "Venvs to install or update:": {
         "fr": "Venvs à installer ou à mettre à jour :",
         "en": "Venvs to install or update:",
@@ -24200,9 +24197,9 @@ TRANSLATIONS = {
         "fr": "lecture seule de /proc/*/fdinfo",
         "en": "read-only reading of /proc/*/fdinfo",
     },
-    "Read them with sudo? The password is asked here. (y/N): ": {
-        "fr": "Les lire avec sudo ? Le mot de passe se tape ici. (o/N) : ",
-        "en": "Read them with sudo? The password is asked here. (y/N): ",
+    "Read them with sudo? The password is asked here.": {
+        "fr": "Les lire avec sudo ? Le mot de passe se tape ici.",
+        "en": "Read them with sudo? The password is asked here.",
     },
     "sudo failed: showing what reads without root.": {
         "fr": "sudo a échoué : affichage de ce qui se lit sans root.",
@@ -24240,10 +24237,7 @@ TRANSLATIONS = {
         "fr": "L'installation a échoué :",
         "en": "Installation failed:",
     },
-    "Install {name}? (y/N): ": {
-        "fr": "Installer {name} ? (o/N) : ",
-        "en": "Install {name}? (y/N): ",
-    },
+    "Install {name}?": {"fr": "Installer {name} ?", "en": "Install {name}?"},
     (
         "The package database may be stale: run sudo pacman -Syu, then try "
         "again."
@@ -24278,9 +24272,9 @@ TRANSLATIONS = {
         "fr": "Caches à vider avec sudo :",
         "en": "Caches to clear with sudo:",
     },
-    "Run these commands with sudo? (y/N): ": {
-        "fr": "Lancer ces commandes avec sudo ? (o/N) : ",
-        "en": "Run these commands with sudo? (y/N): ",
+    "Run these commands with sudo?": {
+        "fr": "Lancer ces commandes avec sudo ?",
+        "en": "Run these commands with sudo?",
     },
     # Système : diagnostic
     "System": {
@@ -24387,9 +24381,9 @@ TRANSLATIONS = {
         "fr": "indisponible",
         "en": "unavailable",
     },
-    "Save this report in private/diagnostic/? (y/N): ": {
-        "fr": "Enregistrer ce rapport dans private/diagnostic/ ? (o/N) : ",
-        "en": "Save this report in private/diagnostic/? (y/N): ",
+    "Save this report in private/diagnostic/?": {
+        "fr": "Enregistrer ce rapport dans private/diagnostic/ ?",
+        "en": "Save this report in private/diagnostic/?",
     },
     "Report saved:": {
         "fr": "Rapport enregistré :",

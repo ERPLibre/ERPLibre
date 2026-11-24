@@ -348,18 +348,15 @@ class BancMenu(unittest.TestCase):
             return statut
 
         self.todo.execute.exec_command_live.side_effect = installer
-        # Une exception, EOFError pour Ctrl+D, est levée à la question.
-        leve = isinstance(reponse, BaseException)
+        # `reponse`, ou chaque réponse d'une liste, dans l'ordre ; une
+        # exception, EOFError pour Ctrl+D, est levée à la question.
+        reponses = reponse if isinstance(reponse, list) else [reponse]
         with (
             patch.object(
                 drift, "simuler", side_effect=simulations
             ) as self.simuler,
             patch.object(drift, "relever", side_effect=relever),
-            patch(
-                "builtins.input",
-                return_value=None if leve else reponse,
-                side_effect=reponse if leve else None,
-            ) as question,
+            patch("builtins.input", side_effect=reponses) as question,
             patch("sys.stdout", sortie),
         ):
             self.todo.execute_poetry_drift()
@@ -401,14 +398,26 @@ class TestLeParcours(BancMenu):
         self.assertIn("dnspython 2.7.0", texte)
         self.assertIn("six 1.17.0 → 1.16.0", texte)
         question.assert_called_once()
-        self.assertIn(
-            todo_i18n.t(
-                "Update the venv to match the lock (y/N, default: N)? "
-            ),
+        # La question, puis l'indice de son défaut, non, que pose le port.
+        self.assertEqual(
+            f"{todo_i18n.t('Update the venv to match the lock?')}"
+            f" {todo_i18n.t('[y/N]: ')}",
             question.call_args[0][0],
         )
         # Le défaut est non : rien n'est installé.
         self.assertEqual([], self.installe())
+
+    def test_une_faute_a_la_mise_a_jour_est_dite_puis_redemandee(self):
+        texte, question = self.lancer(
+            [self.simulation(SORTIE), self.simulation(ALIGNE)],
+            ["peut-être", "o"],
+        )
+        self.assertEqual(2, question.call_count)
+        self.assertIn(f"{todo_i18n.t('Answer yes or no: ')}peut-être", texte)
+        self.assertEqual(
+            ["EL_PHASE=poetry ./script/install/install_locally.sh"],
+            self.installe(),
+        )
 
     def test_oui_installe_le_lock_et_ecrit_le_rapport(self):
         avant = {
@@ -710,6 +719,29 @@ class TestPlusieursVenvs(BancMenu):
         self.assertIn(f"{todo_i18n.t('Requirements not satisfied:')} 1", texte)
         self.assertEqual([], self.installe())
 
+    def test_une_faute_puis_ctrl_d_n_installe_rien(self):
+        # Un autre venv puis l'outillage : la faute est dite, la question
+        # revient, et Ctrl+D y vaut non.
+        etat = {
+            "exigences": 1,
+            "manquantes": ["absent>=1"],
+            "hors_bornes": [],
+            "illisibles": [],
+            "de_trop": [],
+        }
+        for reponses, kwargs in (
+            (["2"], {"simulations": [self.simulation(SORTIE)]}),
+            (["3"], {"sorties_outillage": [etat]}),
+        ):
+            with self.subTest(venv=reponses[0]):
+                texte, _ = self.jouer(
+                    [*reponses, "peut-être", EOFError()], **kwargs
+                )
+                self.assertIn(
+                    f"{todo_i18n.t('Answer yes or no: ')}peut-être", texte
+                )
+                self.assertEqual([], self.installe())
+
 
 class TestDossierTemporaire(unittest.TestCase):
     def test_les_liens_visent_la_version_puis_disparaissent(self):
@@ -948,6 +980,13 @@ class TestVersionsPython(BancMenu):
         self.jouer(["1", ""])
         self.assertEqual([], self.installe())
 
+    def test_une_faute_est_dite_puis_redemandee(self):
+        self.preparer([NON_SUPPORTEE])
+        texte, question = self.jouer(["1", "peut-être", "oui"])
+        self.assertEqual(3, question.call_count)
+        self.assertIn(f"{todo_i18n.t('Answer yes or no: ')}peut-être", texte)
+        self.assertEqual(3, len(self.installe()), self.installe())
+
     def test_un_venv_rate_n_active_rien(self):
         # install_venv.sh échoue : ni --switch ni poetry, la version active
         # ne bouge pas.
@@ -1136,7 +1175,7 @@ class TestVersionsPython(BancMenu):
 
     def test_la_page_recoit_un_choix_multiple_puis_un_oui_non(self):
         # Par le port lié, la page reçoit une question à cases, que suit
-        # la confirmation, une question texte.
+        # la confirmation, un oui/non dont le défaut est non.
         self.preparer([NON_SUPPORTEE], sources=("18.0", "17.0"))
         port = ScriptedPort(["1", "n"])
         with ui.bind(port), patch("sys.stdout", io.StringIO()):
@@ -1151,11 +1190,9 @@ class TestVersionsPython(BancMenu):
             {VERSION: "1", "odoo17.0_python3.10.18": "2"}, choix["names"]
         )
         self.assertTrue(choix["options"][0]["label"].startswith(VERSION))
-        self.assertEqual("text", confirmation["kind"])
-        self.assertIn(
-            todo_i18n.t("Run them now (y/N, default: N)? "),
-            confirmation["text"],
-        )
+        self.assertEqual("confirm", confirmation["kind"])
+        self.assertEqual(todo_i18n.t("Run them now?"), confirmation["prompt"])
+        self.assertEqual("n", confirmation["default"])
         self.assertEqual([], self.installe())
 
     def jouer_coupe(self, reponses, coupee):

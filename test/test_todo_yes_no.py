@@ -142,6 +142,26 @@ CONFIRM_DEFAULTS = {
         "Neutralize the copy?",
     ): [True],
     (
+        "script/todo/python_menu.py",
+        "PythonMenuMixin._poetry_drift_actif",
+        "Update the venv to match the lock?",
+    ): [False],
+    (
+        "script/todo/python_menu.py",
+        "PythonMenuMixin._poetry_drift_autre",
+        "Update the venv to match the lock?",
+    ): [False],
+    (
+        "script/todo/python_menu.py",
+        "PythonMenuMixin._venv_outillage_drift",
+        "Install the missing requirements?",
+    ): [False],
+    (
+        "script/todo/python_menu.py",
+        "PythonMenuMixin.execute_python_versions",
+        "Run them now?",
+    ): [False],
+    (
         "script/todo/qemu_install_monitor.py",
         "install_cli_browser",
         "Install now?",
@@ -150,6 +170,31 @@ CONFIRM_DEFAULTS = {
         "script/todo/qemu_manage.py",
         "QemuManageMixin._qemu_install_shrink_tools",
         "Install them?",
+    ): [False],
+    (
+        "script/todo/system_menu.py",
+        "SystemMenuMixin._system_caches_sudo",
+        "Run these commands with sudo?",
+    ): [False],
+    (
+        "script/todo/system_menu.py",
+        "SystemMenuMixin._system_cpu_installer",
+        "Install {name}?",
+    ): [False],
+    (
+        "script/todo/system_menu.py",
+        "SystemMenuMixin._system_diagnostic",
+        "Save this report in private/diagnostic/?",
+    ): [False],
+    (
+        "script/todo/system_menu.py",
+        "SystemMenuMixin._system_espace",
+        "Delete these items?",
+    ): [False],
+    (
+        "script/todo/system_menu.py",
+        "SystemMenuMixin._system_gpu_sudo",
+        "Read them with sudo? The password is asked here.",
     ): [False],
     (
         "script/todo/todo.py",

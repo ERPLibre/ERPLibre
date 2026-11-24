@@ -329,7 +329,11 @@ class TestLaQuestionSudo(unittest.TestCase):
         with (
             mock.patch.object(sm.os, "geteuid", return_value=euid),
             mock.patch.object(sm.sys.stdin, "isatty", return_value=tty),
-            mock.patch("builtins.input", return_value=reponse) as question,
+            mock.patch(
+                "builtins.input",
+                side_effect=reponse if isinstance(reponse, list) else None,
+                return_value=reponse,
+            ) as question,
             mock.patch("builtins.print"),
             mock.patch.object(sg, "drm_sudo", return_value=lu) as sudo,
             mock.patch.object(sg, "completer"),
@@ -349,6 +353,16 @@ class TestLaQuestionSudo(unittest.TestCase):
         self.assertTrue(question)
         self.assertFalse(sudo)
         self.assertTrue(garde)
+
+    def test_ctrl_d_or_a_typo_then_ctrl_d_keeps_the_reading_without_root(
+        self,
+    ):
+        for reponses in ([EOFError()], ["peut-être", EOFError()]):
+            with self.subTest(reponses=reponses):
+                garde, question, sudo, _ = self.demander(reponses)
+                self.assertTrue(question)
+                self.assertFalse(sudo)
+                self.assertTrue(garde)
 
     def test_yes_replaces_the_reading_with_the_root_one(self):
         lu = {"processus": [], "sans_stats": [], "illisibles": 0, "sudo": True}

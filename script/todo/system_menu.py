@@ -400,23 +400,13 @@ class SystemMenuMixin:
         sur [0]."""
         return navigate(self, menus_execute.SYSTEM)
 
-    def _system_oui(self, question):
-        """Vrai si l'utilisateur répond oui à `question`, un oui/non qui
-        suit une liste et précède un effacement ou sudo ; une réponse vide
-        et Ctrl+D (EOFError) valent non."""
-        try:
-            reponse = ui.ask(question)
-        except EOFError:
-            return False
-        return self._is_yes(reponse)
-
     def _system_diagnostic(self):
         faits = system_diagnostic.collecter(".")
         lignes = lignes_diagnostic(faits)
         print("\n".join(lignes))
         print()
-        if not self._is_yes(
-            input(t("Save this report in private/diagnostic/? (y/N): "))
+        if not ui.confirm(
+            t("Save this report in private/diagnostic/?"), default=False
         ):
             return
         dossier = os.path.join("private", "diagnostic")
@@ -488,7 +478,9 @@ class SystemMenuMixin:
             return False
         for commande in plan:
             print(f"  {t('Will execute:')} {shlex.join(commande)}")
-        if not self._system_oui(t("Install {name}? (y/N): ").format(name=nom)):
+        if not ui.confirm(
+            t("Install {name}?").format(name=nom), default=False
+        ):
             return False
         for commande in plan:
             try:
@@ -530,10 +522,9 @@ class SystemMenuMixin:
             f"  {t('Will execute:')} sudo python3 -I -c"
             f" <{t('read-only reading of /proc/*/fdinfo')}>"
         )
-        if not self._is_yes(
-            input(
-                t("Read them with sudo? The password is asked here. (y/N): ")
-            )
+        if not ui.confirm(
+            t("Read them with sudo? The password is asked here."),
+            default=False,
         ):
             return
         lu = system_gpu.drm_sudo()
@@ -668,8 +659,8 @@ class SystemMenuMixin:
         for c in retenus:
             print(f"  - {libelle(c)}")
         prevu = sum(c.taille for c in retenus)
-        if not self._system_oui(
-            f"{t('Delete these items?')} ({octets(prevu)}) (y/N): "
+        if not ui.confirm(
+            f"{t('Delete these items?')} ({octets(prevu)})", default=False
         ):
             print(f"  {t('Nothing deleted.')}")
             return
@@ -752,7 +743,7 @@ class SystemMenuMixin:
             return
         for c in choisis:
             print(f"  - {shlex.join(c['commande'])}")
-        if not self._system_oui(t("Run these commands with sudo? (y/N): ")):
+        if not ui.confirm(t("Run these commands with sudo?"), default=False):
             print(f"  {t('Nothing deleted.')}")
             return
         for c in choisis:

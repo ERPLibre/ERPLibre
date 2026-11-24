@@ -269,6 +269,17 @@ class TestLeMenu(unittest.TestCase):
         self.assertEqual(lances, [])
         self.assertIn("sudo pacman -S x", vu)
 
+    def test_a_typo_is_said_then_asked_again(self):
+        lances, vu = self.lancer(["3", "peut-être", EOFError()])
+        self.assertEqual(lances, [])
+        self.assertIn("Répondez o/oui ou n/non : peut-être", vu)
+        lances, _ = self.lancer(
+            ["3", "peut-être", "oui"], apres_installation=("btop",)
+        )
+        self.assertEqual(
+            lances, [["sudo", "pacman", "-S", "x"], ["/usr/bin/btop"]]
+        )
+
     def test_installed_then_launched(self):
         lances, _ = self.lancer(["3", "o"], apres_installation=("btop",))
         self.assertEqual(

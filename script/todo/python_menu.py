@@ -152,18 +152,9 @@ class PythonMenuMixin:
             )
         elif self._python_versions_change_odoo(active, cibles):
             self._python_versions_avertir_config(cibles[-1]["cible"])
-        if not self._python_oui(t("Run them now (y/N, default: N)? ")):
+        if not ui.confirm(t("Run them now?"), default=False):
             return
         self._python_versions_executer(cibles, active)
-
-    def _python_oui(self, question):
-        """Vrai si l'utilisateur répond oui à `question`, un oui/non qui
-        suit une liste ; Ctrl+D (EOFError) vaut non, sans rien lancer."""
-        try:
-            reponse = ui.ask(f"💬 {question}")
-        except EOFError:
-            return False
-        return self._is_yes(reponse)
 
     @staticmethod
     def _python_versions_choisir(actions, libelles):
@@ -544,8 +535,9 @@ class PythonMenuMixin:
         simulation = drift.simuler(".", version)
         if not self._poetry_drift_afficher(version, simulation):
             return
-        question = t("Update the venv to match the lock (y/N, default: N)? ")
-        if demander and not self._python_oui(question):
+        if demander and not ui.confirm(
+            t("Update the venv to match the lock?"), default=False
+        ):
             print(
                 t("To update it later: %s")
                 % "EL_PHASE=poetry ./script/install/install_locally.sh"
@@ -571,10 +563,9 @@ class PythonMenuMixin:
                 version, simulation, lock=c["lock"]
             ):
                 return
-            question = t(
-                "Update the venv to match the lock (y/N, default: N)? "
-            )
-            if demander and not self._python_oui(question):
+            if demander and not ui.confirm(
+                t("Update the venv to match the lock?"), default=False
+            ):
                 return
             self._poetry_drift_mettre_a_jour(
                 version,
@@ -591,8 +582,9 @@ class PythonMenuMixin:
         etat = self._venv_outillage_analyser(venv)
         if etat is None or not self._venv_outillage_afficher(venv, etat):
             return
-        question = t("Install the missing requirements (y/N, default: N)? ")
-        if demander and not self._python_oui(question):
+        if demander and not ui.confirm(
+            t("Install the missing requirements?"), default=False
+        ):
             return
         commande = (
             ". ./script/install/lib_pip_provider.sh && el_pip_install"

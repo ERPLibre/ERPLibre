@@ -370,6 +370,49 @@ class TestLeRapport(unittest.TestCase):
                 os.chdir(ancien)
         self.assertFalse(existe)
 
+    def test_ctrl_d_or_a_typo_then_ctrl_d_saves_no_report(self):
+        # La question dit son défaut, non ; une faute est dite et la
+        # question revient ; Ctrl+D vaut non et TODO continue.
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        ancien = os.getcwd()
+        for reponses in ([EOFError()], ["peut-être", EOFError()]):
+            vus = []
+            with (
+                self.subTest(reponses=reponses),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                os.chdir(tmp)
+                try:
+                    with (
+                        mock.patch.object(
+                            sd, "collecter", return_value=faits_absents()
+                        ),
+                        mock.patch(
+                            "builtins.input", side_effect=reponses
+                        ) as question,
+                        mock.patch(
+                            "builtins.print",
+                            side_effect=lambda *a, **k: vus.append(
+                                " ".join(map(str, a))
+                            ),
+                        ),
+                    ):
+                        todo._system_diagnostic()
+                    existe = os.path.exists(os.path.join(tmp, "private"))
+                finally:
+                    os.chdir(ancien)
+                self.assertFalse(existe)
+                self.assertEqual(question.call_count, len(reponses))
+                self.assertTrue(
+                    question.call_args.args[0].endswith(" [o/N] : ")
+                )
+                self.assertEqual(
+                    "peut-être" in reponses,
+                    "Répondez o/oui ou n/non : peut-être" in vus,
+                )
+
 
 class TestLesLibelles(unittest.TestCase):
     def test_every_category_warning_and_reason_is_translated(self):
@@ -439,6 +482,12 @@ class TestLesCachesSudo(unittest.TestCase):
 
     def test_ctrl_d_at_the_confirmation_runs_nothing(self):
         self.assertEqual(self.lancer(["1", EOFError()]), [])
+        self.assertIn("Rien n'a été effacé.", self.vu)
+
+    def test_a_typo_then_ctrl_d_runs_nothing(self):
+        self.assertEqual(self.lancer(["1", "peut-être", EOFError()]), [])
+        self.assertEqual(self.questions, 3)
+        self.assertIn("Répondez o/oui ou n/non : peut-être", self.vu)
         self.assertIn("Rien n'a été effacé.", self.vu)
 
     def test_ctrl_d_at_the_confirmation_ends_its_line_once(self):
@@ -607,6 +656,19 @@ class TestLEspaceARecuperer(unittest.TestCase):
         self.parcourir(["3", "2", "n"]).assert_not_called()
         self.assertIn("Choix invalide : 3", self.vu)
         self.assertEqual(self.questions, 3)
+
+    def test_a_typo_then_ctrl_d_deletes_nothing(self):
+        # Entrée, Ctrl+D, une faute puis Ctrl+D : rien n'est effacé ; la
+        # faute est dite et la même question, taille comprise, revient.
+        for reponses in ([""], [EOFError()], ["peut-être", EOFError()]):
+            with self.subTest(reponses=reponses):
+                self.parcourir(["s", *reponses]).assert_not_called()
+                self.assertEqual(self.questions, 1 + len(reponses))
+                self.assertIn("Rien n'a été effacé.", self.vu)
+                self.assertEqual(
+                    "peut-être" in reponses,
+                    "Répondez o/oui ou n/non : peut-être" in self.vu,
+                )
 
     def test_an_empty_version_file_offers_no_current_venv(self):
         from script.todo.todo import TODO

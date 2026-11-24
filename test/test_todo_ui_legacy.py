@@ -150,7 +150,6 @@ RAW_CALLS = {
     "script/todo/seal_menu.py": 9,
     "script/todo/sms/menu.py": 6,
     "script/todo/sms/tui.py": 1,
-    "script/todo/system_menu.py": 2,
     "script/todo/todo.py": 84,
     "script/todo/todo_upgrade.py": 2,
     "script/todo/transform_menu.py": 5,
