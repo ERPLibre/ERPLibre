@@ -53,8 +53,8 @@ streamdeck_tiler: streamdeck_erplibre
 
 # ERPLibre Home, two levels. The base: the GNOME extension, its schemas
 # and translations, linked and enabled. The Stream Deck level adds the USB
-# packages, the udev rule, the deck program checkout and .venv.streamdeck,
-# and installs the base too.
+# packages, the udev rule, the deck program and games checkouts and
+# .venv.streamdeck, and installs the base too.
 # The installer holds every step; these targets only call it, so make and
 # the installer cannot disagree.
 .PHONY: erplibre_home_install

@@ -7,9 +7,10 @@
 # script/gnome-extension/erplibre_home/, liée, ses schémas et ses
 # traductions compilés, puis activée ; ni accès au périphérique ni venv.
 # --stream-deck ajoute le niveau Stream Deck par-dessus la base : paquets
-# USB, règle udev, le programme du deck, un dépôt à part que Google Repo
-# amène dans script/stream_deck/deck/, le venv dédié .venv.streamdeck, qui
-# reçoit ses dépendances, et le service systemd --user
+# USB, règle udev, le programme du deck et les jeux, deux dépôts à part que
+# Google Repo amène dans script/stream_deck/deck/ et
+# script/stream_deck/games/, le venv dédié .venv.streamdeck, qui reçoit
+# leurs dépendances, et le service systemd --user
 # erplibre-home-streamdeck.service avec ses réglages. Le niveau Stream Deck
 # inclut toujours la base ; la base s'installe seule.
 #
@@ -63,6 +64,8 @@ EXT_LINK="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 METADATA="${EXT_SRC}/metadata.json"
 DECK_SRC="${RACINE}/${DECK_REPO_DIR}"
 DECK_MANIFEST="${RACINE}/manifest/git_manifest_erplibre_streamdeck_deck.xml"
+GAMES_DIR="${RACINE}/${DECK_GAMES_DIR}"
+GAMES_MANIFEST="${RACINE}/manifest/git_manifest_streamdeck_game.xml"
 UDEV_RULE="/etc/udev/rules.d/70-streamdeck.rules"
 # Le nom stable que la règle udev donne au deck branché, et l'unité .device
 # que systemd en tire : l'unité du service la nomme dans WantedBy=.
@@ -126,9 +129,10 @@ qui n'est pas un checkout repo est mis de côté, <dir>.avant-repo-<date>, et
 remis en place si la pose échoue.
 
   --stream-deck     ajoute le niveau Stream Deck : paquets USB, règle udev,
-                    le programme du deck de script/stream_deck/deck/
-                    (projet repo, comme l'extension), .venv.streamdeck et
-                    le service ; la base s'installe aussi, au besoin
+                    le programme du deck de script/stream_deck/deck/ et
+                    les jeux de script/stream_deck/games/ (projets repo,
+                    comme l'extension), .venv.streamdeck et le service ;
+                    la base s'installe aussi, au besoin
   --no-enable       n'active pas l'extension ; un poste où l'ancienne
                     extension était active garde cet état sous le
                     nouveau nom (migration)
@@ -156,7 +160,7 @@ remis en place si la pose échoue.
                     service et réglages ; avec --stream-deck, tout sauf
                     l'extension, qui reste active ; les paquets système,
                     .repo, le manifeste local et les checkouts de
-                    l'extension et du deck restent
+                    l'extension, du deck et des jeux restent
   --dry-run         affiche ce qui serait fait, sans rien changer ni
                     appeler sudo
   -h, --help        cette aide
@@ -603,8 +607,11 @@ write_udev_rule() {
 # ---------- venv ----------
 
 # Crée le venv avec le python3 du système s'il manque, puis y installe les
-# dépendances du deck. pip ne réinstalle pas ce qui est déjà satisfait : le
-# venv existant garde son contenu.
+# dépendances du deck et, quand les jeux sont là, les leurs : leur dépôt les
+# liste dans son requirements.txt. Celles des jeux passent par un second
+# appel, dont l'échec est dit au bilan sans arrêter l'installation : le
+# programme du deck et le service n'en dépendent pas. pip ne réinstalle pas
+# ce qui est déjà satisfait : le venv existant garde son contenu.
 make_venv() {
     if [ ! -x "${VENV}/bin/python" ]; then
         python3 -m venv "${VENV}"
@@ -612,19 +619,24 @@ make_venv() {
     fi
     "${VENV}/bin/python" -m pip install --quiet --disable-pip-version-check \
         -r "${REQUIREMENTS}"
+    if [ -f "${GAMES_DIR}/requirements.txt" ] \
+        && ! "${VENV}/bin/python" -m pip install --quiet \
+            --disable-pip-version-check -r "${GAMES_DIR}/requirements.txt"; then
+        DONE+=("games requirements NOT installed: ${GAMES_DIR}/requirements.txt")
+    fi
 }
 
 # ---------- Google Repo ----------
 
-# L'extension et le programme du deck sont des dépôts à part, des projets
-# Google Repo comme les addons d'un checkout complet. L'installateur ajoute
-# leur projet au manifeste local, puis « repo sync » de leur seul chemin les
-# amène au dernier commit de main ; la sémantique est celle de repo, sans
-# rien de plus : un HEAD détaché suit main, une branche de « repo start »
-# suit repo. Les fonctions repo_* prennent le libellé du projet (le mot qui
-# ouvre ses lignes du bilan : « extension », « deck »), son chemin relatif
-# à la racine, son manifeste dans manifest/ et le fichier témoin qui dit
-# qu'il est posé.
+# L'extension, le programme du deck et les jeux sont des dépôts à part, des
+# projets Google Repo comme les addons d'un checkout complet. L'installateur
+# ajoute leur projet au manifeste local, puis « repo sync » de leur seul
+# chemin les amène au dernier commit de main ; la sémantique est celle de
+# repo, sans rien de plus : un HEAD détaché suit main, une branche de
+# « repo start » suit repo. Les fonctions repo_* prennent le libellé du
+# projet (le mot qui ouvre ses lignes du bilan : « extension », « deck »,
+# « games »), son chemin relatif à la racine, son manifeste dans manifest/
+# et le fichier témoin qui dit qu'il est posé.
 
 # Les manifestes locaux de repo. erplibre_manifest.xml est celui qu'écrit la
 # fusion des manifestes d'un checkout complet : l'installateur y ajoute ses
@@ -1617,6 +1629,12 @@ step_deck() {
         erplibre_streamdeck/__main__.py
 }
 
+# Les jeux, par repo_project, comme le programme du deck ; sous --dry-run,
+# leurs lignes. games_cli.py, que chaque jeu importe, est leur témoin.
+step_games() {
+    repo_project games "${DECK_GAMES_DIR}" "${GAMES_MANIFEST}" games_cli.py
+}
+
 step_venv() {
     if [ "${DRY_RUN}" = 1 ]; then
         echo "venv: ${VENV}"
@@ -1723,15 +1741,15 @@ step_uninstall() {
 # --uninstall et --extension-only ne lisent ni os-release ni la version de
 # GNOME : ni l'un ni l'autre n'installe de paquet, et une désinstallation
 # doit marcher sur un GNOME sorti de shell-version. La base passe toujours ;
-# la règle udev, le programme du deck, le venv et le service n'arrivent
-# qu'avec --stream-deck, dont le chemin du dépôt se vérifie avant tout le
-# reste. check_fetch_tools (git, repo) précède toute pose, après la version
-# de GNOME : un poste sans GNOME Shell n'est pas supporté sans que repo ait
-# rien touché. repo amène l'extension avant la lecture de shell-version,
-# qu'elle porte, et le deck avant le venv, qui lit ses dépendances. La
-# désinstallation n'appelle jamais repo, et laisse .repo et le manifeste
-# local : sans le projet au manifeste, le sync suivant supprimerait son
-# répertoire.
+# la règle udev, le programme du deck, les jeux, le venv et le service
+# n'arrivent qu'avec --stream-deck, dont le chemin du dépôt se vérifie avant
+# tout le reste. check_fetch_tools (git, repo) précède toute pose, après la
+# version de GNOME : un poste sans GNOME Shell n'est pas supporté sans que
+# repo ait rien touché. repo amène l'extension avant la lecture de
+# shell-version, qu'elle porte, et le deck et les jeux avant le venv, qui
+# lit leurs dépendances. La désinstallation n'appelle jamais repo, et
+# laisse .repo et le manifeste local : sans le projet au manifeste, le sync
+# suivant supprimerait son répertoire.
 main() {
     parse_args "$@"
     check_not_root
@@ -1761,6 +1779,7 @@ main() {
         if [ "${STREAM_DECK}" = 1 ]; then
             step_udev
             step_deck
+            step_games
             step_venv
             step_service
         fi

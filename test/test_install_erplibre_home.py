@@ -18,12 +18,13 @@ Ce que ces tests gardent :
 - les deux niveaux : la base ne pose ni règle udev, ni venv, ni paquet du
   deck ; --stream-deck ajoute les trois, et EPEL n'est activé qu'avec lui,
   sur les reconstructions d'EL, où wmctrl en dépend ;
-- l'extension et le programme du deck sont des projets Google Repo : repo
-  init --standalone-manifest une seule fois, sans -g, jamais sur un .repo
-  déjà initialisé ; leur projet ajouté au manifeste local, dont chaque
-  autre octet reste ; puis « repo sync -n » et « repo sync -l » de leur
-  seul chemin, l'extension avant la lecture de shell-version dans son
-  metadata.json, le deck avant le venv, qui installe son requirements.txt ;
+- l'extension, le programme du deck et les jeux sont des projets Google
+  Repo : repo init --standalone-manifest une seule fois, sans -g, jamais
+  sur un .repo déjà initialisé ; leur projet ajouté au manifeste local,
+  dont chaque autre octet reste ; puis « repo sync -n » et « repo sync -l »
+  de leur seul chemin, l'extension avant la lecture de shell-version dans
+  son metadata.json, le deck et les jeux avant le venv, qui installe leurs
+  requirements.txt ;
 - un contenu qui n'est pas un checkout repo (clone git, copie,
   restes) est mis de côté entier, puis remis en place si la pose échoue ;
   un fetch qui échoue sur un checkout laisse l'ancien contenu en service et
@@ -36,7 +37,8 @@ Ce que ces tests gardent :
   rejoue le scénario avec le vrai, sur des dépôts nus file:// ;
 - les traductions se compilent par « msgfmt --check », aux deux niveaux ;
 - --uninstall retire tout, --uninstall --stream-deck tout sauf
-  l'extension ; aucun des deux ne vérifie le système ;
+  l'extension ; aucun des deux ne vérifie le système ni ne retire les
+  jeux ;
 - le niveau Stream Deck écrit l'unité du service et ses réglages ; une
   option absente garde la valeur déjà en place, le défaut ne vaut que pour
   une clé absente ; il n'active l'unité qu'avec --autostart et ne la
@@ -611,6 +613,29 @@ class LeDryRun(Installateur):
         self.assertTrue(deck.startswith("deck: repo sync %s (" % DECK_CLONE))
         self.assertLess(sortie.index(deck), sortie.index("venv: " + self.venv))
         self.assertEqual([], self.lignes(self.lancer("--dry-run"), "deck: "))
+
+    def test_only_the_stream_deck_level_has_a_games_sync(self):
+        self.assertEqual([], self.lignes(self.lancer("--dry-run"), "games: "))
+        fini = self.lancer("--dry-run", "--stream-deck")
+        (ligne,) = self.lignes(fini, "games: repo sync ")
+        self.assertTrue(
+            ligne.startswith("%s (" % (RACINE / "script/stream_deck/games"))
+        )
+
+    def test_the_games_come_before_the_venv_that_takes_their_requirements(
+        self,
+    ):
+        """Le venv installe le requirements.txt des jeux s'il est là : des
+        jeux posés après lui laisseraient une première installation sans
+        leurs dépendances jusqu'à la suivante."""
+        fini = self.lancer("--dry-run", "--stream-deck")
+        self.assertEqual(0, fini.returncode, fini.stderr)
+        etapes = [
+            ligne.split(":")[0]
+            for ligne in fini.stdout.splitlines()
+            if ligne.startswith(("games: repo sync ", "venv: "))
+        ]
+        self.assertEqual(["games", "venv"], etapes)
 
     @SANS_EXTENSION
     def test_the_translations_use_msgfmt_check_at_both_levels(self):
@@ -1317,6 +1342,8 @@ EXT_CHEMIN = "script/gnome-extension/erplibre_home"
 DECK_CHEMIN = "script/stream_deck/deck"
 MANIFESTE_EXT = "manifest/git_manifest_erplibre_home_gnome_extension.xml"
 MANIFESTE_DECK = "manifest/git_manifest_erplibre_streamdeck_deck.xml"
+JEUX_CHEMIN = "script/stream_deck/games"
+MANIFESTE_JEUX = "manifest/git_manifest_streamdeck_game.xml"
 MANIFESTE_INIT = "manifest/git_manifest_erplibre.xml"
 
 
@@ -1364,9 +1391,10 @@ def pousser(amont, nom, fichier, texte=""):
 
 class CopieDuCheckout(unittest.TestCase):
     """Une copie du checkout dans un dossier temporaire : l'installateur, sa
-    bibliothèque et les trois manifestes, sans .repo, sans l'extension ni le
-    deck. Deux dépôts nus, amont/erplibre_home.git et amont/deck.git,
-    portent un main minimal de chacun, que le faux repo pose. Le script
+    bibliothèque et les quatre manifestes, sans .repo, sans l'extension, le
+    deck ni les jeux. Trois dépôts nus, amont/erplibre_home.git,
+    amont/deck.git et amont/games.git, portent un main minimal de chacun,
+    que le faux repo pose. Le script
     sourcé ou lancé depuis la copie la prend pour racine : rien ne s'écrit
     dans le vrai checkout, et HOME est temporaire."""
 
@@ -1381,7 +1409,12 @@ class CopieDuCheckout(unittest.TestCase):
         (self.depot / "manifest").mkdir()
         shutil.copy2(INSTALLEUR, self.depot / "script/install")
         shutil.copy2(BIBLIOTHEQUE, self.depot / "script/install")
-        for manifeste in (MANIFESTE_INIT, MANIFESTE_EXT, MANIFESTE_DECK):
+        for manifeste in (
+            MANIFESTE_INIT,
+            MANIFESTE_EXT,
+            MANIFESTE_DECK,
+            MANIFESTE_JEUX,
+        ):
             shutil.copy2(RACINE / manifeste, self.depot / manifeste)
         self.home = self.tmp / "home"
         self.home.mkdir()
@@ -1395,6 +1428,11 @@ class CopieDuCheckout(unittest.TestCase):
                 "requirements.txt": "streamdeck\n",
             },
         )
+        depot_nu(
+            self.amont,
+            "games",
+            {"games_cli.py": "", "requirements.txt": "pillow\n"},
+        )
         self.bin = self.tmp / "bin"
         self.bin.mkdir()
         self.faux_repo = self.bin / "faux_repo"
@@ -1403,6 +1441,7 @@ class CopieDuCheckout(unittest.TestCase):
         self.trace = self.tmp / "repo.trace"
         self.ext = self.depot / EXT_CHEMIN
         self.deck = self.depot / DECK_CHEMIN
+        self.jeux = self.depot / JEUX_CHEMIN
         self.local = self.depot / ".repo/local_manifests/erplibre_manifest.xml"
         self.installeur = (
             self.depot / "script/install/install_erplibre_home.sh"
@@ -1456,13 +1495,15 @@ class CopieDuCheckout(unittest.TestCase):
 
     def poser(self, *etapes, env=None, dry_run=False):
         """check_fetch_tools puis les étapes nommées, « extension »
-        (step_extension_source) ou « deck » (step_deck au niveau Stream
-        Deck) ; le bilan, une ligne par effet, sur la sortie standard."""
+        (step_extension_source), « deck » (step_deck au niveau Stream Deck)
+        ou « games » (step_games, de même) ; le bilan, une ligne par effet,
+        sur la sortie standard."""
         fragment = "DRY_RUN=%d\ncheck_fetch_tools\n" % dry_run
         for etape in etapes or ("extension",):
             fragment += {
                 "extension": "step_extension_source\n",
                 "deck": "STREAM_DECK=1\nstep_deck\n",
+                "games": "STREAM_DECK=1\nstep_games\n",
             }[etape]
         if not dry_run:
             fragment += 'printf "%s\\n" "${DONE[@]}"\n'
@@ -1984,6 +2025,51 @@ class TestPoseParRepo(CopieDuCheckout):
             [p.get("path") for p in racine.findall("project")],
         )
 
+    def test_the_games_are_posed_like_the_deck(self):
+        fait = self.poser("extension", "deck", "games")
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertPose(self.jeux)
+        self.assertTrue((self.jeux / "games_cli.py").is_file())
+        self.assertIn(
+            "games synced: %s (main)" % self.jeux, fait.stdout.splitlines()
+        )
+        self.assertEqual(
+            ["sync -n -c " + JEUX_CHEMIN, "sync -l -c " + JEUX_CHEMIN],
+            self.appels()[-2:],
+        )
+        racine = ET.fromstring(self.local.read_text())
+        self.assertEqual(1, len(racine.findall("remote")))
+        self.assertEqual(
+            [EXT_CHEMIN, DECK_CHEMIN, JEUX_CHEMIN],
+            [p.get("path") for p in racine.findall("project")],
+        )
+
+    def test_games_content_that_is_no_checkout_is_set_aside(self):
+        """Un games/ qui n'est pas un checkout repo, comme les sauvegardes
+        qu'y laisse un checkout qui suivait les jeux, part entier sous
+        games.avant-repo-<date> ; repo pose les jeux à sa place, et une
+        pose qui échoue le remet en place."""
+        sauvegarde = self.jeux / "save/partie.json"
+        sauvegarde.parent.mkdir(parents=True)
+        sauvegarde.write_text("{}")
+        fait = self.poser("games", env={"FAUX_REPO_ECHEC": "local"})
+        self.assertEqual(1, fait.returncode, fait.stdout)
+        self.assertEqual("{}", sauvegarde.read_text())
+        self.assertEqual([], self.mis_de_cote(self.jeux))
+        fait = self.poser("games")
+        self.assertEqual(0, fait.returncode, fait.stderr)
+        self.assertPose(self.jeux)
+        (mis,) = self.mis_de_cote(self.jeux)
+        self.assertEqual(
+            "{}",
+            (self.jeux.parent / mis / "save/partie.json").read_text(),
+        )
+        self.assertIn(
+            "games set aside: %s moved to %s"
+            % (self.jeux, self.jeux.parent / mis),
+            fait.stdout.splitlines(),
+        )
+
     def test_the_shrink_guard_stops_before_a_sync_that_would_delete(self):
         """Tout repo sync, même d'un seul chemin, supprime les chemins de
         project.list que le manifeste ne nomme plus : l'installateur refuse
@@ -2190,7 +2276,8 @@ class TestPoseParRepo(CopieDuCheckout):
         texte = INSTALLEUR.read_text(encoding="utf-8")
         corps = texte[texte.index("\nmain() {") :]
         self.assertLess(corps.index("step_udev"), corps.index("step_deck"))
-        self.assertLess(corps.index("step_deck"), corps.index("step_venv"))
+        self.assertLess(corps.index("step_deck"), corps.index("step_games"))
+        self.assertLess(corps.index("step_games"), corps.index("step_venv"))
 
     def test_uninstall_without_the_extension_removes_the_link(self):
         """Sans l'extension, la liste enabled-extensions ne se lit pas par
@@ -2550,6 +2637,7 @@ class TestVenv(unittest.TestCase):
                 (faux / nom).chmod(0o755)
             fragment = (
                 'PATH="$FAUX:$PATH"\nVENV="$DOSSIER/venv"\n'
+                'GAMES_DIR="$DOSSIER/games"\n'
                 'make_venv\nprintf "%s\\n" "${DONE[@]}"\n'
             )
             env = {"DOSSIER": dossier, "FAUX": str(faux)}
@@ -2885,6 +2973,47 @@ class TestDesinstallation(unittest.TestCase):
             self.assertIn("sudo udevadm control --reload-rules", premier)
             self.assertNotIn("gsettings", premier + second)
             self.assertEqual(second, "")
+
+    def test_neither_uninstall_removes_the_games(self):
+        """Les jeux sont un dépôt git que l'installateur n'a pas toujours
+        cloné lui-même, avec ses branches et son travail local : les deux
+        désinstallations le laissent, comme le checkout d'ERPLibre."""
+        for niveau in ("0", "1"):
+            with self.subTest(stream_deck=niveau):
+                with tempfile.TemporaryDirectory() as dossier:
+                    base = Path(dossier, "extensions")
+                    base.mkdir()
+                    (base / UUID).symlink_to(EXTENSION)
+                    Path(dossier, "70-streamdeck.rules").write_text("x\n")
+                    Path(dossier, "venv/bin").mkdir(parents=True)
+                    jeux = Path(dossier, "games")
+                    (jeux / ".git").mkdir(parents=True)
+                    (jeux / "games_cli.py").write_text("x")
+                    fragment = (
+                        'EXT_LINK="$DOSSIER/extensions/$UUID"\n'
+                        'UDEV_RULE="$DOSSIER/70-streamdeck.rules"\n'
+                        'VENV="$DOSSIER/venv"\n'
+                        'GAMES_DIR="$DOSSIER/games"\n'
+                        'sudo() { "$@"; }\n'
+                        "udevadm() { :; }\n"
+                        "gsettings_bus() {\n"
+                        '    [ "$1" = get ] && echo "[\'$UUID\']"\n'
+                        "    return 0\n"
+                        "}\n"
+                        'STREAM_DECK="$NIVEAU"\n'
+                        "step_uninstall\n"
+                    )
+                    fait = sourcer(
+                        fragment,
+                        {"DOSSIER": dossier, "UUID": UUID, "NIVEAU": niveau},
+                    )
+                    self.assertEqual(0, fait.returncode, fait.stderr)
+                    self.assertFalse(Path(dossier, "venv").exists())
+                    self.assertTrue(jeux.is_dir())
+                    self.assertEqual(
+                        [".git", "games_cli.py"], sorted(os.listdir(jeux))
+                    )
+                    self.assertNotIn(str(jeux), fait.stdout)
 
     # gsettings simulé : « get » lit le fichier de la clé, « set »
     # l'écrit ; ECHEC_GET ou ECHEC_SET font échouer l'opération.

@@ -11161,9 +11161,9 @@ TRANSLATIONS = {
         "fr": "extension GNOME, sans Stream Deck",
         "en": "GNOME extension, no Stream Deck",
     },
-    "deck controller, GNOME extension": {
-        "fr": "contrôleur du deck, extension GNOME",
-        "en": "deck controller, GNOME extension",
+    "deck controller, games, GNOME extension": {
+        "fr": "contrôleur du deck, jeux, extension GNOME",
+        "en": "deck controller, games, GNOME extension",
     },
     "script/install/install_erplibre_home.sh in the VM's checkout": {
         "fr": "script/install/install_erplibre_home.sh dans le checkout de la VM",

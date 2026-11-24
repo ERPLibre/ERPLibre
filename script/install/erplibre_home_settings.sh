@@ -4,7 +4,8 @@
 # Bibliothèque sourcée par l'installateur et le point d'entrée du service :
 # les noms et les chemins du service Stream Deck, et la lecture de ses
 # réglages. Elle ne lance rien et ne pose que des fonctions et les
-# constantes DECK_UNIT_NAME, DECK_REPO_DIR et ERPLIBRE_HOME_EXT_DIR.
+# constantes DECK_UNIT_NAME, DECK_REPO_DIR, DECK_GAMES_DIR et
+# ERPLIBRE_HOME_EXT_DIR.
 #
 # Les réglages sont des lignes « CLÉ=valeur » ; une ligne qui ne commence pas
 # par « CLÉ= » est ignorée, si bien qu'un commentaire « # … » est permis.
@@ -18,6 +19,12 @@ DECK_UNIT_NAME="erplibre-home-streamdeck.service"
 # le paquet erplibre_streamdeck, le contrôleur, le verrou du deck, le
 # traducteur et requirements.txt, celui de .venv.streamdeck.
 DECK_REPO_DIR="script/stream_deck/deck"
+
+# Les jeux, relatifs à la racine du dépôt : un dépôt à part, que Google Repo
+# amène là ; le niveau Stream Deck de l'installateur ajoute son projet au
+# manifeste local et le synchronise. Le programme du deck, le contrôleur et
+# le service n'en dépendent pas.
+DECK_GAMES_DIR="script/stream_deck/games"
 
 # L'extension GNOME, relative à la racine du dépôt : un dépôt à part, que
 # Google Repo amène là ; la base de l'installateur ajoute son projet au
