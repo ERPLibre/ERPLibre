@@ -25181,6 +25181,30 @@ TRANSLATIONS = {
         ),
         "en": "🔄 Auto-reattach on replug (udev rule, device mapping)",
     },
+    "Restart a USB device of a VM (detach, reattach)": {
+        "fr": "🔃 Redémarrer un périphérique USB d'une VM (détacher, rattacher)",
+        "en": "🔃 Restart a USB device of a VM (detach, reattach)",
+    },
+    "Restart {device} on {domain}": {
+        "fr": "Redémarrer {device} sur {domain}",
+        "en": "Restart {device} on {domain}",
+    },
+    "The VM is not running: nothing to restart.": {
+        "fr": "La VM ne tourne pas : rien à redémarrer.",
+        "en": "The VM is not running: nothing to restart.",
+    },
+    "{device} is not plugged into {host}.": {
+        "fr": "{device} n'est pas branché sur {host}.",
+        "en": "{device} is not plugged into {host}.",
+    },
+    "The device is detached from the VM.": {
+        "fr": "Le périphérique est détaché de la VM.",
+        "en": "The device is detached from the VM.",
+    },
+    "Restarted:": {
+        "fr": "Redémarré :",
+        "en": "Restarted:",
+    },
     "The ERPLibre Home deck service runs on {host}.": {
         "fr": "Le service deck d'ERPLibre Home tourne sur {host}.",
         "en": "The ERPLibre Home deck service runs on {host}.",

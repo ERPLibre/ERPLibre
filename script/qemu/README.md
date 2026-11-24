@@ -479,7 +479,8 @@ a device already in use.
   (each view, USB controllers, display order, redirection slots).
 - *Device on this workstation (SPICE)* — open `virt-viewer` with USB
   redirection; enable SPICE USB redirection on a VM.
-- *Replug* — auto-reattach on replug (udev rule, device mapping).
+- *Replug* — auto-reattach on replug (udev rule, device mapping); restart a
+  USB device of a VM (detach, reattach).
 
 The VM is picked among the local libvirt domains, then the hosts of
 `~/.ssh/config`: a remote host is reached through its `ProxyJump` as
@@ -572,6 +573,19 @@ redefined, then started again. *Open virt-viewer with USB redirection* then
 launches `virt-viewer` with the auto-redirect filter for `0fd9`, so a deck
 plugged into the workstation follows the window; other devices are picked by
 hand in **File › USB device selection**.
+
+### Restart a device
+
+Without auto-reattach, a replugged device stays out of the VM: its live
+`<hostdev>` keeps the old address, or is marked missing. *Restart a USB device
+of a VM* fixes it by hand, on a running VM: it detaches that `<hostdev>` by
+the address the VM holds, then attaches the device as it is plugged now — by
+`VID:PID` alone, pinned by its new address only when two identical devices
+are plugged. Only the live view changes; the saved definition already names
+the device for the next start. Nothing is detached when the device is not
+plugged into the host, or when the VM has no USB controller to take it back.
+For a deck, the host's deck service is stopped first, with your consent: it
+would take the deck between the two steps.
 
 ### Auto-reattach on replug
 

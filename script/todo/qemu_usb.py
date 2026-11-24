@@ -744,6 +744,66 @@ def usb_plan(
     return plan
 
 
+def restart_plan(
+    live_state,
+    detach_want: dict,
+    attach_want: dict,
+    running: bool,
+    domain: str,
+    uri: str = DEFAULT_URI,
+) -> tuple:
+    """Étapes qui détachent puis rattachent un périphérique USB, en live.
+
+    detach_want : le <hostdev> tel que la vue live le porte — son adresse
+    est celle d'avant le rebranchement, et c'est par elle que libvirt le
+    retrouve. attach_want : le périphérique tel qu'il est branché
+    maintenant, issu de want_for(). La définition (config) n'est jamais
+    touchée : elle désigne déjà le périphérique au prochain démarrage.
+
+    Rend (détachement, attachement), deux listes d'étapes au format de
+    usb_plan(). L'attachement est calculé sur la vue live SANS les
+    <hostdev> que le détachement retire : sur la vue lue, usb_plan() le
+    sauterait (« déjà attaché »). VM arrêtée : une seule étape sautée, rien
+    d'autre — il n'y a pas de vue live à redémarrer.
+    """
+    if not running:
+        what = t("Restart {device} on {domain}").format(
+            device=device_id(attach_want.get("vid"), attach_want.get("pid")),
+            domain=domain,
+        )
+        return [
+            {"what": what, "view": "live", "skip": t("the VM is not running")}
+        ], []
+    state = live_state or usb_state(None)
+    detach = usb_plan(
+        state,
+        None,
+        dict(detach_want, action="detach"),
+        True,
+        False,
+        running,
+        domain,
+        uri,
+    )
+    after = dict(
+        state,
+        hostdevs=[
+            h for h in state["hostdevs"] if not _matches(h, detach_want)
+        ],
+    )
+    attach = usb_plan(
+        after,
+        None,
+        dict(attach_want, action="attach"),
+        True,
+        False,
+        running,
+        domain,
+        uri,
+    )
+    return detach, attach
+
+
 # ---------------------------------------------------------------------------
 # SPICE usbredir
 

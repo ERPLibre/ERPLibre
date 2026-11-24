@@ -461,7 +461,7 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
 
 class TestQemuUsbMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le sous-menu USB de QEMU/KVM, dans script/todo/qemu_usb_menu.py :
-    trois sections, sept entrées."""
+    trois sections, huit entrées."""
 
     SOURCE = TODO_DIR / "qemu_usb_menu.py"
     ENTRY = "def _qemu_usb_menu(self):"
@@ -476,6 +476,7 @@ class TestQemuUsbMenuNumbering(MenuCoherence, unittest.TestCase):
         "Open virt-viewer": "_qemu_usb_viewer",
         "Enable SPICE USB redirection": "_qemu_usb_enable_spice",
         "Auto-reattach on replug": "_qemu_usb_autoreattach",
+        "Restart a USB device": "_qemu_usb_restart",
     }
 
 

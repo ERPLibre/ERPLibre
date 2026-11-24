@@ -928,7 +928,8 @@ a device already in use.
   (each view, USB controllers, display order, redirection slots).
 - *Device on this workstation (SPICE)* — open `virt-viewer` with USB
   redirection; enable SPICE USB redirection on a VM.
-- *Replug* — auto-reattach on replug (udev rule, device mapping).
+- *Replug* — auto-reattach on replug (udev rule, device mapping); restart a
+  USB device of a VM (detach, reattach).
 
 The VM is picked among the local libvirt domains, then the hosts of
 `~/.ssh/config`: a remote host is reached through its `ProxyJump` as
@@ -1021,6 +1022,19 @@ redefined, then started again. *Open virt-viewer with USB redirection* then
 launches `virt-viewer` with the auto-redirect filter for `0fd9`, so a deck
 plugged into the workstation follows the window; other devices are picked by
 hand in **File › USB device selection**.
+
+### Restart a device
+
+Without auto-reattach, a replugged device stays out of the VM: its live
+`<hostdev>` keeps the old address, or is marked missing. *Restart a USB device
+of a VM* fixes it by hand, on a running VM: it detaches that `<hostdev>` by
+the address the VM holds, then attaches the device as it is plugged now — by
+`VID:PID` alone, pinned by its new address only when two identical devices
+are plugged. Only the live view changes; the saved definition already names
+the device for the next start. Nothing is detached when the device is not
+plugged into the host, or when the VM has no USB controller to take it back.
+For a deck, the host's deck service is stopped first, with your consent: it
+would take the deck between the two steps.
 
 ### Auto-reattach on replug
 
@@ -1202,7 +1216,8 @@ libvirt refuse de démarrer une seconde VM qui le tient, et
 - *Périphérique sur ce poste (SPICE)* — ouvrir `virt-viewer` avec la
   redirection USB ; activer la redirection USB SPICE sur une VM.
 - *Rebranchement* — rattachement auto au rebranchement (règle udev,
-  correspondance).
+  correspondance) ; redémarrer un périphérique USB d'une VM (détacher,
+  rattacher).
 
 La VM se choisit parmi les domaines libvirt locaux, puis les hôtes de
 `~/.ssh/config` : un hôte distant est joint par son `ProxyJump` en
@@ -1299,6 +1314,20 @@ relancée. *Ouvrir virt-viewer avec la redirection USB* lance ensuite
 `virt-viewer` avec le filtre de redirection automatique de `0fd9` : un deck
 branché sur le poste suit la fenêtre ; les autres périphériques se choisissent
 à la main dans **File › USB device selection**.
+
+### Redémarrer un périphérique
+
+Sans rattachement auto, un périphérique rebranché reste hors de la VM : son
+`<hostdev>` live garde l'ancienne adresse, ou est marqué manquant.
+*Redémarrer un périphérique USB d'une VM* le répare à la main, sur une VM en
+marche : il détache ce `<hostdev>` par l'adresse que la VM porte, puis attache
+le périphérique tel qu'il est branché maintenant — par `VID:PID` seul, épinglé
+par sa nouvelle adresse seulement quand deux périphériques identiques sont
+branchés. Seule la vue live change ; la définition enregistrée désigne déjà le
+périphérique au prochain démarrage. Rien n'est détaché quand le périphérique
+n'est pas branché sur l'hôte, ou quand la VM n'a pas de contrôleur USB pour le
+reprendre. Pour un deck, le service deck de l'hôte est d'abord arrêté, avec
+votre accord : il prendrait le deck entre les deux étapes.
 
 ### Rattachement automatique au rebranchement
 

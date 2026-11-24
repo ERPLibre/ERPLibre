@@ -86,6 +86,11 @@ class QemuUsbMixin:
                     "Auto-reattach on replug (udev rule, device mapping)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Restart a USB device of a VM (detach, reattach)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -107,6 +112,8 @@ class QemuUsbMixin:
                 self._qemu_usb_enable_spice()
             elif status == "7":
                 self._qemu_usb_autoreattach()
+            elif status == "8":
+                self._qemu_usb_restart()
             else:
                 print(t("Command not found !"))
 
@@ -642,6 +649,99 @@ class QemuUsbMixin:
         live_ran = any(s.get("view") == "live" for s in runnable)
         if row["vid"] == qu.DECK_VENDOR and live_ran:
             self._qemu_usb_offer_restart(target["jump"])
+
+    def _qemu_usb_restart(self):
+        """Détache puis rattache en live un périphérique USB d'une VM.
+
+        Sert quand la VM a perdu le périphérique, rebranché sur l'hôte sans
+        rattachement auto : la vue live garde un <hostdev> à l'ancienne
+        adresse, ou « missing ». Le <hostdev> se choisit parmi ceux des deux
+        vues ; le périphérique branché qui lui répond se cherche par VID:PID
+        sur l'hôte libvirt, et se choisit quand plusieurs se ressemblent. La
+        définition n'est pas touchée. Le plan est montré, le service deck de
+        l'hôte arrêté sur accord — il prendrait le deck entre les deux
+        étapes —, puis tout est lancé sur une seule confirmation. Un
+        rattachement qui échoue après le détachement le dit, et propose de
+        relancer le service deck arrêté pour rien."""
+        target = self._qemu_usb_pick_target()
+        if not target:
+            return
+        info = self._qemu_usb_read(target)
+        if not info:
+            return
+        if not info["running"]:
+            print(f"  {t('The VM is not running: nothing to restart.')}")
+            return
+        # Un <hostdev> par adresse seule ne se retrouve pas sur l'hôte
+        # après un rebranchement, qui change cette adresse.
+        rows = [r for r in self._qemu_usb_attached(info) if r["vid"]]
+        if not rows:
+            print(f"  {t('No USB device is attached to this VM.')}")
+            return
+        for i, row in enumerate(rows, 1):
+            ident = qu.device_id(
+                row["vid"], row["pid"], row["bus"], row["dev"]
+            )
+            print(f"  [{i}] {ident}  ({', '.join(row['views'])})")
+        answer = input(f"{t('Which device?')} [1]: ").strip() or "1"
+        if not answer.isdigit() or not 1 <= int(answer) <= len(rows):
+            print(t("Cancelled."))
+            return
+        row = rows[int(answer) - 1]
+        devs = self._qemu_usb_host_devices(target["jump"])
+        if devs is None:
+            return
+        plugged = qu.find_devices(devs, vid=row["vid"], pid=row["pid"])
+        if not plugged:
+            message = t("{device} is not plugged into {host}.").format(
+                device=qu.device_id(row["vid"], row["pid"]),
+                host=target["jump"] or t("this machine"),
+            )
+            print(f"  ⚠ {message}")
+            return
+        dev = plugged[0]
+        if len(plugged) > 1:
+            dev = self._qemu_usb_pick_device(plugged)
+            if not dev:
+                return
+        detach, attach = qu.restart_plan(
+            info["live"],
+            {k: row[k] for k in ("vid", "pid", "bus", "dev")},
+            qu.want_for(dev, devs),
+            info["running"],
+            target["domain"],
+            target["uri"],
+        )
+        print(f"\n{t('Will execute:')}")
+        detach = self._qemu_usb_show_plan(target, detach)
+        attach = self._qemu_usb_show_plan(target, attach)
+        if not attach:
+            # Détacher sans pouvoir rattacher retirerait le périphérique.
+            print(f"  {t('Nothing to do.')}")
+            return
+        stop = False
+        if dev.get("is_deck"):
+            stop = self._qemu_usb_deck_conflict(target["jump"])
+            if stop is None:
+                return
+        if not self._is_yes(input(t("Run these commands? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        if stop:
+            self._qemu_usb_exec(
+                self._qemu_usb_service_cmd("stop", target["jump"])
+            )
+        if not self._qemu_usb_run_steps(target, detach):
+            return
+        if not self._qemu_usb_run_steps(target, attach):
+            print(f"  {t('The device is detached from the VM.')}")
+            if stop:
+                self._qemu_usb_offer_restart(target["jump"])
+            return
+        print(
+            f"✅ {t('Restarted:')}"
+            f" {qu.device_id(dev['vid'], dev['pid'])} → {target['domain']}"
+        )
 
     def _qemu_usb_show(self):
         """Ce que la VM porte en USB : <hostdev> par vue, contrôleurs,
