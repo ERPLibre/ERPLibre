@@ -779,13 +779,15 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         self.assertIn("pty.spawn", capture)
         self.assertNotIn("subprocess.PIPE", capture)
 
-    def test_saying_no_cleans_nothing(self):
-        # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
+    def cleanup(self, answer, database_name="db"):
+        """Les commandes lancées quand `answer` répond à la question, par
+        un port scripté lié."""
         import contextlib
         import io
 
-        from script.todo import todo_i18n
+        from script.todo import todo_i18n, ui
         from script.todo.todo_upgrade import TodoUpgrade
+        from script.todo.ui.port import ScriptedPort
 
         self.addCleanup(
             setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
@@ -797,43 +799,25 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         upgrade.write_config = lambda: None
         lst_cmd = []
         upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
-        upgrade.ask_gate = lambda prompt, default="": "n" or default
-        with contextlib.redirect_stdout(io.StringIO()):
-            upgrade.prompt_database_cleanup("db")
-        self.assertEqual(lst_cmd, [])
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            ui.bind(ScriptedPort([answer])) as port,
+        ):
+            upgrade.prompt_database_cleanup(database_name)
+        self.assertEqual(port.answers, [])
+        return lst_cmd
 
-    def test_the_default_cleans(self):
-        # Entrée nettoie : le nettoyage précède les tests de fumée, et une
-        # base encombrée de tables mortes fait échouer des pages pour une
-        # raison qui n'a rien à voir avec la migration.
-        import contextlib
-        import io
+    def test_saying_no_cleans_nothing(self):
+        # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
+        self.assertEqual(self.cleanup("n"), [])
 
-        from script.todo.todo_upgrade import TodoUpgrade
-
-        upgrade = TodoUpgrade.__new__(TodoUpgrade)
-        upgrade.dct_progression = {}
-        upgrade.lst_command_executed = []
-        upgrade.write_config = lambda: None
-        lst_cmd = []
-        upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
-        upgrade.ask_gate = lambda prompt, default="": "" or default
-        with contextlib.redirect_stdout(io.StringIO()):
-            upgrade.prompt_database_cleanup("db")
-        self.assertEqual(len(lst_cmd), 1)
-        self.assertIn("database_cleanup.py", lst_cmd[0])
+    def test_the_default_cleans_nothing(self):
+        # Entrée ne nettoie pas : le nettoyage purge modèles, colonnes et
+        # tables, et le mode automatique prend ce défaut.
+        self.assertEqual(self.cleanup(""), [])
 
     def test_yes_runs_it_on_that_database(self):
-        from script.todo.todo_upgrade import TodoUpgrade
-
-        upgrade = TodoUpgrade.__new__(TodoUpgrade)
-        upgrade.dct_progression = {}
-        upgrade.lst_command_executed = []
-        upgrade.write_config = lambda: None
-        lst_cmd = []
-        upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
-        upgrade.ask_gate = lambda prompt, default="": "y" or default
-        upgrade.prompt_database_cleanup("db_upgrade_18")
+        lst_cmd = self.cleanup("y", "db_upgrade_18")
         self.assertEqual(len(lst_cmd), 1)
         self.assertIn("database_cleanup.py", lst_cmd[0])
         self.assertIn("-d db_upgrade_18", lst_cmd[0])

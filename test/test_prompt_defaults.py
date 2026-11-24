@@ -512,27 +512,37 @@ class TestWhereBlockingIsStillRight(unittest.TestCase):
 
 
 class TestWhatEnterDoesIsWritten(unittest.TestCase):
-    """La question doit dire la vérité à qui appuie sur Entrée."""
+    """La question doit dire la vérité à qui appuie sur Entrée.
+
+    Les trois portes oui/non posent leur question par `self.confirm`,
+    dont l'indice suit le défaut : celui-ci se lit dans le relevé des
+    défauts (`test_todo_yes_no.survey`). Désinstaller un thème et nettoyer
+    la base écrivent en base : non. Interroger les pages : oui."""
 
     def source(self, nom):
         import inspect
 
         return inspect.getsource(getattr(TodoUpgrade, nom))
 
-    def test_the_theme_prompt_announces_Y(self):
-        source = self.source("prompt_uninstall_theme")
-        self.assertIn("(Y/n,", source)
-        self.assertIn('default="y"', source)
+    def defaults(self, nom, cle):
+        from test.test_todo_yes_no import survey
 
-    def test_the_cleanup_prompt_announces_Y(self):
-        source = self.source("prompt_database_cleanup")
-        self.assertIn("(Y/n,", source)
-        self.assertIn('default="y"', source)
+        ligne = ("script/todo/todo_upgrade.py", f"TodoUpgrade.{nom}", cle)
+        return survey().get(ligne)
 
-    def test_the_smoke_prompt_announces_Y(self):
-        source = self.source("prompt_smoke_public_url")
-        self.assertIn("(Y/n,", source)
-        self.assertIn('default="y"', source)
+    def test_the_theme_prompt_defaults_to_no(self):
+        cle = "Uninstall them properly before migrating?"
+        self.assertEqual(self.defaults("prompt_uninstall_theme", cle), [False])
+
+    def test_the_cleanup_prompt_defaults_to_no(self):
+        cle = "Clean the database before testing the pages?"
+        nom = "prompt_database_cleanup"
+        self.assertEqual(self.defaults(nom, cle), [False])
+
+    def test_the_smoke_prompt_defaults_to_yes(self):
+        cle = "Request every public URL of this database now?"
+        nom = "prompt_smoke_public_url"
+        self.assertEqual(self.defaults(nom, cle), [True])
 
     def test_the_reset_prompt_says_enter_is_all(self):
         source = self.source("prompt_reset_stale_cow_views")
@@ -557,6 +567,360 @@ class TestWhatEnterDoesIsWritten(unittest.TestCase):
             ("prompt_cow_prediction", "n = "),
         ):
             self.assertIn(refus, self.source(nom), nom)
+
+
+DB = "forged_yesno_db"
+# (méthode, clé de la question, défaut, outil qu'un oui lance).
+GATES = (
+    (
+        "prompt_uninstall_theme",
+        "Uninstall them properly before migrating?",
+        False,
+        "uninstall_addons_theme.sh",
+    ),
+    (
+        "prompt_database_cleanup",
+        "Clean the database before testing the pages?",
+        False,
+        "database_cleanup.py",
+    ),
+    (
+        "prompt_smoke_public_url",
+        "Request every public URL of this database now?",
+        True,
+        "smoke_public_url.py",
+    ),
+)
+YES = (["o"], ["oui"], ["y"], ["YES"])
+# Une faute est dite, puis Ctrl+D vaut non ; Ctrl+D seul aussi.
+REFUSED = (["n"], ["non"], ["peut-être", EOFError()], [EOFError()])
+
+
+class TestTheGatesAreYesNoQuestions(EnvCase):
+    """Le thème, le nettoyage et le test de fumée : trois questions oui/non
+    de `TodoUpgrade.confirm`, avec « b » (revenir à une étape) et « t »
+    (l'état de la migration) à côté de oui et non.
+
+    Désinstaller le thème et nettoyer la base écrivent en base : non par
+    défaut, en mode automatique aussi, où l'échéance du compte à rebours
+    et l'annulation de la page prennent ce défaut. Rien n'est lancé :
+    `run_captured` et `todo_upgrade_execute` sont des doubles qui notent."""
+
+    def setUp(self):
+        super().setUp()
+        from script.todo import todo_i18n
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("fr")
+
+    def upgrade(self, auto=False):
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {}
+        upgrade.lst_command_executed = []
+        upgrade.write_config = lambda: None
+        upgrade.installed_theme = lambda db: ["forged_yesno_theme"]
+        self.lst_cmd = []
+        upgrade.run_captured = lambda cmd: self.lst_cmd.append(cmd) or 0
+        upgrade.todo_upgrade_execute = lambda cmd, **kw: (
+            self.lst_cmd.append(cmd) or (False, cmd, [])
+        )
+        self.shown, self.rewinds = [], []
+        upgrade.show_migration_status = lambda: self.shown.append(1)
+        if auto:
+            upgrade.auto_execute = True
+        return upgrade
+
+    def play(self, nom, answers, auto=False, rewind=False):
+        """Les événements du port scripté, après `nom` joué sur `answers` ;
+        « b » rembobine si `rewind`, sinon on y renonce."""
+        from unittest import mock
+
+        from script.todo import ui
+        from script.todo.ui.port import ScriptedPort
+
+        upgrade = self.upgrade(auto)
+
+        def rewind_to_chosen_step():
+            self.rewinds.append(1)
+            return rewind
+
+        upgrade.rewind_to_chosen_step = rewind_to_chosen_step
+        with (
+            mock.patch("builtins.input", side_effect=AssertionError),
+            contextlib.redirect_stdout(io.StringIO()),
+            ui.bind(ScriptedPort(list(answers))) as port,
+        ):
+            getattr(upgrade, nom)(DB)
+        self.assertEqual(port.answers, [])
+        return port.events
+
+    def confirms(self, events):
+        return [e for e in events if e.get("kind") == "confirm"]
+
+    def test_each_gate_states_its_default_and_its_letters(self):
+        from script.todo.todo_i18n import t
+
+        for nom, cle, defaut, _outil in GATES:
+            with self.subTest(nom=nom):
+                (asked,) = self.confirms(self.play(nom, ["n"]))
+                self.assertEqual(asked["prompt"], f"💬 {t(cle)}")
+                self.assertEqual(asked["default"], "y" if defaut else "n")
+                self.assertEqual(
+                    [option["key"] for option in asked["options"]],
+                    ["b", "t"],
+                )
+                indice = "[O/n" if defaut else "[o/N"
+                self.assertEqual(
+                    asked["text"],
+                    f"💬 {t(cle)} {indice}, b = {t('Go back to a step')},"
+                    f" t = {t('Migration state (full screen)')}] : ",
+                )
+                self.assertNotIn("timeout_s", asked)
+
+    def test_a_yes_runs_the_tool_and_a_refusal_runs_nothing(self):
+        from script.todo.todo_i18n import t
+
+        for nom, _cle, defaut, outil in GATES:
+            vide = [([""], defaut)]
+            cases = [(a, False) for a in REFUSED] + [(a, True) for a in YES]
+            for answers, runs in vide + cases:
+                with self.subTest(nom=nom, answers=answers):
+                    events = self.play(nom, answers)
+                    lances = [c for c in self.lst_cmd if outil in c]
+                    self.assertEqual(len(lances), int(runs))
+                    fois = 2 if "peut-être" in answers else 1
+                    self.assertEqual(len(self.confirms(events)), fois)
+                    if fois == 2:
+                        self.assertIn(
+                            f"{t('Answer yes or no: ')}peut-être",
+                            [e.get("text") for e in events],
+                        )
+
+    def test_in_auto_mode_the_deadline_erases_nothing(self):
+        # Au terminal, l'échéance du compte à rebours d'auto_ask rend le
+        # défaut de la question ; le mode automatique est exporté avant.
+        from unittest import mock
+
+        from script.todo.ui import port
+
+        heard = []
+
+        def deadline(text, default, seconds):
+            heard.append((default, seconds, auto_ask.enabled()))
+            return default
+
+        for nom, _cle, defaut, outil in GATES:
+            with self.subTest(nom=nom):
+                heard.clear()
+                upgrade = self.upgrade(auto=True)
+                with (
+                    mock.patch.dict(port.ORIGINAL, {"auto_ask.ask": deadline}),
+                    mock.patch("builtins.input", side_effect=AssertionError),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    getattr(upgrade, nom)(DB)
+                attendu = "y" if defaut else "n"
+                self.assertEqual(
+                    heard, [(attendu, TodoUpgrade.AUTO_DELAY, True)]
+                )
+                lances = [c for c in self.lst_cmd if outil in c]
+                self.assertEqual(len(lances), int(defaut))
+
+    def test_in_auto_mode_a_cancelled_countdown_erases_nothing(self):
+        # Le journal des tâches change l'annulation d'un compte à rebours
+        # en Entrée ; Ctrl+D y vaut Entrée aussi.
+        for nom, _cle, defaut, outil in GATES:
+            for answers in ([""], [EOFError()]):
+                with self.subTest(nom=nom, answers=answers):
+                    events = self.play(nom, answers, auto=True)
+                    (asked,) = self.confirms(events)
+                    self.assertEqual(
+                        asked["timeout_s"], TodoUpgrade.AUTO_DELAY
+                    )
+                    lances = [c for c in self.lst_cmd if outil in c]
+                    self.assertEqual(len(lances), int(defaut))
+
+    def test_b_then_refusing_the_rewind_asks_the_same_question(self):
+        for nom, _cle, _defaut, outil in GATES:
+            with self.subTest(nom=nom):
+                events = self.play(nom, ["b", "n"])
+                premiere, seconde = self.confirms(events)
+                self.assertEqual(premiere, seconde)
+                self.assertEqual(self.rewinds, [1])
+                self.assertEqual(self.lst_cmd, [])
+
+    def test_b_then_a_rewind_stops_the_migration(self):
+        from script.todo.todo_upgrade import MigrationRewind
+
+        for nom, _cle, _defaut, _outil in GATES:
+            with self.subTest(nom=nom):
+                with self.assertRaises(MigrationRewind):
+                    self.play(nom, ["b"], rewind=True)
+                self.assertEqual(self.lst_cmd, [])
+
+    def test_t_shows_the_state_then_asks_the_same_question(self):
+        for nom, _cle, _defaut, outil in GATES:
+            with self.subTest(nom=nom):
+                events = self.play(nom, ["t", "t", "o"])
+                self.assertEqual(len(self.confirms(events)), 3)
+                self.assertEqual(len(self.shown), 2)
+                self.assertEqual(
+                    len([c for c in self.lst_cmd if outil in c]), 1
+                )
+
+    def test_a_closed_input_ends_each_gate(self):
+        for nom, _cle, _defaut, _outil in GATES:
+            with self.subTest(nom=nom):
+                events = self.play(nom, [])
+                self.assertEqual(len(self.confirms(events)), 1)
+                self.assertEqual(self.lst_cmd, [])
+
+
+class TestTheGateKeepsItsTextCallers(unittest.TestCase):
+    """`ask_gate` reste une question texte pour trois invites qui ne sont
+    pas des oui/non : la neutralisation (« 1 » la saute), la pause avant
+    un palier (Entrée rend la main) et la remise des copies COW (des
+    numéros, « a », « n »). Les trois portes oui/non passent par
+    `self.confirm`."""
+
+    @staticmethod
+    def tree():
+        chemin = os.path.join(REPO, "script", "todo", "todo_upgrade.py")
+        with open(chemin, encoding="utf-8") as handle:
+            return ast.parse(handle.read())
+
+    @staticmethod
+    def names(node, ctx):
+        return {
+            n.id
+            for n in ast.walk(node)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ctx)
+        }
+
+    @staticmethod
+    def constants(node):
+        return {n.value for n in ast.walk(node) if isinstance(n, ast.Constant)}
+
+    def calls(self, methode):
+        found = []
+        for node in ast.walk(self.tree()):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for call in ast.walk(node):
+                func = getattr(call, "func", None)
+                if (
+                    isinstance(call, ast.Call)
+                    and isinstance(func, ast.Attribute)
+                    and func.attr == methode
+                    and getattr(func.value, "id", "") == "self"
+                ):
+                    found.append(node.name)
+        return sorted(found)
+
+    def test_the_text_callers_stay(self):
+        self.assertEqual(
+            self.calls("ask_gate"),
+            [
+                "execute_odoo_upgrade",
+                "execute_odoo_upgrade",
+                "prompt_reset_stale_cow_views",
+            ],
+        )
+
+    def test_the_yes_no_gates_confirm(self):
+        appelants = self.calls("confirm")
+        for nom, _cle, _defaut, _outil in GATES:
+            self.assertIn(nom, appelants)
+
+    def test_a_text_answer_passes_through_untouched(self):
+        # « 1 » saute la neutralisation, Entrée rend la main : ask_gate rend
+        # la réponse telle quelle, sans la lire comme un oui ou un non.
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        for reponse in ("1", "", "1,2", "a"):
+            with self.subTest(reponse=reponse):
+                upgrade.ask = lambda prompt, default="", r=reponse: r
+                self.assertEqual(upgrade.ask_gate("? "), reponse)
+
+    def neutralize(self, reponse):
+        """Le nom de base, `do_neutralize` et les écritures du journal après
+        le vrai bloc de neutralisation d'`execute_odoo_upgrade`, exécuté
+        seul : `ask` rend `reponse` au vrai `ask_gate`."""
+        import builtins
+
+        from script.todo.todo_i18n import t
+
+        (bloc,) = [
+            node
+            for node in ast.walk(self.tree())
+            if isinstance(node, ast.If)
+            and "state_1_neutralize_database" in self.constants(node.test)
+        ]
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {}
+        ecrit, asks = [], []
+        upgrade.write_config = lambda: ecrit.append(1)
+        upgrade.ask = lambda prompt, default="": asks.append(prompt) or reponse
+        scope = {
+            "__builtins__": builtins,
+            "self": upgrade,
+            "t": t,
+            "database_name": DB,
+            "do_neutralize": False,
+        }
+        code = compile(ast.Module(body=[bloc], type_ignores=[]), "<n>", "exec")
+        with contextlib.redirect_stdout(io.StringIO()):
+            exec(code, scope)
+        self.assertEqual(len(asks), 1)
+        self.assertIn(t("Neutralize database, press to continue"), asks[0])
+        return scope["database_name"], scope["do_neutralize"], len(ecrit)
+
+    def test_1_skips_the_neutralization(self):
+        self.assertEqual(self.neutralize("1"), (DB, False, 0))
+        self.assertEqual(self.neutralize(" 1 "), (DB, False, 0))
+
+    def test_enter_neutralizes(self):
+        self.assertEqual(self.neutralize(""), (f"{DB}_neutralize", True, 1))
+
+    def test_enter_at_the_pause_hands_back(self):
+        # La pause avant un palier rend la main après une seule question,
+        # et rien ne lit sa réponse avant que `status` reçoive celui de la
+        # commande suivante : aucune réponse n'y décide de rien.
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        asks = []
+        upgrade.ask = lambda prompt, default="": asks.append(prompt) or ""
+        self.assertEqual(upgrade.ask_gate("? "), "")
+        self.assertEqual(len(asks), 1)
+
+        tree = self.tree()
+        (pause,) = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and "Press to continue" in self.constants(node.value)
+            and "ask_gate"
+            in {
+                n.attr
+                for n in ast.walk(node.value)
+                if isinstance(n, ast.Attribute)
+            }
+        ]
+        self.assertEqual(self.names(pause, ast.Store), {"status"})
+        (corps,) = [
+            body
+            for node in ast.walk(tree)
+            for body in (getattr(node, "body", None),)
+            if isinstance(body, list) and pause in body
+        ]
+        suite = corps[corps.index(pause) + 1 :]
+        relu = []
+        for statement in suite:
+            relu.append("status" in self.names(statement, ast.Load))
+            if "status" in self.names(statement, ast.Store):
+                break
+        else:
+            self.fail("status n'est pas réaffecté après la pause")
+        self.assertNotIn(True, relu)
 
 
 class TestTheBackupAtTheEnd(unittest.TestCase):

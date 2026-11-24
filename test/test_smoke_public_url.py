@@ -426,7 +426,11 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         todo_i18n._current_lang = "en"
 
     def run_prompt(self, answer):
+        """Les commandes lancées quand `answer` répond à la question, par
+        un port scripté lié."""
+        from script.todo import ui
         from script.todo.todo_upgrade import TodoUpgrade
+        from script.todo.ui.port import ScriptedPort
 
         upgrade = TodoUpgrade.__new__(TodoUpgrade)
         upgrade.dct_progression = {}
@@ -434,9 +438,9 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         upgrade.write_config = lambda: None
         lst_cmd = []
         upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
-        # Le doublon HONORE le défaut, comme le vrai `ask_gate`.
-        upgrade.ask_gate = lambda prompt, default="": answer or default
-        upgrade.prompt_smoke_public_url("db_upgrade_13")
+        with ui.bind(ScriptedPort([answer])) as port:
+            upgrade.prompt_smoke_public_url("db_upgrade_13")
+        self.assertEqual(port.answers, [])
         return lst_cmd
 
     def test_the_default_runs_it(self):
@@ -491,8 +495,9 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         import contextlib
         import io
 
-        from script.todo import todo_i18n
+        from script.todo import todo_i18n, ui
         from script.todo.todo_upgrade import TodoUpgrade
+        from script.todo.ui.port import ScriptedPort
 
         self.addCleanup(
             setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
@@ -503,13 +508,18 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         upgrade.lst_command_executed = []
         upgrade.write_config = lambda: None
         upgrade.run_captured = lambda cmd: 0
-        upgrade.ask_gate = lambda prompt, default="": "n"
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
+        with (
+            contextlib.redirect_stdout(out),
+            ui.bind(ScriptedPort(["n"])),
+        ):
             upgrade.prompt_smoke_public_url("db", baseline=True)
         self.assertIn("Before starting", out.getvalue())
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
+        with (
+            contextlib.redirect_stdout(out),
+            ui.bind(ScriptedPort(["n"])),
+        ):
             upgrade.prompt_smoke_public_url("db")
         self.assertNotIn("Before starting", out.getvalue())
 

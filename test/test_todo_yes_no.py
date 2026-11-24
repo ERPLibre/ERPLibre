@@ -1068,6 +1068,21 @@ CONFIRM_DEFAULTS = {
         "Install lm-sensors now?",
     ): [False],
     (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.prompt_database_cleanup",
+        "Clean the database before testing the pages?",
+    ): [False],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.prompt_smoke_public_url",
+        "Request every public URL of this database now?",
+    ): [True],
+    (
+        "script/todo/todo_upgrade.py",
+        "TodoUpgrade.prompt_uninstall_theme",
+        "Uninstall them properly before migrating?",
+    ): [False],
+    (
         "script/todo/transform_menu.py",
         "TransformMenuMixin._transform_ask_hors_cellules",
         "Keep the VBA macros in the copy?",

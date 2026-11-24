@@ -993,6 +993,40 @@ class TodoUpgrade:
             # Renoncer au retour en arrière ne doit pas arrêter la migration :
             # on revient à la même invite, exactement là où l'on était.
 
+    def confirm(self, text, default, letters=None):
+        """La réponse à la question oui/non `text` (`ui.confirm`), de
+        défaut `default` : True, False, ou la lettre d'une action de
+        `letters` ({lettre: libellé}). Le mode automatique est exporté
+        comme par `ask`, et y compte à rebours AUTO_DELAY secondes avant de
+        prendre le défaut, que Ctrl+D y prend aussi ; hors de lui, Ctrl+D
+        vaut non. « b » rembobine (`rewind_to_chosen_step`) puis
+        lève MigrationRewind, ou, si l'on y renonce, repose la question ;
+        « t » montre l'état de la migration puis la repose."""
+        auto = getattr(self, "auto_execute", False)
+        auto_ask.export(auto, self.AUTO_DELAY)
+        while True:
+            answer = ui.confirm(
+                text,
+                default=default,
+                timeout=self.AUTO_DELAY if auto else None,
+                letters=letters,
+            )
+            if answer == "t":
+                self.show_migration_status()
+            elif answer != "b":
+                return answer
+            elif self.rewind_to_chosen_step():
+                raise MigrationRewind()
+
+    @staticmethod
+    def gate_letters():
+        """Les actions d'une porte de la migration, à côté de oui et non :
+        « b » revient à une étape, « t » montre l'état (`confirm`)."""
+        return {
+            "b": t("Go back to a step"),
+            "t": t("Migration state (full screen)"),
+        }
+
     @staticmethod
     def backup_command(answer, template, default_cmd):
         """La commande de sauvegarde à lancer, ou « » pour ne rien faire.
@@ -3527,16 +3561,11 @@ class TodoUpgrade:
             f"   {t('A theme carries view copies and SCSS through every')}"
             f" {t('version bump, and a bump can rename what they rely on.')}"
         )
-        answer = (
-            self.ask_gate(
-                f"💬 {t('Uninstall them properly before migrating?')}"
-                f" (Y/n, {t('(b = go back a step, t = show the migration state)')}) : ",
-                default="y",
-            )
-            .strip()
-            .lower()
-        )
-        if answer != "y":
+        if not self.confirm(
+            f"💬 {t('Uninstall them properly before migrating?')}",
+            default=False,
+            letters=self.gate_letters(),
+        ):
             print(f"ℹ -> {t('Kept. Nothing was uninstalled.')}")
             return
         for theme in lst_theme:
@@ -3635,16 +3664,11 @@ class TodoUpgrade:
         « non » par défaut : cela écrit en base, et c'est à vous d'en
         décider.
         """
-        answer = (
-            self.ask_gate(
-                f"💬 {t('Clean the database before testing the pages?')}"
-                f" (Y/n, {t('(b = go back a step, t = show the migration state)')}) : ",
-                default="y",
-            )
-            .strip()
-            .lower()
-        )
-        if answer != "y":
+        if not self.confirm(
+            f"💬 {t('Clean the database before testing the pages?')}",
+            default=False,
+            letters=self.gate_letters(),
+        ):
             return
         self.run_tool(
             "database_cleanup",
@@ -3677,16 +3701,11 @@ class TodoUpgrade:
                 f" {t('does not. A page broken now will still be broken')}"
                 f" {t('after — and that is not the migration.')}"
             )
-        answer = (
-            self.ask_gate(
-                f"💬 {t('Request every public URL of this database now?')}"
-                f" (Y/n, {t('(b = go back a step, t = show the migration state)')}) : ",
-                default="y",
-            )
-            .strip()
-            .lower()
-        )
-        if answer != "y":
+        if not self.confirm(
+            f"💬 {t('Request every public URL of this database now?')}",
+            default=True,
+            letters=self.gate_letters(),
+        ):
             return
         # DIRE ce qui sera parcouru, et le dire AVANT. « si la base a été
         # neutralisée » laisserait la question ouverte pendant tout le
