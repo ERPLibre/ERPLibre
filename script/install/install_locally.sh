@@ -188,14 +188,18 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
         # SODIUM_INSTALL=system saute tout ce build et lie l'extension au
         # libsodium de la distribution, dont la 1.0.22 passe ses 101 tests.
         #
-        # Conditionné à la présence de la bibliothèque : sans elle le lien
-        # échouerait, ce qui échangerait une panne contre une autre. La copie
-        # embarquée reste alors le repli, fût-il voué à échouer ici.
-        if pkg-config --exists libsodium 2> /dev/null; then
+        # Conditionné à une bibliothèque d'au moins 1.0.19 : PyNaCl 1.6 appelle
+        # les fonctions AEGIS, apparues dans cette version, et sa compilation
+        # échoue contre une plus ancienne (« implicit declaration of function
+        # crypto_aead_aegis256_* »). Sous ce seuil, ou sans bibliothèque, la
+        # copie embarquée reste le repli ; son « make check » ne tombe pas sur
+        # toutes les distributions s390x.
+        if pkg-config --atleast-version=1.0.19 libsodium 2> /dev/null; then
             export SODIUM_INSTALL=system
             echo "  PyNaCl : lié au libsodium du système."
         else
-            echo "  libsodium absent : PyNaCl bâtira sa copie embarquée." >&2
+            echo "  libsodium absent ou antérieur à 1.0.19 :" \
+                "PyNaCl bâtira sa copie embarquée." >&2
         fi
     fi
     "${POETRY_ODOO_PATH}" --version
