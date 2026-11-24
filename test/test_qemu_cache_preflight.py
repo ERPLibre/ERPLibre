@@ -38,9 +38,11 @@ sys.path.insert(0, str(RACINE))
 
 from script.qemu import cache_offline  # noqa: E402
 from script.todo import qemu_cache_menu as menu  # noqa: E402
+from script.todo import ui  # noqa: E402
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M  # noqa: E402
 from script.todo.qemu_install_monitor import EXIT_MARKER  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
+from script.todo.ui.port import ScriptedPort  # noqa: E402
 
 try:
     import textual  # noqa: F401
@@ -1008,7 +1010,9 @@ class TestLeComblement(SansSysteme):
         sortie = io.StringIO()
         faux = Faux()
         with (
-            mock.patch("click.confirm", return_value=confirmer) as confirme,
+            mock.patch(
+                "script.todo.ui.confirm", return_value=confirmer
+            ) as confirme,
             contextlib.redirect_stdout(sortie),
         ):
             faux._cache_combler()
@@ -1087,6 +1091,42 @@ class TestLeComblement(SansSysteme):
         confirme.assert_called_once()
         self.assertEqual(self.curls(), [])
         self.assertIn(URL_POST, texte, "le plan tait ce qui ne se rejoue pas")
+
+    def test_le_rejeu_suit_les_regles_d_une_question_oui_non(self):
+        """Non par défaut : Entrée, une faute puis Ctrl+D et Ctrl+D ne
+        rejouent rien ; o et oui rejouent. Sous une coupure illisible, un
+        oui à « rejouer quand même » mène à la même question."""
+        for coupe, avant in ((False, []), (None, ["o"])):
+            for reponses, rejoue in (
+                ([""], False),
+                (["peut-être", EOFError()], False),
+                ([EOFError()], False),
+                (["o"], True),
+                (["oui"], True),
+            ):
+                with self.subTest(coupe=coupe, reponses=reponses):
+                    self.coupe = coupe
+                    self.rejoue = False
+                    self.lancees.clear()
+                    with (
+                        ui.bind(ScriptedPort([*avant, *reponses])) as port,
+                        contextlib.redirect_stdout(io.StringIO()),
+                    ):
+                        Faux()._cache_combler()
+                    questions = [
+                        (e["prompt"], e["default"])
+                        for e in port.events
+                        if e.get("kind") == "confirm"
+                    ]
+                    cle = "Replay these addresses through the cache now?"
+                    fautes = reponses.count("peut-être")
+                    self.assertEqual(
+                        questions,
+                        [(t("Replay anyway?"), "n")] * len(avant)
+                        + [(t(cle), "n")] * (1 + fautes),
+                    )
+                    self.assertEqual(port.answers, [])
+                    self.assertEqual(bool(self.curls()), rejoue)
 
     def test_le_rejeu_passe_par_le_cache_et_se_verifie(self):
         with mock.patch.dict(
@@ -1580,7 +1620,7 @@ class TestLeRemplissageDesMiroirs(SansSysteme):
                     str(maison) + p[1:] if p.startswith("~") else vraie(p)
                 ),
             ),
-            mock.patch("click.confirm", return_value=True),
+            mock.patch("script.todo.ui.confirm", return_value=True),
         ):
             faux = Faux()
             with contextlib.redirect_stdout(io.StringIO()):

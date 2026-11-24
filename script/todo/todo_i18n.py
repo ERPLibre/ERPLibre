@@ -7204,18 +7204,17 @@ TRANSLATIONS = {
         "fr": "Clé existante :",
         "en": "Existing key:",
     },
-    "Deploy it on this host (ssh-copy-id)? (Y/n): ": {
-        "fr": "La déployer sur cet hôte (ssh-copy-id) ? "
-        "(O/n, défaut : oui) : ",
-        "en": "Deploy it on this host (ssh-copy-id)? (Y/n, default: yes): ",
+    "Deploy it on this host (ssh-copy-id)?": {
+        "fr": "La déployer sur cet hôte (ssh-copy-id) ?",
+        "en": "Deploy it on this host (ssh-copy-id)?",
     },
     "No SSH key in ~/.ssh.": {
         "fr": "Aucune clé SSH dans ~/.ssh.",
         "en": "No SSH key in ~/.ssh.",
     },
-    "Create one and deploy it? (Y/n): ": {
-        "fr": "En créer une et la déployer ? (O/n, défaut : oui) : ",
-        "en": "Create one and deploy it? (Y/n, default: yes): ",
+    "Create one and deploy it?": {
+        "fr": "En créer une et la déployer ?",
+        "en": "Create one and deploy it?",
     },
     "access refused": {
         "fr": "accès refusé",
@@ -18802,9 +18801,9 @@ TRANSLATIONS = {
         "fr": "Un seul par AVD ; le fermer d'abord :",
         "en": "Only one per AVD; close it first:",
     },
-    "Close it now? (y/N): ": {
-        "fr": "Le fermer maintenant ? (o/N) : ",
-        "en": "Close it now? (y/N): ",
+    "Close it now?": {
+        "fr": "Le fermer maintenant ?",
+        "en": "Close it now?",
     },
     "Closed.": {"fr": "Fermé.", "en": "Closed."},
     "Show a window?": {
@@ -18843,9 +18842,9 @@ TRANSLATIONS = {
         "fr": "Si scrcpy tournera sur CETTE machine, je peux l'ouvrir.",
         "en": "If scrcpy will run on THIS machine, I can open it.",
     },
-    "Open the tunnel now? (y/N): ": {
-        "fr": "Ouvrir le tunnel maintenant ? (o/N) : ",
-        "en": "Open the tunnel now? (y/N): ",
+    "Open the tunnel now?": {
+        "fr": "Ouvrir le tunnel maintenant ?",
+        "en": "Open the tunnel now?",
     },
     "Port already in use here:": {
         "fr": "Port déjà occupé ici :",

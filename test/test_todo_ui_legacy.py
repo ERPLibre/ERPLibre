@@ -83,8 +83,6 @@ with open(sys.argv[2], "w") as out:
 # texte. La liste ne fait que rétrécir : un écran neuf numérote entre
 # crochets, et un écran converti en sort.
 EXCEPTIONS = {
-    ("script/todo/qemu_access.py", "_qemu_scrcpy_tunnel"),
-    ("script/todo/qemu_cache_menu.py", "_cache_sans_sudo_la_bas"),
     ("script/todo/qemu_network.py", "_qemu_network_recreate"),
     ("script/todo/todo_upgrade.py", "execute_odoo_upgrade"),
 }
@@ -139,8 +137,8 @@ RAW_CALLS = {
     "script/todo/modem/menu.py": 12,
     "script/todo/module_menu.py": 4,
     "script/todo/proxmox_menu.py": 11,
-    "script/todo/qemu_access.py": 7,
-    "script/todo/qemu_cache_menu.py": 17,
+    "script/todo/qemu_access.py": 4,
+    "script/todo/qemu_cache_menu.py": 6,
     "script/todo/qemu_deploy.py": 8,
     "script/todo/qemu_install_monitor.py": 6,
     "script/todo/qemu_manage.py": 5,

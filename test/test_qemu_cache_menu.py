@@ -509,7 +509,7 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
                 mock.patch("click.prompt", return_value="op@ailleurs")
             )
             pile.enter_context(
-                mock.patch("click.confirm", return_value=confirmer)
+                mock.patch("script.todo.ui.confirm", return_value=confirmer)
             )
             # Le cache local et ses réglages ne sont pas le sujet : le test
             # doit rendre le même verdict sur une machine qui n'en a pas.
@@ -856,18 +856,21 @@ class TestLAssistantDesTests(unittest.TestCase):
                 lancees.append(cmd)
 
         it = iter(reponses)
-        # « click.confirm » et « longtest_menu.click.confirm » sont le MÊME
-        # objet : un seul mock les couvre, et c'est ce qui rend le compte
-        # d'appels lisible — une question en tout, pas une par essai. Les
-        # choix répondent par input ; épuisées, les réponses sont vides.
+        # Les doubles de `ui.confirm` et de `click.confirm` comptent ensemble
+        # les questions oui/non, celle de `_longtest_run` comprise si
+        # `demander=False` venait à manquer : une en tout, pas une par essai.
+        # Les choix répondent par input ; épuisées, les réponses sont vides.
         with (
             mock.patch("builtins.input", side_effect=lambda *a: next(it, "")),
-            mock.patch("click.confirm", return_value=True) as confirme,
+            mock.patch(
+                "script.todo.ui.confirm", return_value=True
+            ) as confirme,
+            mock.patch("click.confirm", return_value=True) as click_confirme,
             contextlib.redirect_stdout(io.StringIO()) as sortie,
         ):
             Faux()._cache_assistant()
         self.sortie = sortie.getvalue()
-        return lancees, confirme
+        return lancees, confirme.call_count + click_confirme.call_count
 
     def test_les_trois_lancent_trois_commandes(self):
         lancees, _c = self.assistant(["tout", "1", "2"])
@@ -894,20 +897,18 @@ class TestLAssistantDesTests(unittest.TestCase):
     def test_une_seule_question_pour_tout_le_lot(self):
         """Trois essais, une question. La reposer à chaque essai la rendrait
         machinale, ce qui est exactement ce qui fait qu'on cesse de la lire."""
-        lancees, confirme = self.assistant(["all", "1", "2"])
+        lancees, questions = self.assistant(["all", "1", "2"])
         self.assertEqual(len(lancees), 3)
         self.assertEqual(
-            confirme.call_count,
-            1,
-            f"{confirme.call_count} confirmations pour trois essais",
+            questions, 1, f"{questions} confirmations pour trois essais"
         )
 
     def test_renoncer_ne_lance_rien(self):
         # Aucun essai sur une réponse vide ; [0] à chaque question.
         for reponses in ([""], ["0"], ["tout", "0"], ["tout", "1", "0"]):
-            lancees, confirme = self.assistant(reponses)
+            lancees, questions = self.assistant(reponses)
             self.assertEqual(lancees, [], f"réponses {reponses}")
-            self.assertEqual(confirme.call_count, 0, f"réponses {reponses}")
+            self.assertEqual(questions, 0, f"réponses {reponses}")
 
     def test_les_reponses_suivent_les_regles_d_un_choix(self):
         """« 4 » n'est pas un essai : dit invalide, la question revient ;
@@ -1273,7 +1274,7 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
             with (
                 self.subTest(cle=cle),
                 mock.patch("click.prompt", side_effect=[refusee, lue]) as vu,
-                mock.patch("click.confirm", return_value=True),
+                mock.patch("script.todo.ui.confirm", return_value=True),
                 contextlib.redirect_stdout(io.StringIO()) as sortie,
             ):
                 faux._cache_nettoyage_regler(cle=cle)

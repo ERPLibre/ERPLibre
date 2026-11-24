@@ -536,7 +536,7 @@ class QemuAccessMixin:
             print(f"\n  ⚠ {t('An emulator is already running on this VM.')}")
             print(f"  {t('Only one per AVD; close it first:')}")
             print(f"\n    ssh {target} 'pkill -f \"[q]emu-system-x86_64\"'\n")
-            if not self._is_yes(input(t("Close it now? (y/N): "))):
+            if not ui.confirm(t("Close it now?"), default=False):
                 return
             subprocess.run(
                 ["ssh"]
@@ -698,7 +698,7 @@ class QemuAccessMixin:
         # port ressort sur CETTE machine. On le propose donc en le disant,
         # plutôt que de le faire d'office depuis un hyperviseur sans écran.
         print(f"\n  {t('If scrcpy will run on THIS machine, I can open it.')}")
-        if not self._is_yes(input(t("Open the tunnel now? (y/N): "))):
+        if not ui.confirm(t("Open the tunnel now?"), default=False):
             return
         if self._port_in_use(port):
             print(f"  ⚠ {t('Port already in use here:')} {port}")
@@ -1040,11 +1040,11 @@ class QemuAccessMixin:
         pub = self._qemu_default_ssh_key()
         if pub:
             print(f"     {t('Existing key:')} {pub}")
-            question = t("Deploy it on this host (ssh-copy-id)? (Y/n): ")
+            question = t("Deploy it on this host (ssh-copy-id)?")
         else:
             print(f"     {t('No SSH key in ~/.ssh.')}")
-            question = t("Create one and deploy it? (Y/n): ")
-        if not self._is_yes_default_yes(input(f"     {question}")):
+            question = t("Create one and deploy it?")
+        if not ui.confirm(question, default=True):
             return "auth", message
         if not self._ssh_ensure_key():
             return "auth", message

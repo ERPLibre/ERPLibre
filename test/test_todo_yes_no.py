@@ -437,6 +437,76 @@ CONFIRM_DEFAULTS = {
         "Run them now?",
     ): [False],
     (
+        "script/todo/qemu_access.py",
+        "QemuAccessMixin._qemu_emulator_menu",
+        "Close it now?",
+    ): [False],
+    (
+        "script/todo/qemu_access.py",
+        "QemuAccessMixin._qemu_scrcpy_tunnel",
+        "Open the tunnel now?",
+    ): [False],
+    (
+        "script/todo/qemu_access.py",
+        "QemuAccessMixin._qemu_ssh_retry_with_key",
+        "<dynamique>",
+    ): [True],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_assistant",
+        "Run these long tests?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_combler",
+        "Replay these addresses through the cache now?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_combler_permis",
+        "Replay anyway?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_miroir_remplir",
+        "Fill the git mirrors now?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_miroir_retirer",
+        "Remove this mirror?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_nettoyage_regler",
+        "Write this setting?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_nettoyer_age",
+        "Erase what is listed above?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_nettoyer_tout",
+        "Erase the whole cache?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_oublier_url",
+        "Remove this entry from the store?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_sans_sudo_la_bas",
+        "Send it now, and print the command to finish there?",
+    ): [False],
+    (
+        "script/todo/qemu_cache_menu.py",
+        "QemuCacheMenuMixin._cache_transfert",
+        "Copy now?",
+    ): [False],
+    (
         "script/todo/qemu_deploy.py",
         "QemuDeployMixin._qemu_ask_vm_account",
         "Keep the password in the VM?",

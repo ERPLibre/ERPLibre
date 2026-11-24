@@ -328,7 +328,7 @@ class QemuCacheMenuMixin:
             print(
                 f"    {t('Under the cut, a replay would only record more misses.')}"
             )
-            if not click.confirm(t("Replay anyway?"), default=False):
+            if not ui.confirm(t("Replay anyway?"), default=False):
                 print()
                 return False
         return True
@@ -718,7 +718,7 @@ class QemuCacheMenuMixin:
         print(f"\n{t('Will execute:')} {cmd}")
         print(f"  {t('The settings stay here: bridge, subnet and authority')}")
         print(f"  {t('belong to this host, and are posed by entry 1 there.')}")
-        if not click.confirm(t("Copy now?"), default=False):
+        if not ui.confirm(t("Copy now?"), default=False):
             print(f"  {t('Cancelled.')}\n")
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -891,7 +891,7 @@ class QemuCacheMenuMixin:
                 f"    ✗ {t('Not enough room there: the two-step mode is out.')}\n"
             )
             return
-        if not click.confirm(
+        if not ui.confirm(
             t("Send it now, and print the command to finish there?"),
             default=False,
         ):
@@ -1263,7 +1263,7 @@ class QemuCacheMenuMixin:
         os.chmod(fichier, 0o644)
         cmd = miroir_prefetch_cmd(fichier, environnement_de_l_unite())
         print(f"{t('Will execute:')} {cmd}")
-        if not click.confirm(t("Fill the git mirrors now?")):
+        if not ui.confirm(t("Fill the git mirrors now?"), default=False):
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1320,7 +1320,7 @@ class QemuCacheMenuMixin:
         )
         print(f"\n{t('Will execute:')} {cmd}")
         print(f"  {t('It will be mirrored again when a VM needs it.')}")
-        if not click.confirm(t("Remove this mirror?")):
+        if not ui.confirm(t("Remove this mirror?"), default=False):
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1405,7 +1405,7 @@ class QemuCacheMenuMixin:
         self._cache_lancer(
             f"--purge-older-than {shlex.quote(delai)} --dry-run"
         )
-        if not click.confirm(t("Erase what is listed above?")):
+        if not ui.confirm(t("Erase what is listed above?"), default=False):
             return
         self._cache_lancer(f"--purge-older-than {shlex.quote(delai)}")
 
@@ -1429,7 +1429,9 @@ class QemuCacheMenuMixin:
             return
         print(f"\n  {t('What the store holds for it:')}\n")
         self._cache_lancer(f"--detient <<< {shlex.quote(url)}", sudo=False)
-        if not click.confirm(t("Remove this entry from the store?")):
+        if not ui.confirm(
+            t("Remove this entry from the store?"), default=False
+        ):
             return
         self._cache_lancer(f"--oublie <<< {shlex.quote(url)}")
 
@@ -1438,7 +1440,7 @@ class QemuCacheMenuMixin:
         print(f"  ⚠ {t('This empties the objects AND the git mirrors.')}")
         print(f"    {t('Refilling the mirrors takes minutes to hours.')}\n")
         self._cache_lancer("--purge --dry-run")
-        if not click.confirm(t("Erase the whole cache?")):
+        if not ui.confirm(t("Erase the whole cache?"), default=False):
             return
         self._cache_lancer("--purge")
 
@@ -1713,7 +1715,7 @@ class QemuCacheMenuMixin:
             print(
                 f"\n  ⚠ {t('The real load takes hours per VM, not minutes.')}"
             )
-        if not click.confirm(t("Run these long tests?")):
+        if not ui.confirm(t("Run these long tests?"), default=False):
             return
         for options, _libelle in choisis:
             self._longtest_run(
@@ -1950,8 +1952,8 @@ class QemuCacheMenuMixin:
             premier["methode"], premier["url"], ports[0], ports[1], CACHE_CA
         )
         print(f"\n{t('Will execute:')} {shlex.join(exemple)}")
-        if not click.confirm(
-            t("Replay these addresses through the cache now?")
+        if not ui.confirm(
+            t("Replay these addresses through the cache now?"), default=False
         ):
             return
 
@@ -2059,7 +2061,7 @@ class QemuCacheMenuMixin:
             return
         cmd = commande_ecrire_reglage(cle, valeur)
         print(f"{t('Will execute:')} {cmd}")
-        if not click.confirm(t("Write this setting?")):
+        if not ui.confirm(t("Write this setting?"), default=False):
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
