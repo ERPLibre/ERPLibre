@@ -3118,6 +3118,8 @@ class QemuManageMixin:
 
         # 2) Domaines fantômes (définis mais disque manquant).
         self._cleanup_ghost_domains()
+        # 2b) Domaines de sonde firmware (sans disque, donc hors du 2).
+        self._cleanup_probe_domains()
         # 3) Doublons d'images nommées par codename (avant /releases/).
         dups = [
             (s, p)
@@ -3206,6 +3208,45 @@ class QemuManageMixin:
                 f"{sudo_prefix()}virsh --connect {URI} "
                 f"undefine {q} --nvram 2>/dev/null "
                 f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
+            )
+            print(f"{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+        print(f"✅ {t('Cleanup done.')}")
+
+    def _cleanup_probe_domains(self):
+        """Domaines de sonde firmware restés définis -> propose de les retirer.
+
+        deploy_qemu.py les retire lui-même dans un « finally » ; il n'en
+        reste que si le processus a été tué avant. Ils n'ont aucun disque :
+        _cleanup_ghost_domains ne les voit pas. Le préfixe se lit dans
+        deploy_qemu.py, qui le pose.
+        """
+        try:
+            prefixe = self._qemu_import_module().SONDE_PREFIXE
+        except Exception:
+            prefixe = "erplibre-fwprobe-"
+        probes = [
+            n for n in self._qemu_list_domains() if n.startswith(prefixe)
+        ]
+        if not probes:
+            return
+        print(
+            f"\n{t('Firmware probe domains left by an interrupted deploy:')} "
+            f"{', '.join(probes)}"
+        )
+        if not self._is_yes(input(t("Remove these probe domains? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        for name in probes:
+            q = shlex.quote(name)
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"destroy {q} 2>/dev/null; "
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"undefine {q} --nvram 2>/dev/null "
+                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}; "
+                f"{sudo_prefix()}rm -f "
+                f"{shlex.quote(f'/var/log/libvirt/qemu/{name}.log')}"
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)

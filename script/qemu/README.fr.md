@@ -401,6 +401,14 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
   dépendances.
 - `--no-install-deps` — n'installe jamais les dépendances automatiquement.
 - `--dry-run` — affiche les commandes sans rien exécuter.
+- `--no-preflight` — saute le préflight firmware. Par défaut, avant tout
+  téléchargement et toute écriture de disque, un domaine jetable sans disque
+  ni réseau démarre avec les réglages d'amorçage de la VM, puis est retiré :
+  un firmware UEFI que libvirt ou AppArmor refuse arrête le déploiement là,
+  avec l'ordre des descripteurs de firmware. Sauté pour `--bios`, s390x et
+  `--dry-run`. Un domaine de sonde laissé par un déploiement tué
+  (`erplibre-fwprobe-…`) est proposé au retrait par le nettoyage QEMU du
+  TODO.
 - `--force` — écrase le disque de travail qcow2 existant. Refusé tant qu'un
   domaine libvirt de ce nom existe, dès que virsh peut le lire (jeton sudo
   en cache ou membre du groupe `libvirt`). Un déploiement raté retire le disque et

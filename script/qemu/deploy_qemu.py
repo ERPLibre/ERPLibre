@@ -3448,6 +3448,25 @@ FIRMWARE_DIRS: tuple[str, ...] = (
 # les descripteurs de firmware (« targets[].architecture »).
 QEMU_ARCH = {"amd64": "x86_64", "arm64": "aarch64", "s390x": "s390x"}
 
+# Sonde de firmware : un domaine jetable, sans disque ni réseau, démarré
+# avant tout téléchargement pour prouver que libvirt accepte les réglages
+# d'amorçage du déploiement. Le préfixe permet au nettoyage du menu QEMU de
+# retrouver un domaine de sonde resté défini quand le processus est tué avant
+# son « finally ».
+SONDE_PREFIXE = "erplibre-fwprobe-"
+SONDE_MEMOIRE = 512  # Mio
+# Plafond, en secondes, de CHAQUE appel virt-install/virsh de la sonde, posé
+# par « timeout » de coreutils.
+SONDE_DELAI = 60
+# libvirt garde le journal QEMU d'un domaine après « undefine » ; le nvram
+# créé par le démarrage UEFI suit le nom du domaine.
+SONDE_JOURNAL = "/var/log/libvirt/qemu/{nom}.log"
+SONDE_NVRAM = "/var/lib/libvirt/qemu/nvram/{nom}_VARS.fd"
+
+# Marque ajoutée à la sortie d'un appel de sonde tué par « timeout » (code
+# 124, ou 137 après SIGKILL) ; sonde_cause() la reconnaît.
+SONDE_DEPASSEE = "(délai dépassé)"
+
 
 def _descripteur_vide(fichier: str, chemin: str) -> dict:
     """Un descripteur aux champs neutres : chaque entrée porte toutes les
@@ -3571,6 +3590,99 @@ def firmware_probable(
             continue
         return d
     return None
+
+
+def ordre_firmware_lignes(descs: list[dict], arch: str) -> list[str]:
+    """L'ordre des descripteurs de `arch` (jeton du script : amd64, arm64…),
+    une ligne par descripteur, prête à afficher.
+
+    Les descripteurs masqués sont écartés : libvirt ne les voit plus. Un
+    descripteur qui n'est pas en flash et se trie AVANT le premier en flash
+    porte une marque en fin de ligne : c'est lui que la sélection
+    automatique peut retenir à la place du firmware ordinaire. Sans
+    descripteur pour `arch`, une seule ligne le dit, en nommant les
+    dossiers lus.
+    """
+    cible = QEMU_ARCH.get(arch, arch)
+    retenus = [
+        d for d in descs if cible in d.get("archs", ()) and not d.get("masque")
+    ]
+    if not retenus:
+        return [
+            f"  (aucun descripteur de firmware pour {arch} dans"
+            f" {', '.join(FIRMWARE_DIRS)})"
+        ]
+    lignes = []
+    flash_vu = False
+    for rang, d in enumerate(retenus, 1):
+        device = d.get("device") or "?"
+        ligne = (
+            f"  {rang:>2}. {d.get('fichier', '')}  [{device}]"
+            f"  {', '.join(d.get('features', ()))}"
+        )
+        if device == "flash":
+            flash_vu = True
+        elif not flash_vu:
+            ligne += "  ← chargé en mémoire, passe avant le firmware en flash"
+        lignes.append(ligne)
+    return lignes
+
+
+def emulation(arch: str) -> tuple[bool, bool]:
+    """(émulée, kvm_manquant) pour une VM de l'architecture `arch`.
+
+    Deux causes d'émulation, à ne pas confondre : une architecture étrangère
+    (voulue, on la choisit), et une absence de KVM (subie, et invisible). La
+    seconde ne se déduit PAS de l'architecture — dans une VM sans
+    virtualisation imbriquée, libvirt retombe en TCG sans rien dire.
+    `kvm_manquant` ne vaut que pour l'architecture native : c'est lui qui
+    appelle un avertissement. Sans effet de bord.
+    """
+    native = arch == host_arch()
+    kvm_manquant = native and not kvm_available()
+    return (not native or kvm_manquant), kvm_manquant
+
+
+def amorcage_args(arch: str, bios: bool, emulated: bool) -> list[str]:
+    """Les arguments virt-install d'architecture, de machine et d'amorçage.
+
+    Partagés par virt_install() et la sonde de firmware, pour que la sonde
+    prouve exactement ce que la VM recevra. L'ordre est celui de la ligne de
+    commande : la tranche que le repli EGL recopie en dépend.
+    """
+    if arch == "s390x":
+        # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
+        # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
+        args = ["--arch", "s390x", "--machine", "s390-ccw-virtio"]
+    elif arch == "arm64":
+        # arm64/aarch64 : machine « virt » + UEFI (firmware AAVMF). Les images
+        # cloud arm64 n'ont pas de BIOS -> UEFI obligatoire. Secure Boot
+        # DÉSACTIVÉ (comme x86) : sinon libvirt sélectionne l'AAVMF « secure »
+        # à clés Microsoft enrôlées et la VM RESTE FIGÉE au firmware (aucun
+        # boot, aucune IP). secure-boot=no -> AAVMF non-SB, boot OK.
+        args = [
+            "--arch",
+            "aarch64",
+            "--machine",
+            "virt",
+            "--boot",
+            UEFI_BOOT,
+        ]
+    elif not bios:
+        # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
+        # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
+        # boucle « Booting... » en SeaBIOS. --bios force l'ancien BIOS, que
+        # certaines distributions exigent — voir FIRMWARE_IMPOSE.
+        # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
+        # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
+        args = ["--boot", UEFI_BOOT]
+    else:
+        args = []
+    if emulated:
+        # Architecture différente de l'hôte, ou KVM absent -> émulation
+        # logicielle TCG. LENT.
+        args += ["--virt-type", "qemu"]
+    return args
 
 
 def amorcage_bios(distro: str, demande: bool) -> bool:
@@ -6844,6 +6956,232 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         )
 
 
+def virtinst_env() -> list[str]:
+    """Le préfixe « env … » qui donne à virt-install un cache écrivable.
+
+    virtinst écrit un journal de debug dans ~/.cache/virt-manager ; sous
+    sudo, HOME/cache peut être inaccessible -> l'écriture échoue et Python
+    déverse un « Logging error » (le pavé « Fetched capabilities … »). On
+    force un cache/HOME ÉCRIVABLE via « env VAR=… » (traverse sudo) pour
+    que le journal s'écrive silencieusement.
+    Chemin propre à l'UID : un répertoire partagé finit créé par root lors
+    d'un premier passage sous sudo, puis devient illisible pour l'utilisateur
+    (« Error setting up logfile: No write access to … /virt-manager »).
+    """
+    cache_dir = f"/var/tmp/erplibre-virtinst-{os.getuid()}"
+    try:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+    except OSError:
+        pass
+    return [
+        "env",
+        f"XDG_CACHE_HOME={cache_dir}",
+        f"HOME={cache_dir}",
+    ]
+
+
+def sonde_nom() -> str:
+    """Un nom de domaine de sonde, tiré au hasard : deux déploiements
+    parallèles ne se disputent jamais le même."""
+    return SONDE_PREFIXE + secrets.token_hex(4)
+
+
+def sonde_borne(cmd: list[str], delai: int = SONDE_DELAI) -> list[str]:
+    """`cmd` borné dans le temps par « timeout » de coreutils, s'il existe.
+
+    Le « timeout » se place DANS la commande, donc derrière le sudo que
+    Runner ajoute : virsh reçoit lui-même SIGTERM, puis SIGKILL 5 s plus
+    tard. Un délai côté Python tuerait sudo et laisserait virsh orphelin.
+    Sans « timeout » dans le PATH, la commande part sans borne.
+    """
+    if shutil.which("timeout"):
+        return ["timeout", "--kill-after=5", str(delai), *cmd]
+    return list(cmd)
+
+
+def sonde_xml_cmd(nom: str, osinfo: str, amorcage: list[str]) -> list[str]:
+    """La commande « virt-install --print-xml » du domaine de sonde.
+
+    Ni disque, ni réseau, ni affichage : la sonde ne prouve que le firmware
+    et son profil AppArmor. `osinfo` est celui de la VM, car il fixe le type
+    de machine (q35 ou i440fx), donc les descripteurs qui conviennent ;
+    `amorcage` est celui d'amorcage_args(), recopié tel quel en fin de ligne.
+    """
+    return [
+        "virt-install",
+        "--connect",
+        LIBVIRT_URI,
+        "--name",
+        nom,
+        "--memory",
+        str(SONDE_MEMOIRE),
+        "--vcpus",
+        "1",
+        "--import",
+        "--disk",
+        "none",
+        "--osinfo",
+        osinfo,
+        "--network",
+        "none",
+        "--graphics",
+        "none",
+        "--print-xml",
+        *amorcage,
+    ]
+
+
+def xml_du_domaine(sortie: str) -> str:
+    """Le XML « <domain …>…</domain> » contenu dans `sortie`, ou ''.
+
+    Runner, en capture, mêle stderr à stdout : un avertissement de
+    virt-install peut entourer le XML, et virsh refuserait le tout.
+    """
+    debut = sortie.find("<domain")
+    fin = sortie.rfind("</domain>")
+    if debut < 0 or fin < debut:
+        return ""
+    return sortie[debut : fin + len("</domain>")]
+
+
+def sonde_cause(sortie: str) -> str:
+    """La cause d'un échec de sonde, lue dans la sortie de libvirt.
+
+    « apparmor » quand virt-aa-helper ou AppArmor est en cause,
+    « firmware » quand le firmware, son chargeur ou son nvram l'est,
+    « delai » quand la sonde a marqué un dépassement de délai, '' sinon.
+    """
+    bas = sortie.lower()
+    if any(
+        m in bas
+        for m in ("virt-aa-helper", "apparmor", "skipped restricted file")
+    ):
+        return "apparmor"
+    if any(m in bas for m in ("firmware", "nvram", "loader")):
+        return "firmware"
+    if SONDE_DEPASSEE in sortie:
+        return "delai"
+    return ""
+
+
+def sonde_firmware(
+    osinfo: str, amorcage: list[str], runner: Runner
+) -> tuple[bool, str]:
+    """Démarre un domaine jetable avec `amorcage`, puis le retire.
+
+    Rend (True, '') quand libvirt le met en marche, (False, sortie) sinon,
+    `sortie` étant ce que l'outil fautif a répondu. Trois étapes :
+    « virt-install --print-xml », « virsh define », « virsh start », puis
+    « virsh domstate » sous locale C, qui doit répondre running ou paused.
+
+    Le retrait — destroy, « undefine --nvram », rm du journal QEMU et du
+    nvram — n'a lieu que si « define » a réussi : un domaine homonyme
+    préexistant n'est jamais touché. Il tourne dans un « finally », donc
+    après un échec comme après Ctrl+C. En dry-run, seule la première
+    commande est affichée, et rien n'est retiré.
+    """
+    nom = sonde_nom()
+    virsh = ["virsh", "--connect", LIBVIRT_URI]
+    defini = False
+
+    def lancer(cmd: list[str], delai: int = SONDE_DELAI, check: bool = True):
+        return runner.run(
+            sonde_borne(cmd, delai), privileged=True, check=check, capture=True
+        )
+
+    def depasse(code: int) -> str:
+        return f"\n{SONDE_DEPASSEE}" if code in (124, 137) else ""
+
+    try:
+        code, out = lancer(
+            virtinst_env() + sonde_xml_cmd(nom, osinfo, amorcage)
+        )
+        if runner.dry_run:
+            return True, ""
+        xml = xml_du_domaine(out)
+        if code != 0 or not xml:
+            return False, out + depasse(code)
+        with fichier_xml_temporaire(xml, prefixe=SONDE_PREFIXE) as chemin:
+            code, out = lancer(virsh + ["define", chemin])
+        if code != 0:
+            return False, out + depasse(code)
+        defini = True
+        code, out = lancer(virsh + ["start", nom])
+        if code != 0:
+            return False, out + depasse(code)
+        # virsh traduit l'état : « running » n'est lisible que sous locale C.
+        code, etat = lancer(
+            ["env", "LC_ALL=C", "LANG=C"] + virsh + ["domstate", nom]
+        )
+        if code != 0 or etat.strip() not in ("running", "paused"):
+            return False, etat + depasse(code)
+        return True, ""
+    finally:
+        if defini:
+            lancer(virsh + ["destroy", nom], 20, check=False)
+            lancer(virsh + ["undefine", nom, "--nvram"], 20, check=False)
+            runner.run(
+                [
+                    "rm",
+                    "-f",
+                    SONDE_JOURNAL.format(nom=nom),
+                    SONDE_NVRAM.format(nom=nom),
+                ],
+                privileged=True,
+                check=False,
+                capture=True,
+            )
+
+
+def preflight_firmware(
+    args: argparse.Namespace, osinfo: str, runner: Runner
+) -> None:
+    """Prouve, avant tout téléchargement, que libvirt démarre un domaine avec
+    les réglages d'amorçage de cette VM ; sinon termine le programme.
+
+    Sautée sans « --boot » (s390x, --bios) : libvirt ne choisit alors aucun
+    firmware UEFI, il n'y a rien à prouver. Sautée aussi avec
+    --no-preflight. L'échec affiche la cause lue dans la sortie de libvirt
+    et, pour une cause de firmware ou d'AppArmor, l'ordre des descripteurs
+    que libvirt parcourt. La sortie de libvirt elle-même est déjà à l'écran :
+    Runner la réaffiche.
+    """
+    if getattr(args, "no_preflight", False):
+        print("  Préflight firmware : désactivé (--no-preflight).")
+        return
+    emulated, _ = emulation(args.arch)
+    amorcage = amorcage_args(args.arch, args.bios, emulated)
+    if "--boot" not in amorcage:
+        return
+    print("\n== 0/5 Préflight firmware (démarrage d'un domaine jetable) ==")
+    ok, sortie = sonde_firmware(osinfo, amorcage, runner)
+    if ok:
+        print("  libvirt démarre un domaine avec ces réglages d'amorçage.")
+        return
+    cause = sonde_cause(sortie)
+    lignes = [
+        "",
+        "  ⚠ ÉCHEC : préflight firmware — libvirt ne démarre pas un domaine"
+        " avec",
+        f"    --boot {UEFI_BOOT}",
+        "    Aucune image téléchargée, aucun disque créé.",
+    ]
+    if cause in ("apparmor", "firmware"):
+        lignes += [
+            "",
+            "  Ordre des descripteurs de firmware (libvirt retient le premier"
+            " qui convient) :",
+            *ordre_firmware_lignes(descripteurs_firmware(), args.arch),
+            "",
+            "  Un descripteur de même nom, VIDE, dans /etc/qemu/firmware/ le"
+            " masque.",
+        ]
+    elif cause == "delai":
+        lignes.append(f"    La sonde n'a pas répondu en {SONDE_DELAI} s.")
+    lignes += ["", "  Passer outre : --no-preflight"]
+    sys.exit("\n".join(lignes))
+
+
 def virt_install(
     args: argparse.Namespace,
     disk: Path,
@@ -6852,14 +7190,8 @@ def virt_install(
     runner: Runner,
     installer: tuple[Path, Path] | None = None,
 ) -> None:
-    # Émulée (TCG, pas de KVM) si l'arch demandée diffère de celle de l'hôte.
-    # Deux causes d'émulation, à ne pas confondre : une architecture étrangère
-    # (voulue, on la choisit), et une absence de KVM (subie, et invisible). La
-    # seconde ne se déduit PAS de l'architecture — dans une VM sans
-    # virtualisation imbriquée, libvirt retombe en TCG sans rien dire.
-    emulated = args.arch != host_arch()
-    if not emulated and not kvm_available():
-        emulated = True
+    emulated, kvm_manquant = emulation(args.arch)
+    if kvm_manquant:
         print(
             "⚠  KVM indisponible (/dev/kvm) : cette VM sera ÉMULÉE, donc TRÈS"
             " lente."
@@ -7015,36 +7347,7 @@ def virt_install(
         for ligne in lignes:
             print(ligne)
         cmd += hostdev
-    if args.arch == "s390x":
-        # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
-        # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
-        cmd += ["--arch", "s390x", "--machine", "s390-ccw-virtio"]
-    elif args.arch == "arm64":
-        # arm64/aarch64 : machine « virt » + UEFI (firmware AAVMF). Les images
-        # cloud arm64 n'ont pas de BIOS -> UEFI obligatoire. Secure Boot
-        # DÉSACTIVÉ (comme x86) : sinon libvirt sélectionne l'AAVMF « secure »
-        # à clés Microsoft enrôlées et la VM RESTE FIGÉE au firmware (aucun
-        # boot, aucune IP). secure-boot=no -> AAVMF non-SB, boot OK.
-        cmd += [
-            "--arch",
-            "aarch64",
-            "--machine",
-            "virt",
-            "--boot",
-            UEFI_BOOT,
-        ]
-    elif not args.bios:
-        # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
-        # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
-        # boucle « Booting... » en SeaBIOS. --bios force l'ancien BIOS, que
-        # certaines distributions exigent — voir FIRMWARE_IMPOSE.
-        # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
-        # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
-        cmd += ["--boot", UEFI_BOOT]
-    if emulated:
-        # Architecture différente de l'hôte -> émulation logicielle TCG
-        # (pas de KVM). LENT.
-        cmd += ["--virt-type", "qemu"]
+    cmd += amorcage_args(args.arch, args.bios, emulated)
     if not args.attach_console:
         cmd.append("--noautoconsole")
         if installer:
@@ -7054,24 +7357,7 @@ def virt_install(
             # après l'autre. La configuration finale est déjà écrite : rendre
             # la main n'abandonne rien.
             cmd += ["--wait", "0"]
-    # virtinst écrit un journal de debug dans ~/.cache/virt-manager ; sous
-    # sudo, HOME/cache peut être inaccessible -> l'écriture échoue et Python
-    # déverse un « Logging error » (le pavé « Fetched capabilities … »). On
-    # force un cache/HOME ÉCRIVABLE via « env VAR=… » (traverse sudo) pour
-    # que le journal s'écrive silencieusement.
-    # Chemin propre à l'UID : un répertoire partagé finit créé par root lors
-    # d'un premier passage sous sudo, puis devient illisible pour l'utilisateur
-    # (« Error setting up logfile: No write access to … /virt-manager »).
-    cache_dir = f"/var/tmp/erplibre-virtinst-{os.getuid()}"
-    try:
-        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-    except OSError:
-        pass
-    log_env = [
-        "env",
-        f"XDG_CACHE_HOME={cache_dir}",
-        f"HOME={cache_dir}",
-    ]
+    log_env = virtinst_env()
     if not gpu_args:
         runner.run(log_env + cmd, privileged=True)
         return
@@ -7551,6 +7837,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     g_run.add_argument(
+        "--no-preflight",
+        action="store_true",
+        help=(
+            "N'essaie pas, avant de télécharger quoi que ce soit, de démarrer"
+            " un domaine jetable avec les réglages d'amorçage de la VM. Ce"
+            " préflight prouve en quelques secondes que libvirt accepte le"
+            " firmware UEFI retenu."
+        ),
+    )
+    g_run.add_argument(
         "--no-wait-ip",
         action="store_true",
         help="N'attend pas l'attribution de l'IP à la fin.",
@@ -7837,6 +8133,14 @@ def main() -> None:
             " remplacer."
         )
 
+    # Calculé ici, une fois : la sonde de firmware et virt-install reçoivent
+    # le même --osinfo, qui fixe le type de machine, donc le firmware retenu.
+    resolved_osinfo = osinfo_arg(osinfo, args.distro)
+    # Avant tout téléchargement et toute écriture de disque : un firmware que
+    # libvirt refuse ne laisse alors rien derrière lui.
+    if not args.dry_run:
+        preflight_firmware(args, resolved_osinfo, runner)
+
     # Du premier fichier écrit jusqu'à virt-install : un échec retire ce que
     # ce lancement a créé. Le suivi de l'installateur reste dehors, le
     # domaine existe alors.
@@ -7944,7 +8248,6 @@ def main() -> None:
                 network_config_for(args.distro),
             )
 
-        resolved_osinfo = osinfo_arg(osinfo, args.distro)
         print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
         ensure_network(network_name(args.network), runner)
         # Avant la création, et non après : la VM télécharge dès cloud-init.

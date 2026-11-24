@@ -395,6 +395,7 @@ class BoutEnBout(unittest.TestCase):
         faux = {
             "Runner": lambda **_kw: self.runner,
             "ensure_tools": mock.Mock(),
+            "preflight_firmware": mock.Mock(),
             "host_arch": lambda: "amd64",
             "image_candidates": lambda *a, **k: ["https://x.invalid/i"],
             "download_image": mock.Mock(),

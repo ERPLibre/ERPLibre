@@ -356,6 +356,13 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
 - `-y` / `--assume-yes` — auto-accept dependency installation.
 - `--no-install-deps` — never auto-install dependencies.
 - `--dry-run` — show the commands without executing anything.
+- `--no-preflight` — skip the firmware preflight. By default, before any
+  download or disk write, a throwaway domain with no disk and no network is
+  started with the VM's boot settings, then removed: a UEFI firmware that
+  libvirt or AppArmor refuses stops the deployment there, with the firmware
+  descriptor order. Skipped for `--bios`, s390x and `--dry-run`. A probe
+  domain left by a killed deployment (`erplibre-fwprobe-…`) is offered for
+  removal by the TODO QEMU cleanup.
 - `--force` — overwrite the existing working qcow2 disk. Refused while a
   libvirt domain of that name exists, as long as virsh can read it (cached
   sudo ticket or `libvirt` group membership). A failed deployment removes the disk

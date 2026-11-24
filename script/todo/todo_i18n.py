@@ -11042,6 +11042,14 @@ TRANSLATIONS = {
         "fr": "Supprimer la définition de ces domaines ? (o/N, défaut : non) : ",
         "en": "Undefine these ghost domains? (y/N, default: no): ",
     },
+    "Firmware probe domains left by an interrupted deploy:": {
+        "fr": "Domaines de sonde firmware laissés par un déploiement interrompu :",
+        "en": "Firmware probe domains left by an interrupted deploy:",
+    },
+    "Remove these probe domains? (y/N): ": {
+        "fr": "Retirer ces domaines de sonde ? (o/N, défaut : non) : ",
+        "en": "Remove these probe domains? (y/N, default: no): ",
+    },
     "Stale codename-named Ubuntu images (duplicates):": {
         "fr": "Images Ubuntu nommées par codename (doublons) :",
         "en": "Stale codename-named Ubuntu images (duplicates):",
