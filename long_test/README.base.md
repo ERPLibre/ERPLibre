@@ -399,6 +399,7 @@ which serves the rehearsal, while a cluster one owns is designated.
 ./long_test/setops_banc.py --planifier 02:30   # every night, user timer
 ./long_test/setops_banc.py --rapport           # the last launch's report
 ./long_test/setops_banc.py --deplanifier       # remove the nightly launch
+./long_test/setops_banc.py --garder-la-flotte  # last pass leaves its fleet up
 ```
 
 **The token's secret crosses memory only.** The cluster shows it once, at
@@ -1073,6 +1074,7 @@ désigne.
 ./long_test/setops_banc.py --planifier 02:30   # chaque nuit, minuteur
 ./long_test/setops_banc.py --rapport           # le rapport du dernier lancement
 ./long_test/setops_banc.py --deplanifier       # retirer le lancement de nuit
+./long_test/setops_banc.py --garder-la-flotte  # la dernière passe laisse sa flotte debout
 ```
 
 **Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une

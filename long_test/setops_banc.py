@@ -5328,9 +5328,20 @@ def joue_la_reprise(
 
 
 def joue_une_passe(
-    moteur, mesures, chantier, passe, secret, dire=print, recettes=None
+    moteur,
+    mesures,
+    chantier,
+    passe,
+    secret,
+    dire=print,
+    recettes=None,
+    garder=False,
 ):
     """Joue les cibles du moteur pour une passe. Rend le souci, ou « ».
+
+    `garder` laisse la flotte DEBOUT : la reprise est jouée, le rasage final
+    ne l'est pas, et sa commande est dite pour le faire plus tard. La flotte
+    reste là pour une mesure ; `--detruire` refuse tant qu'elle vit.
 
     L'INVENTAIRE D'ABORD, LES ZONES ENSUITE, LA CONSTRUCTION APRÈS. Le générateur
     vient d'écrire quelles étiquettes et quelles passerelles les hôtes attendent ;
@@ -5404,6 +5415,13 @@ def joue_une_passe(
             )
             if souci:
                 return souci
+            if garder:
+                argv = runner_du_banc().cible(
+                    moteur, etape.cible, etape.variables, confirmer=True
+                )
+                dire("    flotte gardée debout ; la raser ensuite :")
+                dire(f"      {runner_du_banc().cite(argv)}")
+                continue
         souci = joue_une_etape(
             moteur, env, etape, passe, secret, dire, de_la_passe
         )
@@ -5836,8 +5854,10 @@ def route_les_zones(moteur, mesures, chantier, env, dire=print):
     return ""
 
 
-def plan(passes, terrain, batir=False):
+def plan(passes, terrain, batir=False, garder=False):
     """Les étapes, dans l'ordre, avec la durée annoncée de chacune.
+
+    `garder` : le rasage final de la dernière passe est annoncé SAUTÉ.
 
     IMPRIMÉ AVANT TOUTE CRÉATION, et c'est la règle de ce dossier : un plan
     qu'on lit après coup ne sert plus à décider.
@@ -5890,6 +5910,11 @@ def plan(passes, terrain, batir=False):
                 "~50 min annoncé",
             )
         )
+        if passe_gardee(garder, passe, passes):
+            etapes.append(
+                ("  rasage final sauté : la flotte reste debout", "")
+            )
+            continue
         etapes += [
             (
                 f"  make {etape.cible}"
@@ -5912,10 +5937,10 @@ def chemin_empreinte(base=""):
     return os.path.join(racine, "longtest", "setops_banc.json")
 
 
-def dire_plan(passes, terrain, batir=False):
+def dire_plan(passes, terrain, batir=False, garder=False):
     """Imprime le plan. Rien n'est créé par cette fonction."""
     print("── le plan ──")
-    for quoi, duree in plan(passes, terrain, batir):
+    for quoi, duree in plan(passes, terrain, batir, garder):
         print(f"  {quoi}" + (f"   ({duree})" if duree else ""))
 
 
@@ -5950,6 +5975,11 @@ def principal(argv=None):
         help="bâtir le gabarit doré s'il est ABSENT ; jamais le remplacer",
     )
     analyseur.add_argument(
+        "--garder-la-flotte",
+        action="store_true",
+        help="ne pas raser la flotte à la fin de la DERNIÈRE passe",
+    )
+    analyseur.add_argument(
         "--rapport",
         action="store_true",
         help="relire le rapport du dernier lancement ; rien n'est créé",
@@ -5978,7 +6008,7 @@ def principal(argv=None):
     terrain = args.terrain.strip() or terrain_deduit()
     if args.planifier:
         return planifie(args.planifier, terrain)
-    dire_plan(passes, terrain, args.batir_gabarit)
+    dire_plan(passes, terrain, args.batir_gabarit, args.garder_la_flotte)
     if args.dry_run:
         return SORTIE_OK
 
@@ -6100,7 +6130,13 @@ def lance(args, passes, terrain):
         for passe in passes:
             print(f"\n── passe « {passe} » ──")
             souci = joue_une_passe(
-                moteur, mesures, chantier, passe, secret, recettes=recettes
+                moteur,
+                mesures,
+                chantier,
+                passe,
+                secret,
+                recettes=recettes,
+                garder=passe_gardee(args.garder_la_flotte, passe, passes),
             )
             if souci:
                 print(f"\n  ⛔ {expurge(souci, secret)}")
@@ -6110,6 +6146,15 @@ def lance(args, passes, terrain):
     print(f"\n  ✓ le banc est allé au bout des {len(passes)} passe(s).")
     print(f"     défaire : {os.path.basename(__file__)} --detruire")
     return verdict_des_recettes(recettes, secret)
+
+
+def passe_gardee(garder, passe, passes):
+    """Vrai si `passe` doit laisser sa flotte debout.
+
+    SEULE LA DERNIÈRE la garde : la passe suivante rebâtit de zéro, et elle ne
+    le peut que sur une flotte rasée. `garder` doit valoir exactement True.
+    """
+    return garder is True and bool(passes) and passe == passes[-1]
 
 
 class Double:

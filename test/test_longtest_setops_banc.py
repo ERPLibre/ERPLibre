@@ -4724,9 +4724,10 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
     sur « écrit ou non » jouait la recette — qui n'écrit rien — AVANT la
     construction qu'elle juge."""
 
-    def joue(self, ecarts=()):
+    def joue(self, ecarts=(), garder=False):
         joues = []
         self.recettes = []
+        self.dits = []
 
         def etape(moteur, env, e, passe="", secret="", dire=None, rec=None):
             joues.append(e.cible)
@@ -4760,11 +4761,23 @@ class TestLOrdreDeLaPasse(unittest.TestCase):
             None,
             B.PASSE_VOUTE,
             "",
-            lambda *a: None,
+            lambda *a: self.dits.append(" ".join(map(str, a))),
             self.recettes,
+            garder=garder,
         )
         self.assertEqual("", souci)
         return joues
+
+    def test_a_kept_fleet_is_recovered_but_not_razed(self):
+        """Gardée debout pour une mesure : la reprise a lieu, le rasage
+        final non, et sa commande est dite pour plus tard."""
+        joues = self.joue(garder=True)
+        self.assertIn("reprise", joues)
+        self.assertNotIn("raser", joues)
+        dit = "\n".join(self.dits)
+        self.assertIn("raser", dit)
+        self.assertIn("fictif", dit)
+        self.assertIn("CONFIRMER=true", dit)
 
     def test_the_recovery_plays_after_the_recipe_and_before_the_raze(self):
         """Elle a besoin d'une flotte sauvegardée et de sa cible des
@@ -4925,6 +4938,31 @@ class TestLaRepriseSeJugeSurCeQueLeMoteurDit(unittest.TestCase):
         }
         self.assertEqual(("a-01", "b-01"), B.hotes_actifs(inventaire))
         self.assertIsNone(B.hotes_actifs({}))
+
+
+class TestSeuleLaDernierePasseGardeSaFlotte(unittest.TestCase):
+    def test_only_the_last_pass_keeps_its_fleet(self):
+        self.assertEqual(
+            [False, True],
+            [B.passe_gardee(True, p, B.PASSES) for p in B.PASSES],
+        )
+
+    def test_nothing_is_kept_unless_asked_exactly(self):
+        for garder in (False, None, mock.Mock(), "oui"):
+            with self.subTest(garder=garder):
+                self.assertFalse(
+                    B.passe_gardee(garder, B.PASSES[-1], B.PASSES)
+                )
+
+    def test_no_pass_no_keep(self):
+        self.assertFalse(B.passe_gardee(True, "env", ()))
+
+    def test_the_plan_announces_the_skipped_raze(self):
+        gardee = [q for q, _d in B.plan(B.PASSES, "t", garder=True)]
+        rasee = [q for q, _d in B.plan(B.PASSES, "t")]
+        self.assertEqual(2, sum("make raser" in q for q in rasee))
+        self.assertEqual(1, sum("make raser" in q for q in gardee))
+        self.assertTrue(any("sauté" in q for q in gardee))
 
 
 class TestLeDerouleDeLaReprise(unittest.TestCase):

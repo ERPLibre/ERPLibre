@@ -410,6 +410,7 @@ désigne.
 ./long_test/setops_banc.py --planifier 02:30   # chaque nuit, minuteur
 ./long_test/setops_banc.py --rapport           # le rapport du dernier lancement
 ./long_test/setops_banc.py --deplanifier       # retirer le lancement de nuit
+./long_test/setops_banc.py --garder-la-flotte  # la dernière passe laisse sa flotte debout
 ```
 
 **Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
