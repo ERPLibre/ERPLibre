@@ -34,14 +34,16 @@ sys.path.insert(0, RACINE)
 from script.proxmox import nesting  # noqa: E402
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
 
-# Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
-# descentes de piles différentes se disputeraient la RAM, le disque et
-# ~/.ssh/config aussi sûrement que deux de la même.
+# Les tests longs qui créent des machines, descentes ou non. Le verrou les
+# cherche TOUS : deux tests longs différents se disputent la RAM, le disque
+# et ~/.ssh/config aussi sûrement que deux descentes de la même pile, et le
+# « --detruire » de l'un refuse tant qu'un autre tourne.
 SCRIPTS = (
     "deep_proxmox.py",
     "deep_qemu.py",
     "install_nixos.py",
     "qemu_cache.py",
+    "qemu_desktops.py",
 )
 
 # L'autorité du cache de téléchargement, telle que le service l'écrit sur
@@ -353,12 +355,11 @@ class Descente:
         session longue.
 
         `parent` : si l'hôte qui HÉBERGE la machine attendue cesse de
-        répondre, on abandonne tout de suite. Constaté : l'étage 1 a redémarré
-        pendant l'installation de l'étage 4, ce qui a éteint les étages 2, 3 et
-        4 d'un coup ; la descente a attendu son délai entier — quarante
-        minutes — un ssh qui ne pouvait plus aboutir, puis a rendu « jamais
-        joignable en ssh ». Le diagnostic était faux : la machine n'était pas
-        lente, sa MAISON n'existait plus.
+        répondre, on abandonne tout de suite. Un parent qui redémarre éteint
+        d'un coup tous les étages qu'il porte : attendre l'enfant, c'est
+        attendre le délai entier un ssh qui ne peut plus aboutir, puis rendre
+        « jamais joignable en ssh ». Ce diagnostic serait faux : la machine
+        n'est pas lente, sa MAISON n'existe plus.
         """
         if self.dry_run:
             return 0
@@ -505,9 +506,8 @@ class Descente:
             return None
         # L'entrée ~/.ssh/config, que la CLI n'écrit PAS. Sans elle,
         # « ssh deep-pve-1 » rend « Name or service not known » et la descente
-        # attendait son plein délai avant de conclure « jamais joignable » —
-        # sur une VM qui répondait parfaitement à son adresse. Vécu au premier
-        # lancement réel.
+        # attend son plein délai avant de conclure « jamais joignable » — sur
+        # une VM qui répond parfaitement à son adresse.
         from script.todo.todo import TODO
 
         todo = TODO.__new__(TODO)
@@ -825,10 +825,9 @@ def autre_descente():
 
     Le garde-fou du rapport — un PID dans le fichier — ne protège que les
     descentes lancées APRÈS son écriture : celle qui tournait déjà avait
-    chargé l'ancien module en mémoire et n'écrira jamais de PID. Constaté sur
-    une descente réelle de dix étages, à l'étage 4. Ce contrôle-ci ne dépend
-    d'aucun rapport : détruire pendant qu'une descente tourne n'est jamais
-    juste, quel que soit le rapport choisi.
+    chargé l'ancien module en mémoire et n'écrira jamais de PID. Ce
+    contrôle-ci ne dépend d'aucun rapport : détruire pendant qu'une descente
+    tourne n'est jamais juste, quel que soit le rapport choisi.
 
     /proc plutôt que pgrep : « pgrep -f deep_proxmox » attrape le shell qui
     l'invoque, et on croit alors voir survivre un processus qui n'existe pas.
@@ -872,7 +871,7 @@ def profondeur_de(cible):
     """La profondeur d'imbrication de `cible`, d'après sa chaîne de rebonds.
 
     C'est la seule mesure dont on dispose de l'extérieur, et elle est exacte
-    pour les hôtes que nous avons déployés : c'est nous qui écrivons ces
+    pour les hôtes que ces tests déploient : ce sont eux qui écrivent ces
     entrées, un ProxyJump par étage.
     """
     try:

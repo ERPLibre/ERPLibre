@@ -276,3 +276,152 @@ Trois choses en découlent, et elles ne sont pas décoratives :
 Le menu propose l'hôte déjà retenu sans le rechercher, et défait chaque pile
 séparément : elles partagent le dossier des rapports, mais chacune ne connaît
 que les siens.
+
+## qemu_desktops.py — chaque bureau s'installe-t-il, redémarre-t-il, s'ouvre-t-il à distance ?
+
+Une VM par couple (saveur, distribution, version) de
+`_QEMU_DESKTOP_RELEASES` : **toute la table** par défaut, environ soixante-dix
+VM, environ quatre heures à quatre en parallèle. Chaque VM est déployée,
+reçoit son bureau, **redémarre**, puis est jugée depuis l'hôte. Le menu le
+propose sous `Matrice des bureaux`, en plan ou pour de vrai, et demande
+quelles saveurs et distributions garder (vide : toute la table) ; il se
+lance aussi directement.
+
+```
+./long_test/qemu_desktops.py                          # toute la matrice
+./long_test/qemu_desktops.py --dry-run                # le plan, rien de créé
+./long_test/qemu_desktops.py --saveurs plasma --distros fedora,rocky
+./long_test/qemu_desktops.py --saveurs i3 --versions 16.0   # une combinaison
+./long_test/qemu_desktops.py --parallele 2 --garder   # garder les VM
+./long_test/qemu_desktops.py --bilan DOSSIER          # relire des résultats
+./long_test/qemu_desktops.py --detruire               # défaire
+```
+
+Il envoie **ce que le menu envoie** : la commande de déploiement de
+`_qemu_build_deploy_parts`, la commande distante de
+`_qemu_erplibre_remote_cmd` (le chemin « bureau seul » du menu), le mot de
+passe en clair de GNOME par `vm_login_push_cmd`. Seul ajout :
+`--no-git-identity`, une VM de test n'ayant que faire de l'identité git de
+l'hôte. Le fuseau et la locale sont ceux que reçoit une VM du formulaire du
+menu : le fuseau de l'hôte par `_qemu_host_timezone`, et la locale par
+défaut de `deploy_qemu.py`, que le formulaire ne fixe pas. Les deux sont
+écrits dans la commande : le plan rejoué depuis un autre hôte crée les mêmes
+VM.
+
+### Ce qui est contrôlé, VM par VM
+
+| étape | réussit quand |
+|---|---|
+| déploiement | `deploy_qemu.py` rend 0 et la VM reçoit une adresse |
+| premier démarrage | `cloud-final.service` est `active` |
+| installation du bureau | code de retour 0 et aucun `⚠` (rc 4 de `nixos-rebuild` excusé, voir plus bas) |
+| redémarrage | ssh revient, à la **même** adresse : une adresse changée fait échouer la VM |
+| gestionnaire d'affichage | `display-manager.service` actif |
+| unités en échec | aucune, hors `EXCUSES_UNITES` (`mcelog`) : toute autre unité en échec fait échouer la VM, qu'elle touche au bureau ou non |
+| seat0 | KRdp : ouverture automatique, session verrouillée (`LockedHint=yes`) ; wayvnc : ouverture automatique et `hyprlock` actif |
+| ports | le port distant écoute, et `/etc/motd` l'annonce (aucun pour un bureau sans accès distant) |
+| console | la console QEMU est capturée telle que l'utilisateur la voit ; ses teintes sont notées, pas jugées |
+| xrdp, KRdp | une **vraie** connexion : bon mot de passe accepté sans échec PAM au journal, mauvais refusé avec un échec ; capture d'au moins 32 teintes ; xrdp : le processus de session tourne pendant la connexion |
+| GNOME Remote Desktop | `/auth-only` : bon accepté, mauvais refusé |
+| TigerVNC, wayvnc | VeNCrypt (X509Plain ou TLSPlain) : bon accepté, mauvais refusé, capture du bon mot de passe prise ; TigerVNC : cette capture a au moins 32 teintes, comme pour RDP, et `vncserver@:1` est actif |
+| KRdp sur Fedora et EL | quatre échecs, puis le bon mot de passe encore accepté (`pam_faillock`) |
+
+Les contrôles d'accès distant partent **de l'hôte**, pare-feu de la VM
+compris. Le client RDP est FreeRDP 3 dans un conteneur podman (Xvfb, xwd,
+xdotool), construit depuis `long_test/qemu_desktops_client/Containerfile`
+sous le nom fixe `erplibre-rdpclient` ; les serveurs RFB sont joints par
+`qemu_desktops_image.py`.
+
+L'image part d'une étiquette Arch Linux **datée** (`base-AAAAMMJJ.0.N`), et
+non de `latest`, dont le contenu change sans que le Containerfile change.
+Elle porte en étiquette le SHA-256 du Containerfile : une image construite
+d'un autre Containerfile se reconstruit avant la première VM.
+`pacman -Syu` apporte tout de même les paquets du jour de la construction,
+Arch ne prenant pas en charge une mise à jour partielle ;
+`--reconstruire-client` reconstruit sans le cache des couches, qui sinon
+rejouerait la construction précédente telle quelle.
+
+### Pourquoi ces contrôles, et pas de plus simples
+
+* **L'image se juge à ses teintes, pas à sa taille.** Une barre i3 sur fond
+  noir pèse quelques kilo-octets pour des centaines de teintes lissées ; un
+  écran noir ou la seule boîte de connexion d'xrdp en compte de une à seize,
+  et peut peser davantage. Le même plancher de 32 teintes vaut pour la
+  capture TigerVNC, un bureau X. L'écran de hyprlock que sert wayvnc est un
+  fond uni, d'une à quelques dizaines de teintes sur une VM saine : les
+  teintes ne le distinguent pas d'un écran vide, seule une capture réussie y
+  est exigée.
+* **Strict sur les unités en échec et sur l'adresse.** Une unité en échec
+  hors `EXCUSES_UNITES` fait échouer la VM même sans rapport avec le
+  bureau : une unité rouge sur une VM neuve est un défaut du déploiement.
+  Une adresse qui change au redémarrage la fait échouer aussi, l'entrée
+  `~/.ssh/config` que le menu écrit gardant la première ; les distributions
+  qui rendent leur bail à l'arrêt peuvent y tomber tant que le travail sur
+  l'adresse stable (branche `dev/qemu_stable_ip`) n'est pas fusionné.
+* **Le processus de session se cherche par le nom de l'exécutable**, dans une
+  liste `ps` lue sur l'hôte. Un `pgrep -f` envoyé par ssh trouve le shell qui
+  le porte, dont la ligne de commande contient le motif : la session
+  paraissait vivante sans l'être.
+* **GNOME servi par xrdp** — son repli là où `grdctl` n'a pas de mode
+  système — se juge par une vraie connexion. xrdp n'a pas de NLA :
+  `/auth-only` y réussit quel que soit le mot de passe.
+* **KRdp avant 6.8** ne trouve pas le compte par NLA (« Could not find user
+  in SAM database ») : le client passe en `/sec:tls` pour les versions de
+  `KRDP_BEFORE_6_8`. KRdp se juge après une minute de verrou, quand Plasma a
+  éteint l'écran : c'est le cas que son réveil doit couvrir.
+* **Chaque conteneur a son Xvfb privé** (`-nolisten local`). En
+  `--network host`, les sockets abstraites sont partagées entre conteneurs :
+  deux tirages du même numéro d'écran faisaient mourir le second Xvfb, et son
+  client rejoignait l'écran de l'autre.
+* **Le rc 4 de NixOS** — `nixos-rebuild switch` ne peut recharger
+  dbus-broker à chaud — est annoncé par un `⚠` voulu, puis le système est
+  vérifié. Ces `⚠`-là ne sont excusés que lorsque le journal porte cette
+  cause.
+* **Les écarts attendus sont nommés.** `ATTENDUS` liste par combinaison la
+  clé de verdict qu'il excuse : Leap 16 n'a pas `i3status`, son écran i3 n'a
+  donc pas de barre et presque aucune teinte. Le bilan les montre en note,
+  pas en vert silencieux.
+
+### Ressources
+
+Quatre VM à la fois par défaut, 4 Go chacune. Le plan lit la mémoire
+*disponible* de l'hôte, en garde 4 Go pour lui et le surcoût de QEMU, et
+prévient quand `--parallele` dépasse le reste : des VM dont la mémoire
+nominale l'occupe toute mettent l'hôte en manque, et le noyau tue alors une
+VM sans rapport avec le bureau éprouvé. Chaque VM est
+détruite sitôt ses contrôles faits, sauf `--garder` ; les VM gardées
+s'additionnent sur le disque, et le plan le dit aussi.
+
+### Préalables
+
+`virsh` sur `qemu:///system`, `podman`, `openssl`, une clé ssh, et `sudo` :
+le mot de passe est demandé une fois au départ, les déploiements partent
+ensuite en `sudo -n` et un fil entretient le ticket. L'autorité du cache de
+téléchargement sert quand l'hôte en a une, une exception par VM sinon. Le
+test refuse de partir quand une autre course tourne ou qu'un nom de VM du
+plan existe déjà, et dit quoi faire.
+
+### Résultats
+
+* `~/.erplibre/longtest/qemu_desktops-HORODATAGE.log` — le journal ;
+* `~/.erplibre/longtest/qemu_desktops-HORODATAGE.json` — les VM et leurs
+  UUID, écrits dès que chacune existe ;
+* `~/.erplibre/longtest/qemu_desktops-HORODATAGE/NOM/` — `result.txt`
+  (`clé=valeur`, écrit étape par étape), `deploy.log`, `install.log`,
+  `guest.txt`, les journaux de chaque connexion, `console.png`,
+  `rdp_good.png` ou `vnc_good.png` ;
+* `bilan.txt` dans le même dossier : une ligne par VM, OK ou FAIL avec ses
+  raisons.
+
+Le code de sortie ne vaut 0 que si chaque VM du plan est OK.
+
+`--detruire` défait les VM que les rapports nomment — leur UUID vérifié
+avant que rien ne soit effacé — et **tout** domaine nommé `PREFIXE-*`
+(`ldesk` par défaut, `--prefixe` pour le changer), qu'un rapport le nomme ou
+non : ce sont les restes d'une course tuée avant d'écrire son rapport. Il
+les liste tous, demande `OUI`, et ne fait rien tant qu'une course tourne ;
+`--prefixe` refuse un préfixe de moins de trois caractères. L'entrée
+`Défaire` du menu le lance avec les autres tests longs, liste à blanc
+d'abord. Une course des bureaux est dans le verrou que partagent les tests
+longs (`descente.SCRIPTS`) : tant qu'elle tourne, le `--detruire` des
+autres tests longs refuse aussi.

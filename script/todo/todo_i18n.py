@@ -9444,6 +9444,22 @@ TRANSLATIONS = {
         "fr": "ERPLibre sur NixOS : le lancer",
         "en": "ERPLibre on NixOS: run it",
     },
+    "Desktop matrix: plan only (dry-run)": {
+        "fr": "Matrice des bureaux : le plan seulement (à blanc)",
+        "en": "Desktop matrix: plan only (dry-run)",
+    },
+    "Desktop matrix: run it": {
+        "fr": "Matrice des bureaux : la lancer",
+        "en": "Desktop matrix: run it",
+    },
+    "Desktop flavours (comma-separated, blank = all): ": {
+        "fr": "Saveurs de bureau (séparées par des virgules, vide = toutes) : ",
+        "en": "Desktop flavours (comma-separated, blank = all): ",
+    },
+    "Distributions (comma-separated, blank = all): ": {
+        "fr": "Distributions (séparées par des virgules, vide = toutes) : ",
+        "en": "Distributions (comma-separated, blank = all): ",
+    },
     "Where does the install run?": {
         "fr": "Où l'installation se fait-elle ?",
         "en": "Where does the install run?",

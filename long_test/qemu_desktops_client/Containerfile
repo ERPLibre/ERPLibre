@@ -1,0 +1,21 @@
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Client RDP du test long des bureaux (long_test/qemu_desktops.py) :
+# FreeRDP 3 pour se connecter, Xvfb pour lui donner un écran sans en
+# ouvrir un sur l'hôte, xwd pour capturer cet écran, xdotool pour y taper.
+# Arch suit FreeRDP au plus près, et FreeRDP 3 est le client que le guide de
+# connexion des VM nomme.
+#
+# L'image de base est épinglée à une étiquette datée : « latest » change de
+# contenu sans que le Containerfile change. « pacman -Syu » met tout de même
+# les paquets à jour du jour de la construction, Arch ne prenant pas en
+# charge une mise à jour partielle ; « --reconstruire-client » la refait.
+# Changer ce fichier change son empreinte, et le test reconstruit l'image.
+#
+# rdp.sh n'est PAS copié dans l'image : le test le monte à chaque lancement,
+# si bien qu'une modification du script vaut dès l'essai suivant, sans
+# reconstruire l'image.
+FROM docker.io/library/archlinux:base-20261108.0.623074
+RUN pacman -Syu --noconfirm freerdp xorg-server-xvfb xorg-xwd xdotool \
+    && pacman -Scc --noconfirm

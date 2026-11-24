@@ -241,8 +241,8 @@ class TestLEssaiABlanc(unittest.TestCase):
 
         Deux vCPU à chaque étage imbriqué donnaient un parent aussi étroit que
         son enfant : cent pour cent de surengagement, et l'hyperviseur à servir
-        par-dessus. Mesuré : l'installation de l'étage 4 dépassait 2 h 50
-        contre 793 s pour l'étage 3."""
+        par-dessus : l'installation d'un tel étage dure alors un ordre de
+        grandeur de plus que celle de son parent."""
         # Par expression exacte : la ligne « machine : … Mo … Go » du haut
         # contient les mêmes unités et décalait l'index d'un cran.
         import re
@@ -406,14 +406,14 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
 
 
 class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
-    """Le rapport ne s'écrivait qu'à la FIN de la descente.
+    """Le rapport s'écrit étage par étage, pas à la FIN de la descente.
 
-    Constaté : une descente de dix étages arrêtée pendant l'installation du
-    quatrième laissait quatre machines réelles, et « --detruire » répondait
-    « aucun rapport de descente : rien à défaire ». Le seul enregistrement du
-    couple (alias du parent, VMID) mourait avec le processus — il fallait
-    retrouver ces VM à la main, c'est-à-dire par leur nom, ce que tout le
-    reste de ce fichier s'applique à ne pas faire.
+    Écrit seulement à la fin, il meurt avec un processus arrêté en cours de
+    route : les machines déjà créées restent, et « --detruire » répond
+    « aucun rapport de descente : rien à défaire ». Le seul enregistrement
+    du couple (alias du parent, VMID) disparaît — il faudrait retrouver ces
+    VM à la main, c'est-à-dire par leur nom, ce que tout le reste de ce
+    fichier s'applique à ne pas faire.
     """
 
     def setUp(self):
@@ -537,16 +537,19 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         # Un bouchon posé par un test et non repris fausse les SUIVANTS : la
         # première version de ce fichier remplaçait dernier_rapport et le
         # laissait en place, et le test d'après lisait le bouchon.
+        # Les deux modules : le test du refus pose son bouchon sur le
+        # moteur, dont autre_descente sert à tous les tests longs.
         self._vrais = {
-            nom: getattr(deep_proxmox, nom)
+            (module, nom): getattr(module, nom)
+            for module in (deep_proxmox, moteur)
             for nom in ("autre_descente", "dernier_rapport")
         }
 
     def tearDown(self):
         if self._vrai is not None:
             os.environ["HOME"] = self._vrai
-        for nom, vrai in self._vrais.items():
-            setattr(self.dp, nom, vrai)
+        for (module, nom), vrai in self._vrais.items():
+            setattr(module, nom, vrai)
 
     def _ecrire(self, nom, rapport):
         with open(
@@ -562,9 +565,9 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertFalse(self.dp.descente_vivante(999999999))
 
     def test_a_shell_that_merely_names_the_script_is_not_a_descent(self):
-        """Constaté sur la machine : un « pgrep -f deep_proxmox.py » posé dans
-        une boucle de surveillance donnait un shell dont la ligne de commande
-        contient le motif, et deux faux positifs sur trois."""
+        """Un « pgrep -f deep_proxmox.py » posé dans une boucle de
+        surveillance donne un shell dont la ligne de commande contient le
+        motif : ce shell n'est pas une descente."""
         import subprocess
 
         faux = subprocess.Popen(
@@ -1265,11 +1268,10 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
 class TestAucuneEtapeNeRepondNone(unittest.TestCase):
     """Une étape qui rend None dit « non » à l'appelant, sans dire pourquoi.
 
-    Vécu : l'extraction du moteur avait coupé `preparer_systeme` sur le
-    « return False » de sa boucle, sans son « return True » final. La descente
-    affichait « ✗ étage 1 systeme » et pas une ligne de cause — et l'essai à
-    blanc ne pouvait pas le voir, puisqu'il sort avant. Les deux piles étaient
-    cassées, aucun test ne l'a vu."""
+    Une étape coupée sur le « return False » de sa boucle, sans son
+    « return True » final, fait afficher « ✗ étage 1 systeme » sans une ligne
+    de cause — et l'essai à blanc ne peut pas le voir, puisqu'il sort avant.
+    Chaque crochet doit donc rendre un booléen explicite."""
 
     CROCHETS = (
         "preparer_parent",
@@ -1689,11 +1691,11 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         self.assertNotIn("⚠", texte)
 
     def test_unreachable_levels_go_with_the_root_disk(self):
-        """Mesuré sur un arbre réel : les étages 3 et 4 étaient injoignables
-        — leur parent était éteint — et le compte disait « 2 / 4, il reste des
-        machines ». Or « virsh undefine --remove-all-storage » sur l'étage 1
-        efface le disque où ils VIVENT. L'avertissement était faux dans
-        l'autre sens, et un avertissement faux ne se lit plus."""
+        """Des étages injoignables parce que leur parent est éteint ne sont
+        pas des « machines qui restent » : « virsh undefine
+        --remove-all-storage » sur l'étage 1 efface le disque où ils VIVENT.
+        Les compter comme restants fait un avertissement faux, et un
+        avertissement faux ne se lit plus."""
         self.dp.FAMILLE.detruire_une = lambda *a, **k: False
         code, texte = self._lancer(etage1_ok=True, une=False)
         self.assertEqual(code, 0)

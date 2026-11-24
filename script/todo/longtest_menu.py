@@ -15,6 +15,7 @@ rien pendant tout ce temps.
 """
 
 import os
+import shlex
 
 import click
 
@@ -31,6 +32,7 @@ SCRIPTS_DEFAISABLES = (
     "deep_qemu.py",
     "qemu_cache.py",
     "install_nixos.py",
+    "qemu_desktops.py",
 )
 
 # Le répertoire des tests longs, à la racine du dépôt.
@@ -127,6 +129,8 @@ class LongTestMenuMixin:
                 )
             },
             {"prompt_description": t("ERPLibre on NixOS: run it")},
+            {"prompt_description": t("Desktop matrix: plan only (dry-run)")},
+            {"prompt_description": t("Desktop matrix: run it")},
             {"prompt_description": t("Undo what the descent created")},
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
@@ -149,6 +153,12 @@ class LongTestMenuMixin:
             "8": ("install_nixos.py", True),
             "9": ("install_nixos.py", True),
         }
+        # La matrice des bureaux non plus : une VM par combinaison, sans
+        # étage, et ce qu'on règle est la part de la matrice retenue.
+        bureaux = {
+            "10": "--dry-run",
+            "11": "",
+        }
         help_info = self.fill_help_info(choices)
         while True:
             status = click.prompt(help_info)
@@ -157,6 +167,10 @@ class LongTestMenuMixin:
                 return False
             if status in cache:
                 self._longtest_run("qemu_cache.py", cache[status])
+                continue
+            if status in bureaux:
+                args = bureaux[status] + self._longtest_args_bureaux()
+                self._longtest_run("qemu_desktops.py", args.strip())
                 continue
             if status in scripts:
                 script, demander = scripts[status]
@@ -174,7 +188,7 @@ class LongTestMenuMixin:
                 if status in ("1", "3", "8"):
                     args += " --dry-run"
                 self._longtest_run(script, args)
-            elif status == "10":
+            elif status == "12":
                 self._longtest_defaire()
             else:
                 print(t("Command not found !"))
@@ -194,6 +208,24 @@ class LongTestMenuMixin:
             self._longtest_run(script, "--detruire --dry-run", demander=False)
             if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
                 self._longtest_run(script, "--detruire", demander=False)
+
+    @staticmethod
+    def _longtest_args_bureaux():
+        """Les filtres de la matrice des bureaux, en options du script.
+
+        Vide, toute la table : environ soixante-dix VM et quatre heures. Les
+        noms passent tels quels : le script refuse un nom inconnu avant de
+        créer quoi que ce soit, en listant les noms connus.
+        """
+        args = ""
+        for option, question in (
+            ("--saveurs", "Desktop flavours (comma-separated, blank = all): "),
+            ("--distros", "Distributions (comma-separated, blank = all): "),
+        ):
+            valeur = input(t(question)).strip()
+            if valeur:
+                args += f" {option} {shlex.quote(valeur)}"
+        return args
 
     def _longtest_depart_nixos(self):
         """D'où part l'installation : une VM neuve, ou une machine NixOS
@@ -277,10 +309,10 @@ class LongTestMenuMixin:
     def _longtest_depth(self):
         """Profondeur demandée. Trois par défaut, parce que trois marche.
 
-        Mesuré sur cette machine : les trois premiers étages prennent 280, 495
-        et 1 064 secondes — une demi-heure. Le quatrième a demandé 7 h 18
-        d'installation et 4 h 20 d'amorçage, et les suivants se comptent en
-        jours. Dix par défaut promettait ce qu'aucune machine ne tient.
+        Le coût croît d'un ordre de grandeur par étage : les trois premiers
+        tiennent ensemble en une demi-heure, le quatrième se compte en heures
+        d'installation et d'amorçage, les suivants en jours. Dix par défaut
+        promettrait ce qu'aucune machine ne tient.
         """
         brut = input(f"{t('Depth (default 3): ')}").strip()
         return int(brut) if brut.isdigit() and int(brut) > 0 else 3
