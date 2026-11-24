@@ -51,7 +51,7 @@ for _pkg in geographiclib clang llvm swig gettext; do
   ${PAC} "${_pkg}" || echo "  ${_pkg} : non installé (optionnel), on continue."
 done
 
-# qpdf : pikepdf en exige 12.2.0. Le portage le bâtit depuis la recette
+# qpdf : pikepdf en exige ${EL_QPDF_MIN} (S390x/lib_qpdf.sh). Le portage le bâtit depuis la recette
 # d'Arch, qui suit l'amont ; el_qpdf_ensure vérifie le seuil et compile
 # depuis les sources si la version livrée est en dessous.
 el_qpdf_ensure
