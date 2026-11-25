@@ -33,11 +33,17 @@ el_swap_ensure
 # transitivement fonctionnerait ; on le nomme quand même, comme apt le fait
 # avec « proj-bin », parce que openSUSE a prouvé que cette arête n'existe pas
 # partout — elle y manque, et l'échec n'apparaît qu'au build.
+# « gcc-gfortran » et « openblas-devel » : scipy n'a pas de roue s390x, et sa
+# compilation exige un compilateur Fortran et un BLAS/LAPACK. Sans Fortran,
+# meson s'arrête sur « Unknown compiler(s) », et scikit-learn tombe avec lui,
+# puisqu'il bâtit son propre scipy pour se compiler. openblas-devel ne livre
+# aucun fichier pkg-config ici : meson trouve la bibliothèque par sa
+# recherche système, sans réglage.
 ${DNF} \
   rust cargo \
   libjpeg-turbo-devel zlib-devel geos-devel proj proj-devel \
   krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
-  GeographicLib-devel pkgconf-pkg-config cmake
+  GeographicLib-devel pkgconf-pkg-config cmake gcc-gfortran openblas-devel
 
 # Le Python des versions supportées, quand la distribution le livre :
 # el_python_exec (lib_python_provider.sh) prend alors l'interpréteur du
