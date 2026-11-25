@@ -23898,6 +23898,86 @@ TRANSLATIONS = {
         "fr": "Geler aussi la base amont de chaque fork (réseau) ?",
         "en": "Also freeze the upstream base of each fork (network)?",
     },
+    "📡 Push the repositories to a remote": {
+        "fr": "📡 Pousser les dépôts vers un remote",
+        "en": "📡 Push the repositories to a remote",
+    },
+    "Remotes": {
+        "fr": "Remotes",
+        "en": "Remotes",
+    },
+    "No cloned repository for the active Odoo version.": {
+        "fr": "Aucun dépôt cloné pour la version d'Odoo active.",
+        "en": "No cloned repository for the active Odoo version.",
+    },
+    "cloned repositories of the active Odoo version.": {
+        "fr": "dépôts clonés de la version d'Odoo active.",
+        "en": "cloned repositories of the active Odoo version.",
+    },
+    "New remote from the URL of a forge": {
+        "fr": "Nouveau remote à partir de l'URL d'une forge",
+        "en": "New remote from the URL of a forge",
+    },
+    "Remote": {
+        "fr": "Remote",
+        "en": "Remote",
+    },
+    "What to push? manifest: the manifest branch; all: every branch and tag": {
+        "fr": "Que pousser ? manifest : la branche du manifeste ; all : chaque branche et étiquette",
+        "en": "What to push? manifest: the manifest branch; all: every branch and tag",
+    },
+    "These clones are shallow: fetch their full history first? It can take long.": {
+        "fr": "Ces clones sont superficiels : récupérer d'abord tout leur historique ? Cela peut être long.",
+        "en": "These clones are shallow: fetch their full history first? It can take long.",
+    },
+    "repositories to": {
+        "fr": "dépôts vers",
+        "en": "repositories to",
+    },
+    "repositories pushed.": {
+        "fr": "dépôts poussés.",
+        "en": "repositories pushed.",
+    },
+    "Name of the new remote": {
+        "fr": "Nom du nouveau remote",
+        "en": "Name of the new remote",
+    },
+    "This name is a manifest remote: git-repo would rewrite its URL.": {
+        "fr": "Ce nom est un remote du manifeste : git-repo en réécrirait l'URL.",
+        "en": "This name is a manifest remote: git-repo would rewrite its URL.",
+    },
+    "Base URL of the forge (https://… or ssh://…)": {
+        "fr": "URL de base de la forge (https://… ou ssh://…)",
+        "en": "Base URL of the forge (https://… or ssh://…)",
+    },
+    "Not a forge URL.": {
+        "fr": "Ce n'est pas une URL de forge.",
+        "en": "Not a forge URL.",
+    },
+    "Plain HTTP: credentials cross the network in clear.": {
+        "fr": "HTTP en clair : les identifiants traversent le réseau sans chiffrement.",
+        "en": "Plain HTTP: credentials cross the network in clear.",
+    },
+    "Example:": {
+        "fr": "Exemple :",
+        "en": "Example:",
+    },
+    "Add the remote": {
+        "fr": "Ajouter le remote",
+        "en": "Add the remote",
+    },
+    "clones?": {
+        "fr": "clones ?",
+        "en": "clones?",
+    },
+    "Push to: manifest (the remote of each project) or": {
+        "fr": "Pousser vers : manifest (le remote de chaque projet) ou",
+        "en": "Push to: manifest (the remote of each project) or",
+    },
+    "The freeze writes a branch only when the manifest remote carries it.": {
+        "fr": "Le gel n'écrit une branche que si le remote du manifeste la porte.",
+        "en": "The freeze writes a branch only when the manifest remote carries it.",
+    },
     "Also freeze the branch each clone is on (revision)?": {
         "fr": "Geler aussi la branche de chaque clone (revision) ?",
         "en": "Also freeze the branch each clone is on (revision)?",

@@ -570,7 +570,11 @@ def read_remotes(sources):
     """
     remotes = {}
     for fichier in sources:
-        for e in ET.parse(fichier).getroot().findall("remote"):
+        try:
+            racine = ET.parse(fichier).getroot()
+        except (ET.ParseError, OSError):
+            continue
+        for e in racine.findall("remote"):
             remotes[e.get("name")] = e.get("fetch")
     return remotes
 

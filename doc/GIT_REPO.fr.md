@@ -540,6 +540,27 @@ fork et le clone détaché dessus. La mise à jour des forks travaille toujours 
 `<branche>_maj_<AAAAMMJJ>` et publie sur `<branche>`, jamais sur une copie datée, et le nettoyage des branches
 fusionnées ne propose jamais la branche que suit le manifeste.
 
+#### Pousser les dépôts vers un remote
+
+TODO › Exécution › Répertoire git › Repo › Pousser les dépôts vers un remote, ou `make repo_push_remote REMOTE=<nom>`,
+pousse chaque dépôt cloné de la version d'Odoo active vers un remote des clones, huit à la fois, jamais de force : un
+distant qui porte des commits que le clone n'a pas refuse la mise à jour, et le refus est rapporté. Le remote est l'un
+de ceux que les clones portent déjà, ou un remote neuf posé à partir de l'URL de base d'une forge (`URL=`) : chaque
+clone reçoit `<base>/<propriétaire>/<dépôt>.git`, le propriétaire étant le dernier segment de l'URL `fetch` du remote
+de son manifeste, si bien que la forge reçoit la même arborescence que l'hôte d'origine. Un remote neuf ne peut pas
+prendre le nom d'un remote du manifeste, dont git-repo réécrit l'URL à chaque synchronisation ; il ne récupère pas les
+étiquettes et `skipFetchAll` l'écarte de `git fetch --all`. Un clone où ce nom vise déjà un autre dépôt le garde et
+est laissé de côté.
+
+Le contenu se demande, le plus léger par défaut : `manifest`, le commit extrait sur la branche que suit le manifeste,
+sans suffixe daté ; ou `all` (`MODE=all`), chaque branche locale, chaque branche de suivi du remote du manifeste et
+chaque étiquette. Un clone superficiel se pousse tel quel, sauf si tout son historique est récupéré d'abord, ce que
+TODO demande et que `UNSHALLOW=1` réclame : beaucoup de serveurs refusent un historique tronqué. `DRY_RUN=1` montre les
+refspecs et ne pousse rien.
+
+Quand le gel propose de pousser les branches qu'il ne peut écrire, il les pousse de la même façon, en parallèle, et
+peut viser un autre remote des clones ; le gel n'écrit toujours une branche que si le remote du manifeste la porte.
+
 #### Installer ou reconfigurer sur les commits
 
 ```bash

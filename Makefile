@@ -298,6 +298,14 @@ repo_pull_dry_run:
 repo_freeze:
 	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py $(if $(filter 1,$(UPSTREAM)),--upstream,) $(if $(filter 1,$(BRANCHES)),--branches,)
 
+# push the cloned repos of the active Odoo version to REMOTE, in parallel and
+# never forced (URL=<forge base>: first add REMOTE as <URL>/<owner>/<repo> to
+# every clone; MODE=all: every branch and tag, default the manifest branch;
+# UNSHALLOW=1: fetch the full history of shallow clones; DRY_RUN=1)
+.PHONY: repo_push_remote
+repo_push_remote:
+	./.venv.erplibre/bin/python ./script/git/push_remote.py --remote $(REMOTE) $(if $(URL),--url $(URL),) $(if $(MODE),--mode $(MODE),) $(if $(filter 1,$(UNSHALLOW)),--unshallow,) $(if $(filter 1,$(DRY_RUN)),--dry-run,)
+
 # remove freeze-revision from manifest/ and private/manifest/, repos follow
 # their branch again
 .PHONY: repo_unfreeze

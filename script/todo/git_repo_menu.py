@@ -34,6 +34,7 @@ cinq mille lignes, et chaque sujet y a désormais le sien.
 
 import datetime
 import os
+import re
 import sys
 
 import click
@@ -47,6 +48,7 @@ from script.git import (  # noqa: E402
     git_freeze_diff,
     git_freeze_manifest,
     manifest_freeze,
+    push_remote,
     repo_apply,
     repo_upgrade,
 )
@@ -238,6 +240,8 @@ class GitRepoMenuMixin:
             },
             {"prompt_description": t("🫗 Unfreeze the versions")},
             {"prompt_description": t("🔀 Compare two freezes")},
+            {"section": t("Remotes")},
+            {"prompt_description": t("📡 Push the repositories to a remote")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -279,6 +283,8 @@ class GitRepoMenuMixin:
             self._git_repo_geler(unfreeze=True)
         elif status == "15":
             self._git_repo_comparer()
+        elif status == "16":
+            self._git_repo_pousser_remote()
         else:
             print(t("Command not found !"))
 
@@ -1216,9 +1222,13 @@ class GitRepoMenuMixin:
 
         Liste les branches extraites absentes de leur remote ou en avance
         sur lui (`git_freeze_manifest.branches_a_publier`), puis demande :
-        toutes, une à une, ou aucune, aucune par défaut. Chaque push porte
-        la branche locale sur la branche homonyme du remote, jamais de
-        force. Rend le nombre de branches poussées.
+        toutes, une à une, ou aucune, aucune par défaut ; puis vers quel
+        remote, par défaut celui du manifeste de chaque projet. Un autre
+        remote se choisit parmi ceux des clones retenus, mais le gel
+        n'écrit une branche que si le remote du MANIFESTE la porte : il est
+        donc signalé. Chaque push porte la branche locale sur la branche
+        homonyme, jamais de force, `push_remote.PARALLELE` à la fois. Rend
+        le nombre de branches poussées.
         """
         depart = os.getcwd()
         try:
@@ -1251,29 +1261,230 @@ class GitRepoMenuMixin:
                 f"↩️  {t('Nothing pushed: these projects keep their manifest branch.')}"
             )
             return 0
-        poussees = 0
-        for e in lst:
-            if choix == "each" and not click.confirm(
+        choisies = [
+            e
+            for e in lst
+            if choix == "all"
+            or click.confirm(
                 f"{t('Push')} {e['branche']} ({e['chemin']}) → {e['remote']}?",
                 default=False,
-            ):
-                continue
-            code, err = git_freeze_manifest.publier_branche(
-                os.path.join(RACINE, e["chemin"]), e["remote"], e["branche"]
             )
-            if code:
-                print(f"  ⚠  {e['chemin']}: {err[:400]}")
-                if e["motif"] == git_freeze_manifest.BRANCHE_ABSENTE:
-                    conseil = t(
-                        "If the remote already has this branch, fetch it,"
-                        " then freeze again."
-                    )
-                    print(f"     {conseil}")
-                continue
-            poussees += 1
-            print(f"  ✅ {e['chemin']}: {e['branche']}")
+        ]
+        if not choisies:
+            return 0
+        remote = self._git_repo_choisir_remote_branches(choisies)
+        cibles = [
+            {
+                "chemin": os.path.join(RACINE, e["chemin"]),
+                "remote": remote or e["remote"],
+                "specs": [
+                    f"refs/heads/{e['branche']}:refs/heads/{e['branche']}"
+                ],
+                "entree": e,
+            }
+            for e in choisies
+        ]
+
+        def suivi(r):
+            e = r["entree"]
+            if not r["code"]:
+                print(f"  ✅ {e['chemin']}: {e['branche']} → {r['remote']}")
+                return
+            print(f"  ⚠  {e['chemin']}: {r['erreur'][:400]}")
+            if e["motif"] == git_freeze_manifest.BRANCHE_ABSENTE:
+                conseil = t(
+                    "If the remote already has this branch, fetch it,"
+                    " then freeze again."
+                )
+                print(f"     {conseil}")
+
+        resultats = push_remote.pousser_en_parallele(cibles, suivi=suivi)
+        poussees = len([r for r in resultats if not r["code"]])
         print(f"   {poussees}/{len(lst)} {t('branches pushed.')}")
         return poussees
+
+    def _git_repo_choisir_remote_branches(self, entrees):
+        """Le remote où pousser les branches `entrees`, ou None pour celui
+        du manifeste de chaque projet (le défaut). Seuls les remotes qu'un
+        des clones porte se proposent."""
+        chemins = [os.path.join(RACINE, e["chemin"]) for e in entrees]
+        du_manifeste = {e["remote"] for e in entrees}
+        autres = [
+            r
+            for r in push_remote.remotes_des_clones(chemins)
+            if r not in du_manifeste
+        ]
+        if not autres:
+            return None
+        choix = click.prompt(
+            f"💬 {t('Push to: manifest (the remote of each project) or')}"
+            f" {', '.join(autres)}",
+            type=click.Choice(["manifest"] + autres),
+            default="manifest",
+        )
+        if choix == "manifest":
+            return None
+        print(
+            f"   ⚠  {t('The freeze writes a branch only when the manifest remote carries it.')}"
+        )
+        return choix
+
+    def _git_repo_pousser_remote(self):
+        """Pousse les dépôts de la version active vers un remote choisi.
+
+        Le remote est l'un de ceux des clones, ou un remote neuf que
+        `_git_repo_nouveau_remote` pose à partir de l'URL d'une forge. Le
+        contenu se demande : la branche du manifeste (le défaut) ou tout ce
+        que le clone connaît. Un clone superficiel peut d'abord être
+        approfondi, non par défaut. Rien ne part sans confirmation ; les
+        pushes, jamais forcés, tournent `push_remote.PARALLELE` à la fois.
+        Rend le nombre d'échecs, ou 0.
+        """
+        print(f"📡 {t('Push the repositories to a remote')}")
+        depart = os.getcwd()
+        try:
+            os.chdir(RACINE)
+            projets = push_remote.projets_actifs()
+        finally:
+            os.chdir(depart)
+        if not projets:
+            print(
+                f"⚠  {t('No cloned repository for the active Odoo version.')}"
+            )
+            return 0
+        for p in projets:
+            p["affiche"] = p["chemin"]
+            p["chemin"] = os.path.join(RACINE, p["chemin"])
+        remotes = push_remote.remotes_des_clones(
+            [p["chemin"] for p in projets]
+        )
+        noms = list(remotes)
+        print(
+            f"   {len(projets)}"
+            f" {t('cloned repositories of the active Odoo version.')}"
+        )
+        for i, nom in enumerate(noms, 1):
+            print(f"   {i}. {nom} ({remotes[nom]}/{len(projets)})")
+        print(f"   n. {t('New remote from the URL of a forge')}")
+        choix = click.prompt(f"💬 {t('Remote')}", default="n").strip().lower()
+        exclus = set()
+        if choix == "n":
+            nom, exclus = self._git_repo_nouveau_remote(projets)
+            if not nom:
+                return 0
+        elif choix.isdigit() and 1 <= int(choix) <= len(noms):
+            nom = noms[int(choix) - 1]
+        else:
+            print(t("Command not found !"))
+            return 0
+        mode = click.prompt(
+            f"💬 {t('What to push? manifest: the manifest branch; all: every branch and tag')}",
+            type=click.Choice(list(push_remote.MODES)),
+            default=push_remote.MODE_MANIFESTE,
+        )
+        projets = [p for p in projets if p["chemin"] not in exclus]
+        superficiels = [
+            p for p in projets if repo_upgrade.est_superficiel(p["chemin"])
+        ]
+        if superficiels:
+            for p in superficiels:
+                print(f"   ▸ {p['affiche']}")
+            question = t(
+                "These clones are shallow: fetch their full history first? It can take long."
+            )
+            if click.confirm(f"💬 {question}", default=False):
+                for p in superficiels:
+                    code, err = push_remote.approfondir(
+                        p["chemin"], p["remote"]
+                    )
+                    if code:
+                        print(f"  ⚠  {p['affiche']}: {err[-300:]}")
+        cibles, ecartes = push_remote.preparer_cibles(projets, nom, mode)
+        for p, motif in ecartes:
+            print(f"   - {p['affiche']}: {motif}")
+        if not cibles or not click.confirm(
+            f"{t('Push')} {len(cibles)} {t('repositories to')} {nom}"
+            f" ({push_remote.PARALLELE} {t('at a time')})?",
+            default=False,
+        ):
+            print(f"↩️  {t('Cancelled: nothing was pushed.')}")
+            return 0
+        affiches = {p["chemin"]: p["affiche"] for p in projets}
+
+        def suivi(r):
+            marque = "✅" if not r["code"] else "⚠ "
+            print(f"  {marque} {affiches[r['chemin']]}", flush=True)
+
+        resultats = push_remote.pousser_en_parallele(cibles, suivi=suivi)
+        echecs = [r for r in resultats if r["code"]]
+        print(
+            f"   {len(resultats) - len(echecs)}/{len(resultats)}"
+            f" {t('repositories pushed.')}"
+        )
+        for r in echecs:
+            print(f"   - {affiches[r['chemin']]}: {r['erreur'][-300:]}")
+        return len(echecs)
+
+    def _git_repo_nouveau_remote(self, projets):
+        """Pose un remote neuf dans chaque clone. Rend (nom, chemins exclus)
+        ou (None, ()) quand rien n'est posé.
+
+        Le nom ne peut pas être celui d'un remote du manifeste : git-repo en
+        réécrirait l'URL à la synchronisation suivante. L'URL de chaque
+        clone est « <base>/<propriétaire>/<dépôt> » (`push_remote.plan_remote`).
+        Un clone où ce nom vise déjà un autre dépôt garde son remote et est
+        exclu du push, comme un clone sans propriétaire connu.
+        """
+        nom = click.prompt(
+            f"💬 {t('Name of the new remote')}", default="forge"
+        ).strip()
+        if nom in {p["remote"] for p in projets}:
+            print(
+                f"⚠  {t('This name is a manifest remote: git-repo would rewrite its URL.')}"
+            )
+            return None, ()
+        base = click.prompt(
+            f"💬 {t('Base URL of the forge (https://… or ssh://…)')}"
+        ).strip()
+        if not re.match(r"^(?:https?|ssh)://[^/]+|^[^@/:]+@[^/:]+:", base):
+            print(f"⚠  {t('Not a forge URL.')}")
+            return None, ()
+        if base.startswith("http://"):
+            print(
+                f"   ⚠  {t('Plain HTTP: credentials cross the network in clear.')}"
+            )
+        poses, sans = push_remote.plan_remote(projets, nom, base)
+        for p, motif in sans:
+            print(f"   - {p['affiche']}: {motif}")
+        if not poses:
+            return None, ()
+        exemple_p, exemple_url = poses[0]
+        print(f"   {t('Example:')} {exemple_p['affiche']} → {exemple_url}")
+        if not click.confirm(
+            f"{t('Add the remote')} {nom} {t('to')} {len(poses)} {t('clones?')}",
+            default=False,
+        ):
+            return None, ()
+        etats = {}
+        exclus = {p["chemin"] for p, _ in sans}
+        for (p, url), (etat, en_place) in zip(
+            poses,
+            push_remote._en_parallele(
+                lambda pu: push_remote.poser_remote(
+                    pu[0]["chemin"], nom, pu[1]
+                ),
+                poses,
+                push_remote.PARALLELE,
+            ),
+        ):
+            etats[etat] = etats.get(etat, 0) + 1
+            if etat in ("autre_url", "refuse", "non_clone"):
+                exclus.add(p["chemin"])
+                print(
+                    f"   ⚠  {p['affiche']}: {etat} {en_place or ''}".rstrip()
+                )
+        print("   " + ", ".join(f"{n} {e}" for e, n in sorted(etats.items())))
+        return nom, exclus
 
     def _git_repo_comparer(self):
         """Compare deux gels, puis ouvre l'historique d'un projet sur demande.

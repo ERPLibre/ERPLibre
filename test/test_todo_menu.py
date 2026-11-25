@@ -995,6 +995,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "📌 Switch to production: each repository on its frozen commit": "_git_repo_reconfigurer",
         "🫗 Unfreeze the versions": "_git_repo_geler",
         "🔀 Compare two freezes": "_git_repo_comparer",
+        "📡 Push the repositories to a remote": "_git_repo_pousser_remote",
     }
 
     def test_the_upstream_remotes_come_before_the_dry_run(self):
@@ -1380,6 +1381,181 @@ class TestGitRepoPull(unittest.TestCase):
         self.assertEqual(list(kw["type"].choices), ["1", "2"])
 
 
+class TestGitRepoPushToRemote(unittest.TestCase):
+    """L'entrée « Pousser les dépôts vers un remote » : le choix du remote,
+    d'un remote neuf posé à partir de l'URL d'une forge, du contenu, et la
+    confirmation avant tout push. Git est remplacé : ses effets se testent
+    dans test_push_remote."""
+
+    PROJETS = [
+        {
+            "chemin": "odooX.0/a",
+            "nom": "a.git",
+            "remote": "Orig",
+            "branche": "X.0",
+            "proprietaire": "Proprio",
+        },
+        {
+            "chemin": "odooX.0/b",
+            "nom": "b.git",
+            "remote": "Orig",
+            "branche": "X.0",
+            "proprietaire": None,
+        },
+    ]
+
+    def setUp(self):
+        import copy
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.prm = git_repo_menu.push_remote
+        self.poussees = []
+        self.poses = []
+        self.approfondis = []
+        self.etat_pose = "ajoute"
+
+        def pousser(cibles, jobs=None, suivi=None):
+            self.poussees.extend(cibles)
+            return [dict(c, code=0, erreur="") for c in cibles]
+
+        def poser(chemin, nom, url):
+            self.poses.append((chemin, nom, url))
+            return self.etat_pose, None
+
+        for nom, valeur in (
+            ("projets_actifs", lambda: copy.deepcopy(self.PROJETS)),
+            ("remotes_des_clones", lambda chemins, jobs=8: {"Orig": 2}),
+            ("pousser_en_parallele", pousser),
+            ("poser_remote", poser),
+            (
+                "approfondir",
+                lambda chemin, remote: self.approfondis.append(chemin)
+                or (0, ""),
+            ),
+            (
+                "preparer_cibles",
+                lambda projets, remote, mode: (
+                    [
+                        {
+                            "chemin": p["chemin"],
+                            "remote": remote,
+                            "specs": [mode],
+                        }
+                        for p in projets
+                    ],
+                    [],
+                ),
+            ),
+        ):
+            patcheur = mock.patch.object(self.prm, nom, side_effect=valeur)
+            patcheur.start()
+            self.addCleanup(patcheur.stop)
+        superficiel = mock.patch.object(
+            git_repo_menu.repo_upgrade,
+            "est_superficiel",
+            side_effect=lambda chemin: chemin.endswith("odooX.0/a")
+            and self.superficiel,
+        )
+        superficiel.start()
+        self.addCleanup(superficiel.stop)
+        self.superficiel = False
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        self.obj = Menu()
+
+    def lancer(self, prompts, confirms):
+        with self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=list(prompts)
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ) as confirm, self.mock.patch(
+            "builtins.print"
+        ):
+            code = self.obj._git_repo_pousser_remote()
+        return code, confirm
+
+    def test_an_existing_remote_pushes_after_consent(self):
+        code, _ = self.lancer(["1", "manifest"], [True])
+        self.assertEqual(code, 0)
+        self.assertEqual({c["remote"] for c in self.poussees}, {"Orig"})
+        self.assertEqual(
+            {tuple(c["specs"]) for c in self.poussees}, {("manifest",)}
+        )
+        self.assertTrue(
+            all(
+                c["chemin"].startswith(self.menu.RACINE) for c in self.poussees
+            )
+        )
+
+    def test_nothing_is_pushed_without_consent(self):
+        self.lancer(["1", "all"], [False])
+        self.assertEqual(self.poussees, [])
+
+    def test_the_lightest_content_is_the_default(self):
+        with self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=["1", "manifest"]
+        ) as prompt, self.mock.patch.object(
+            self.menu.click, "confirm", return_value=False
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            self.obj._git_repo_pousser_remote()
+        self.assertEqual(
+            prompt.call_args_list[1].kwargs["default"], self.prm.MODE_MANIFESTE
+        )
+
+    def test_a_new_remote_is_set_from_the_forge_url(self):
+        self.lancer(
+            ["n", "forge", "ssh://git@forge.example.invalid:2222", "manifest"],
+            [True, True],
+        )
+        self.assertEqual(len(self.poses), 1)
+        chemin, nom, url = self.poses[0]
+        self.assertTrue(chemin.endswith("odooX.0/a"))
+        self.assertEqual(
+            (nom, url),
+            ("forge", "ssh://git@forge.example.invalid:2222/Proprio/a.git"),
+        )
+        # Le projet sans propriétaire connu n'est ni posé ni poussé.
+        self.assertEqual(
+            [c["chemin"].rsplit("/", 1)[1] for c in self.poussees], ["a"]
+        )
+        self.assertEqual({c["remote"] for c in self.poussees}, {"forge"})
+
+    def test_a_clone_whose_remote_points_elsewhere_is_left_out(self):
+        self.etat_pose = "autre_url"
+        self.lancer(
+            ["n", "forge", "https://forge.example.invalid", "manifest"],
+            [True, True],
+        )
+        self.assertEqual(self.poussees, [])
+
+    def test_a_manifest_remote_name_is_refused(self):
+        code, confirm = self.lancer(["n", "Orig"], [])
+        self.assertEqual(code, 0)
+        self.assertEqual((self.poses, self.poussees), ([], []))
+        confirm.assert_not_called()
+
+    def test_a_string_that_is_not_a_forge_url_is_refused(self):
+        self.lancer(["n", "forge", "forge.example.invalid"], [])
+        self.assertEqual((self.poses, self.poussees), ([], []))
+
+    def test_shallow_clones_are_deepened_only_on_request(self):
+        self.superficiel = True
+        self.lancer(["1", "manifest"], [False, True])
+        self.assertEqual(self.approfondis, [])
+        self.poussees.clear()
+        self.lancer(["1", "manifest"], [True, True])
+        self.assertEqual(len(self.approfondis), 1)
+        self.assertTrue(self.approfondis[0].endswith("odooX.0/a"))
+
+
 class TestGitRepoFreezeEntries(unittest.TestCase):
     """Les entrées du gel : ce qu'elles lancent, et dans quel ordre.
 
@@ -1531,10 +1707,17 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         self.assertNotIn("--branches", " ".join(self.cmds))
         self.publier_branches.assert_not_called()
 
-    def _publier_branches(self, choix, confirms=(), codes=None):
+    def _publier_branches(
+        self, choix, confirms=(), codes=None, remotes=None, remote_choisi=None
+    ):
         """Lance la publication des branches sur deux branches factices.
-        Rend (nombre poussé, appels de push)."""
+
+        `choix` répond à « toutes, une à une, aucune » ; `remotes` est ce que
+        portent les clones (par défaut, le seul remote du manifeste, et la
+        question du remote n'est pas posée) ; `remote_choisi` y répond.
+        Rend (nombre poussé, cibles passées au push parallèle)."""
         gfm = self.menu.git_freeze_manifest
+        prm = self.menu.push_remote
         lst = [
             {
                 "chemin": "odooX.0/a",
@@ -1550,36 +1733,53 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
             },
         ]
         codes = list(codes or [(0, ""), (0, "")])
+        poussees = []
+
+        def pousser(cibles, jobs=prm.PARALLELE, suivi=None):
+            resultats = []
+            for c in cibles:
+                code, erreur = codes.pop(0)
+                r = dict(c, code=code, erreur=erreur)
+                poussees.append(c)
+                if suivi:
+                    suivi(r)
+                resultats.append(r)
+            return resultats
+
+        reponses = [choix] + ([remote_choisi] if remote_choisi else [])
         with self.mock.patch.object(
             gfm, "branches_a_publier", return_value=lst
         ), self.mock.patch.object(
-            gfm, "publier_branche", side_effect=codes
-        ) as push, self.mock.patch.object(
-            self.menu.click, "prompt", return_value=choix
+            prm, "remotes_des_clones", return_value=remotes or {"R": 2}
+        ), self.mock.patch.object(
+            prm, "pousser_en_parallele", side_effect=pousser
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=reponses
         ), self.mock.patch.object(
             self.menu.click, "confirm", side_effect=list(confirms)
         ):
             n = self.obj._git_repo_publier_branches()
-        return n, push
+        return n, poussees
 
     def test_publishing_branches_defaults_to_none(self):
-        n, push = self._publier_branches("none")
-        self.assertEqual(n, 0)
-        push.assert_not_called()
+        n, poussees = self._publier_branches("none")
+        self.assertEqual((n, poussees), (0, []))
 
     def test_publishing_all_branches_pushes_each_once(self):
-        n, push = self._publier_branches("all")
+        n, poussees = self._publier_branches("all")
         self.assertEqual(n, 2)
-        self.assertEqual(push.call_count, 2)
-        chemin, remote, branche = push.call_args_list[0].args
-        self.assertTrue(chemin.endswith("odooX.0/a"))
-        self.assertEqual((remote, branche), ("R", "X_maj_1"))
+        self.assertEqual(len(poussees), 2)
+        self.assertTrue(poussees[0]["chemin"].endswith("odooX.0/a"))
+        self.assertEqual(poussees[0]["remote"], "R")
+        self.assertEqual(
+            poussees[0]["specs"], ["refs/heads/X_maj_1:refs/heads/X_maj_1"]
+        )
 
     def test_publishing_each_branch_asks_one_by_one(self):
-        n, push = self._publier_branches("each", confirms=[False, True])
+        n, poussees = self._publier_branches("each", confirms=[False, True])
         self.assertEqual(n, 1)
-        push.assert_called_once()
-        self.assertTrue(push.call_args.args[0].endswith("odooX.0/b"))
+        self.assertEqual(len(poussees), 1)
+        self.assertTrue(poussees[0]["chemin"].endswith("odooX.0/b"))
 
     def test_a_refused_push_is_not_counted(self):
         with self.mock.patch("builtins.print") as imprime:
@@ -1595,6 +1795,28 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
             ),
             sortie,
         )
+
+    def test_another_remote_of_the_clones_can_be_chosen(self):
+        with self.mock.patch("builtins.print") as imprime:
+            n, poussees = self._publier_branches(
+                "all", remotes={"R": 2, "forge": 2}, remote_choisi="forge"
+            )
+        self.assertEqual(n, 2)
+        self.assertEqual({c["remote"] for c in poussees}, {"forge"})
+        sortie = " ".join(str(a) for c in imprime.mock_calls for a in c.args)
+        self.assertIn(
+            self.menu.t(
+                "The freeze writes a branch only when the manifest remote"
+                " carries it."
+            ),
+            sortie,
+        )
+
+    def test_the_manifest_remote_stays_the_default(self):
+        _n, poussees = self._publier_branches(
+            "all", remotes={"R": 2, "forge": 1}, remote_choisi="manifest"
+        )
+        self.assertEqual({c["remote"] for c in poussees}, {"R"})
 
     def test_nothing_to_publish_asks_nothing(self):
         gfm = self.menu.git_freeze_manifest

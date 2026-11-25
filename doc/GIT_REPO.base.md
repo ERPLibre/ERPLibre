@@ -980,6 +980,25 @@ the clone detached on it. The fork upgrade always works on the base branch: a pa
 publishes onto `<branch>`, never onto a dated branch, and the cleanup of merged branches never offers the branch the
 manifest follows.
 
+#### Push the repositories to a remote
+
+TODO › Execute › Git repository › Repo › Push the repositories to a remote, or `make repo_push_remote REMOTE=<name>`,
+pushes every cloned repository of the active Odoo version to a remote of the clones, eight at a time, never forced:
+a remote that holds commits the clone lacks refuses the update, and the refusal is reported. The remote is one the
+clones already carry, or a new one set from the base URL of a forge (`URL=`): each clone receives
+`<base>/<owner>/<repo>.git`, the owner being the last segment of the `fetch` URL of its manifest remote, so the forge
+gets the same tree as the original host. A new remote cannot take the name of a manifest remote, whose URL git-repo
+rewrites at every sync; it fetches no tags and `skipFetchAll` keeps it out of `git fetch --all`. A clone where the
+name already points to another repository keeps it and is left out.
+
+The content is asked for, the lightest by default: `manifest`, the checked-out commit on the branch the manifest
+follows, without a dated suffix; or `all` (`MODE=all`), every local branch, every tracking branch of the manifest
+remote and every tag. A shallow clone is pushed as is unless its full history is fetched first, which TODO asks for
+and `UNSHALLOW=1` requests: many servers refuse a truncated history. `DRY_RUN=1` shows the refspecs and pushes nothing.
+
+When the freeze offers to push the branches it cannot write, it pushes them the same way, in parallel, and can target
+another remote of the clones; the freeze still writes a branch only when the manifest remote carries it.
+
 #### Install or reconfigure on the commits
 
 <!-- [fr] -->
@@ -1034,6 +1053,27 @@ contient le commit gelé : c'est l'état que laisse la publication d'une passe, 
 fork et le clone détaché dessus. La mise à jour des forks travaille toujours sur la branche de base : une passe nomme
 `<branche>_maj_<AAAAMMJJ>` et publie sur `<branche>`, jamais sur une copie datée, et le nettoyage des branches
 fusionnées ne propose jamais la branche que suit le manifeste.
+
+#### Pousser les dépôts vers un remote
+
+TODO › Exécution › Répertoire git › Repo › Pousser les dépôts vers un remote, ou `make repo_push_remote REMOTE=<nom>`,
+pousse chaque dépôt cloné de la version d'Odoo active vers un remote des clones, huit à la fois, jamais de force : un
+distant qui porte des commits que le clone n'a pas refuse la mise à jour, et le refus est rapporté. Le remote est l'un
+de ceux que les clones portent déjà, ou un remote neuf posé à partir de l'URL de base d'une forge (`URL=`) : chaque
+clone reçoit `<base>/<propriétaire>/<dépôt>.git`, le propriétaire étant le dernier segment de l'URL `fetch` du remote
+de son manifeste, si bien que la forge reçoit la même arborescence que l'hôte d'origine. Un remote neuf ne peut pas
+prendre le nom d'un remote du manifeste, dont git-repo réécrit l'URL à chaque synchronisation ; il ne récupère pas les
+étiquettes et `skipFetchAll` l'écarte de `git fetch --all`. Un clone où ce nom vise déjà un autre dépôt le garde et
+est laissé de côté.
+
+Le contenu se demande, le plus léger par défaut : `manifest`, le commit extrait sur la branche que suit le manifeste,
+sans suffixe daté ; ou `all` (`MODE=all`), chaque branche locale, chaque branche de suivi du remote du manifeste et
+chaque étiquette. Un clone superficiel se pousse tel quel, sauf si tout son historique est récupéré d'abord, ce que
+TODO demande et que `UNSHALLOW=1` réclame : beaucoup de serveurs refusent un historique tronqué. `DRY_RUN=1` montre les
+refspecs et ne pousse rien.
+
+Quand le gel propose de pousser les branches qu'il ne peut écrire, il les pousse de la même façon, en parallèle, et
+peut viser un autre remote des clones ; le gel n'écrit toujours une branche que si le remote du manifeste la porte.
 
 #### Installer ou reconfigurer sur les commits
 
