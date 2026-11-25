@@ -5,13 +5,12 @@
 
 Retirer défait ce que l'installation a posé, selon l'exécution. Ce qui se
 garde :
-- rien ne s'enlève sans le nom retapé en entier ; l'essai à blanc montre
-  chaque étape sans rien toucher ;
-- chaque commande est rejouable (IF EXISTS, -f, rm -rf) : un retrait
-  interrompu se relance ;
-- l'entrée du registre ne part que si tout a réussi ;
+- l'essai à blanc montre chaque étape sans rien toucher ;
+- chaque commande est rejouable (IF EXISTS, -f, rm -rf) ;
 - en développement conteneur, custom/ reste : c'est le code du
   développeur, son chemin est dit.
+Le pilote du retrait (confirmation, ce qui est déjà parti, registre gardé
+sur échec) se vérifie dans test_erp_common_fleet.
 """
 
 import contextlib
@@ -112,16 +111,6 @@ class TestConteneur(Banc):
             }
         }
 
-    def test_nothing_goes_without_the_name_retyped(self):
-        for mauvais in ("", "er"):
-            with self.subTest(mauvais=mauvais):
-                code, _s = self.lancer(
-                    "remove", "--instance", "erp", "--confirm", mauvais
-                )
-                self.assertEqual(code, 2)
-        self.assertEqual(self.sys.appels, [])
-        self.assertIn("erp", self.registre())
-
     def test_the_dry_run_shows_every_step_and_touches_nothing(self):
         code, sortie = self.lancer("remove", "--instance", "erp", "--dry-run")
         self.assertEqual(code, 0)
@@ -155,30 +144,6 @@ class TestConteneur(Banc):
         self.lancer("remove", "--instance", "erp", "--confirm", "erp")
         volumes = next(c for c in self.cmds() if "volume rm" in c)
         self.assertIn("erplibre-dolibarr-erp-custom", volumes)
-
-    def test_what_is_already_gone_counts_as_removed(self):
-        # Relancer un retrait interrompu : les conteneurs ne sont plus là.
-        self.sys.run = lambda argv: (
-            self.sys.appels.append(list(argv))
-            or (
-                (1, "Error: no such container")
-                if " rm " in f" {' '.join(argv)} "
-                else (0, "")
-            )
-        )
-        code, _s = self.lancer(
-            "remove", "--instance", "erp", "--confirm", "erp"
-        )
-        self.assertEqual(code, 0)
-        self.assertNotIn("erp", self.registre())
-
-    def test_a_failed_step_keeps_the_registry_entry(self):
-        self.sys.echec.add("volume rm")
-        code, _s = self.lancer(
-            "remove", "--instance", "erp", "--confirm", "erp"
-        )
-        self.assertEqual(code, 1)
-        self.assertIn("erp", self.registre())
 
 
 class TestNatifDev(Banc):

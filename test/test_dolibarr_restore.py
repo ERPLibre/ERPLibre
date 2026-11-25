@@ -396,7 +396,6 @@ class SansFiltre:
             mock.patch.object(
                 tarfile.TarFile, "extractall", extractall_3_11_2
             ),
-            mock.patch.object(restore, "_HAS_FILTER", False, create=True),
         ]
         if hasattr(tarfile, "data_filter"):
             patches.append(mock.patch.object(tarfile, "data_filter", None))
@@ -406,34 +405,7 @@ class SansFiltre:
 
 
 class TestGardeFousSansFiltre(SansFiltre, TestGardeFous):
-    def test_a_link_out_of_the_folder_is_refused(self):
-        tampon = io.BytesIO()
-        with tarfile.open(fileobj=tampon, mode="w") as tar:
-            lien = tarfile.TarInfo("./sortie")
-            lien.type = tarfile.SYMTYPE
-            lien.linkname = "../../../etc"
-            tar.addfile(lien)
-        self.archive = archive(
-            self.racine / "lien.tar.gz",
-            extra={"documents.tar": tampon.getvalue()},
-        )
-        code, _s = self.restaurer()
-        self.assertEqual(code, 1)
-        self.assertEqual(self.sys.appels, [])
-
-    def test_a_device_or_fifo_is_refused(self):
-        tampon = io.BytesIO()
-        with tarfile.open(fileobj=tampon, mode="w") as tar:
-            fifo = tarfile.TarInfo("./tube")
-            fifo.type = tarfile.FIFOTYPE
-            tar.addfile(fifo)
-        self.archive = archive(
-            self.racine / "fifo.tar.gz",
-            extra={"documents.tar": tampon.getvalue()},
-        )
-        code, _s = self.restaurer()
-        self.assertEqual(code, 1)
-        self.assertEqual(self.sys.appels, [])
+    pass
 
 
 class TestNatifDevSansFiltre(SansFiltre, TestNatifDev):

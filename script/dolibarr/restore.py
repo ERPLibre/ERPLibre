@@ -23,7 +23,6 @@ Une archive dont un membre sortirait de son dossier à l'extraction (chemin
 absolu, « .. », lien vers l'extérieur) est refusée avant toute écriture.
 """
 
-import json
 import os
 import re
 import shutil
@@ -33,6 +32,7 @@ import time
 
 from script.dolibarr import backup, container_plan, install_files
 from script.dolibarr.run import served_version
+from script.erp_common import archive as common_archive
 
 MEMBERS = {
     "manifest.json",
@@ -48,17 +48,6 @@ _ROOTPW = 'MYSQL_PWD="$(cat /run/secrets/db_root_password)"'
 WAIT_TRIES = 90
 WAIT_PAUSE = 2.0
 
-# Le filtre « data » de tarfile n'existe qu'à partir de Python 3.11.4
-# (Debian 12 livre 3.11.2) : sans lui, chaque membre se vérifie à la main.
-_HAS_FILTER = hasattr(tarfile, "data_filter")
-_SAFE_TYPES = (
-    tarfile.REGTYPE,
-    tarfile.AREGTYPE,
-    tarfile.DIRTYPE,
-    tarfile.SYMTYPE,
-    tarfile.LNKTYPE,
-)
-
 # Remet la clé cron de l'instance en base : restaurée, la base porte celle
 # de la sauvegarde, et un clone enverrait la sienne, refusée à chaque
 # passage. La clé arrive par stdin ou par le fichier secret, jamais sur
@@ -73,9 +62,11 @@ _CRON_KEY_PHP = (
 
 t = backup.t
 
-
-class RestoreError(Exception):
-    """La restauration ne peut pas continuer ; le message dit pourquoi."""
+# La restauration s'arrête sur cette erreur, qu'elle vienne de la lecture
+# de l'archive (erp_common.archive) ou d'une étape d'ici.
+RestoreError = common_archive.ArchiveError
+# Extraction sûre d'un tar ouvert, que module.py emprunte aussi.
+_extract = common_archive.extract
 
 
 def unique_id(conf_text):
@@ -87,59 +78,16 @@ def _version(text):
     return tuple(int(x) for x in re.findall(r"\d+", text or "")[:3])
 
 
-def _check_member(member):
-    """Lève si `member` sortirait du dossier d'extraction : chemin absolu,
-    « .. », lien vers l'extérieur, ou type autre que fichier, dossier, lien."""
-    if member.type not in _SAFE_TYPES:
-        raise tarfile.TarError(f"{member.name}: unexpected type")
-    parts = member.name.split("/")
-    if member.name.startswith("/") or ".." in parts:
-        raise tarfile.TarError(f"{member.name}: outside the folder")
-    if member.issym() or member.islnk():
-        target = member.linkname
-        base = os.path.dirname(member.name) if member.issym() else ""
-        resolved = os.path.normpath(os.path.join(base, target))
-        if target.startswith("/") or resolved.split("/")[0] == "..":
-            raise tarfile.TarError(f"{member.name}: link outside the folder")
-
-
-def _extract(tar, directory):
-    if _HAS_FILTER:
-        tar.extractall(directory, filter="data")
-        return
-    for member in tar.getmembers():
-        _check_member(member)
-    tar.extractall(directory)
-
-
-def _check_tar(path):
-    """Refuse un tar dont un membre sortirait du dossier d'extraction."""
-    try:
-        with tarfile.open(path) as tar:
-            for member in tar.getmembers():
-                if _HAS_FILTER:
-                    tarfile.data_filter(member, "/nonexistent-dest")
-                else:
-                    _check_member(member)
-    except (tarfile.TarError, OSError) as e:
-        raise RestoreError(t("Unsafe or unreadable archive: %s") % e)
-
-
 def read_archive(path, work):
     """Extrait l'archive dans `work`, en vérifie les membres ; rend le
     manifeste."""
-    try:
-        with tarfile.open(path) as tar:
-            names = set(tar.getnames())
-            if names != MEMBERS:
-                raise RestoreError(t("Not a Dolibarr backup: %s") % path)
-            _extract(tar, work)
-    except (tarfile.TarError, OSError) as e:
-        raise RestoreError(t("Unsafe or unreadable archive: %s") % e)
-    for member in ("documents.tar", "custom.tar"):
-        _check_tar(os.path.join(work, member))
-    with open(os.path.join(work, "manifest.json"), encoding="utf-8") as f:
-        return json.load(f)
+    return common_archive.read_archive(
+        path,
+        work,
+        MEMBERS,
+        ("documents.tar", "custom.tar"),
+        "Not a Dolibarr backup: %s",
+    )
 
 
 def _empty(directory):

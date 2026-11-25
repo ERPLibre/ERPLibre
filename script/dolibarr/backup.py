@@ -25,18 +25,16 @@ La base se vide avec le compte de l'instance en développement natif (mot
 de passe par l'environnement, jamais sur argv), par sudo en production, et
 dans le conteneur de la base pour une instance en conteneurs, qui y lit
 son propre secret.
+
+L'écriture atomique, le refus d'un dossier commitable et le classement
+des archives viennent de script/erp_common/archive ; ce module fournit le
+plan des membres propre à Dolibarr.
 """
 
 import argparse
 import datetime
-import json
 import os
-import re
-import shutil
-import subprocess
 import sys
-import tarfile
-import tempfile
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -45,18 +43,17 @@ if new_path not in sys.path:
     sys.path.append(new_path)
 
 from script.dolibarr import lib_dolibarr  # noqa: E402
+from script.erp_common import archive as common_archive  # noqa: E402
+from script.erp_common.archive import (  # noqa: E402,F401
+    MARIADB_DUMP,
+    PG_DUMP,
+    committable,
+)
 
 ROOT = new_path
-BACKUPS = os.path.join("private", "dolibarr", "backups")
-
-MARIADB_DUMP = [
-    "mariadb-dump",
-    "--single-transaction",
-    "--routines",
-    "--triggers",
-    "--no-tablespaces",
-]
-PG_DUMP = ["pg_dump", "--no-owner", "--no-privileges"]
+_private_dir = common_archive.private_dir
+ERP = lib_dolibarr.ERP
+BACKUPS = common_archive.backups_dir(ERP)
 
 
 def t(key):
@@ -68,44 +65,13 @@ def t(key):
     return _t(key)
 
 
-class System:
-    """Commandes réelles ; les tests en passent un factice."""
-
-    def run_to_file(self, argv, path, env=None):
-        full = dict(os.environ, **env) if env else None
-        with open(path, "wb") as out:
-            try:
-                r = subprocess.run(
-                    argv, stdout=out, stderr=subprocess.PIPE, env=full
-                )
-            except OSError as e:
-                return 127, str(e)
-        return r.returncode, r.stderr.decode("utf-8", "replace")
-
-    def run(self, argv, env=None, stdin_path=None):
-        full = dict(os.environ, **env) if env else None
-        stdin = open(stdin_path, "rb") if stdin_path else subprocess.DEVNULL
-        try:
-            r = subprocess.run(
-                argv, stdin=stdin, capture_output=True, env=full
-            )
-        except OSError as e:
-            return 127, str(e)
-        finally:
-            if stdin_path:
-                stdin.close()
-        out = (r.stdout or b"") + (r.stderr or b"")
-        return r.returncode, out.decode("utf-8", "replace")
+class System(common_archive.System):
+    """Commandes, HTTP et moteur réels ; les tests en passent un factice."""
 
     def http_get(self, url, host):
         from script.dolibarr import native_prod
 
         return native_prod.http_get(url, host)
-
-    def engine(self, moteur):
-        from script.todo import container_runtime
-
-        return container_runtime.etat(moteur)
 
 
 def _secrets(entry):
@@ -226,38 +192,22 @@ def plan(name, entry, system):
         ("documents.tar", _tar(entry["data_root"], sudo=prod), None),
         (
             "conf.php",
-            ["sudo", "cat", os.path.join(htdocs, "conf", "conf.php")]
-            if prod
-            else os.path.join(htdocs, "conf", "conf.php"),
+            (
+                ["sudo", "cat", os.path.join(htdocs, "conf", "conf.php")]
+                if prod
+                else os.path.join(htdocs, "conf", "conf.php")
+            ),
             None,
         ),
         ("custom.tar", _tar(os.path.join(htdocs, "custom")), None),
     ]
 
 
-def _private_dir(path):
-    os.makedirs(path, mode=0o700, exist_ok=True)
-    os.chmod(path, 0o700)
-
-
-def committable(path):
-    """Vrai quand git pourrait commiter un fichier à `path` : la question
-    de seal_menu.chemin_commitable, posée au dépôt qui contient le dossier.
-    Si l'outillage TODO ne se charge pas, le doute refuse."""
-    try:
-        from script.todo.seal_menu import chemin_commitable
-    except ImportError:
-        return True
-    return chemin_commitable(path)
-
-
 def exposed(dest, name, stamp):
     """Les chemins que create écrirait dans `dest` et que git pourrait
-    commiter : l'archive, son morceau .part, et un membre du dossier de
-    travail, où la base et conf.php sont en clair."""
-    final = os.path.join(dest, f"{name}-{stamp}.tar.gz")
-    work = os.path.join(dest, ".partial-x", "conf.php")
-    return [p for p in (final, final + ".part", work) if committable(p)]
+    commiter ; conf.php représente le dossier de travail, où la base et
+    conf.php sont en clair."""
+    return common_archive.exposed(dest, name, stamp, "conf.php")
 
 
 def create(name, entry, system, dest, stamp):
@@ -281,75 +231,33 @@ def create(name, entry, system, dest, stamp):
             % os.path.join(BACKUPS, name)
         )
         return None
-    _private_dir(dest)
-    work = tempfile.mkdtemp(prefix=".partial-", dir=dest)
-    try:
-        for member, argv, env in plan(name, entry, system):
-            target = os.path.join(work, member)
-            if isinstance(argv, str):
-                try:
-                    shutil.copyfile(argv, target)
-                    code, err = 0, ""
-                except OSError as e:
-                    code, err = 1, str(e)
-            else:
-                code, err = system.run_to_file(argv, target, env)
-            if code:
-                print(t("Cannot save %s:") % member)
-                print(err.strip()[-2000:])
-                return None
-        manifest = {
-            "instance": name,
-            "date": stamp,
-            "mode": entry.get("mode"),
-            "runtime": entry.get("runtime"),
-            "db": entry.get("db", "mariadb"),
-            "version": entry.get("version"),
-            "commit": entry.get("commit"),
-        }
-        with open(
-            os.path.join(work, "manifest.json"), "w", encoding="utf-8"
-        ) as f:
-            f.write(json.dumps(manifest, indent=4, sort_keys=True) + "\n")
-        final = os.path.join(dest, f"{name}-{stamp}.tar.gz")
-        partial = final + ".part"
-        fd = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with (
-            os.fdopen(fd, "wb") as raw,
-            tarfile.open(fileobj=raw, mode="w:gz") as tar,
-        ):
-            for member in sorted(os.listdir(work)):
-                tar.add(os.path.join(work, member), arcname=member)
-        os.replace(partial, final)
-        return final
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-        partial = os.path.join(dest, f"{name}-{stamp}.tar.gz.part")
-        if os.path.exists(partial):
-            os.remove(partial)
-
-
-_STAMP = re.compile(r"(\d{8}-\d{6})\.tar\.gz$")
+    manifest = {
+        "instance": name,
+        "date": stamp,
+        "mode": entry.get("mode"),
+        "runtime": entry.get("runtime"),
+        "db": entry.get("db", "mariadb"),
+        "version": entry.get("version"),
+        "commit": entry.get("commit"),
+    }
+    return common_archive.write(
+        dest,
+        name,
+        stamp,
+        lambda: plan(name, entry, system),
+        manifest,
+        system,
+    )
 
 
 def archives(root, name):
-    """Les archives de `name`, la plus récente d'abord : par leur date,
-    que le préfixe pre-upgrade ou pre-restore ne doit pas déplacer."""
-    directory = os.path.join(root, BACKUPS, name)
-    try:
-        found = [f for f in os.listdir(directory) if _STAMP.search(f)]
-    except OSError:
-        return []
-    found.sort(key=lambda f: _STAMP.search(f).group(1), reverse=True)
-    return [os.path.join(directory, f) for f in found]
+    """Les archives de `name`, la plus récente d'abord."""
+    return common_archive.archives(ERP, root, name)
 
 
 def saved_instances(root):
     """Les instances qui ont un dossier de sauvegardes, retirées comprises."""
-    try:
-        return sorted(os.listdir(os.path.join(root, BACKUPS)))
-    except OSError:
-        return []
+    return common_archive.saved_instances(ERP, root)
 
 
 def build_parser():

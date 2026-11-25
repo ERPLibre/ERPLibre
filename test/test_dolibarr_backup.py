@@ -7,23 +7,21 @@ Un système simulé rend le vidage de la base et les flux tar ; l'archive,
 elle, est vraiment écrite et relue. Ce qui se garde :
 - une sauvegarde porte la base, documents/, conf.php (sa clé d'instance
   chiffre des valeurs en base) et custom/, avec un manifeste ;
-- l'archive est 0600 dans un dossier 0700 sous private/ : elle porte les
-  données d'un client ;
 - aucun mot de passe sur argv : il passe par l'environnement du vidage ;
-- un vidage qui échoue ne laisse aucune archive, ni morceau.
+- un dossier que git pourrait commiter est refusé avant toute écriture.
+L'écriture atomique, les droits 0600 et 0700, le classement des archives
+et la question posée à git se vérifient dans test_erp_common_archive.
 """
 
 import contextlib
 import io
 import json
-import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
@@ -151,20 +149,6 @@ class TestContenu(Banc):
         self.assertEqual(manifeste["version"], "24.0.1")
         self.assertIn("cleinventee", conf)
 
-    def test_a_loose_backup_directory_is_closed(self):
-        dossier = self.archive().parent
-        dossier.mkdir(parents=True)
-        dossier.chmod(0o755)
-        self.sauver()
-        self.assertEqual(stat.S_IMODE(dossier.stat().st_mode), 0o700)
-
-    def test_the_archive_is_private(self):
-        self.sauver()
-        self.assertEqual(stat.S_IMODE(self.archive().stat().st_mode), 0o600)
-        self.assertEqual(
-            stat.S_IMODE(self.archive().parent.stat().st_mode), 0o700
-        )
-
 
 class TestSecrets(Banc):
     def test_the_database_password_goes_by_the_environment(self):
@@ -187,15 +171,6 @@ class TestSecrets(Banc):
 
 
 class TestEchec(Banc):
-    def test_a_failed_dump_leaves_nothing(self):
-        self.sys.echec.add("mariadb-dump")
-        code, _sortie = self.sauver()
-        self.assertEqual(code, 1)
-        dossier = self.archive().parent
-        self.assertEqual(
-            list(dossier.iterdir()) if dossier.exists() else [], []
-        )
-
     def test_an_unknown_instance_exits_2(self):
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
@@ -238,18 +213,9 @@ class TestGit(Banc):
         self.assertEqual(code, 0, sortie)
         self.assertTrue((dest / "erp-20260927-081500.tar.gz").exists())
 
-    def test_ignoring_the_archive_alone_leaves_the_work_folder_exposed(self):
-        dest = self.depot("*.tar.gz\n*.part\n")
-        refuses = backup.exposed(str(dest), "erp", "20260927-081500")
-        self.assertEqual([Path(p).name for p in refuses], ["conf.php"])
-
     def test_the_default_folder_of_the_checkout_is_ignored(self):
         dest = RACINE / backup.BACKUPS / "erp"
         self.assertEqual(backup.exposed(str(dest), "erp", "20260927"), [])
-
-    def test_without_the_todo_tooling_the_doubt_refuses(self):
-        with patch.dict(sys.modules, {"script.todo.seal_menu": None}):
-            self.assertTrue(backup.committable(str(self.racine / "x")))
 
 
 class TestConteneur(Banc):
@@ -295,27 +261,6 @@ class TestConteneur(Banc):
 
 
 class TestOrdre(Banc):
-    def test_newest_first_by_date_whatever_the_prefix(self):
-        dossier = self.racine / "private" / "dolibarr" / "backups" / "erp"
-        dossier.mkdir(parents=True)
-        for nom in (
-            "erp-pre-upgrade-20260927-092405.tar.gz",
-            "erp-pre-restore-20260927-092326.tar.gz",
-            "erp-20260927-093025.tar.gz",
-            "erp-20260927-092308.tar.gz",
-        ):
-            (dossier / nom).write_bytes(b"x")
-        noms = [Path(p).name for p in backup.archives(str(self.racine), "erp")]
-        self.assertEqual(
-            noms,
-            [
-                "erp-20260927-093025.tar.gz",
-                "erp-pre-upgrade-20260927-092405.tar.gz",
-                "erp-pre-restore-20260927-092326.tar.gz",
-                "erp-20260927-092308.tar.gz",
-            ],
-        )
-
     def test_the_backups_of_a_removed_instance_are_still_listed(self):
         dossier = self.racine / "private" / "dolibarr" / "backups" / "ancienne"
         dossier.mkdir(parents=True)

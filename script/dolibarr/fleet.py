@@ -21,10 +21,12 @@ Rien ne part sans --confirm égal au nom ; --dry-run montre chaque étape.
 Chaque commande est rejouable : un retrait interrompu se relance, et
 l'entrée du registre ne part que lorsque tout a réussi. Proposer une
 sauvegarde avant revient au menu, qui la lance avec backup.py.
+
+Le pilote du retrait et les étapes communes viennent de
+script/erp_common/fleet ; ce module fournit le plan propre à Dolibarr.
 """
 
 import argparse
-import json
 import os
 import shutil
 import subprocess
@@ -42,11 +44,14 @@ from script.dolibarr import (  # noqa: E402
     packages,
 )
 from script.dolibarr.run import served_version  # noqa: E402
+from script.erp_common import fleet as common_fleet  # noqa: E402
+from script.erp_common.fleet import Step  # noqa: E402
 
 ROOT = new_path
+_drop_database = common_fleet.drop_database
+_remove_tree = common_fleet.remove_tree
+_remove_file = common_fleet.remove_file
 PHP_VERSION = ["php", "-r", 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;']
-# Ce que répond une commande sur un objet déjà parti : le retrait est fait.
-_GONE = ("no such", "not found", "does not exist", "unknown")
 
 
 def t(key):
@@ -95,53 +100,6 @@ def host_facts(system):
 
     _code, out = system.run(PHP_VERSION)
     return {"family": todo_install.family(), "php_version": out.strip()}
-
-
-class Step:
-    """Une commande, ou une action locale décrite pour l'essai à blanc."""
-
-    def __init__(self, argv=None, describe=None, action=None):
-        self.argv, self.describe, self.action = argv, describe, action
-
-    def text(self):
-        return " ".join(self.argv) if self.argv else self.describe
-
-
-def _drop_database(entry, sudo_mariadb):
-    db = entry["db_name"]
-    if entry.get("db", "mariadb") == "mariadb":
-        return [
-            Step(
-                sudo_mariadb
-                + [
-                    "-e",
-                    f"DROP DATABASE IF EXISTS {db};"
-                    f" DROP USER IF EXISTS '{db}'@'localhost';",
-                ]
-            )
-        ]
-    pg = ["sudo", "-u", "postgres"]
-    return [
-        Step(pg + ["dropdb", "--if-exists", db]),
-        Step(pg + ["dropuser", "--if-exists", db]),
-    ]
-
-
-def _remove_tree(path):
-    return Step(
-        describe=f"rm -rf {path}",
-        action=lambda: shutil.rmtree(path, ignore_errors=True),
-    )
-
-
-def _remove_file(path):
-    def action():
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-
-    return Step(describe=f"rm -f {path}", action=action)
 
 
 def _state_but_custom(state, custom):
@@ -259,44 +217,10 @@ def plan(name, entry, system, root):
 
 
 def remove(name, entry, confirm, dry_run, system, root):
-    if not dry_run and confirm != name:
-        print(t("Removing deletes %s: retype its name with --confirm.") % name)
-        return 2
-    steps, notice = plan(name, entry, system, root)
-    failed = []
-    for step in steps:
-        if dry_run:
-            print(f"  [dry-run] {step.text()}")
-            continue
-        if step.action:
-            try:
-                step.action()
-            except OSError as e:
-                failed.append(f"{step.text()} — {e}")
-            continue
-        code, out = system.run(step.argv)
-        if code and not any(g in out.lower() for g in _GONE):
-            failed.append(f"{step.text()} — {out.strip()[-300:]}")
-    if notice:
-        print(notice)
-    if dry_run:
-        return 0
-    if failed:
-        print(
-            t("Not everything was removed; running the removal again resumes:")
-        )
-        for line in failed:
-            print(f"  ✗ {line}")
-        return 1
-    registry = os.path.join(root, lib_dolibarr.REGISTRY)
-    known = lib_dolibarr.load_registry(root)
-    known.pop(name, None)
-    with open(registry, "w", encoding="utf-8") as f:
-        f.write(
-            json.dumps({"instances": known}, indent=4, sort_keys=True) + "\n"
-        )
-    print(t("Instance %s removed.") % name)
-    return 0
+    """Retire `name` selon plan ; le pilote vient de erp_common.fleet."""
+    return common_fleet.remove(
+        lib_dolibarr.ERP, name, entry, confirm, dry_run, system, root, plan
+    )
 
 
 def _local_base(entry):
