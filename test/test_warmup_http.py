@@ -1670,5 +1670,149 @@ class TestDeepProfile(unittest.TestCase):
         self.assertEqual(profil.outil("warmup").entree, "analyser_profond")
 
 
+class TestDeepCredential(unittest.TestCase):
+    """Dans une unité, le credential `warmup.api_key`
+    (`$CREDENTIALS_DIRECTORY`) est la clé d'API : il passe avant
+    `--api-key-file` et le chemin du profil, rend le `login` du profil
+    effectif, et son origine est affichée sans l'avertissement des droits.
+    Le dossier des credentials est un dossier temporaire."""
+
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.dossier = d.name
+        self.credentials = os.path.join(self.dossier, "creds")
+        os.mkdir(self.credentials, 0o700)
+        self.credential = os.path.join(self.credentials, "warmup.api_key")
+        with open(self.credential, "w") as f:
+            f.write("cle-du-credential-5678\n")
+        # Les droits d'un credential sont ceux que systemd pose : aucun
+        # avertissement, même ouvert au groupe.
+        os.chmod(self.credential, 0o640)
+        self.cle = os.path.join(self.dossier, "cle")
+        with open(self.cle, "w") as f:
+            f.write("cle-du-fichier-1234\n")
+        os.chmod(self.cle, 0o600)
+        self.addCleanup(TestDeepProfile.retirer_profils, self)
+
+    analyser = TestDeepProfile.analyser
+    jouer = TestDeepCommandLine.jouer
+
+    def dans_l_unite(self):
+        return mock.patch.dict(
+            os.environ, {"CREDENTIALS_DIRECTORY": self.credentials}
+        )
+
+    def test_the_credential_wins_over_the_file_option(self):
+        argv = [
+            "--deep",
+            "--url",
+            "https://www.example.org",
+            "-d",
+            "base1",
+            "--login",
+            "admin",
+            "--api-key-file",
+            self.cle,
+        ]
+        with self.dans_l_unite():
+            args, _restes = self.analyser(argv)
+        self.assertEqual(args.api_key_file, self.credential)
+        self.assertEqual(args.profil.origine("api_key_file"), "systemd")
+        # Hors unité, l'option reprend la main.
+        args, _restes = self.analyser(argv)
+        self.assertEqual(args.api_key_file, self.cle)
+        self.assertEqual(args.profil.origine("api_key_file"), "cli")
+
+    def test_the_credential_wins_over_the_profile_path(self):
+        chemin = ecrire_profil(
+            "odoo-exemple.service",
+            profil_warmup(login="warmup-bot", api_key_file=self.cle),
+        )
+        argv = ["--deep", "--url", "https://www.example.org"]
+        with self.dans_l_unite():
+            args, _restes = self.analyser(argv + ["--profile", chemin])
+        self.assertEqual(args.api_key_file, self.credential)
+        self.assertEqual(args.login, "warmup-bot")
+        self.assertEqual(
+            [(e.dest, e.raison) for e in args.profil.ecartees],
+            [("api_key_file", "systemd")],
+        )
+        args, _restes = self.analyser(argv + ["--profile", chemin])
+        self.assertEqual(args.api_key_file, self.cle)
+        self.assertEqual(args.profil.origine("api_key_file"), "profil")
+
+    def test_a_keepass_reference_is_resolved_only_by_the_credential(self):
+        """Le profil ne porte qu'une référence KeePass : dans l'unité, le
+        credential la remplace et `login` est gardé ; hors unité, le login
+        est écarté avec la clé, et warmup part en anonyme."""
+        chemin = ecrire_profil(
+            "odoo-exemple.service",
+            profil_warmup(
+                login="warmup-bot",
+                api_key_file={
+                    "kdbx": "ERPLibre/Production/odoo-exemple.service/"
+                    "warmup.api_key"
+                },
+            ),
+        )
+        argv = ["--deep", "--url", "https://www.example.org"]
+        with self.dans_l_unite():
+            args, _restes = self.analyser(argv + ["--profile", chemin])
+        self.assertEqual(args.login, "warmup-bot")
+        self.assertEqual(args.api_key_file, self.credential)
+        args, _restes = self.analyser(argv + ["--profile", chemin])
+        self.assertIsNone(args.login)
+        self.assertIsNone(args.api_key_file)
+        self.assertEqual(
+            sorted((e.dest, e.raison) for e in args.profil.ecartees),
+            [("api_key_file", "secret"), ("login", "dependance")],
+        )
+
+    def test_the_origin_is_shown_without_the_permission_warning(self):
+        routes = routes_publiques()
+        routes["/jsonrpc"] = FauxRpc()
+        argv = [
+            "--deep",
+            "--url",
+            "URL",
+            "-d",
+            "base1",
+            "--login",
+            "admin",
+            "--repeat",
+            "1",
+        ]
+        with self.dans_l_unite():
+            code = self.jouer(argv, routes)
+        self.assertEqual(code, 0, self.erreurs)
+        self.assertIn(
+            warmup.t("API key file: {path} ({origin})").format(
+                path=self.credential,
+                origin=warmup.t("systemd credential"),
+            ),
+            self.sortie,
+        )
+        self.assertNotIn("chmod 600", self.sortie)
+        visible = self.sortie + self.erreurs
+        self.assertNotIn("cle-du-credential-5678", visible)
+        # Le même fichier passé par l'option est signalé.
+        code = self.jouer(argv + ["--api-key-file", self.credential], routes)
+        self.assertEqual(code, 0, self.erreurs)
+        self.assertIn("chmod 600", self.sortie)
+        self.assertIn(warmup.t("command line"), self.sortie)
+
+    def test_without_the_credential_the_pairing_is_still_refused(self):
+        code = self.analyser(
+            ["--deep", "--url", "https://www.example.org", "--login", "a"]
+        )
+        self.assertEqual(code, warmup.CODE_USAGE)
+        with self.dans_l_unite():
+            args, _restes = self.analyser(
+                ["--deep", "--url", "https://www.example.org", "--login", "a"]
+            )
+        self.assertEqual(args.api_key_file, self.credential)
+
+
 if __name__ == "__main__":
     unittest.main()

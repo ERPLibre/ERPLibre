@@ -7,8 +7,8 @@
 `t()` rend sa CLÉ quand la traduction manque : une clé oubliée s'affiche
 en anglais sans que rien ne signale l'oubli. Le test lit les appels
 `t("…")` des outils et du menu, et les modèles `N_("…")` que
-`lib_ops/service.py`, `lib_ops/mail_diagnostic.py` et `lib_ops/profil.py`
-laissent traduire à l'outil qui les affiche.
+`lib_ops/service.py`, `lib_ops/mail_diagnostic.py`, `lib_ops/profil.py` et
+`lib_ops/credentials.py` laissent traduire à l'outil qui les affiche.
 """
 
 import ast
@@ -31,6 +31,7 @@ FICHIERS = (
     "script/odoo/health_check.py",
     "script/odoo/warmup_http.py",
     "script/lib_ops/profil.py",
+    "script/lib_ops/credentials.py",
 )
 
 

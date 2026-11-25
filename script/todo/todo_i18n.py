@@ -29049,6 +29049,149 @@ TRANSLATIONS = {
         "fr": "Profil {path} : {error} ; ce compte l'ignore.",
         "en": "Profile {path}: {error}; this account ignores it.",
     },
+    # Production - secrets des minuteries (credentials, install_backup_timer, warmup_http)
+    "systemd version unknown: credentials need LoadCredential= (systemd 247). Nothing was written.": {
+        "fr": "Version de systemd inconnue : les credentials demandent"
+        " LoadCredential= (systemd 247). Rien n'a été écrit.",
+        "en": "systemd version unknown: credentials need LoadCredential="
+        " (systemd 247). Nothing was written.",
+    },
+    "systemd {version} has no credentials (LoadCredential= needs 247). Nothing was written.": {
+        "fr": "systemd {version} n'a pas de credentials (LoadCredential="
+        " demande 247). Rien n'a été écrit.",
+        "en": "systemd {version} has no credentials (LoadCredential= needs"
+        " 247). Nothing was written.",
+    },
+    "systemd-creds encrypt failed (code {code}): {output}": {
+        "fr": "systemd-creds encrypt a échoué (code {code}) : {output}",
+        "en": "systemd-creds encrypt failed (code {code}): {output}",
+    },
+    "{path} is open to other accounts: chmod 700 it before storing a secret there.": {
+        "fr": "{path} est ouvert à d'autres comptes : chmod 700 avant d'y"
+        " ranger un secret.",
+        "en": "{path} is open to other accounts: chmod 700 it before storing"
+        " a secret there.",
+    },
+    "{path}: cannot read: {error}": {
+        "fr": "{path} : lecture impossible : {error}",
+        "en": "{path}: cannot read: {error}",
+    },
+    "{path}: empty": {
+        "fr": "{path} : vide",
+        "en": "{path}: empty",
+    },
+    "{path}: larger than {size} KiB": {
+        "fr": "{path} : plus de {size} Kio",
+        "en": "{path}: larger than {size} KiB",
+    },
+    "{path}: not a regular file": {
+        "fr": "{path} : pas un fichier ordinaire",
+        "en": "{path}: not a regular file",
+    },
+    "{path}: symbolic link refused": {
+        "fr": "{path} : lien symbolique refusé",
+        "en": "{path}: symbolic link refused",
+    },
+    "{option}: the systemd credential wins over the profile": {
+        "fr": "{option} : le credential systemd l'emporte sur le profil",
+        "en": "{option}: the systemd credential wins over the profile",
+    },
+    "(provided at installation)": {
+        "fr": "(fourni à l'installation)",
+        "en": "(provided at installation)",
+    },
+    "(stored file kept)": {
+        "fr": "(fichier rangé gardé)",
+        "en": "(stored file kept)",
+    },
+    "(stored file kept if present)": {
+        "fr": "(fichier rangé gardé s'il existe)",
+        "en": "(stored file kept if present)",
+    },
+    "(if present)": {
+        "fr": "(s'il existe)",
+        "en": "(if present)",
+    },
+    "The stored credential {path} stays in clear at rest: give --credential {name}=PATH to store it encrypted.": {
+        "fr": "Le credential rangé {path} reste en clair au repos : donner"
+        " --credential {name}=PATH pour le ranger chiffré.",
+        "en": "The stored credential {path} stays in clear at rest: give"
+        " --credential {name}=PATH to store it encrypted.",
+    },
+    "systemd-creds --version failed (code {code}): {output}. Nothing was written.": {
+        "fr": "systemd-creds --version a échoué (code {code}) : {output}."
+        " Rien n'a été écrit.",
+        "en": "systemd-creds --version failed (code {code}): {output}."
+        " Nothing was written.",
+    },
+    "--credential {name} is given twice.": {
+        "fr": "--credential {name} est donné deux fois.",
+        "en": "--credential {name} is given twice.",
+    },
+    "--credential {name}: not a secret of the backup tool (known: {names}).": {
+        "fr": "--credential {name} : pas un secret de l'outil de sauvegarde"
+        " (connus : {names}).",
+        "en": "--credential {name}: not a secret of the backup tool (known:"
+        " {names}).",
+    },
+    "Credential stored: {path}": {
+        "fr": "Credential rangé : {path}",
+        "en": "Credential stored: {path}",
+    },
+    "Credentials stored in clear at rest in {path}, readable by root only (systemd {version} < 250, or no systemd-creds).": {
+        "fr": "Credentials stockés en clair au repos dans {path}, lisibles"
+        " par root seul (systemd {version} < 250, ou pas de systemd-creds).",
+        "en": "Credentials stored in clear at rest in {path}, readable by"
+        " root only (systemd {version} < 250, or no systemd-creds).",
+    },
+    "Secret NAME of the backup tool, read by root from the file PATH and stored as a systemd credential of the unit, never on a command line; repeatable.": {
+        "fr": "Secret NAME de l'outil de sauvegarde, lu par root dans le"
+        " fichier PATH et rangé en credential systemd de l'unité, jamais sur"
+        " une ligne de commande ; répétable.",
+        "en": "Secret NAME of the backup tool, read by root from the file"
+        " PATH and stored as a systemd credential of the unit, never on a"
+        " command line; repeatable.",
+    },
+    "Stored credential kept: {path}": {
+        "fr": "Credential déjà rangé gardé : {path}",
+        "en": "Stored credential kept: {path}",
+    },
+    "The profile declares the secret {name}, but no --credential gives it and {path} does not exist.": {
+        "fr": "Le profil déclare le secret {name}, mais aucun --credential"
+        " ne le donne et {path} n'existe pas.",
+        "en": "The profile declares the secret {name}, but no --credential"
+        " gives it and {path} does not exist.",
+    },
+    "The tool of {path} predates the profile: ExecStart holds every value, and an edit of the profile needs a reinstall.": {
+        "fr": "L'outil de {path} est antérieur au profil : ExecStart porte"
+        " toutes les valeurs, et une édition du profil demande une"
+        " réinstallation.",
+        "en": "The tool of {path} predates the profile: ExecStart holds every"
+        " value, and an edit of the profile needs a reinstall.",
+    },
+    "{user} cannot read the profile {path}: ExecStart holds every value, and an edit of the profile needs a reinstall.": {
+        "fr": "{user} ne peut pas lire le profil {path} : ExecStart porte"
+        " toutes les valeurs, et une édition du profil demande une"
+        " réinstallation.",
+        "en": "{user} cannot read the profile {path}: ExecStart holds every"
+        " value, and an edit of the profile needs a reinstall.",
+    },
+    "expected NAME=PATH: {value}": {
+        "fr": "NAME=PATH attendu : {value}",
+        "en": "expected NAME=PATH: {value}",
+    },
+    "API key file: {path} ({origin})": {
+        "fr": "Fichier de la clé d'API : {path} ({origin})",
+        "en": "API key file: {path} ({origin})",
+    },
+    "command line": {
+        "fr": "ligne de commande",
+        "en": "command line",
+    },
+    "systemd credential": {
+        "fr": "credential systemd",
+        "en": "systemd credential",
+    },
 }
 
 

@@ -165,6 +165,43 @@ All of it is also in `make todo`: `Execute > Production`. Details,
 retention rules and exit codes:
 [script/database/README.md](../script/database/README.md).
 
+### Secrets and timers
+
+A scheduled unit receives its secrets as systemd credentials, never on a
+command line nor in the environment. The deployer (`--credential
+NAME=PATH` of `install_backup_timer.py`) reads the file as root and
+stores it according to the systemd version, checked before anything is
+written:
+
+- 250 and later, with `systemd-creds`: encrypted by `systemd-creds encrypt
+  --with-key=host` (the secret on its standard input) into
+  `/etc/credstore.encrypted/<unit>.<NAME>`, unit line
+  `LoadCredentialEncrypted=`. A host key rather than the TPM, so that the
+  file survives the migration or the restore of a VM; it is only readable
+  with the host's `/var/lib/systemd/credential.secret`, so restoring
+  `/etc` alone leaves the unit unable to start;
+- 247 to 249, or without `systemd-creds`: in clear at rest, 0600 root in
+  `/etc/credstore/<unit>.<NAME>`, unit line `LoadCredential=`, with a
+  warning. Only a missing `systemd-creds` (code 127) leads here: any other
+  failure of `systemd-creds --version` on 250+ is refused (code 2);
+- before 247: refused (code 2).
+
+The tool reads `$CREDENTIALS_DIRECTORY/<NAME>` first: inside the unit, the
+credential wins over the file option and over the profile, the one
+exception to "the command line wins". `warmup_http.py --deep` takes its
+API key from the `warmup.api_key` credential this way, says where the key
+comes from, and then also keeps the profile's `login`, even when the
+profile only holds a KeePass reference.
+
+The scheduled backup reads the instance profile at each run ("profile
+mode": `--profile <path> --profile-required` in `ExecStart`) when its
+account can read it and its checkout's tool supports it; otherwise every
+value is written in `ExecStart` ("frozen mode") and a warning says that an
+edit of the profile needs a reinstall. The database, the backup and state
+directories, `--copy-to`, the calendar and the random delay are fixed at
+installation either way: reinstall after changing them. Details:
+[script/database/README.md](../script/database/README.md).
+
 ### Odoo journal
 
 `script/odoo/log_check.py` reads the journal of the instance and says what

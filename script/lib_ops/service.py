@@ -145,6 +145,13 @@ class SystemeBase:
         self._tracer(argv)
         return systemd.lancer(argv, timeout)
 
+    def lanceur_entree(self, argv, donnees, timeout=60):
+        """`argv` avec les octets `donnees` sur son entrée standard
+        (`systemd.lancer_entree`) : (code, sortie), ne lève pas. Seul
+        `argv` est tracé, jamais `donnees`."""
+        self._tracer(argv)
+        return systemd.lancer_entree(argv, donnees, timeout)
+
     def euid(self):
         return os.geteuid()
 

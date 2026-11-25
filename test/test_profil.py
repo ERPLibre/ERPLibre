@@ -908,13 +908,16 @@ class TestConversion(Base):
             },
         )
 
-    def test_secret_kdbx_jamais_effectif(self):
-        """Une référence KeePass n'a pas de valeur pour l'outil, même dans
-        une unité qui reçoit un credential : `login` est écarté avec elle,
-        warmup ne reçoit jamais l'un sans l'autre."""
+    def test_secret_kdbx_resolu_par_le_credential(self):
+        """Une référence KeePass n'a pas de valeur pour l'outil, mais dans
+        une unité qui reçoit le credential du secret, ce fichier la
+        remplace : le secret est effectif, `login` est gardé, et warmup
+        reçoit les deux ensemble. Sans le credential, les deux sont
+        écartés (test précédent)."""
         credentials = os.path.join(self.tmp, "creds")
         os.mkdir(credentials, 0o700)
-        with open(os.path.join(credentials, "warmup.api_key"), "w") as f:
+        fichier = os.path.join(credentials, "warmup.api_key")
+        with open(fichier, "w") as f:
             f.write("x")
         chemin = self.poser(
             self.doc(
@@ -932,12 +935,10 @@ class TestConversion(Base):
                 self.racine,
                 connus=True,
             )
-        self.assertIsNone(args.login)
-        self.assertIsNone(args.api_key_file)
-        self.assertEqual(
-            sorted((e.dest, e.raison) for e in app.ecartees),
-            [("api_key_file", "secret"), ("login", "dependance")],
-        )
+        self.assertEqual(args.login, "warmup-bot")
+        self.assertEqual(args.api_key_file, fichier)
+        self.assertEqual(app.origine("api_key_file"), "systemd")
+        self.assertEqual(app.ecartees, [])
 
     def test_cle_sans_login_ecartee(self):
         """`api_key_file` sans `login` effectif est écarté : warmup refuse

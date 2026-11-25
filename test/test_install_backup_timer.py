@@ -6,8 +6,9 @@
 
 Tout chemin écrit passe sous `--root`, un dossier temporaire. systemctl,
 systemd-analyze, systemd-tmpfiles et `runuser … test` sont joués par
-`FauxSysteme.lanceur`, qui note chaque appel ; passwd et group sont
-remplacés. Aucun systemctl réel n'est lancé,
+`FauxSysteme.lanceur`, qui note chaque appel ; `systemd-creds encrypt` par
+`FauxSysteme.lanceur_entree`, qui note l'argv et l'entrée standard ;
+passwd et group sont remplacés. Aucun systemctl réel n'est lancé,
 aucun fichier n'est écrit sous /etc.
 
 Les profils de production se lisent dans un dossier temporaire
@@ -32,7 +33,7 @@ sys.path.append(
 
 from unittest import mock  # noqa: E402
 
-from script.lib_ops import report  # noqa: E402
+from script.lib_ops import profil, report  # noqa: E402
 from script.systemd import install_backup_timer as ibt  # noqa: E402
 
 PROFILS = None
@@ -91,6 +92,12 @@ class FauxSysteme(ibt.Systeme):
         self.inaccessibles = set()
         # Sortie de `systemctl list-units` ; None : réponse par défaut.
         self.liste_unites = None
+        # `systemctl --version`, code de `systemd-creds --version` et de
+        # `systemd-creds encrypt`, puis les appels à `lanceur_entree`.
+        self.version_texte = "systemd 252 (252.39-1~deb12u1)\n+PAM +AUDIT\n"
+        self.creds_code = 0
+        self.chiffrement_code = 0
+        self.entrees = []
         self.wd = os.path.join(bac, "odoo")
         self.proprietes = {
             "LoadState": "loaded",
@@ -115,6 +122,10 @@ class FauxSysteme(ibt.Systeme):
             return 0, "".join(
                 f"{n}={self.proprietes.get(n, '')}\n" for n in noms
             )
+        if argv[:2] == ["systemctl", "--version"]:
+            return 0, self.version_texte
+        if argv[:2] == ["systemd-creds", "--version"]:
+            return self.creds_code, ""
         if argv[:2] == ["systemd-analyze", "calendar"]:
             return self.calendrier_code, ""
         if argv[0] == "systemd-tmpfiles":
@@ -124,6 +135,18 @@ class FauxSysteme(ibt.Systeme):
         if argv[0] == "systemctl":
             return self.codes_systemctl.get(argv[1], 0), "échec simulé"
         return 1, "inattendu"
+
+    def lanceur_entree(self, argv, donnees, timeout=60):
+        """`systemd-creds encrypt … - SORTIE` : écrit un faux chiffré dans
+        SORTIE, sans jamais y recopier le secret."""
+        self.entrees.append((list(argv), donnees))
+        self.appels.append(" ".join(argv))
+        if self.chiffrement_code:
+            return self.chiffrement_code, "échec simulé"
+        self._dans_le_bac(argv[-1])
+        with open(argv[-1], "wb") as f:
+            f.write(b"CHIFFRE-INVENTE")
+        return 0, ""
 
     def euid(self):
         return self.euid_valeur
@@ -857,6 +880,590 @@ class TestProfil(Base):
         )
         self.assertEqual(os.listdir(self.unites), [])
         self.assertIn(de_profil("--db", "demo_db"), self.sortie)
+
+
+def outil_qui_lit_le_profil(wd):
+    """Remplace le faux outil vide de `wd` par un outil qui applique le
+    profil, et sa bibliothèque par une qui connaît `--profile-required`."""
+    ecrire(os.path.join(wd, ibt.OUTIL), "args = profil.analyser(parser)\n")
+    ecrire(
+        os.path.join(wd, ibt.BIBLIOTHEQUE_PROFIL),
+        'META = (("--profile-required", {}),)\n',
+    )
+
+
+class BaseProfil(Base):
+    """Un profil `erplibre_demo.service.json` dans le dossier temporaire
+    des profils, retiré à la fin de chaque test."""
+
+    def setUp(self):
+        super().setUp()
+        self.profil = os.path.join(PROFILS, "erplibre_demo.service.json")
+        self.addCleanup(self._retirer)
+
+    def _retirer(self):
+        if os.path.lexists(self.profil):
+            os.remove(self.profil)
+
+    poser = TestProfil.poser
+    execstart = TestUniteComplete.execstart
+
+
+class TestModeProfil(BaseProfil):
+    """`ExecStart` en mode profil ou figé."""
+
+    def setUp(self):
+        super().setUp()
+        outil_qui_lit_le_profil(self.systeme.wd)
+
+    def test_mode_profil(self):
+        self.poser(
+            backup={
+                "dest": "/srv/profil",
+                "keep_daily": 10,
+                "copy_to": "sauvegarde@backup.example.org:/srv/hors-site",
+            }
+        )
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        ligne = self.execstart()
+        # Identité détectée, champs d'installation, profil exigé.
+        self.assertIn("--service erplibre_demo.service --db demo_db", ligne)
+        self.assertIn('--dest "/srv/sauve garde%%x$$y"', ligne)
+        self.assertIn("--state-dir /srv/etat", ligne)
+        self.assertIn(
+            "--copy-to sauvegarde@backup.example.org:/srv/hors-site", ligne
+        )
+        self.assertTrue(
+            ligne.endswith(f" --profile {self.profil} --profile-required"),
+            ligne,
+        )
+        # Les champs directs venus du profil ou des défauts ne sont pas
+        # écrits : l'outil les relit dans le profil à chaque passage.
+        self.assertNotIn("--keep-", ligne)
+        self.assertNotIn("--no-profile", ligne)
+        # Le compte lit le profil : vérifié sous lui.
+        self.assertTrue(
+            self.a_appele(f"runuser -u demo -- test -r {self.profil}")
+        )
+
+    def test_mode_profil_ecrit_les_champs_directs_tapes(self):
+        self.poser(backup={"keep_daily": 10})
+        self.assertEqual(
+            self.lancer("--keep-weekly", "6"), ibt.CODE_OK, self.erreurs
+        )
+        ligne = self.execstart()
+        self.assertIn("--keep-weekly 6", ligne)
+        self.assertNotIn("--keep-daily", ligne)
+        self.assertNotIn("--keep-monthly", ligne)
+        self.assertIn("--profile-required", ligne)
+
+    def test_mode_profil_installation_du_profil(self):
+        """`--dest` du profil s'écrit, comme `--on-calendar` dans la
+        minuterie : les champs d'installation sont fixés quelle que soit
+        leur origine."""
+        self.poser(
+            backup={"dest": "/srv/profil"},
+            backup_timer={"on_calendar": "*-*-* 01:15:00"},
+        )
+        argv = ["--service", "erplibre_demo", "--root", self.racine]
+        rapport = report.Rapport(
+            flux=io.StringIO(), erreurs=io.StringIO(), couleur=False
+        )
+        with contextlib.redirect_stdout(rapport.flux):
+            code = ibt.main(argv, self.systeme, rapport)
+        self.assertEqual(code, ibt.CODE_OK, rapport.flux.getvalue())
+        self.assertIn("--dest /srv/profil", self.execstart())
+        self.assertIn(
+            "\nOnCalendar=*-*-* 01:15:00\n", self.lire(self.minuterie)
+        )
+
+    def test_mode_fige_sans_profil(self):
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        ligne = self.execstart()
+        self.assertIn("--keep-daily 7 --keep-weekly 4", ligne)
+        self.assertTrue(ligne.endswith(" --no-profile"), ligne)
+        self.assertNotIn("--profile ", ligne)
+        self.assertNotIn("[ATTN]", self.sortie)
+
+    def test_mode_fige_profil_illisible_par_le_compte(self):
+        self.poser(backup={"keep_daily": 10})
+        self.systeme.inaccessibles.add(self.profil)
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        ligne = self.execstart()
+        self.assertIn("--keep-daily 10 --keep-weekly 4", ligne)
+        self.assertTrue(ligne.endswith(" --no-profile"), ligne)
+        self.assertNotIn("--profile-required", ligne)
+        self.assertIn(
+            ibt.t(
+                "{user} cannot read the profile {path}: ExecStart holds every"
+                " value, and an edit of the profile needs a reinstall."
+            ).format(user="demo", path=self.profil),
+            self.sortie,
+        )
+
+    def test_mode_fige_outil_anterieur(self):
+        self.poser(backup={"keep_daily": 10})
+        for contenu_outil, contenu_lib, fin in (
+            ("", 'META = (("--profile-required", {}),)\n', " 2"),
+            (
+                "args = profil.analyser(parser)\n",
+                "META = ()\n",
+                " --no-profile",
+            ),
+        ):
+            with self.subTest(outil=contenu_outil, lib=contenu_lib):
+                ecrire(os.path.join(self.systeme.wd, ibt.OUTIL), contenu_outil)
+                ecrire(
+                    os.path.join(self.systeme.wd, ibt.BIBLIOTHEQUE_PROFIL),
+                    contenu_lib,
+                )
+                self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+                ligne = self.execstart()
+                self.assertIn("--keep-daily 10", ligne)
+                self.assertTrue(ligne.endswith(fin), ligne)
+                self.assertIn(
+                    ibt.t(
+                        "The tool of {path} predates the profile: ExecStart"
+                        " holds every value, and an edit of the profile needs"
+                        " a reinstall."
+                    ).format(path=self.systeme.wd),
+                    self.sortie,
+                )
+
+    def test_hors_root_le_compte_n_est_pas_verifie(self):
+        """En simulation sans sudo, l'accès du compte n'est pas vérifiable :
+        le mode profil est montré, avec l'ATTN « non vérifié »."""
+        self.poser(backup={"keep_daily": 10})
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs)
+        self.assertIn("--profile-required", self.sortie)
+        self.assertFalse(self.a_appele("runuser"))
+
+    def test_l_outil_reel_exige_le_profil(self):
+        self.assertTrue(ibt.outil_exige_le_profil(ibt.RACINE))
+        self.assertFalse(
+            ibt.outil_exige_le_profil(os.path.join(self.bac, "absent"))
+        )
+
+
+# Un secret inventé de l'outil de sauvegarde : `backup` n'en a aucun, le
+# chemin des credentials est générique.
+SECRETS_INVENTES = {("backup", "exemple_cle"): "backup.exemple"}
+SECRET = b"secret-invente-0042\n"
+UNITE = "erplibre-backup-demo_db.service"
+
+
+class TestCredentials(BaseProfil):
+    """Credentials systemd de l'unité, par la table `SECRETS` remplacée."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.dict(profil.SECRETS, SECRETS_INVENTES)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.source = ecrire(os.path.join(self.bac, "source", "cle"), "")
+        with open(self.source, "wb") as f:
+            f.write(SECRET)
+        os.chmod(self.source, 0o600)
+        self.chiffres = os.path.join(self.racine, "etc", "credstore.encrypted")
+        self.clairs = os.path.join(self.racine, "etc", "credstore")
+
+    def credential(self):
+        return ["--credential", f"backup.exemple={self.source}"]
+
+    def secret_absent_partout(self):
+        visible = self.sortie + self.erreurs + self.lire(self.service)
+        visible += " ".join(self.systeme.appels)
+        self.assertNotIn(SECRET.decode().strip(), visible)
+
+    def test_chiffre_a_partir_de_250(self):
+        self.assertEqual(
+            self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+        )
+        final = os.path.join(self.chiffres, f"{UNITE}.backup.exemple")
+        self.assertIn(
+            "\nLoadCredentialEncrypted=backup.exemple:"
+            f"/etc/credstore.encrypted/{UNITE}.backup.exemple\n",
+            self.lire(self.service),
+        )
+        # Le secret passe par l'entrée standard, jamais par l'argv.
+        [(argv, donnees)] = self.systeme.entrees
+        self.assertEqual(donnees, SECRET)
+        self.assertEqual(
+            argv[:5],
+            [
+                "systemd-creds",
+                "encrypt",
+                "--name=backup.exemple",
+                "--with-key=host",
+                "-",
+            ],
+        )
+        self.assertNotIn(SECRET.decode().strip(), " ".join(argv))
+        self.assertTrue(argv[-1].startswith(self.chiffres + os.sep), argv)
+        self.assertEqual(self.lire(final), "CHIFFRE-INVENTE")
+        self.assertEqual(os.stat(final).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(self.chiffres).st_mode & 0o777, 0o700)
+        # Aucun reste du dossier temporaire.
+        self.assertEqual(os.listdir(self.chiffres), [os.path.basename(final)])
+        self.assertFalse(os.path.exists(self.clairs))
+        self.secret_absent_partout()
+
+    def test_en_clair_de_247_a_249(self):
+        for version, code_creds in (
+            ("systemd 249 (249.11-0ubuntu3)", 0),
+            ("systemd 247 (247.3-7)", 0),
+            ("systemd 259 (259.9-1)", 127),
+        ):
+            with self.subTest(version=version, creds=code_creds):
+                self.systeme.version_texte = version + "\n"
+                self.systeme.creds_code = code_creds
+                self.systeme.entrees.clear()
+                self.assertEqual(
+                    self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+                )
+                final = os.path.join(self.clairs, f"{UNITE}.backup.exemple")
+                with open(final, "rb") as f:
+                    self.assertEqual(f.read(), SECRET)
+                self.assertEqual(os.stat(final).st_mode & 0o777, 0o600)
+                self.assertEqual(os.stat(self.clairs).st_mode & 0o777, 0o700)
+                self.assertIn(
+                    "\nLoadCredential=backup.exemple:"
+                    f"/etc/credstore/{UNITE}.backup.exemple\n",
+                    self.lire(self.service),
+                )
+                self.assertNotIn(
+                    "LoadCredentialEncrypted", self.lire(self.service)
+                )
+                self.assertEqual(self.systeme.entrees, [])
+                # L'ATTN « en clair au repos » nomme le dossier.
+                self.assertIn("[ATTN]", self.sortie)
+                self.assertIn("/etc/credstore,", self.sortie)
+                self.secret_absent_partout()
+
+    def test_refus_avant_247_ou_version_inconnue(self):
+        for texte, attendu in (
+            ("systemd 246 (246.6)\n", "246"),
+            ("rien de reconnaissable\n", None),
+        ):
+            with self.subTest(version=texte):
+                self.systeme.version_texte = texte
+                self.assertEqual(
+                    self.lancer(*self.credential()), ibt.CODE_REFUS
+                )
+                if attendu:
+                    self.assertIn(attendu, self.erreurs)
+                self.assertEqual(os.listdir(self.unites), [])
+                self.assertFalse(os.path.exists(self.chiffres))
+                self.assertFalse(os.path.exists(self.clairs))
+                self.assertEqual(self.systeme.entrees, [])
+        # Sans secret, la version n'est même pas lue.
+        self.systeme.appels.clear()
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertFalse(self.a_appele("systemctl --version"))
+
+    def test_simulation_sans_credential_ne_lit_rien(self):
+        self.poser(
+            backup={"exemple_cle": {"kdbx": "ERPLibre/x/backup.exemple"}}
+        )
+        with mock.patch.object(
+            ibt.credentials, "lire_secret", side_effect=AssertionError
+        ):
+            self.assertEqual(
+                self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs
+            )
+            self.assertEqual(
+                self.lancer(
+                    "--dry-run",
+                    "--credential",
+                    "backup.exemple=" + os.path.join(self.bac, "absent"),
+                ),
+                ibt.CODE_OK,
+                self.erreurs,
+            )
+        self.assertIn(
+            f"LoadCredentialEncrypted=backup.exemple:/etc/credstore.encrypted/"
+            f"{UNITE}.backup.exemple",
+            self.sortie,
+        )
+        self.assertIn(ibt.t("(provided at installation)"), self.sortie)
+        self.assertEqual(self.systeme.entrees, [])
+        self.assertEqual(os.listdir(self.unites), [])
+        self.assertFalse(os.path.exists(self.chiffres))
+
+    def test_secret_declare_sans_credential(self):
+        self.poser(
+            backup={"exemple_cle": {"kdbx": "ERPLibre/x/backup.exemple"}}
+        )
+        # Aucun fichier rangé : refus avant toute écriture.
+        self.assertEqual(self.lancer(), ibt.CODE_REFUS)
+        self.assertIn("backup.exemple", self.erreurs)
+        self.assertEqual(os.listdir(self.unites), [])
+        # Un fichier déjà rangé est gardé.
+        final = ecrire(
+            os.path.join(self.chiffres, f"{UNITE}.backup.exemple"), "ancien"
+        )
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertEqual(self.lire(final), "ancien")
+        self.assertEqual(self.systeme.entrees, [])
+        self.assertIn(
+            "LoadCredentialEncrypted=backup.exemple:", self.lire(self.service)
+        )
+        self.assertIn(
+            ibt.t("Stored credential kept: {path}").format(path=final),
+            self.sortie,
+        )
+
+    def test_reinstallation_retire_un_secret_plus_declare(self):
+        self.poser(
+            backup={"exemple_cle": {"kdbx": "ERPLibre/x/backup.exemple"}}
+        )
+        self.assertEqual(
+            self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+        )
+        final = os.path.join(self.chiffres, f"{UNITE}.backup.exemple")
+        self.assertTrue(os.path.exists(final))
+        self.poser(backup={"keep_daily": 9})
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs)
+        self.assertIn(f"rm -- {final}", self.sortie)
+        self.assertTrue(os.path.exists(final))
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertFalse(os.path.exists(final))
+        self.assertNotIn("LoadCredential", self.lire(self.service))
+
+    def test_desinstallation_ne_retire_que_les_chemins_cites(self):
+        self.assertEqual(
+            self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+        )
+        a_moi = [
+            ecrire(os.path.join(self.clairs, f"{UNITE}.ancien"), "x"),
+            os.path.join(self.chiffres, f"{UNITE}.backup.exemple"),
+        ]
+        etrangers = [
+            ecrire(os.path.join(self.clairs, "autre.service.x"), "x"),
+            ecrire(
+                os.path.join(self.racine, "etc", "ailleurs", f"{UNITE}.y"), "x"
+            ),
+            ecrire(os.path.join(self.clairs, f"{UNITE}.non_cite"), "x"),
+        ]
+        texte = self.lire(self.service).replace(
+            "ExecStart=",
+            f"LoadCredential=ancien:/etc/credstore/{UNITE}.ancien\n"
+            "LoadCredential=x:/etc/credstore/autre.service.x\n"
+            f"LoadCredential=y:/etc/ailleurs/{UNITE}.y\n"
+            f"LoadCredential=z:/etc/credstore/../credstore/{UNITE}.z\n"
+            "ExecStart=",
+        )
+        ecrire(self.service, texte)
+        self.assertEqual(
+            self.lancer("--uninstall", "--db", "demo_db", "--dry-run"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        for chemin in a_moi:
+            self.assertIn(f"rm -- {chemin}", self.sortie)
+            self.assertTrue(os.path.exists(chemin))
+        self.assertEqual(
+            self.lancer("--uninstall", "--db", "demo_db"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        for chemin in a_moi:
+            self.assertFalse(os.path.exists(chemin), chemin)
+        for chemin in etrangers:
+            self.assertTrue(os.path.exists(chemin), chemin)
+
+    def test_credential_refuse_a_l_analyse(self):
+        for valeur in (
+            "inconnu=/srv/x",
+            "backup.exemple",
+            "=/srv/x",
+            "a:b=/srv/x",
+            "backup.exemple=/srv/x\nExecStartPre=/bin/x",
+        ):
+            with self.subTest(valeur=valeur):
+                erreurs = io.StringIO()
+                with contextlib.redirect_stderr(erreurs):
+                    with self.assertRaises(SystemExit) as sortie:
+                        ibt.analyser(["--credential", valeur, "--no-profile"])
+                self.assertEqual(sortie.exception.code, ibt.CODE_REFUS)
+                # Un saut de ligne n'est cité qu'échappé.
+                self.assertNotIn("\nExecStartPre", erreurs.getvalue())
+        erreurs = io.StringIO()
+        with contextlib.redirect_stderr(erreurs):
+            with self.assertRaises(SystemExit) as sortie:
+                ibt.analyser(self.credential() * 2 + ["--no-profile"])
+        self.assertEqual(sortie.exception.code, ibt.CODE_REFUS)
+        args = ibt.analyser(self.credential() + ["--no-profile"])
+        self.assertEqual(args.credential, [("backup.exemple", self.source)])
+
+    def test_source_refusee_avant_toute_ecriture(self):
+        lien = os.path.join(self.bac, "lien")
+        os.symlink(self.source, lien)
+        vide = ecrire(os.path.join(self.bac, "vide"), "")
+        for source in (lien, vide, os.path.join(self.bac, "absent")):
+            with self.subTest(source=source):
+                code = self.lancer("--credential", f"backup.exemple={source}")
+                self.assertEqual(code, ibt.CODE_REFUS)
+                self.assertEqual(os.listdir(self.unites), [])
+                self.assertFalse(os.path.exists(self.chiffres))
+
+    def test_chiffrement_en_echec(self):
+        self.systeme.chiffrement_code = 1
+        self.assertEqual(self.lancer(*self.credential()), ibt.CODE_ECHEC)
+        self.assertEqual(os.listdir(self.unites), [])
+        self.assertEqual(os.listdir(self.chiffres), [])
+        self.secret_absent_partout_sans_unite()
+
+    def secret_absent_partout_sans_unite(self):
+        visible = self.sortie + self.erreurs + " ".join(self.systeme.appels)
+        self.assertNotIn(SECRET.decode().strip(), visible)
+
+    def declarer(self):
+        self.poser(
+            backup={"exemple_cle": {"kdbx": "ERPLibre/x/backup.exemple"}}
+        )
+
+    def test_systemd_creds_en_echec_ne_passe_pas_en_clair(self):
+        # Seul 127 dit `systemd-creds` absent : un autre échec sur un
+        # systemd 250 ou plus refuse au lieu de ranger en clair.
+        for code in (124, 1, 126):
+            with self.subTest(code=code):
+                self.systeme.creds_code = code
+                self.assertEqual(
+                    self.lancer(*self.credential()), ibt.CODE_REFUS
+                )
+                self.assertIn(f"code {code}", self.erreurs)
+                self.assertEqual(os.listdir(self.unites), [])
+                self.assertFalse(os.path.exists(self.clairs))
+                self.assertFalse(os.path.exists(self.chiffres))
+
+    def test_echec_avant_le_service_retire_le_credential_cree(self):
+        reel_ecrire = ibt.ecrire_unite
+
+        def ecrire_unite(chemin, contenu):
+            if chemin == self.service:
+                raise OSError(28, "No space left on device")
+            return reel_ecrire(chemin, contenu)
+
+        with mock.patch.object(ibt, "ecrire_unite", ecrire_unite):
+            code = self.lancer(*self.credential())
+        self.assertEqual(code, ibt.CODE_ECHEC)
+        self.assertEqual(os.listdir(self.chiffres), [])
+        self.assertEqual(os.listdir(self.unites), [])
+
+    def test_desinstallation_sans_unite_retire_les_orphelins(self):
+        # Fichiers d'un secret connu de l'outil, et restes d'une écriture
+        # interrompue, qu'aucune unité ne cite.
+        os.makedirs(self.clairs)
+        os.makedirs(self.chiffres)
+        orphelins = [
+            ecrire(os.path.join(self.clairs, f"{UNITE}.backup.exemple"), "x"),
+            ecrire(
+                os.path.join(self.clairs, f".{UNITE}.backup.exemple~ab12"),
+                "x",
+            ),
+            os.path.join(self.chiffres, f".{UNITE}.backup.exemple~cd34"),
+        ]
+        ecrire(os.path.join(orphelins[2], "backup.exemple"), "x")
+        # Une autre base dont le nom prolonge celui-ci n'est pas touchée.
+        autre = "erplibre-backup-demo_db.service.backup.exemple.service"
+        etrangers = [
+            ecrire(os.path.join(self.clairs, f"{autre}.backup.exemple"), "x"),
+            ecrire(
+                os.path.join(self.clairs, f".{autre}.backup.exemple~ef56"),
+                "x",
+            ),
+            ecrire(os.path.join(self.clairs, f"{UNITE}.inconnu"), "x"),
+        ]
+        self.assertEqual(
+            self.lancer("--uninstall", "--db", "demo_db", "--dry-run"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        for chemin in orphelins:
+            self.assertIn(chemin, self.sortie)
+            self.assertTrue(os.path.exists(chemin))
+        self.systeme.appels.clear()
+        self.assertEqual(
+            self.lancer("--uninstall", "--db", "demo_db"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        for chemin in orphelins:
+            self.assertFalse(os.path.lexists(chemin), chemin)
+        for chemin in etrangers:
+            self.assertTrue(os.path.exists(chemin), chemin)
+        # Aucune unité : rien à arrêter.
+        self.assertFalse(self.a_appele("systemctl"))
+
+    @unittest.skipIf(os.geteuid() == 0, "root traverse un dossier 0000")
+    def test_simulation_sans_root_montre_les_rm_non_verifiables(self):
+        self.declarer()
+        self.assertEqual(
+            self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+        )
+        final = os.path.join(self.chiffres, f"{UNITE}.backup.exemple")
+        os.chmod(self.chiffres, 0)
+        self.addCleanup(os.chmod, self.chiffres, 0o700)
+        self.systeme.euid_valeur = 1000
+        # Le secret toujours déclaré : le fichier est gardé « s'il existe ».
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs)
+        self.assertIn(ibt.t("(stored file kept if present)"), self.sortie)
+        self.assertIn(f"/etc/credstore.encrypted/{UNITE}", self.sortie)
+        # Le secret plus déclaré : le rm est montré.
+        self.poser(backup={"keep_daily": 9})
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs)
+        self.assertIn(f"rm -- {final}  " + ibt.t("(if present)"), self.sortie)
+        self.assertEqual(
+            self.lancer("--uninstall", "--db", "demo_db", "--dry-run"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        self.assertIn(f"rm -- {final}  " + ibt.t("(if present)"), self.sortie)
+
+    def test_secret_retire_meme_si_tmpfiles_echoue(self):
+        self.declarer()
+        self.assertEqual(
+            self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+        )
+        final = os.path.join(self.chiffres, f"{UNITE}.backup.exemple")
+        self.poser(backup={"keep_daily": 9})
+        self.systeme.tmpfiles_code = 1
+        self.assertEqual(self.lancer(), ibt.CODE_ECHEC)
+        self.assertNotIn("LoadCredential", self.lire(self.service))
+        self.assertFalse(os.path.exists(final))
+
+    def test_changement_de_stockage_garde_le_fichier_cite(self):
+        # Installé sous systemd 249, en clair ; puis systemd 252 avec
+        # systemd-creds, réinstallé sans --credential.
+        self.declarer()
+        self.systeme.version_texte = "systemd 249 (249.11)\n"
+        self.assertEqual(
+            self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+        )
+        clair = os.path.join(self.clairs, f"{UNITE}.backup.exemple")
+        self.assertTrue(os.path.isfile(clair))
+        self.systeme.version_texte = "systemd 252 (252.39)\n"
+        self.assertEqual(
+            self.lancer("--on-calendar", "*-*-* 03:00:00"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        self.assertIn(
+            "\nLoadCredential=backup.exemple:"
+            f"/etc/credstore/{UNITE}.backup.exemple\n",
+            self.lire(self.service),
+        )
+        self.assertTrue(os.path.isfile(clair))
+        self.assertIn("--credential backup.exemple=PATH", self.sortie)
+        self.assertEqual(self.systeme.entrees, [])
+        # Avec --credential, il passe chiffré et la copie en clair part.
+        self.assertEqual(
+            self.lancer(*self.credential()), ibt.CODE_OK, self.erreurs
+        )
+        self.assertIn("LoadCredentialEncrypted=", self.lire(self.service))
+        self.assertFalse(os.path.exists(clair))
 
 
 class TestCitation(unittest.TestCase):

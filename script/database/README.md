@@ -164,10 +164,63 @@ the command line or the profile; `systemd-analyze calendar` still checks
 the calendar at installation. The command line always wins, and the same
 meta-options apply (`--profile`, `--no-profile`, `--profile-unset`,
 `--profile-required`). `--uninstall`, `--service`, `--odoo-conf`,
-`--user`, `--root` and `--dry-run` are never read from a profile. The
-retained values are written into `ExecStart` as if typed, and listed
-before the units and the simulated commands. When the tool of the
-retained checkout applies profiles (read statically, nothing is run),
-`ExecStart` ends with `--no-profile`: the scheduled backup never
-discovers a profile it was not given, and a profile its account cannot
-read, or that became invalid, does not stop it.
+`--user`, `--root`, `--credential` and `--dry-run` are never read from a
+profile. The retained values are listed before the units and the
+simulated commands.
+
+`ExecStart` takes one of two forms:
+
+- **profile mode**, when a profile is used, the unit's account can read
+  it (`runuser -u ACCOUNT -- test -r`, checked under sudo) and the tool of
+  the retained checkout applies it (read statically, nothing is run): the
+  detected identity (`--service`, `--db`, `--odoo-conf`, `--user`), the
+  fields fixed at installation (`--dest`, `--state-dir`, `--copy-to`)
+  whatever their origin, the `--keep-*` settings only when typed, then
+  `--profile <absolute path> --profile-required`. The backup reads the
+  profile at each run: an edited retention applies from the next night,
+  and a profile that became invalid makes the backup fail (code 2, seen
+  by `--status`) rather than silently drop `--copy-to`. `systemctl cat`
+  shows the path. Under root, the tool only reads a profile that neither
+  its group nor other accounts can write, nor its directory, owned by
+  root, the checkout's owner or the sudo caller.
+- **frozen mode** otherwise (no profile, a profile the account cannot
+  read, a tool older than profiles): every value written as if typed, as
+  before, ending with `--no-profile` when the tool knows profiles. With a
+  profile present, a warning says that an edit of the profile needs a
+  reinstall.
+
+`--dest`, `--state-dir`, `--copy-to`, `--db`, `--on-calendar` and
+`--randomized-delay` are fixed at installation (timer file, directories
+created for the account, its `known_hosts`): after changing them in the
+profile, reinstall.
+
+**Secrets.** `--credential NAME=PATH` (repeatable) gives a secret that the
+backup tool declares; `backup` declares none today, the path is generic.
+Root reads `PATH` without following a link, and stores it as a systemd
+credential of the unit, never on a command line nor in the environment:
+
+| systemd | Storage | Unit line |
+|---|---|---|
+| 250+ with `systemd-creds` | `systemd-creds encrypt --with-key=host`, secret on stdin, `/etc/credstore.encrypted/<unit>.<NAME>` (0600, directory 0700) | `LoadCredentialEncrypted=` |
+| 247–249, or no `systemd-creds` | in clear, `/etc/credstore/<unit>.<NAME>` (0600 root, directory 0700), with a warning | `LoadCredential=` |
+| before 247, or unknown | refused (code 2) before anything is written | — |
+
+Only a missing `systemd-creds` (code 127) selects clear storage: any other
+failure of `systemd-creds --version` on systemd 250+ is refused (code 2)
+rather than stored in clear. The unit lines hold absolute paths. A file
+encrypted with `--with-key=host` is only readable with the host's
+`/var/lib/systemd/credential.secret`: restoring `/etc` alone leaves the
+unit unable to start. A secret that the profile declares without
+`--credential` keeps the stored file, first the one the installed unit
+cites, with its line, even after a systemd upgrade (a file kept in clear
+while encryption is available gets a warning), and is refused when there
+is none; `--dry-run` reads nothing and shows the line "(provided at
+installation)". A reinstall removes the line and the file of a secret
+that the profile no longer declares; a file stored by an install that
+fails before writing the service is removed at once. `--uninstall`
+removes the credential files of the unit, only under `/etc/credstore` or
+`/etc/credstore.encrypted` and named after the unit: those the unit
+cites, `<unit>.<NAME>` for every secret of the tool, and the temporary
+leftovers of an interrupted write (`--root` prefixes them; `--dry-run`
+shows the `rm`, marked "(if present)" when, without root, the 0700
+directory cannot be checked).

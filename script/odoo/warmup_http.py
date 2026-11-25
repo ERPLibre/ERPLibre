@@ -83,6 +83,14 @@ commande gagne, et une ligne `🔧 profile:` le dit. Le mode par défaut ne
 le lit jamais et n'importe même pas la bibliothèque : `run.sh` ne se
 configure pas.
 
+Dans une unité qui reçoit le credential `warmup.api_key`
+(`$CREDENTIALS_DIRECTORY/warmup.api_key`, `lib_ops/credentials.py`), ce
+fichier est la clé d'API : il passe avant `--api-key-file` et le profil,
+et rend effectif le `login` du profil même quand celui-ci ne porte qu'une
+référence KeePass. Une ligne `🔑` dit d'où vient la clé ; l'avertissement
+sur les droits du fichier est sauté pour un credential, dont systemd tient
+le dossier.
+
 Une requête échoue sur une absence de réponse ou un code ≥ 500, et sur
 une erreur JSON-RPC ; un code 4xx est compté à part (« non public »).
 Codes de sortie : 0, même avec des échecs ; 1 avec `--strict` s'il y en
@@ -927,6 +935,15 @@ def afficher_profil(application):
         print("⚠ [ATTN] " + ligne, flush=True)
 
 
+def _origine_cle(origine):
+    """Le libellé traduit de l'origine du fichier de la clé d'API."""
+    if origine == "systemd":
+        return t("systemd credential")
+    if origine == "profil":
+        return t("profile")
+    return t("command line")
+
+
 def principal_profond(args, restes, systeme=None):
     """Le mode profond depuis la ligne de commande, `args` venant
     d'`analyser_profond` (profil posé, `valider` passé) : rend le code de
@@ -937,9 +954,19 @@ def principal_profond(args, restes, systeme=None):
                 options=" ".join(restes)
             )
         )
-    afficher_profil(getattr(args, "profil", None))
+    application = getattr(args, "profil", None)
+    afficher_profil(application)
     cle = None
+    origine = None
     if args.api_key_file:
+        origine = application.origine("api_key_file") if application else "cli"
+        print(
+            "🔑 "
+            + t("API key file: {path} ({origin})").format(
+                path=args.api_key_file, origin=_origine_cle(origine)
+            ),
+            flush=True,
+        )
         try:
             cle, ouverte = lire_cle(args.api_key_file)
         except (OSError, ValueError):
@@ -948,7 +975,7 @@ def principal_profond(args, restes, systeme=None):
                     path=args.api_key_file
                 )
             )
-        if ouverte:
+        if ouverte and origine != "systemd":
             print(
                 "⚠ [ATTN] "
                 + t(
@@ -1126,6 +1153,8 @@ def analyser_profond(argv=None, lanceur=None):
     appliqué : rend `(args, restes)`, `args.profil` décrivant le profil.
 
     `parse_known_args` : les options inconnues restent dans `restes`. Le
+    credential `warmup.api_key` de l'unité, s'il existe, est posé dans
+    `args.api_key_file` avant `valider` (`profil.analyser`). Le
     profil n'est cherché par l'unité devinée qu'avec `--local` et un
     `lanceur` (celui de `main`) ; `--url` et l'adresse du mode par défaut
     ne visent aucune unité. Une erreur d'usage ou de profil sort par

@@ -9,9 +9,9 @@ Deux unités par base, dans /etc/systemd/system :
 - `erplibre-backup-<base>.service` (`Type=oneshot`) lance
   `script/database/odoo_backup.py` SOUS LE COMPTE de l'unité Odoo
   (`User=`, `Group=` son groupe principal), depuis le checkout de
-  l'instance, avec tous ses arguments écrits dans `ExecStart` : rien
-  d'autre ne la configure. Root n'exécute ainsi aucun code que ce compte
-  peut modifier.
+  l'instance, avec ses arguments écrits dans `ExecStart` : rien d'autre
+  ne la configure, que le profil nommé par `--profile`. Root n'exécute
+  ainsi aucun code que ce compte peut modifier.
 - `erplibre-backup-<base>.timer` la déclenche (`OnCalendar`, par défaut
   chaque jour à 03:00, `RandomizedDelaySec`, `Persistent=true` : une
   échéance manquée machine éteinte part au démarrage).
@@ -52,23 +52,58 @@ Les options se lisent aussi dans le profil de production de l'instance
 `--randomized-delay` et `--verbose` dans ce groupe ; `--db` dans
 `instance` ; `--dest`, `--state-dir`, `--keep-*` et `--copy-to` dans
 `backup`, les réglages de l'outil de sauvegarde. La ligne de commande
-gagne toujours, `--no-profile` coupe le profil. Les valeurs retenues de
-`instance` et de `backup` s'écrivent dans `ExecStart` comme si elles
-avaient été tapées. Quand l'outil du checkout retenu applique lui-même le
-profil (lecture statique de son texte), `ExecStart` se termine par
-`--no-profile` : la sauvegarde planifiée ne découvre pas par `--service`
-un profil que l'installation ne lui a pas donné, et un profil illisible
-par le compte, ou devenu invalide, ne l'arrête pas.
+gagne toujours, `--no-profile` coupe le profil.
+
+`ExecStart` prend l'une de deux formes :
+
+- mode profil, quand un profil est retenu, que le compte de l'unité peut
+  le lire (`runuser -u COMPTE -- test -r`) et que l'outil du checkout
+  retenu l'applique (lecture statique de son texte, rien n'est exécuté) :
+  l'identité détectée (`--service`, `--db`, `--odoo-conf`, `--user`), les
+  champs fixés à l'installation (`--dest`, `--state-dir`, `--copy-to`)
+  quelle que soit leur origine, les autres (`--keep-*`) seulement s'ils
+  sont tapés, puis `--profile <chemin absolu> --profile-required`. La
+  sauvegarde relit le profil à chaque passage : une rétention éditée vaut
+  dès la nuit suivante, et un profil devenu invalide la fait échouer
+  (code 2, visible par `--status`) plutôt que de perdre `--copy-to` en
+  silence. Le profil ne se lit sous root que s'il n'est inscriptible ni
+  par son groupe ni par les autres, lui comme son dossier, et appartient
+  à root, au propriétaire du checkout ou à l'appelant de sudo : un tiers
+  ne choisit pas les dossiers où la sauvegarde écrit.
+- mode figé dans tous les autres cas : toutes les valeurs écrites, comme
+  tapées, et `--no-profile` quand l'outil connaît le profil. Avec un
+  profil présent, un avertissement dit qu'une édition du profil demande
+  de réinstaller.
+
+`--credential NOM=CHEMIN` transmet un secret que l'outil lancé déclare
+(`profil.SECRETS`, groupe `backup`) : le fichier, lu par root sans
+suivre de lien, devient un credential systemd de l'unité
+(`lib_ops/credentials.py`), chiffré à partir de systemd 250, en clair
+0600 root de 247 à 249 avec un avertissement ; avant 247, l'installation
+refuse (code 2) avant d'écrire quoi que ce soit. Un secret que le profil
+déclare sans `--credential` garde le fichier déjà rangé, celui que cite
+l'unité en place d'abord, même si le stockage a changé depuis, et refuse
+s'il n'y en a pas ; `--dry-run` n'en lit aucun. Une réinstallation retire
+la ligne et le fichier d'un secret que le profil ne déclare plus. Un
+fichier rangé par une installation qui échoue avant d'écrire le service
+est retiré aussitôt.
 
 `--uninstall` arrête et désactive la minuterie, arrête le service, retire
-les trois fichiers et recharge systemd ; les sauvegardes, l'état et le
-fichier du verrou restent. `--dry-run` affiche les valeurs du profil,
-les deux unités et les commandes, sans rien écrire. Root est exigé, sauf
+les trois fichiers et les credentials de l'unité, et recharge systemd ;
+les sauvegardes, l'état et le fichier du verrou restent. Les credentials
+de l'unité sont ceux que cite le service (sous `/etc/credstore*`, nom
+préfixé par l'unité), plus `<dossier>/<unité>.<nom>` pour chaque secret
+connu de l'outil et les restes temporaires d'une écriture interrompue :
+un fichier qu'aucune unité ne cite plus ne survit pas. Sans root, un
+dossier `/etc/credstore*` ne se traverse pas : la simulation montre alors
+le `rm` de chaque chemin cité, marqué « s'il existe ». `--dry-run` affiche
+les valeurs du profil, les deux unités, les credentials et les commandes,
+sans rien écrire ni lire de secret. Root est exigé, sauf
 `--dry-run`. `--root DIR` préfixe tous les chemins écrits (un test y met
 un dossier temporaire).
 
-Codes de sortie : 0 réussi ; 1 systemctl ou systemd-tmpfiles en échec ;
-2 refusé avant tout changement.
+Codes de sortie : 0 réussi ; 1 systemctl, systemd-tmpfiles ou
+systemd-creds en échec ; 2 refusé avant tout changement.
 
 Bibliothèque standard seulement, sans syntaxe postérieure à Python 3.7.
 """
@@ -80,6 +115,8 @@ import grp
 import os
 import pwd
 import re
+import shutil
+import stat
 import sys
 import tempfile
 import types
@@ -90,6 +127,7 @@ sys.path.append(
 
 from script.database import odoo_backup  # noqa: E402
 from script.lib_ops import (  # noqa: E402
+    credentials,
     lock,
     profil,
     report,
@@ -116,6 +154,9 @@ CODE_REFUS = 2
 # Groupe des réglages de cet outil dans un profil de production
 # (`lib_ops/profil.py`).
 GROUPE = "backup_timer"
+# Groupe de l'outil que lance l'unité : ses secrets deviennent des
+# credentials de l'unité.
+GROUPE_OUTIL = "backup"
 
 DOSSIER_UNITES = "/etc/systemd/system"
 DOSSIER_TMPFILES = "/etc/tmpfiles.d"
@@ -130,8 +171,11 @@ DELAI_ALEATOIRE = "30min"
 ANCIENNES = ("odoo-backup.timer",)
 OUTIL = os.path.join("script", "database", "odoo_backup.py")
 # Texte que porte un outil qui applique le profil, et accepte donc ses
-# méta-options (`--no-profile`) : elles viennent de `lib_ops/profil.py`.
+# méta-options : elles viennent de `lib_ops/profil.py` du même checkout,
+# qui doit porter `--profile-required` pour le mode profil.
 MARQUE_PROFIL = "profil.analyser("
+BIBLIOTHEQUE_PROFIL = os.path.join("script", "lib_ops", "profil.py")
+MARQUE_REQUIS = '"--profile-required"'
 PYTHON_SYSTEME = "/usr/bin/python3"
 MODE_UNITE = 0o644
 
@@ -184,6 +228,22 @@ def type_delai(valeur):
     return valeur
 
 
+def type_credential(valeur):
+    """Type argparse de `--credential NOM=CHEMIN` : (nom, chemin absolu).
+    Le fichier n'est pas lu ici."""
+    nom, egal, chemin = valeur.partition("=")
+    if (
+        not egal
+        or not credentials.nom_valide(nom)
+        or not chemin
+        or RE_CONTROLE.search(chemin)
+    ):
+        raise argparse.ArgumentTypeError(
+            t("expected NAME=PATH: {value}").format(value=_montrer(valeur))
+        )
+    return nom, os.path.abspath(chemin)
+
+
 def ligne_execstart(argv):
     return " ".join(citer(a) for a in argv)
 
@@ -232,7 +292,8 @@ class Systeme(service.SystemeBase):
             return str(gid)
 
 
-def contenu_service(base, utilisateur, groupe, checkout, argv):
+def contenu_service(base, utilisateur, groupe, checkout, argv, lignes=()):
+    """Le texte du service ; `lignes` sont les `LoadCredential*=`."""
     return "\n".join(
         [
             MARQUE,
@@ -250,9 +311,9 @@ def contenu_service(base, utilisateur, groupe, checkout, argv):
             "NoNewPrivileges=yes",
             "PrivateTmp=yes",
             "ProtectSystem=full",
-            "ExecStart=" + ligne_execstart(argv),
-            "",
         ]
+        + list(lignes)
+        + ["ExecStart=" + ligne_execstart(argv), ""]
     )
 
 
@@ -295,23 +356,61 @@ def choisir_checkout(wd, existe=os.path.isfile):
     return checkout, python
 
 
+def _contient(chemin, marque):
+    """True si le fichier `chemin` contient `marque` ; False s'il est
+    illisible."""
+    try:
+        with open(chemin, encoding="utf-8", errors="replace") as fichier:
+            return marque in fichier.read()
+    except OSError:
+        return False
+
+
 def outil_lit_le_profil(checkout):
     """True si l'outil de `checkout` applique le profil de production
     (`MARQUE_PROFIL` dans son texte). Lecture statique, rien n'est
     exécuté ; un outil illisible ou antérieur au profil rend False, et ne
     reçoit pas une option qu'il refuserait."""
-    try:
-        with open(
-            os.path.join(checkout, OUTIL), encoding="utf-8", errors="replace"
-        ) as fichier:
-            return MARQUE_PROFIL in fichier.read()
-    except OSError:
-        return False
+    return _contient(os.path.join(checkout, OUTIL), MARQUE_PROFIL)
 
 
-def argv_outil(args, plan, checkout, python, sans_profil=False):
-    """La commande de sauvegarde, arguments explicites. `sans_profil`
-    ajoute `--no-profile` : toutes les valeurs sont déjà écrites."""
+def outil_exige_le_profil(checkout):
+    """True si l'outil de `checkout` applique le profil ET que la
+    bibliothèque du même checkout connaît `--profile-required` : le mode
+    profil ne lui écrit rien qu'il refuserait. Lecture statique."""
+    return outil_lit_le_profil(checkout) and _contient(
+        os.path.join(checkout, BIBLIOTHEQUE_PROFIL), MARQUE_REQUIS
+    )
+
+
+# Les champs des réglages de la sauvegarde écrits à l'installation quelle
+# que soit leur origine (`profil.INSTALLATION`), puis ceux que l'outil
+# relit dans le profil à chaque passage : écrits seulement s'ils sont tapés.
+OPTIONS_INSTALLATION = (("dest", "--dest"), ("state_dir", "--state-dir"))
+OPTIONS_DIRECTES = (
+    ("keep_daily", "--keep-daily"),
+    ("keep_weekly", "--keep-weekly"),
+    ("keep_monthly", "--keep-monthly"),
+    ("keep_recent_days", "--keep-recent-days"),
+)
+
+
+def _valeur_option(args, dest):
+    if dest in ("dest", "state_dir"):
+        return os.path.abspath(getattr(args, dest))
+    return str(getattr(args, dest))
+
+
+def argv_outil(
+    args, plan, checkout, python, sans_profil=False, profil_abs=None
+):
+    """La commande de sauvegarde.
+
+    Sans `profil_abs` (mode figé), toutes les valeurs sont écrites ;
+    `sans_profil` ajoute `--no-profile`. Avec `profil_abs` (mode profil),
+    l'identité, les champs d'installation et les seuls champs directs tapés
+    sur la ligne de commande sont écrits, puis `--profile <profil_abs>
+    --profile-required`."""
     argv = [
         python,
         os.path.join(checkout, OUTIL),
@@ -323,22 +422,22 @@ def argv_outil(args, plan, checkout, python, sans_profil=False):
         plan.config_path,
         "--user",
         plan.utilisateur,
-        "--dest",
-        os.path.abspath(args.dest),
-        "--state-dir",
-        os.path.abspath(args.state_dir),
-        "--keep-daily",
-        str(args.keep_daily),
-        "--keep-weekly",
-        str(args.keep_weekly),
-        "--keep-monthly",
-        str(args.keep_monthly),
-        "--keep-recent-days",
-        str(args.keep_recent_days),
     ]
+    application = getattr(args, "profil", None)
+    for dest, option in OPTIONS_INSTALLATION:
+        argv += [option, _valeur_option(args, dest)]
+    for dest, option in OPTIONS_DIRECTES:
+        if (
+            profil_abs is None
+            or application is None
+            or application.origine(dest) == "cli"
+        ):
+            argv += [option, _valeur_option(args, dest)]
     if args.copy_to:
         argv += ["--copy-to", args.copy_to]
-    if sans_profil:
+    if profil_abs is not None:
+        argv += ["--profile", profil_abs, "--profile-required"]
+    elif sans_profil:
         argv.append("--no-profile")
     return argv
 
@@ -403,6 +502,200 @@ def verifier_acces(plan, checkout, python, systeme, rapport):
         )
         if code != 0:
             raise service.Refus(modele, user=plan.utilisateur, path=chemin)
+
+
+def compte_lit(plan, chemin, systeme):
+    """True si le compte de l'unité peut lire `chemin` (`runuser -u COMPTE
+    -- test -r`), False sinon, None hors root (non vérifié)."""
+    if systeme.euid() != 0:
+        return None
+    code, _sortie = systeme.lanceur(
+        ["runuser", "-u", plan.utilisateur, "--", "test", "-r", chemin], 30
+    )
+    return code == 0
+
+
+def choisir_mode(args, plan, checkout, systeme, rapport):
+    """Le chemin absolu du profil pour le mode profil, ou None pour le mode
+    figé ; un ATTN dit pourquoi un profil présent n'est pas relu par la
+    sauvegarde planifiée."""
+    application = getattr(args, "profil", None)
+    if application is None or not application.actif:
+        return None
+    chemin = os.path.abspath(application.chemin)
+    if not outil_exige_le_profil(checkout):
+        rapport.attn(
+            t(
+                "The tool of {path} predates the profile: ExecStart holds"
+                " every value, and an edit of the profile needs a reinstall."
+            ).format(path=checkout)
+        )
+        return None
+    if compte_lit(plan, chemin, systeme) is False:
+        rapport.attn(
+            t(
+                "{user} cannot read the profile {path}: ExecStart holds every"
+                " value, and an edit of the profile needs a reinstall."
+            ).format(user=plan.utilisateur, path=chemin)
+        )
+        return None
+    return chemin
+
+
+def secrets_outil():
+    """{nom du credential: clé} des secrets de l'outil lancé
+    (`profil.SECRETS`, groupe `GROUPE_OUTIL`)."""
+    return {
+        nom: cle
+        for (groupe, cle), nom in profil.SECRETS.items()
+        if groupe == GROUPE_OUTIL
+    }
+
+
+def secrets_declares(args):
+    """Les noms des secrets de l'outil que le profil retenu déclare (clé
+    présente dans le groupe `GROUPE_OUTIL`, référence KeePass ou chemin),
+    triés."""
+    application = getattr(args, "profil", None)
+    document = getattr(application, "document", None) or {}
+    groupe = document.get(GROUPE_OUTIL)
+    if not isinstance(groupe, dict):
+        return []
+    return sorted(nom for nom, cle in secrets_outil().items() if cle in groupe)
+
+
+def texte_unite(chemin):
+    """Le texte d'une unité marquée, "" si elle manque ou ne porte pas la
+    marque : seules les lignes écrites ici désignent des fichiers à
+    retirer."""
+    if not porte_la_marque(chemin):
+        return ""
+    try:
+        with open(chemin, encoding="utf-8", errors="replace") as fichier:
+            return fichier.read()
+    except OSError:
+        return ""
+
+
+def credentials_de_l_unite(unite, texte, systeme, garder=()):
+    """[(chemin réel, certain)] des fichiers de credential de l'unité à
+    retirer, hors des chemins (non préfixés) de `garder`.
+
+    Candidats : les chemins que cite le texte d'unité marqué `texte`
+    (`credentials.chemins_a_retirer`), `<dossier>/<unité>.<nom>` pour
+    chaque secret connu de l'outil, et les restes temporaires de ces
+    fichiers. Un candidat absent est écarté. `certain` est faux quand son
+    existence ne se vérifie pas (EACCES, hors root) : seul un chemin cité
+    est alors rendu, la simulation le montre « s'il existe »."""
+    cites = credentials.chemins_a_retirer(texte, unite)
+    connus = credentials.fichiers_de_l_unite(unite, sorted(secrets_outil()))
+    trouves, vus = [], set()
+    for final in cites + connus:
+        if final in garder or final in vus:
+            continue
+        vus.add(final)
+        reel = systeme.chemin(final)
+        etat = credentials.present(reel)
+        if etat or (etat is None and final in cites):
+            trouves.append((reel, bool(etat)))
+    bases = sorted({os.path.basename(final) for final in cites + connus})
+    for dossier in credentials.DOSSIERS:
+        for reste in credentials.restes(systeme.chemin(dossier), bases):
+            trouves.append((reste, True))
+    return trouves
+
+
+def preparer_credentials(args, unite, chemin_service, systeme, rapport):
+    """Les credentials de l'unité, vérifiés avant toute écriture :
+    `(lignes, a_ranger, a_retirer)`.
+
+    `a_ranger` : [(nom, chemin, réel, stockage, donnees, fourni)],
+    `donnees` None quand le fichier déjà rangé est gardé ou en simulation
+    (rien n'est lu), `fourni` vrai pour un secret donné par `--credential`.
+    Un secret sans `--credential` garde d'abord le fichier que cite
+    l'unité en place, avec sa directive, même si le stockage choisi
+    aujourd'hui diffère (systemd mis à jour, `systemd-creds` installé
+    depuis) ; sinon celui du stockage d'aujourd'hui.
+    `a_retirer` : [(réel, certain)] de `credentials_de_l_unite`, les
+    fichiers de l'unité qu'une réinstallation retire. Lève
+    service.Refus."""
+    fournis = dict(args.credential or ())
+    noms = sorted(set(secrets_declares(args)) | set(fournis))
+    texte = texte_unite(chemin_service)
+    a_moi = set(credentials.chemins_a_retirer(texte, unite))
+    cites = {
+        nom: (directive, cite)
+        for directive, nom, cite in credentials.lignes_citees(texte)
+        if cite in a_moi
+        and os.path.basename(cite) == f"{unite}.{nom}"
+        and credentials.stockage_cite(directive, None).dossier
+        == os.path.dirname(cite)
+    }
+    lignes, a_ranger, garder, en_clair = [], [], set(), []
+    if noms:
+        try:
+            version, avec_creds = credentials.detecter(systeme.lanceur)
+            stockage = credentials.choisir_stockage(version, avec_creds)
+        except credentials.ErreurCredential as err:
+            raise service.Refus(err.modele, **err.valeurs)
+        for nom in noms:
+            utilise = stockage
+            final = credentials.chemin(stockage, unite, nom)
+            ancien = cites.get(nom) if nom not in fournis else None
+            if ancien and (
+                ancien[0] == "LoadCredential"
+                or version >= credentials.VERSION_CHIFFREE
+            ):
+                reel_ancien = systeme.chemin(ancien[1])
+                if credentials.present(reel_ancien) is not False:
+                    utilise = credentials.stockage_cite(ancien[0], version)
+                    final = ancien[1]
+            reel = systeme.chemin(final)
+            donnees = None
+            if nom in fournis and not args.dry_run:
+                try:
+                    donnees = credentials.lire_secret(fournis[nom])
+                except credentials.ErreurCredential as err:
+                    raise service.Refus(err.modele, **err.valeurs)
+            elif (
+                nom not in fournis
+                and not args.dry_run
+                and not os.path.isfile(reel)
+            ):
+                raise service.Refus(
+                    service.N_(
+                        "The profile declares the secret {name}, but no"
+                        " --credential gives it and {path} does not exist."
+                    ),
+                    name=nom,
+                    path=final,
+                )
+            if not utilise.chiffre:
+                en_clair.append((nom, final))
+            lignes.append(credentials.ligne_unite(utilise, unite, nom))
+            a_ranger.append(
+                (nom, final, reel, utilise, donnees, nom in fournis)
+            )
+            garder.add(final)
+        if en_clair and not stockage.chiffre:
+            rapport.attn(
+                t(
+                    "Credentials stored in clear at rest in {path}, readable"
+                    " by root only (systemd {version} < 250, or no"
+                    " systemd-creds)."
+                ).format(path=stockage.dossier, version=version)
+            )
+            en_clair = []
+        # Un fichier en clair gardé alors que l'hôte sait chiffrer.
+        for nom, final in en_clair:
+            rapport.attn(
+                t(
+                    "The stored credential {path} stays in clear at rest:"
+                    " give --credential {name}=PATH to store it encrypted."
+                ).format(path=final, name=nom)
+            )
+    a_retirer = credentials_de_l_unite(unite, texte, systeme, garder)
+    return lignes, a_ranger, a_retirer
 
 
 def dossiers(args, plan):
@@ -527,8 +820,14 @@ def preparer(args, plan, systeme, rapport):
         raise service.Refus(
             service.N_("Unknown account: {user}"), user=plan.utilisateur
         )
+    profil_abs = choisir_mode(args, plan, checkout, systeme, rapport)
     argv = argv_outil(
-        args, plan, checkout, python, outil_lit_le_profil(checkout)
+        args,
+        plan,
+        checkout,
+        python,
+        outil_lit_le_profil(checkout),
+        profil_abs=profil_abs,
     )
     try:
         ligne_execstart(argv)
@@ -538,6 +837,9 @@ def preparer(args, plan, systeme, rapport):
             value=repr(str(err)),
         )
     verifier_acces(plan, checkout, python, systeme, rapport)
+    lignes, a_ranger, a_retirer = preparer_credentials(
+        args, unites[0], chemins[0], systeme, rapport
+    )
     a_creer = preparer_dossiers(args, plan, systeme)
     for ancienne in ANCIENNES:
         chemin = systeme.chemin(os.path.join(DOSSIER_UNITES, ancienne))
@@ -549,7 +851,9 @@ def preparer(args, plan, systeme, rapport):
                 ).format(unit=ancienne)
             )
     textes = [
-        contenu_service(plan.base, plan.utilisateur, groupe, checkout, argv),
+        contenu_service(
+            plan.base, plan.utilisateur, groupe, checkout, argv, lignes
+        ),
         contenu_minuterie(
             plan.base, unites[0], args.on_calendar, args.randomized_delay
         ),
@@ -562,6 +866,9 @@ def preparer(args, plan, systeme, rapport):
         texte_tmpfiles=contenu_tmpfiles(plan.base),
         a_creer=a_creer,
         groupe=groupe,
+        profil=profil_abs,
+        credentials=a_ranger,
+        credentials_a_retirer=a_retirer,
     )
 
 
@@ -580,6 +887,22 @@ def simuler(installation, plan, rapport):
                 ]
             )
         rapport.sim(commande)
+    for (
+        nom,
+        _final,
+        reel,
+        stockage,
+        _donnees,
+        fourni,
+    ) in installation.credentials:
+        etat = False if fourni else credentials.present(reel)
+        if etat:
+            note = t("(stored file kept)")
+        elif etat is None:
+            note = t("(stored file kept if present)")
+        else:
+            note = t("(provided at installation)")
+        rapport.sim(_commande_credential(stockage, nom, reel) + "  " + note)
     for chemin, texte in zip(
         installation.chemins + [installation.tmpfiles],
         installation.textes + [installation.texte_tmpfiles],
@@ -587,6 +910,7 @@ def simuler(installation, plan, rapport):
         rapport.sim(chemin)
         for ligne in texte.splitlines():
             rapport.texte("      " + ligne)
+    _simuler_retraits(installation.credentials_a_retirer, rapport)
     rapport.sim(
         service.joindre(
             ["systemd-tmpfiles", "--create", "--", installation.tmpfiles]
@@ -596,6 +920,42 @@ def simuler(installation, plan, rapport):
     rapport.sim(f"systemctl enable --now {installation.unites[1]}")
     rapport.ok(t("Simulation finished: nothing was written."))
     return CODE_OK
+
+
+def _simuler_retraits(credentials_a_retirer, rapport):
+    """Montre le `rm` de chaque `(réel, certain)`, « s'il existe » quand
+    son existence ne se vérifie pas sans root."""
+    for reel, certain in credentials_a_retirer:
+        options = ["-r", "--"] if _est_dossier(reel) else ["--"]
+        commande = service.joindre(["rm"] + options + [reel])
+        if not certain:
+            commande += "  " + t("(if present)")
+        rapport.sim(commande)
+
+
+def _est_dossier(chemin):
+    """True si `chemin` est un dossier, sans suivre de lien."""
+    try:
+        return stat.S_ISDIR(os.lstat(chemin).st_mode)
+    except OSError:
+        return False
+
+
+def _commande_credential(stockage, nom, reel):
+    """La commande montrée pour ranger le credential `nom` : le secret
+    passe sur l'entrée standard, jamais sur la ligne."""
+    if stockage.chiffre:
+        return service.joindre(
+            [
+                "systemd-creds",
+                "encrypt",
+                f"--name={nom}",
+                "--with-key=host",
+                "-",
+                reel,
+            ]
+        )
+    return service.joindre(["install", "-m", "0600", "/dev/stdin", reel])
 
 
 def installer(args, plan, systeme, rapport):
@@ -621,6 +981,13 @@ def installer(args, plan, systeme, rapport):
             )
             return CODE_REFUS
         rapport.ok(t("Created {path}.").format(path=chemin))
+    # Un credential créé ici n'est cité que par le service : tant que le
+    # service n'est pas écrit, aucune désinstallation ne le retrouverait
+    # par l'unité, d'où son retrait sur tout échec d'ici là.
+    crees = []
+    if not _ranger_credentials(installation, systeme, rapport, crees):
+        _retirer(crees, rapport)
+        return CODE_ECHEC
     for chemin, texte in zip(installation.chemins, installation.textes):
         try:
             ecrire_unite(chemin, texte)
@@ -630,8 +997,17 @@ def installer(args, plan, systeme, rapport):
                     path=chemin, error=err
                 )
             )
+            if chemin == installation.chemins[0]:
+                _retirer(crees, rapport)
             return CODE_ECHEC
         rapport.ok(t("Written: {path}").format(path=chemin))
+    # Le service écrit ne cite plus ces fichiers : ils partent avant toute
+    # étape qui pourrait encore échouer.
+    if not _retirer(
+        [reel for reel, _certain in installation.credentials_a_retirer],
+        rapport,
+    ):
+        return CODE_ECHEC
     if not _creer_verrou(installation, systeme, rapport):
         return CODE_ECHEC
     unite_service, unite_minuterie = installation.unites
@@ -648,6 +1024,70 @@ def installer(args, plan, systeme, rapport):
     rapport.detail(f"systemctl start {unite_service}")
     rapport.detail(f"journalctl -u {unite_service}")
     return CODE_OK
+
+
+def _ranger_credentials(installation, systeme, rapport, crees):
+    """Range chaque secret fourni dans son fichier de credential, avant les
+    unités qui le citent ; un secret sans données garde le fichier rangé.
+    Ajoute à `crees` chaque fichier qui n'existait pas avant, y compris
+    celui en cours d'écriture : l'appelant les retire si l'installation
+    échoue avant d'écrire le service. False, message écrit, sur un
+    échec."""
+    for (
+        nom,
+        _final,
+        reel,
+        stockage,
+        donnees,
+        _fourni,
+    ) in installation.credentials:
+        if donnees is None:
+            rapport.ok(t("Stored credential kept: {path}").format(path=reel))
+            continue
+        if not os.path.lexists(reel):
+            crees.append(reel)
+        try:
+            credentials.preparer_dossier(os.path.dirname(reel))
+            if stockage.chiffre:
+                credentials.chiffrer(
+                    reel, nom, donnees, systeme.lanceur_entree
+                )
+            else:
+                credentials.ecrire_clair(reel, donnees)
+        except credentials.ErreurCredential as err:
+            rapport.fail(err.message(t))
+            return False
+        except OSError as err:
+            rapport.fail(
+                t("Cannot write {path}: {error}").format(path=reel, error=err)
+            )
+            return False
+        rapport.ok(t("Credential stored: {path}").format(path=reel))
+    return True
+
+
+def _retirer(chemins, rapport):
+    """Retire chaque fichier de `chemins`, ou dossier (le reste d'un
+    chiffrement interrompu), sans suivre de lien ; False, message écrit, si
+    l'un résiste."""
+    reussi = True
+    for chemin in chemins:
+        try:
+            if _est_dossier(chemin):
+                shutil.rmtree(chemin)
+            else:
+                os.remove(chemin)
+            rapport.ok(t("Removed: {path}").format(path=chemin))
+        except FileNotFoundError:
+            continue
+        except OSError as err:
+            rapport.fail(
+                t("Cannot delete {path}: {error}").format(
+                    path=chemin, error=err
+                )
+            )
+            reussi = False
+    return reussi
 
 
 def _creer_verrou(installation, systeme, rapport):
@@ -693,17 +1133,32 @@ def desinstaller(args, base, systeme, rapport):
     except service.Refus as err:
         rapport.erreur(err.message(t))
         return CODE_REFUS
+    a_retirer = credentials_de_l_unite(
+        unite_service, texte_unite(chemins[0]), systeme
+    )
     presents = [c for c in chemins if os.path.lexists(c)]
-    if not presents:
+    if not presents and not a_retirer:
         rapport.ok(
             t("Nothing to remove for {database}.").format(database=base)
         )
+        return CODE_OK
+    if not presents:
+        # Des credentials sans unité (une installation interrompue) : rien
+        # à arrêter ni à recharger, systemctl échouerait sur une unité
+        # inconnue.
+        if args.dry_run:
+            _simuler_retraits(a_retirer, rapport)
+            rapport.ok(t("Simulation finished: nothing was written."))
+            return CODE_OK
+        if not _retirer([reel for reel, _certain in a_retirer], rapport):
+            return CODE_ECHEC
         return CODE_OK
     if args.dry_run:
         rapport.sim(f"systemctl disable --now {unite_minuterie}")
         rapport.sim(f"systemctl stop {unite_service}")
         for chemin in presents:
             rapport.sim(service.joindre(["rm", "--", chemin]))
+        _simuler_retraits(a_retirer, rapport)
         rapport.sim("systemctl daemon-reload")
         rapport.ok(t("Simulation finished: nothing was written."))
         return CODE_OK
@@ -712,17 +1167,10 @@ def desinstaller(args, base, systeme, rapport):
         code = CODE_ECHEC
     if not _systemctl(systeme, rapport, "stop", unite_service):
         code = CODE_ECHEC
-    for chemin in presents:
-        try:
-            os.remove(chemin)
-            rapport.ok(t("Removed: {path}").format(path=chemin))
-        except OSError as err:
-            rapport.fail(
-                t("Cannot delete {path}: {error}").format(
-                    path=chemin, error=err
-                )
-            )
-            code = CODE_ECHEC
+    if not _retirer(
+        presents + [reel for reel, _certain in a_retirer], rapport
+    ):
+        code = CODE_ECHEC
     if not _systemctl(systeme, rapport, "daemon-reload"):
         code = CODE_ECHEC
     rapport.detail(
@@ -841,6 +1289,17 @@ def construire_parseur():
         ),
     )
     parser.add_argument(
+        "--credential",
+        action="append",
+        type=type_credential,
+        metavar="NAME=PATH",
+        help=t(
+            "Secret NAME of the backup tool, read by root from the file PATH"
+            " and stored as a systemd credential of the unit, never on a"
+            " command line; repeatable."
+        ),
+    )
+    parser.add_argument(
         "--root",
         default="/",
         help=t("Prefix of every path written (tests); default: /."),
@@ -861,10 +1320,25 @@ def construire_parseur():
 
 def valider(parser, args):
     """Contrôles d'après analyse, profil déjà posé ; refus par
-    `parser.error` (code 2). Aucun aujourd'hui : les types de
-    `--on-calendar` et `--randomized-delay` refusent déjà une forme
-    invalide, et le reste se vérifie à l'installation."""
-    return None
+    `parser.error` (code 2) : un `--credential` doit nommer, une seule
+    fois, un secret de l'outil lancé. Les types de `--on-calendar` et
+    `--randomized-delay` refusent déjà une forme invalide, et le reste se
+    vérifie à l'installation."""
+    vus = set()
+    connus = secrets_outil()
+    for nom, _chemin in args.credential or ():
+        if nom not in connus:
+            parser.error(
+                t(
+                    "--credential {name}: not a secret of the backup tool"
+                    " (known: {names})."
+                ).format(name=nom, names=", ".join(sorted(connus)) or "-")
+            )
+        if nom in vus:
+            parser.error(
+                t("--credential {name} is given twice.").format(name=nom)
+            )
+        vus.add(nom)
 
 
 def analyser(argv=None, lanceur=None):

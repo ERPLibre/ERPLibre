@@ -307,6 +307,84 @@ compte ; le côté distant n'a pas de rétention et grossit). Surveiller
 [script/database/README.fr.md](../script/database/README.fr.md).
 
 <!-- [en] -->
+### Secrets and timers
+
+A scheduled unit receives its secrets as systemd credentials, never on a
+command line nor in the environment. The deployer (`--credential
+NAME=PATH` of `install_backup_timer.py`) reads the file as root and
+stores it according to the systemd version, checked before anything is
+written:
+
+- 250 and later, with `systemd-creds`: encrypted by `systemd-creds encrypt
+  --with-key=host` (the secret on its standard input) into
+  `/etc/credstore.encrypted/<unit>.<NAME>`, unit line
+  `LoadCredentialEncrypted=`. A host key rather than the TPM, so that the
+  file survives the migration or the restore of a VM; it is only readable
+  with the host's `/var/lib/systemd/credential.secret`, so restoring
+  `/etc` alone leaves the unit unable to start;
+- 247 to 249, or without `systemd-creds`: in clear at rest, 0600 root in
+  `/etc/credstore/<unit>.<NAME>`, unit line `LoadCredential=`, with a
+  warning. Only a missing `systemd-creds` (code 127) leads here: any other
+  failure of `systemd-creds --version` on 250+ is refused (code 2);
+- before 247: refused (code 2).
+
+The tool reads `$CREDENTIALS_DIRECTORY/<NAME>` first: inside the unit, the
+credential wins over the file option and over the profile, the one
+exception to "the command line wins". `warmup_http.py --deep` takes its
+API key from the `warmup.api_key` credential this way, says where the key
+comes from, and then also keeps the profile's `login`, even when the
+profile only holds a KeePass reference.
+
+The scheduled backup reads the instance profile at each run ("profile
+mode": `--profile <path> --profile-required` in `ExecStart`) when its
+account can read it and its checkout's tool supports it; otherwise every
+value is written in `ExecStart` ("frozen mode") and a warning says that an
+edit of the profile needs a reinstall. The database, the backup and state
+directories, `--copy-to`, the calendar and the random delay are fixed at
+installation either way: reinstall after changing them. Details:
+[script/database/README.md](../script/database/README.md).
+
+<!-- [fr] -->
+### Secrets et minuteries
+
+Une unité planifiée reçoit ses secrets en credentials systemd, jamais sur
+une ligne de commande ni dans l'environnement. Le déployeur
+(`--credential NOM=CHEMIN` d'`install_backup_timer.py`) lit le fichier en
+root et le range selon la version de systemd, vérifiée avant toute
+écriture :
+
+- 250 et plus, avec `systemd-creds` : chiffré par `systemd-creds encrypt
+  --with-key=host` (le secret sur son entrée standard) dans
+  `/etc/credstore.encrypted/<unité>.<NOM>`, ligne d'unité
+  `LoadCredentialEncrypted=`. Une clé d'hôte plutôt que le TPM, pour que
+  le fichier survive à la migration ou à la restauration d'une VM ; il ne
+  se lit qu'avec `/var/lib/systemd/credential.secret` de l'hôte : restaurer
+  `/etc` seul rend l'unité incapable de démarrer ;
+- 247 à 249, ou sans `systemd-creds` : en clair au repos, 0600 root dans
+  `/etc/credstore/<unité>.<NOM>`, ligne d'unité `LoadCredential=`, avec un
+  avertissement. Seul un `systemd-creds` absent (code 127) y mène : tout
+  autre échec de `systemd-creds --version` sous 250 et plus est refusé
+  (code 2) ;
+- avant 247 : refus (code 2).
+
+L'outil lit d'abord `$CREDENTIALS_DIRECTORY/<NOM>` : dans l'unité, le
+credential passe avant l'option fichier et avant le profil, seule
+exception à « la ligne de commande gagne ». `warmup_http.py --deep` prend
+ainsi sa clé d'API du credential `warmup.api_key`, dit d'où vient la clé,
+et garde alors aussi le `login` du profil, même quand le profil ne porte
+qu'une référence KeePass.
+
+La sauvegarde planifiée relit le profil de l'instance à chaque passage
+(« mode profil » : `--profile <chemin> --profile-required` dans
+`ExecStart`) quand son compte peut le lire et que l'outil de son checkout
+le connaît ; sinon chaque valeur est écrite dans `ExecStart` (« mode
+figé ») et un avertissement dit qu'une édition du profil demande une
+réinstallation. La base, les dossiers de sauvegarde et d'état,
+`--copy-to`, le calendrier et le délai aléatoire sont fixés à
+l'installation dans les deux cas : réinstaller après les avoir changés.
+Détails : [script/database/README.fr.md](../script/database/README.fr.md).
+
+<!-- [en] -->
 ### Odoo journal
 
 `script/odoo/log_check.py` reads the journal of the instance and says what

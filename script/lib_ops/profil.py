@@ -17,6 +17,10 @@ aide, défaut) se lisent dans le parser.
 
 Le profil ne porte aucun secret : un champ secret n'admet qu'une
 référence KeePass `{"kdbx": "<chemin>"}` ou le chemin absolu d'un fichier.
+Dans une unité qui reçoit le credential du secret
+(`$CREDENTIALS_DIRECTORY/<nom>`, voir `credentials.py`), ce fichier passe
+avant la ligne de commande et le profil, et rend le secret effectif pour
+ses dépendants, même quand le profil n'en porte qu'une référence KeePass.
 
 `RACINE_PROFILS` est la seule couture vers le dossier des profils : `None`
 vaut `<racine>/private/production`, et un test y met un dossier temporaire.
@@ -40,7 +44,7 @@ import stat
 import sys
 import tempfile
 
-from script.lib_ops import systemd
+from script.lib_ops import credentials, systemd
 
 VERSION = 1
 
@@ -226,6 +230,7 @@ EXCLUSIONS = {
         "user": "identite",
         "root": "tests",
         "dry_run": "mode",
+        "credential": "secret_transmis",
     },
     "log_check": {
         "service": "identite",
@@ -1265,7 +1270,9 @@ class Application:
     `actif` est faux sans profil. `chemin`, `service`, `empreinte`
     (sha256), `unite_devinee` (`(nom, raison)` ou None), `valeurs`
     ({dest: Valeur}), `ecartees` ([Ecartee]), `inconnues` (clés
-    `groupe.cle`), `presents` (les `dest` de la ligne de commande).
+    `groupe.cle`), `presents` (les `dest` de la ligne de commande),
+    `document` (le JSON lu, None sans profil), `credentials` ({dest:
+    fichier} des secrets que l'unité reçoit en credential systemd).
     """
 
     def __init__(self, groupe):
@@ -1281,9 +1288,14 @@ class Application:
         self.presents = frozenset()
         self.poses = set()
         self.secrets_kdbx = {}
+        self.document = None
+        self.credentials = {}
 
     def origine(self, dest):
-        """ "cli", "profil" ou "defaut"."""
+        """ "systemd" (credential de l'unité, qui passe avant la ligne de
+        commande), "cli", "profil" ou "defaut"."""
+        if dest in self.credentials:
+            return "systemd"
         if dest in self.presents:
             return "cli"
         if dest in self.valeurs or dest in self.poses:
@@ -1462,12 +1474,21 @@ def analyser(
     `utilise_service(presents)`, l'unité devinée. Les valeurs retenues
     sont converties une seule fois et posées par `setattr` après la passe
     finale aux défauts normaux. Toute erreur du profil sort par
-    `parser.error` (code 2)."""
+    `parser.error` (code 2).
+
+    Un champ secret dont l'unité reçoit le credential (`credentials.fichier`)
+    prend ce fichier en dernier, par-dessus la ligne de commande et le
+    profil, avec ou sans profil."""
     ajouter_meta(parser, t)
     argv = list(sys.argv[1:] if argv is None else argv)
     if utilise_service is None:
         utilise_service = _toujours
     application = Application(groupe)
+    secrets = _secrets_du_parser(parser, groupe)
+    for dest, nom in secrets.items():
+        fourni = credentials.disponible(nom)
+        if fourni:
+            application.credentials[dest] = fourni
     ns_pre = _pre_passe(parser, argv)
     if ns_pre is not None:
         _appliquer(
@@ -1487,12 +1508,38 @@ def analyser(
         args = parser.parse_args(argv)
     for dest, valeur in application.valeurs.items():
         setattr(args, dest, valeur.converti)
+    for dest, nom in secrets.items():
+        option = (
+            getattr(args, dest, None) if dest in application.presents else None
+        )
+        du_profil = application.valeurs.get(dest)
+        chemin, origine = credentials.fichier(
+            nom, option, du_profil.converti if du_profil else None
+        )
+        if origine == "systemd":
+            application.credentials[dest] = chemin
+            setattr(args, dest, chemin)
+        else:
+            application.credentials.pop(dest, None)
     if "service" in application.poses:
         args.service = application.service
     args.profil = application
     if connus:
         return args, restes, application
     return args, application
+
+
+def _secrets_du_parser(parser, groupe):
+    """{dest: nom du credential} des champs secrets du groupe que le parser
+    porte."""
+    actions = _actions(parser)
+    return collections.OrderedDict(
+        (cle, nom)
+        for (groupe_secret, cle), nom in SECRETS.items()
+        if groupe_secret == groupe
+        and cle in CHAMPS.get(groupe, ())
+        and cle in actions
+    )
 
 
 def _appliquer(
@@ -1570,6 +1617,7 @@ def _appliquer(
     app.actif = True
     app.chemin = chemin
     app.empreinte = lu.empreinte
+    app.document = doc
     # `valider_document` a vérifié que le nom se normalise : la
     # comparaison avec --service et la valeur posée portent sur l'unité
     # complète (`odoo-exemple` devient `odoo-exemple.service`).
@@ -1735,6 +1783,21 @@ def _appliquer(
             converti = convertir(champ, brut)
         except ErreurProfil as err:
             _refuser(parser, t, chemin, err)
+        if champ.dest in app.credentials:
+            # Le credential de l'unité remplace le secret du profil, quelle
+            # que soit sa forme ; il est posé après la passe finale.
+            if isinstance(converti, Kdbx):
+                nom_secret = SECRETS[(champ.groupe, champ.cle)]
+                app.secrets_kdbx[champ.dest] = (converti.reference, nom_secret)
+            else:
+                app._ecarter(
+                    champ,
+                    "systemd",
+                    N_(
+                        "{option}: the systemd credential wins over the profile"
+                    ),
+                )
+            continue
         if isinstance(converti, Kdbx):
             # Un outil ne lit jamais KeePass : une référence n'a pas de
             # valeur ici, elle est écartée et ne compte pas comme effective
@@ -1763,7 +1826,11 @@ def _appliquer(
             if dependance is None or dependance not in par_cle:
                 continue
             cible = par_cle[dependance]
-            effective = cible.dest in presents or cible.dest in convertis
+            effective = (
+                cible.dest in presents
+                or cible.dest in convertis
+                or cible.dest in app.credentials
+            )
             if not effective:
                 del convertis[dest]
                 app._ecarter(

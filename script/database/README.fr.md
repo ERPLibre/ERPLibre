@@ -172,10 +172,65 @@ et `--randomized-delay` refusent une valeur mal formée dès l'analyse
 La ligne de commande gagne toujours, et les mêmes méta-options
 s'appliquent (`--profile`, `--no-profile`, `--profile-unset`,
 `--profile-required`). `--uninstall`, `--service`, `--odoo-conf`,
-`--user`, `--root` et `--dry-run` ne se lisent jamais d'un profil. Les
-valeurs retenues s'écrivent dans `ExecStart` comme si elles avaient été
-tapées, et s'affichent avant les unités et les commandes simulées. Quand
-l'outil du checkout retenu applique le profil (lecture statique, rien
-n'est exécuté), `ExecStart` se termine par `--no-profile` : la sauvegarde
-planifiée ne découvre jamais un profil qu'on ne lui a pas donné, et un
-profil illisible par son compte, ou devenu invalide, ne l'arrête pas.
+`--user`, `--root`, `--credential` et `--dry-run` ne se lisent jamais
+d'un profil. Les valeurs retenues s'affichent avant les unités et les
+commandes simulées.
+
+`ExecStart` prend l'une de deux formes :
+
+- **mode profil**, quand un profil est retenu, que le compte de l'unité
+  peut le lire (`runuser -u COMPTE -- test -r`, vérifié sous sudo) et que
+  l'outil du checkout retenu l'applique (lecture statique, rien n'est
+  exécuté) : l'identité détectée (`--service`, `--db`, `--odoo-conf`,
+  `--user`), les champs fixés à l'installation (`--dest`, `--state-dir`,
+  `--copy-to`) quelle que soit leur origine, les réglages `--keep-*`
+  seulement s'ils sont tapés, puis `--profile <chemin absolu>
+  --profile-required`. La sauvegarde relit le profil à chaque passage :
+  une rétention éditée vaut dès la nuit suivante, et un profil devenu
+  invalide fait échouer la sauvegarde (code 2, vu par `--status`) plutôt
+  que de perdre `--copy-to` en silence. `systemctl cat` montre le chemin.
+  Sous root, l'outil ne lit qu'un profil que ni son groupe ni les autres
+  comptes ne peuvent écrire, ni son dossier, et qui appartient à root, au
+  propriétaire du checkout ou à l'appelant de sudo.
+- **mode figé** sinon (pas de profil, profil illisible par le compte,
+  outil antérieur au profil) : toutes les valeurs écrites comme si elles
+  avaient été tapées, comme avant, terminées par `--no-profile` quand
+  l'outil connaît le profil. Avec un profil présent, un avertissement dit
+  qu'une édition du profil demande une réinstallation.
+
+`--dest`, `--state-dir`, `--copy-to`, `--db`, `--on-calendar` et
+`--randomized-delay` sont fixés à l'installation (fichier de la minuterie,
+dossiers créés au compte, son `known_hosts`) : après les avoir changés
+dans le profil, réinstaller.
+
+**Secrets.** `--credential NOM=CHEMIN` (répétable) transmet un secret que
+l'outil de sauvegarde déclare ; `backup` n'en déclare aucun aujourd'hui,
+le chemin est générique. Root lit `CHEMIN` sans suivre de lien et le
+range en credential systemd de l'unité, jamais sur une ligne de commande
+ni dans l'environnement :
+
+| systemd | Stockage | Ligne d'unité |
+|---|---|---|
+| 250 et plus avec `systemd-creds` | `systemd-creds encrypt --with-key=host`, secret sur l'entrée standard, `/etc/credstore.encrypted/<unité>.<NOM>` (0600, dossier 0700) | `LoadCredentialEncrypted=` |
+| 247 à 249, ou sans `systemd-creds` | en clair, `/etc/credstore/<unité>.<NOM>` (0600 root, dossier 0700), avec un avertissement | `LoadCredential=` |
+| avant 247, ou inconnue | refus (code 2) avant toute écriture | — |
+
+Seul un `systemd-creds` absent (code 127) mène au stockage en clair : tout
+autre échec de `systemd-creds --version` sous systemd 250 et plus est
+refusé (code 2) plutôt que rangé en clair. Les lignes d'unité portent des
+chemins absolus. Un fichier chiffré avec `--with-key=host` ne se lit
+qu'avec `/var/lib/systemd/credential.secret` de l'hôte : restaurer `/etc`
+seul rend l'unité incapable de démarrer. Un secret que le profil déclare
+sans `--credential` garde le fichier rangé, d'abord celui que cite
+l'unité en place, avec sa ligne, même après une mise à jour de systemd
+(un fichier gardé en clair alors que le chiffrement est possible donne un
+avertissement), et refuse s'il n'y en a pas ; `--dry-run` ne lit rien et
+montre la ligne « (fourni à l'installation) ». Une réinstallation retire
+la ligne et le fichier d'un secret que le profil ne déclare plus ; un
+fichier rangé par une installation qui échoue avant d'écrire le service
+est retiré aussitôt. `--uninstall` retire les fichiers de credential de
+l'unité, seulement sous `/etc/credstore` ou `/etc/credstore.encrypted` et
+nommés d'après l'unité : ceux que cite l'unité, `<unité>.<NOM>` pour
+chaque secret de l'outil, et les restes temporaires d'une écriture
+interrompue (`--root` les préfixe ; `--dry-run` montre les `rm`, marqués
+« (s'il existe) » quand, sans root, le dossier 0700 ne se vérifie pas).

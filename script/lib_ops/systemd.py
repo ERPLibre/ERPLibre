@@ -92,6 +92,45 @@ def lancer(argv, timeout=60):
     return fin.returncode, sortie
 
 
+def lancer_entree(argv, donnees, timeout=60):
+    """Exécute `argv` avec les octets `donnees` sur son entrée standard et
+    rend (code, sortie), comme `lancer`. Ne lève jamais.
+
+    Un secret passe ainsi à `systemd-creds` sans paraître sur la ligne de
+    commande ni dans l'environnement ; la sortie rendue est celle de la
+    commande, jamais `donnees`."""
+    try:
+        fin = subprocess.run(
+            argv,
+            input=donnees,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, "timeout"
+    except OSError as err:
+        return 127, str(err)
+    sortie = (fin.stdout or b"").decode("utf-8", "replace")
+    if fin.returncode != 0 and fin.stderr:
+        sortie += fin.stderr.decode("utf-8", "replace")
+    return fin.returncode, sortie
+
+
+# La première ligne de `systemctl --version` : `systemd 252 (252.39-1…)`.
+RE_VERSION = re.compile(r"systemd (\d+)\b")
+
+
+def version(lanceur=lancer):
+    """La version de systemd (entier) lue dans `systemctl --version`, ou
+    None si la commande échoue ou répond autre chose."""
+    code, sortie = lanceur(["systemctl", "--version"], 30)
+    if code != 0:
+        return None
+    trouve = RE_VERSION.match((sortie or "").lstrip())
+    return int(trouve.group(1)) if trouve else None
+
+
 def nom_unite(nom):
     """Le nom complet de l'unité : `.service` ajouté à un nom sans point.
 

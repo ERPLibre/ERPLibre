@@ -2370,6 +2370,7 @@ class TestPythonAncien(unittest.TestCase):
         os.path.join(RACINE, "script", "odoo", "warmup_http.py"),
         os.path.join(RACINE, "script", "proxmox", "host_perf_audit.py"),
         os.path.join(RACINE, "script", "lib_ops", "profil.py"),
+        os.path.join(RACINE, "script", "lib_ops", "credentials.py"),
     ]
 
     # API absentes de Python 3.7 : la syntaxe passe le garde, l'appel
