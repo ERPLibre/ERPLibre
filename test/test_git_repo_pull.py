@@ -777,15 +777,21 @@ class TestManifeste(Banc):
         self.assertNotEqual(self.appels_regenerer[0][0], self.racine)
 
     def test_la_prediction_voit_les_checkouts_que_la_fusion_detecte(self):
-        """La fusion ajoute un fragment quand le checkout mobile ou Dolibarr
-        existe : le dossier de la prédiction porte les mêmes marqueurs que
-        la racine, sinon elle retirerait leurs projets et l'écriture,
-        relancée depuis la racine, serait refusée."""
+        """La fusion ajoute un fragment quand le checkout mobile ou celui
+        d'un ERP de erp_sources (Dolibarr) existe : le dossier de la
+        prédiction porte les mêmes marqueurs que la racine, sinon elle
+        retirerait leurs projets et l'écriture, relancée depuis la racine,
+        serait refusée."""
+        from script.git import erp_sources
         from script.git import git_merge_repo_manifest as fusion
 
         self.assertEqual(
             repo_pull.MARQUEURS_DE_FUSION,
-            (fusion.MOBILE_PATH, fusion.DOLIBARR_PATH),
+            (fusion.MOBILE_PATH, *erp_sources.checkouts()),
+        )
+        self.assertIn(
+            os.path.join("dolibarr", "dolibarr"),
+            repo_pull.MARQUEURS_DE_FUSION,
         )
         for marqueur in repo_pull.MARQUEURS_DE_FUSION:
             os.makedirs(os.path.join(self.racine, marqueur))

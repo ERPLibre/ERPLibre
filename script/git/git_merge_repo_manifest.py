@@ -14,6 +14,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.git import erp_sources
 from script.git.git_freeze_manifest import (
     honored_sources,
     read_sources,
@@ -39,9 +40,6 @@ DEFAULT_PATH_MANIFEST_STREAMDECK_CONF = os.path.join(
 DEFAULT_PATH_MANIFEST_ERPLIBRE_HOME_CONF = os.path.join(
     "conf", "git_manifest_erplibre_home.csv"
 )
-DEFAULT_PATH_MANIFEST_DOLIBARR_CONF = os.path.join(
-    "conf", "git_manifest_dolibarr.csv"
-)
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
@@ -61,7 +59,6 @@ STREAMDECK_DECK_PATH = os.path.join("script", "stream_deck", "deck")
 ERPLIBRE_HOME_EXTENSION_PATH = os.path.join(
     "script", "gnome-extension", "erplibre_home"
 )
-DOLIBARR_PATH = os.path.join("dolibarr", "dolibarr")
 ODOO_VERSION_PATH = ".odoo-version"
 
 
@@ -110,11 +107,13 @@ def get_config(argv=None):
         action="store_true",
         help="Add the ERPLibre Home GNOME extension manifest",
     )
-    parser.add_argument(
-        "--with_dolibarr",
-        action="store_true",
-        help="Add the pinned Dolibarr project manifest",
-    )
+    # Un drapeau par ERP de erp_sources, « --with_dolibarr » compris.
+    for erp, source in erp_sources.ERP_SOURCES.items():
+        parser.add_argument(
+            f"--{erp_sources.flag(erp)}",
+            action="store_true",
+            help=f"Add the pinned {source.label} project manifest",
+        )
     parser.add_argument(
         "--with_extra",
         action="store_true",
@@ -163,7 +162,11 @@ def main():
             with_mobile=config.with_mobile,
             with_streamdeck=config.with_streamdeck,
             with_erplibre_home=config.with_erplibre_home,
-            with_dolibarr=config.with_dolibarr,
+            with_erps=[
+                erp
+                for erp in erp_sources.ERP_SOURCES
+                if getattr(config, erp_sources.flag(erp))
+            ],
             with_extra=config.with_extra,
             with_new_manifest=config.with_new_manifest,
         )
@@ -270,7 +273,7 @@ def default_input_paths(
     with_mobile=False,
     with_streamdeck=False,
     with_erplibre_home=False,
-    with_dolibarr=False,
+    with_erps=(),
     with_extra=False,
     with_new_manifest=False,
 ):
@@ -278,8 +281,9 @@ def default_input_paths(
 
     Sans `with_new_manifest`, les drapeaux se déduisent du checkout : la
     version d'Odoo active, les versions installées, l'application mobile,
-    le programme du deck, l'extension GNOME, le checkout Dolibarr, les
-    modules extra. Un fichier cité deux fois n'est gardé qu'à sa PREMIÈRE
+    le programme du deck, l'extension GNOME, les checkouts des ERP de
+    `erp_sources`, les modules extra. `with_erps` nomme les ERP de cette
+    table dont le fragment entre d'office. Un fichier cité deux fois n'est gardé qu'à sa PREMIÈRE
     place, et l'ordre est celui de la liste : lors de la fusion, le dernier
     fichier qui définit un projet l'emporte.
     """
@@ -299,10 +303,9 @@ def default_input_paths(
         if os.path.isdir(ERPLIBRE_HOME_EXTENSION_PATH):
             with_erplibre_home = True
         # Un projet sorti de la fusion est effacé par le prochain « repo
-        # sync », fichiers ignorés compris : le checkout Dolibarr y reste
+        # sync », fichiers ignorés compris : le checkout d'un ERP y reste
         # donc dès qu'il existe.
-        if os.path.isdir(DOLIBARR_PATH):
-            with_dolibarr = True
+        with_erps = [*with_erps, *erp_sources.present()]
         if odoo_version and get_version_extra(odoo_version.strip()):
             with_extra = True
 
@@ -360,10 +363,9 @@ def default_input_paths(
         append_file_path_manifest(
             input_paths, DEFAULT_PATH_MANIFEST_ERPLIBRE_HOME_CONF
         )
-    if with_dolibarr:
-        append_file_path_manifest(
-            input_paths, DEFAULT_PATH_MANIFEST_DOLIBARR_CONF
-        )
+    for erp, source in erp_sources.ERP_SOURCES.items():
+        if erp in with_erps:
+            append_file_path_manifest(input_paths, source.conf)
     if with_extra and odoo_version:
         path_extra = os.path.join(
             "manifest",

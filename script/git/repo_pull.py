@@ -144,6 +144,7 @@ sys.path.append(
 
 from script.git import (  # noqa: E402
     command_echo,
+    erp_sources,
     git_freeze_manifest,
     manifest_freeze,
     repo_apply,
@@ -267,11 +268,11 @@ ENTREES_VIVES = (
     os.path.join("private", "default_git_manifest.csv"),
 )
 DOSSIER_MOBILE = os.path.join("mobile", "erplibre_home_mobile")
-DOSSIER_DOLIBARR = os.path.join("dolibarr", "dolibarr")
 # Les checkouts dont la seule présence ajoute un fragment à la fusion
-# (`git_merge_repo_manifest.default_input_paths`) : la prédiction les
-# recrée, vides, pour lire les mêmes fichiers que la racine.
-MARQUEURS_DE_FUSION = (DOSSIER_MOBILE, DOSSIER_DOLIBARR)
+# (`git_merge_repo_manifest.default_input_paths`) : le mobile et ceux des
+# ERP de `erp_sources`. La prédiction les recrée, vides, pour lire les
+# mêmes fichiers que la racine.
+MARQUEURS_DE_FUSION = (DOSSIER_MOBILE, *erp_sources.checkouts())
 
 
 class Occupe(Exception):

@@ -75,10 +75,11 @@ fi
 
 # Generate local manifest. Un échec de la fusion arrête le script : le sync
 # repartirait sinon sur le manifeste local précédent.
-# EL_MANIFEST_MERGE_FLAGS ajoute des drapeaux de fusion (--with_dolibarr) et
-# EL_REPO_SYNC_PROJECTS restreint la synchronisation à ces projets
-# (dolibarr/dolibarr) : update_manifest_local_dolibarr.sh s'en sert. Non
-# guillemetés exprès : chacun peut porter plusieurs mots.
+# EL_MANIFEST_MERGE_FLAGS ajoute des drapeaux de fusion (--with_<erp>, un
+# par ERP de la table script.git.erp_sources) et EL_REPO_SYNC_PROJECTS
+# restreint la synchronisation à ces projets (le checkout de l'ERP) :
+# update_manifest_local_dolibarr.sh s'en sert. Non guillemetés exprès :
+# chacun peut porter plusieurs mots.
 .venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}" "${MERGE_STRICT[@]}" "${MERGE_EXTRA[@]}" ${EL_MANIFEST_MERGE_FLAGS:-} || exit 1
 
 . ./script/manifest/manifest_revision.sh
