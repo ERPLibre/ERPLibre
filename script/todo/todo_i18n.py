@@ -26548,6 +26548,223 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
+    # Système : clé USB amorçable et images ISO
+    "Bootable USB key": {
+        "fr": "🔌 Clé USB amorçable",
+        "en": "🔌 Bootable USB key",
+    },
+    "Detect USB keys and show their information": {
+        "fr": "🔍 Détecter les clés USB et afficher leurs informations",
+        "en": "🔍 Detect USB keys and show their information",
+    },
+    "Write an ISO to a USB key": {
+        "fr": "💽 Écrire un ISO sur une clé USB",
+        "en": "💽 Write an ISO to a USB key",
+    },
+    "Build the ERPLibre Arch Linux ISO (amd64)": {
+        "fr": "🏗 Construire l'ISO ERPLibre Arch Linux (amd64)",
+        "en": "🏗 Build the ERPLibre Arch Linux ISO (amd64)",
+    },
+    "Supported ISO list": {
+        "fr": "📋 Liste des ISO prises en charge",
+        "en": "📋 Supported ISO list",
+    },
+    "not mounted": {
+        "fr": "non montée",
+        "en": "not mounted",
+    },
+    "Serial:": {
+        "fr": "Numéro de série :",
+        "en": "Serial:",
+    },
+    "Transport:": {
+        "fr": "Transport :",
+        "en": "Transport:",
+    },
+    "Removable:": {
+        "fr": "Amovible :",
+        "en": "Removable:",
+    },
+    "Mounted on:": {
+        "fr": "Montée sur :",
+        "en": "Mounted on:",
+    },
+    "by-id:": {
+        "fr": "by-id :",
+        "en": "by-id:",
+    },
+    "This key will be erased:": {
+        "fr": "Cette clé sera effacée :",
+        "en": "This key will be erased:",
+    },
+    "Erase the key and write the image? (y/N): ": {
+        "fr": "Effacer la clé et écrire l'image ? (o/N) : ",
+        "en": "Erase the key and write the image? (y/N): ",
+    },
+    "The key is ready: boot the computer from it (the boot menu key is often F12, F11, F8 or Esc).": {
+        "fr": "La clé est prête : démarrez l'ordinateur sur elle (la touche du menu de démarrage est souvent F12, F11, F8 ou Échap).",
+        "en": "The key is ready: boot the computer from it (the boot menu key is often F12, F11, F8 or Esc).",
+    },
+    "The key changed since the confirmation (unplugged, swapped or mounted): nothing was written.": {
+        "fr": "La clé a changé depuis la confirmation (débranchée, remplacée ou montée) : rien n'a été écrit.",
+        "en": "The key changed since the confirmation (unplugged, swapped or mounted): nothing was written.",
+    },
+    "Image:": {
+        "fr": "Image :",
+        "en": "Image:",
+    },
+    "Browse files": {
+        "fr": "Parcourir les fichiers",
+        "en": "Browse files",
+    },
+    "Choice, Enter to cancel: ": {
+        "fr": "Choix, Entrée pour annuler : ",
+        "en": "Choice, Enter to cancel: ",
+    },
+    "Path to the image (empty to cancel): ": {
+        "fr": "Chemin de l'image (vide pour annuler) : ",
+        "en": "Path to the image (empty to cancel): ",
+    },
+    "Download now? (y/N): ": {
+        "fr": "Télécharger maintenant ? (o/N) : ",
+        "en": "Download now? (y/N): ",
+    },
+    "Checking the SHA-256 checksum…": {
+        "fr": "Vérification de la somme SHA-256…",
+        "en": "Checking the SHA-256 checksum…",
+    },
+    "Checksum verified:": {
+        "fr": "Somme vérifiée :",
+        "en": "Checksum verified:",
+    },
+    "lsblk did not answer: the disks cannot be listed.": {
+        "fr": "lsblk n'a pas répondu : les disques ne peuvent pas être listés.",
+        "en": "lsblk did not answer: the disks cannot be listed.",
+    },
+    "No USB key detected: plug one in and retry.": {
+        "fr": "Aucune clé USB détectée : branchez-en une et réessayez.",
+        "en": "No USB key detected: plug one in and retry.",
+    },
+    "System disks excluded: {count}": {
+        "fr": "Disques système exclus : {count}",
+        "en": "System disks excluded: {count}",
+    },
+    "ALL DATA on {device} will be erased.": {
+        "fr": "TOUTES LES DONNÉES de {device} seront effacées.",
+        "en": "ALL DATA on {device} will be erased.",
+    },
+    "Key number (0 to cancel): ": {
+        "fr": "Numéro de la clé (0 pour annuler) : ",
+        "en": "Key number (0 to cancel): ",
+    },
+    "Choose a number from the list.": {
+        "fr": "Choisissez un numéro de la liste.",
+        "en": "Choose a number from the list.",
+    },
+    "The file is empty:": {
+        "fr": "Le fichier est vide :",
+        "en": "The file is empty:",
+    },
+    "This file does not end in .iso or .img: make sure it is a disk image.": {
+        "fr": "Ce fichier ne finit ni par .iso ni par .img : assurez-vous que c'est une image disque.",
+        "en": "This file does not end in .iso or .img: make sure it is a disk image.",
+    },
+    "Image number, Enter to cancel: ": {
+        "fr": "Numéro de l'image, Entrée pour annuler : ",
+        "en": "Image number, Enter to cancel: ",
+    },
+    "Already downloaded and verified:": {
+        "fr": "Déjà téléchargée et vérifiée :",
+        "en": "Already downloaded and verified:",
+    },
+    "The SHA-256 checksum does not match: the download is deleted, retry later.": {
+        "fr": "La somme SHA-256 ne correspond pas : le téléchargement est supprimé, réessayez plus tard.",
+        "en": "The SHA-256 checksum does not match: the download is deleted, retry later.",
+    },
+    "The ERPLibre Arch Linux ISO builder is not available yet in this checkout:": {
+        "fr": "Le constructeur de l'ISO ERPLibre Arch Linux n'est pas encore disponible dans ce dépôt :",
+        "en": "The ERPLibre Arch Linux ISO builder is not available yet in this checkout:",
+    },
+    "The checksum list has no line for {file}.": {
+        "fr": "La liste des sommes n'a aucune ligne pour {file}.",
+        "en": "The checksum list has no line for {file}.",
+    },
+    "Downloaded:": {
+        "fr": "Téléchargée :",
+        "en": "Downloaded:",
+    },
+    "Downloaded on demand from:": {
+        "fr": "Téléchargée à la demande depuis :",
+        "en": "Downloaded on demand from:",
+    },
+    "{device} is not a whole disk.": {
+        "fr": "{device} n'est pas un disque entier.",
+        "en": "{device} is not a whole disk.",
+    },
+    "{device} carries the running system or the repository: it is never written.": {
+        "fr": "{device} porte le système en marche ou le dépôt : il n'est jamais écrit.",
+        "en": "{device} carries the running system or the repository: it is never written.",
+    },
+    "{device} is not connected by USB (transport: {transport}).": {
+        "fr": "{device} n'est pas branché en USB (transport : {transport}).",
+        "en": "{device} is not connected by USB (transport: {transport}).",
+    },
+    "{device} is read-only: check the lock switch of the key or card.": {
+        "fr": "{device} est en lecture seule : vérifiez le verrou de la clé ou de la carte.",
+        "en": "{device} is read-only: check the lock switch of the key or card.",
+    },
+    "{device} ({size}) is smaller than the image ({iso_size}).": {
+        "fr": "{device} ({size}) est plus petit que l'image ({iso_size}).",
+        "en": "{device} ({size}) is smaller than the image ({iso_size}).",
+    },
+    "{device} ({size}) is larger than {limit}: probably an external disk, not a key.": {
+        "fr": "{device} ({size}) dépasse {limit} : sans doute un disque externe, pas une clé.",
+        "en": "{device} ({size}) is larger than {limit}: probably an external disk, not a key.",
+    },
+    "{device} has encrypted or LVM volumes open on it ({mapped}): close them first.": {
+        "fr": "{device} a des volumes chiffrés ou LVM ouverts ({mapped}) : fermez-les d'abord.",
+        "en": "{device} has encrypted or LVM volumes open on it ({mapped}): close them first.",
+    },
+    "The image {path} is on the key itself ({mountpoint}): copy it elsewhere first.": {
+        "fr": "L'image {path} est sur la clé elle-même ({mountpoint}) : copiez-la ailleurs d'abord.",
+        "en": "The image {path} is on the key itself ({mountpoint}): copy it elsewhere first.",
+    },
+    "This image cannot be downloaded.": {
+        "fr": "Cette image ne se télécharge pas.",
+        "en": "This image cannot be downloaded.",
+    },
+    "eject is missing: remove {device} once the commands are done.": {
+        "fr": "eject est absent : retirez {device} une fois les commandes terminées.",
+        "en": "eject is missing: remove {device} once the commands are done.",
+    },
+    "ERPLibre Arch Linux GNOME (amd64)": {
+        "fr": "ERPLibre Arch Linux GNOME (amd64)",
+        "en": "ERPLibre Arch Linux GNOME (amd64)",
+    },
+    "Not built yet: use « Build the ERPLibre Arch Linux ISO ».": {
+        "fr": "Pas encore construite : utilisez « Construire l'ISO ERPLibre Arch Linux ».",
+        "en": "Not built yet: use « Build the ERPLibre Arch Linux ISO ».",
+    },
+    "Arch Linux official (amd64)": {
+        "fr": "Arch Linux officielle (amd64)",
+        "en": "Arch Linux official (amd64)",
+    },
+    "ERPLibre Arch Linux (arm64)": {
+        "fr": "ERPLibre Arch Linux (arm64)",
+        "en": "ERPLibre Arch Linux (arm64)",
+    },
+    "Planned: archiso builds aarch64 only on an aarch64 host, and Arch Linux has no official aarch64 repository.": {
+        "fr": "Prévue : archiso ne construit pour aarch64 que sur un hôte aarch64, et Arch Linux n'a pas de dépôt aarch64 officiel.",
+        "en": "Planned: archiso builds aarch64 only on an aarch64 host, and Arch Linux has no official aarch64 repository.",
+    },
+    "ERPLibre Arch Linux (s390x)": {
+        "fr": "ERPLibre Arch Linux (s390x)",
+        "en": "ERPLibre Arch Linux (s390x)",
+    },
+    "Not possible: Arch Linux has no s390x port, and a mainframe does not boot from a USB key.": {
+        "fr": "Impossible : Arch Linux n'a pas de portage s390x, et un ordinateur central ne démarre pas sur une clé USB.",
+        "en": "Not possible: Arch Linux has no s390x port, and a mainframe does not boot from a USB key.",
+    },
     # Système : clé USB amorçable, profils machine
     "Machine profiles": {
         "fr": "🧩 Profils machine",

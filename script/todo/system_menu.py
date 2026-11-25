@@ -927,6 +927,7 @@ class SystemMenuMixin:
             {"prompt_description": t("CPU memory per process")},
             {"prompt_description": t("GPU memory per process")},
             {"prompt_description": t("Swap memory")},
+            {"prompt_description": t("Bootable USB key")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -952,6 +953,8 @@ class SystemMenuMixin:
                 self._system_gpu()
             elif status == "9":
                 self._system_swap()
+            elif status == "10":
+                self._system_usb()
             else:
                 print(t("Command not found !"))
 
