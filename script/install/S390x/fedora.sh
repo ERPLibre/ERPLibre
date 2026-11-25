@@ -36,9 +36,8 @@ el_swap_ensure
 # « gcc-gfortran » et « openblas-devel » : scipy n'a pas de roue s390x, et sa
 # compilation exige un compilateur Fortran et un BLAS/LAPACK. Sans Fortran,
 # meson s'arrête sur « Unknown compiler(s) », et scikit-learn tombe avec lui,
-# puisqu'il bâtit son propre scipy pour se compiler. openblas-devel ne livre
-# aucun fichier pkg-config ici : meson trouve la bibliothèque par sa
-# recherche système, sans réglage.
+# puisqu'il bâtit son propre scipy pour se compiler. openblas.pc, que le
+# paquet ne livre pas, est écrit plus bas.
 ${DNF} \
   rust cargo \
   libjpeg-turbo-devel zlib-devel geos-devel proj proj-devel \
@@ -103,3 +102,25 @@ for d in /usr/lib64 /usr/lib; do
     fi
   fi
 done
+# openblas-devel ne livre ni fichier pkg-config ni configuration cmake, et
+# scipy 1.16 ne cherche OpenBLAS que par ces deux moyens (« Dependency
+# "OpenBLAS" not found (tried pkg-config and cmake) »). C'est ce scipy-là que
+# scikit-learn bâtit dans son environnement de build isolé, où aucune option
+# meson ne se transmet. Le fichier n'est écrit que s'il manque : un openblas.pc
+# livré par la distribution garde la main.
+if ! pkg-config --exists openblas 2> /dev/null \
+  && [ -e /usr/lib64/libopenblas.so ] \
+  && [ -e /usr/include/openblas/cblas.h ]; then
+  openblas_ver="$(rpm -q --qf '%{VERSION}' openblas-devel 2> /dev/null)"
+  sudo tee /usr/lib64/pkgconfig/openblas.pc > /dev/null << PC
+libdir=/usr/lib64
+includedir=/usr/include/openblas
+
+Name: openblas
+Description: OpenBLAS, written by ERPLibre: the distribution ships no .pc
+Version: ${openblas_ver:-0}
+Libs: -L\${libdir} -lopenblas
+Cflags: -I\${includedir}
+PC
+  echo "openblas.pc ecrit (${openblas_ver:-version inconnue})."
+fi
