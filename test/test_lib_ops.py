@@ -654,6 +654,40 @@ class TestProcessus(unittest.TestCase):
         )
         self.assertEqual(odoo_instance.dossier_processus(102, self.proc), "")
 
+    def test_uids_a_l_ecoute(self):
+        entete = (
+            "  sl  local_address rem_address   st tx_queue rx_queue tr"
+            " tm->when retrnsmt   uid  timeout inode\n"
+        )
+        # 0x2710 = 10000 ; 0x1F90 = 8080. Seules les sockets LISTEN (0A)
+        # du port comptent, IPv4 et IPv6.
+        ecrire(
+            os.path.join(self.proc, "net", "tcp"),
+            entete + "   0: 0100007F:2710 00000000:0000 0A 00000000:00000000"
+            " 00:00000000 00000000  1001        0 11 1 0 100 0 0 10 0\n"
+            + "   1: 0100007F:2710 0100007F:9C40 01 00000000:00000000"
+            " 00:00000000 00000000  1002        0 12 1 0 100 0 0 10 0\n"
+            + "   2: 00000000:1F90 00000000:0000 0A 00000000:00000000"
+            " 00:00000000 00000000  1003        0 13 1 0 100 0 0 10 0\n"
+            + "   3: ligne tronquée\n",
+        )
+        ecrire(
+            os.path.join(self.proc, "net", "tcp6"),
+            entete + "   0: 00000000000000000000000000000000:2710"
+            " 00000000000000000000000000000000:0000 0A 00000000:00000000"
+            " 00:00000000 00000000     0        0 14 1 0 100 0 0 10 0\n",
+        )
+        self.assertEqual(
+            odoo_instance.uids_a_l_ecoute(10000, self.proc), {1001, 0}
+        )
+        self.assertEqual(
+            odoo_instance.uids_a_l_ecoute(8080, self.proc), {1003}
+        )
+        self.assertEqual(odoo_instance.uids_a_l_ecoute(9, self.proc), set())
+        self.assertEqual(
+            odoo_instance.uids_a_l_ecoute(10000, "/proc_absent_x"), set()
+        )
+
 
 class TestProcessusSansBase(unittest.TestCase):
     """Un Odoo sans `-d` compte quand le `db_name` de sa configuration
@@ -2109,6 +2143,135 @@ class TestRefus(unittest.TestCase):
         self.assertEqual((plan.namespace, plan.namespace_ecarte), ("", "a/b"))
         service.detecter_namespace(plan, {"LogNamespace": "ns"}, False)
         self.assertEqual((plan.namespace, plan.namespace_ecarte), ("ns", ""))
+
+
+class TestCommandeShell(unittest.TestCase):
+    """`service.commande_shell` : un `odoo shell` construit à partir de
+    l'ExecStart de l'unité, ses options gardées, sa base retirée."""
+
+    def plan(self, execstart):
+        return types.SimpleNamespace(
+            unite="odoo-exemple.service",
+            execstart=list(execstart),
+            wd="/srv/exemple",
+            config_path="/srv/exemple/config.conf",
+            base="exemple_db",
+            home="/home/exemple",
+            env_unite={},
+            utilisateur="exemple",
+            courant="exemple",
+        )
+
+    def commande(self, execstart):
+        argv = service.commande_shell(self.plan(execstart))
+        # `env K=V…` d'abord : la commande commence au premier élément
+        # qui n'est pas une affectation.
+        self.assertEqual(argv[0], "env")
+        reste = argv[1:]
+        while "=" in reste[0] and not reste[0].startswith("/"):
+            reste = reste[1:]
+        return reste
+
+    FIN = [
+        "-c",
+        "/srv/exemple/config.conf",
+        "-d",
+        "exemple_db",
+        "--no-http",
+        "--workers=0",
+        "--max-cron-threads=0",
+    ]
+
+    def test_run_sh_passe_par_odoo_bin_sh(self):
+        self.assertEqual(
+            self.commande(
+                [
+                    "/bin/bash",
+                    "/srv/exemple/run.sh",
+                    "--no-cli-erplibre",
+                    "--addons-path=/srv/exemple/addons",
+                    "-d",
+                    "autre_db",
+                ]
+            ),
+            [
+                "/bin/bash",
+                "./odoo_bin.sh",
+                "shell",
+                "--addons-path=/srv/exemple/addons",
+            ]
+            + self.FIN,
+        )
+
+    def test_run_sh_seul_sous_bash(self):
+        self.assertEqual(
+            self.commande(["/srv/exemple/run.sh"]),
+            ["bash", "./odoo_bin.sh", "shell"] + self.FIN,
+        )
+
+    def test_odoo_bin_et_sous_commande_remplacee(self):
+        for execstart, attendu in (
+            (
+                ["/v/bin/python", "/o/odoo-bin", "-c", "/etc/odoo.conf"],
+                [
+                    "/v/bin/python",
+                    "/o/odoo-bin",
+                    "shell",
+                    "-c",
+                    "/etc/odoo.conf",
+                ],
+            ),
+            (
+                ["/o/odoo-bin", "server", "--addons-path=/a"],
+                ["/o/odoo-bin", "shell", "--addons-path=/a"],
+            ),
+            (
+                ["/o/odoo-bin", "--addons-path=/a", "server", "-dx"],
+                ["/o/odoo-bin", "shell", "--addons-path=/a"],
+            ),
+            (
+                ["/v/bin/odoo", "--database=x", "--proxy-mode"],
+                ["/v/bin/odoo", "shell", "--proxy-mode"],
+            ),
+        ):
+            with self.subTest(execstart=execstart):
+                self.assertEqual(self.commande(execstart), attendu + self.FIN)
+
+    def test_sans_lanceur_refus(self):
+        for execstart in (
+            ["/bin/sh", "-c", "cd /srv/exemple && ./run.sh"],
+            ["/usr/bin/python3", "/srv/exemple/serveur.py"],
+            ["/usr/bin/python3", "/srv/odoo/script.py", "odoo"],
+        ):
+            with self.subTest(execstart=execstart):
+                with self.assertRaises(service.Refus):
+                    service.commande_shell(self.plan(execstart))
+                with self.assertRaises(service.Refus):
+                    service.programme_shell(self.plan(execstart))
+
+    def test_programme_lance(self):
+        self.assertEqual(
+            service.programme_shell(self.plan(["/srv/exemple/run.sh"])),
+            "/srv/exemple/odoo_bin.sh",
+        )
+        self.assertEqual(
+            service.programme_shell(self.plan(["python3", "odoo/odoo-bin"])),
+            "/srv/exemple/odoo/odoo-bin",
+        )
+
+    def test_compte_different_par_runuser(self):
+        plan = self.plan(["/srv/exemple/run.sh"])
+        plan.courant = "root"
+        argv = service.commande_shell(plan)
+        self.assertEqual(argv[:4], ["runuser", "-u", "exemple", "--"])
+        self.assertIn("ODOO_RC=/srv/exemple/config.conf", argv)
+
+    def test_lire_bilan(self):
+        sortie = 'bruit\nDEBUT\n{"a": 1}\nFIN\nbruit'
+        self.assertEqual(service.lire_bilan(sortie, "DEBUT", "FIN"), {"a": 1})
+        for sortie in ("DEBUT\n[1]\nFIN", "DEBUT\n{x\nFIN", '{"a": 1}'):
+            with self.subTest(sortie=sortie):
+                self.assertIsNone(service.lire_bilan(sortie, "DEBUT", "FIN"))
 
 
 class TestRapport(unittest.TestCase):

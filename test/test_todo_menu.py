@@ -760,7 +760,8 @@ class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
 class TestOpsUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
     """La mise à jour réelle et la simulation seule se distinguent par le
     nom de leur méthode : un décalage du dispatch — la vraie mise à jour
-    sous le libellé de la simulation — fait échouer la table."""
+    sous le libellé de la simulation — fait échouer la table. Le retrait
+    des modules sans code, destructif, est la dernière entrée."""
 
     SOURCE = TODO_DIR / "ops_menu.py"
     ENTRY = "def _ops_menu_update(self):"
@@ -770,6 +771,9 @@ class TestOpsUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
     EXPECTED = {
         "Update modules": "_ops_update_modules",
         "Simulate only": "_ops_simulate_modules",
+        "Restart only": "_ops_restart_only",
+        "Update the apps list": "_ops_update_list",
+        "Remove the modules without code": "_ops_remove_missing",
     }
 
 

@@ -24,6 +24,7 @@ délai, l'interruption et l'arrêt du groupe. `TestSignauxReels` pose les
 vrais gestionnaires de signaux, sans processus.
 """
 
+import ast
 import contextlib
 import errno
 import io
@@ -35,6 +36,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 import zipfile
 from unittest import mock
@@ -178,6 +180,23 @@ class FauxSysteme(um.Systeme):
             health_check.Resultat("http_login", health_check.OK, "login ok")
         ]
         self.verrou_libre_apres = None
+        # Les modules installés que lit la base après le `-u` : None, ceux
+        # d'avant.
+        self.modules_apres = None
+        # Le shell d'Odoo (`--update-list`) : chaque appel noté, ses
+        # réponses (code, stdout, stderr) servies dans l'ordre ; épuisées,
+        # un bilan vide. Le verrou de la base est sondé à chaque appel.
+        self.shells = []
+        self.reponses_shell = []
+        self.verrou_pendant_shell = []
+        # Les réponses aux questions oui/non, et les questions posées.
+        self.reponses_oui = []
+        self.questions = []
+        # Les uid à l'écoute sur le port de l'instance : None, le compte de
+        # l'unité (`uid`). Les signaux armés : le nombre de shells lancés
+        # à chaque `proteger_signaux`.
+        self.uids_ecoute = None
+        self.signaux_armes = []
 
     def _lever(self, etape):
         erreur = self.lever.get(etape)
@@ -259,6 +278,13 @@ class FauxSysteme(um.Systeme):
     def uid_processus(self, pid):
         return self.uids_processus.get(pid, os.getuid())
 
+    def uids_a_l_ecoute(self, port):
+        self.appels.append(f"ecoute {port}")
+        self._lever("ecoute")
+        if self.uids_ecoute is None:
+            return {os.getuid()}
+        return set(self.uids_ecoute)
+
     def pids_exclus(self):
         return ()
 
@@ -284,6 +310,7 @@ class FauxSysteme(um.Systeme):
 
     def prechauffer(self, plan):
         self.appels.append(f"prechauffage {plan.hote}:{plan.port}")
+        self.vu["prechauffage"] = (plan.warmup_login, plan.cle_warmup)
         self.verrou_libre_apres = self._verrou_libre()
         self._lever("prechauffage")
         return self.bilan
@@ -378,6 +405,7 @@ class FauxSysteme(um.Systeme):
         return self.dump_issue
 
     def proteger_signaux(self):
+        self.signaux_armes.append(len(self.shells))
         return lambda: None
 
     def ignorer_interruptions(self):
@@ -403,10 +431,34 @@ class FauxSysteme(um.Systeme):
             sonde.relacher()
         with open(journal, "a") as f:
             f.write(self.odoo_sortie)
+        if self.modules_apres is not None:
+            self.faits["modules"] = dict(self.modules_apres)
         if self.odoo_logfile:
             with open(self.odoo_logfile, "a") as f:
                 f.write(self.odoo_ajout_logfile)
         return self.odoo_issue
+
+    def shell_odoo(self, argv, cwd, source, delai):
+        self.appels.append("shell " + " ".join(argv))
+        self.shells.append(
+            {"argv": list(argv), "cwd": cwd, "source": source, "delai": delai}
+        )
+        self.verrou_pendant_shell.append(not self._verrou_libre())
+        self._lever("shell")
+        if self.reponses_shell:
+            return self.reponses_shell.pop(0)
+        return 0, bilan_shell({}), ""
+
+    def confirmer(self, question):
+        self.questions.append(question)
+        return self.reponses_oui.pop(0) if self.reponses_oui else False
+
+
+def bilan_shell(donnees, avant="bruit d'Odoo\n"):
+    """La sortie d'un shell qui rend `donnees` entre les sentinelles."""
+    return "\n".join(
+        [avant, um.DEBUT_JSON, json.dumps(donnees), um.FIN_JSON, ""]
+    )
 
 
 def ecrire(chemin, texte=""):
@@ -2977,6 +3029,1015 @@ class TestDurees(Base):
         self.systeme.euid_valeur = 1000
         self.lancer("--dry-run")
         self.assertEqual(self.ligne("Durations"), "")
+
+
+class BaseGeste(Base):
+    """Les gestes sans `--module` : relance seule et liste des
+    applications. Le checkout porte un odoo_bin.sh, que lance le shell."""
+
+    def setUp(self):
+        super().setUp()
+        ecrire(os.path.join(self.wd, "odoo_bin.sh"), "#!/bin/bash\n")
+
+    def lancer_geste(self, *options):
+        argv = ["--log-dir", self.journaux]
+        argv += ["--backup-dest", self.dest, "--state-dir", self.etat]
+        argv += ["--service", "erplibre_demo"] + list(options)
+        sortie, erreurs = io.StringIO(), io.StringIO()
+        rapport = report.Rapport(flux=sortie, erreurs=erreurs, couleur=False)
+        with (
+            contextlib.redirect_stdout(sortie),
+            contextlib.redirect_stderr(erreurs),
+        ):
+            code = um.main(argv, self.systeme, rapport)
+        self.sortie, self.erreurs = sortie.getvalue(), erreurs.getvalue()
+        return code
+
+    def refus_analyse(self, *argv):
+        """Le code de sortie d'une analyse qui refuse, et stderr."""
+        erreurs = io.StringIO()
+        with contextlib.redirect_stderr(erreurs):
+            with self.assertRaises(SystemExit) as ctx:
+                um.analyser(["--service", "erplibre_demo"] + list(argv))
+        return ctx.exception.code, erreurs.getvalue()
+
+
+class FauxModele:
+    """Un modèle d'Odoo de théâtre : `search` sur des triplets `=`, `in`,
+    `not in`, `filtered`, `ids`, `unlink`, `sudo`, `update_list`."""
+
+    def __init__(self, env, nom, lignes=None):
+        self.env, self.nom = env, nom
+        self.lignes = env.tables[nom] if lignes is None else lignes
+
+    def sudo(self):
+        return self
+
+    def __iter__(self):
+        return iter(self.lignes)
+
+    @property
+    def ids(self):
+        return [ligne.id for ligne in self.lignes]
+
+    def search(self, domaine):
+        def garde(ligne):
+            for champ, operateur, valeur in domaine:
+                present = getattr(ligne, champ)
+                if operateur == "=" and present != valeur:
+                    return False
+                if operateur == "in" and present not in valeur:
+                    return False
+                if operateur == "not in" and present in valeur:
+                    return False
+            return True
+
+        return FauxModele(
+            self.env, self.nom, [l for l in self.lignes if garde(l)]
+        )
+
+    def filtered(self, fonction):
+        return FauxModele(
+            self.env, self.nom, [l for l in self.lignes if fonction(l)]
+        )
+
+    def unlink(self):
+        partis = set(self.ids)
+        self.env.tables[self.nom][:] = [
+            l for l in self.env.tables[self.nom] if l.id not in partis
+        ]
+
+    def update_list(self):
+        self.env.liste_mise_a_jour = True
+        return [2, 1]
+
+
+class FauxEnv:
+    def __init__(self, modules, donnees):
+        self.tables = {
+            "ir.module.module": modules,
+            "ir.model.data": donnees,
+        }
+        self.liste_mise_a_jour = False
+        self.validations = 0
+        self.cr = types.SimpleNamespace(commit=self._valider)
+
+    def _valider(self):
+        self.validations += 1
+
+    def __getitem__(self, nom):
+        return FauxModele(self, nom)
+
+
+class TestScriptsDuShell(unittest.TestCase):
+    """Les scripts donnés au shell d'Odoo, exécutés contre un env de
+    théâtre ; `odoo.modules.module.get_module_path` répond depuis une
+    liste de modules qui ont leur code."""
+
+    def setUp(self):
+        module = types.SimpleNamespace
+        self.modules = [
+            module(id=1, name="base", state="installed"),
+            module(id=2, name="vieux_module_a", state="uninstalled"),
+            module(id=3, name="vieux_module_b", state="uninstallable"),
+            module(id=4, name="present_module", state="uninstalled"),
+            module(id=5, name="perdu_module", state="installed"),
+        ]
+        self.donnees = [
+            module(
+                id=10 + m.id,
+                module="base",
+                model="ir.module.module",
+                name="module_" + m.name,
+                res_id=m.id,
+            )
+            for m in self.modules
+        ]
+        self.env = FauxEnv(self.modules, self.donnees)
+        self.avec_code = {"base", "present_module"}
+
+    def executer(self, source):
+        def chemin(nom, downloaded=False, display_warning=True):
+            self.assertFalse(display_warning)
+            return (
+                f"/srv/exemple/addons/{nom}"
+                if nom in self.avec_code
+                else False
+            )
+
+        faux = types.SimpleNamespace(get_module_path=chemin)
+        paquet = types.SimpleNamespace(module=faux)
+        sortie = io.StringIO()
+        with (
+            mock.patch.dict(
+                sys.modules,
+                {
+                    "odoo": types.SimpleNamespace(modules=paquet),
+                    "odoo.modules": paquet,
+                    "odoo.modules.module": faux,
+                },
+            ),
+            contextlib.redirect_stdout(sortie),
+        ):
+            exec(source, {"env": self.env})
+        return service.lire_bilan(
+            sortie.getvalue(), um.DEBUT_JSON, um.FIN_JSON
+        )
+
+    def test_liste(self):
+        bilan = self.executer(um.SCRIPT_LISTE)
+        self.assertTrue(self.env.liste_mise_a_jour)
+        self.assertEqual(self.env.validations, 1)
+        self.assertEqual(bilan["updated"], 2)
+        self.assertEqual(bilan["added"], 1)
+        self.assertEqual(
+            bilan["missing"], ["vieux_module_a", "vieux_module_b"]
+        )
+        self.assertEqual(bilan["installed_missing"], ["perdu_module"])
+
+    def test_retrait_double_filtre(self):
+        # Entre les deux passes, vieux_module_b est installé : il reste.
+        self.modules[2].state = "installed"
+        source = um.script_retrait(
+            ["vieux_module_a", "vieux_module_b", "present_module"]
+        )
+        bilan = self.executer(source)
+        self.assertEqual(bilan["removed"], ["vieux_module_a"])
+        self.assertEqual(
+            bilan["skipped"], ["present_module", "vieux_module_b"]
+        )
+        noms = [m.name for m in self.modules]
+        self.assertNotIn("vieux_module_a", noms)
+        self.assertIn("vieux_module_b", noms)
+        self.assertIn("present_module", noms)
+        donnees = [d.name for d in self.donnees]
+        self.assertNotIn("module_vieux_module_a", donnees)
+        self.assertIn("module_vieux_module_b", donnees)
+        self.assertEqual(self.env.validations, 1)
+
+    def test_les_scripts_se_lisent_en_python_3_5(self):
+        for source in (um.SCRIPT_LISTE, um.script_retrait(["a"])):
+            ast.parse(source, feature_version=(3, 5))
+
+    def test_script_retrait_filtre_seul_les_noms(self):
+        # Chacun des deux filtres tient seul : `script_retrait` ici,
+        # `_noms` dans le test suivant.
+        source = um.script_retrait(["ok_mod", "x'); import os; ('"])
+        self.assertTrue(source.startswith("NAMES = ['ok_mod']\n"), source)
+
+    def test_noms_du_bilan_filtres_seuls(self):
+        self.assertEqual(
+            um._noms({"missing": ["bon", "x');", 3, "bon"]}, "missing"),
+            ["bon"],
+        )
+        self.assertEqual(um._noms({"missing": "bon"}, "missing"), [])
+        self.assertEqual(um._noms({}, "missing"), [])
+
+
+class TestConfirmerReel(unittest.TestCase):
+    """`Systeme.confirmer`, seul garde-fou du retrait sans `--yes` : oui
+    sur o/oui/y/yes seulement, non sur tout le reste."""
+
+    def reponse(self, effet):
+        with mock.patch("builtins.input", side_effect=[effet]):
+            return um.Systeme(interactif=True).confirmer("? ")
+
+    def test_oui(self):
+        for texte in ("o", "oui", "y", "yes", " YES ", "Oui\n"):
+            with self.subTest(texte=texte):
+                self.assertIs(self.reponse(texte), True)
+
+    def test_non(self):
+        for effet in ("", "n", "non", "nope", "yes please", "0"):
+            with self.subTest(effet=effet):
+                self.assertIs(self.reponse(effet), False)
+
+    def test_fin_de_l_entree_et_ctrl_c(self):
+        for erreur in (EOFError(), KeyboardInterrupt()):
+            with self.subTest(erreur=type(erreur).__name__):
+                self.assertIs(self.reponse(erreur), False)
+
+
+class TestValidationDesGestes(BaseGeste):
+    def test_combinaisons_refusees(self):
+        for argv, attendu in (
+            (
+                [],
+                um.t(
+                    "--module is required, except with --restart-only or"
+                    " --update-list."
+                ),
+            ),
+            (["--restart-only", "--module", "base"], "--restart-only"),
+            (["--update-list", "--module", "base"], "--update-list"),
+            (["--remove-missing", "--module", "base"], "--remove-missing"),
+            (["--restart-only", "--update-list"], "--restart-only"),
+            (["--restart-only", "--i18n-overwrite"], "--i18n-overwrite"),
+            (["--update-list", "--i18n-overwrite"], "--i18n-overwrite"),
+            (["--module", "base", "--yes"], "--yes"),
+            (["--update-list", "--yes"], "--yes"),
+            (["--module", "base", "--warmup-login", "bot"], "--warmup-key"),
+            (
+                ["--module", "base", "--warmup-key-file", "/k"],
+                "--warmup-login",
+            ),
+        ):
+            with self.subTest(argv=argv):
+                code, erreurs = self.refus_analyse(*argv)
+                self.assertEqual(code, 2)
+                self.assertIn(attendu, erreurs)
+
+    def test_remove_missing_implique_update_list(self):
+        args = um.analyser(
+            ["--service", "erplibre_demo", "--remove-missing", "--yes"]
+        )
+        self.assertTrue(args.update_list)
+        self.assertEqual(args.modules, [])
+
+
+class TestTraductions(Base):
+    def test_i18n_overwrite_en_dernier(self):
+        self.assertEqual(self.lancer("--i18n-overwrite"), um.CODE_OK)
+        argv = self.systeme.vu["odoo"]["argv"]
+        self.assertEqual(argv[-1], "--i18n-overwrite")
+        self.assertEqual(argv[-2], "--log-level=info")
+        self.assertIn(
+            um.t("overwritten by the .po files (--i18n-overwrite)"),
+            self.sortie,
+        )
+
+    def test_sans_l_option_rien(self):
+        self.lancer()
+        self.assertNotIn("--i18n-overwrite", self.systeme.vu["odoo"]["argv"])
+
+    def test_simulation_montre_l_option(self):
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(
+            self.lancer("--dry-run", "--i18n-overwrite"), um.CODE_OK
+        )
+        self.assertIn("--log-level=info --i18n-overwrite", self.sortie)
+
+
+class TestRelanceSeule(BaseGeste):
+    def test_arret_puis_relance_sans_mise_a_jour(self):
+        self.assertEqual(
+            self.lancer_geste("--restart-only"), um.CODE_OK, self.erreurs
+        )
+        self.assertLess(
+            self.rang("systemctl stop"), self.rang("systemctl start")
+        )
+        self.assertLess(self.rang("systemctl start"), self.rang("sonde "))
+        for absent in ("backup ", "odoo ", "sessions", "modules", "shell "):
+            with self.subTest(absent=absent):
+                self.assertFalse(self.a_appele(absent))
+        self.assertEqual(self.systeme.etat, "active")
+        self.assertTrue(self.a_appele("sante "))
+        self.assertTrue(
+            self.sortie.rstrip().endswith(um.t("Restart finished."))
+        )
+        self.assertIn(um.t("restart only: no -u, no backup"), self.sortie)
+        # L'arrêt, puis les quatre étapes de la relance : rien de plus.
+        self.assertIn("▶ [5/5]", self.sortie)
+        self.assertNotIn("▶ [6/", self.sortie)
+        # Aucun journal de mise à jour : rien n'est écrit, rien n'est purgé.
+        self.assertFalse(os.path.exists(self.journaux))
+
+    def test_un_odoo_hors_du_service_refuse_puis_relance(self):
+        self.systeme.port_apres_arret = True
+        self.assertEqual(self.lancer_geste("--restart-only"), um.CODE_ECHEC)
+        self.assertEqual(self.systeme.etat, "active")
+        self.assertTrue(self.sortie.rstrip().endswith(um.t("Restart failed.")))
+
+    def test_service_arrete_avant_est_demarre(self):
+        self.systeme.etat = "inactive"
+        self.assertEqual(self.lancer_geste("--restart-only"), um.CODE_OK)
+        self.assertEqual(self.systeme.etat, "active")
+        self.assertTrue(self.a_appele("systemctl start"))
+
+    def test_avec_prechauffage(self):
+        self.assertEqual(
+            self.lancer_geste("--restart-only", "--warmup-deep"), um.CODE_OK
+        )
+        self.assertLess(self.rang("prechauffage "), self.rang("sante "))
+        self.assertIn("▶ [6/6]", self.sortie)
+        self.assertNotIn("▶ [7/", self.sortie)
+
+    def test_simulation(self):
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(
+            self.lancer_geste("--restart-only", "--dry-run"), um.CODE_OK
+        )
+        self.assertIn("systemctl stop -- erplibre_demo.service", self.sortie)
+        self.assertNotIn(" -u ", self.sortie)
+        self.assertNotIn("pg_dump", self.sortie)
+        self.assertFalse(self.a_appele("systemctl stop"))
+        # La relance seule démarre aussi une unité arrêtée avant : la
+        # simulation le dit, comme `executer` le fait.
+        self.assertIn(
+            "systemctl start -- erplibre_demo.service  # "
+            + um.t("also when it was stopped, once the stop checks pass"),
+            self.sortie,
+        )
+        self.assertNotIn(um.t("only if it was active"), self.sortie)
+
+    def test_simulation_d_une_mise_a_jour_au_seul_actif(self):
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(
+            self.lancer_geste("--module", "my_module_a", "--dry-run"),
+            um.CODE_OK,
+        )
+        self.assertIn(
+            "systemctl start -- erplibre_demo.service  # "
+            + um.t("only if it was active"),
+            self.sortie,
+        )
+        self.assertNotIn(
+            um.t("also when it was stopped, once the stop checks pass"),
+            self.sortie,
+        )
+
+
+class TestListeDesApplications(BaseGeste):
+    def reponses(self, *bilans):
+        self.systeme.reponses_shell = [
+            (0, bilan_shell(b), "journal d'Odoo\n") for b in bilans
+        ]
+
+    def test_liste_odoo_en_marche_sous_le_verrou(self):
+        self.reponses(
+            {
+                "updated": 3,
+                "added": 1,
+                "missing": ["vieux_module_a", "vieux_module_b"],
+                "installed_missing": [],
+            }
+        )
+        self.assertEqual(
+            self.lancer_geste("--update-list"), um.CODE_OK, self.erreurs
+        )
+        self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertFalse(self.a_appele("backup "))
+        (shell,) = self.systeme.shells
+        self.assertEqual(shell["cwd"], self.wd)
+        argv = shell["argv"]
+        fin = argv[argv.index("./odoo_bin.sh") :]
+        self.assertEqual(fin[:2], ["./odoo_bin.sh", "shell"])
+        self.assertEqual(argv[argv.index("-d") + 1], "demo_db")
+        self.assertEqual(argv.count("-d"), 1)
+        self.assertIn("update_list()", shell["source"])
+        self.assertIn("env.cr.commit()", shell["source"])
+        self.assertEqual(self.systeme.verrou_pendant_shell, [True])
+        self.assertIn(
+            um.t(
+                "Apps list updated: {updated} updated, {added} added."
+            ).format(updated=3, added=1),
+            self.sortie,
+        )
+        self.assertIn("vieux_module_a, vieux_module_b", self.sortie)
+        self.assertIn(
+            um.t("--remove-missing removes them from the apps list."),
+            self.sortie,
+        )
+        self.assertTrue(
+            self.sortie.rstrip().endswith(um.t("Apps list update finished."))
+        )
+        # La sortie du shell va au journal de la mise à jour.
+        (nom,) = os.listdir(self.journaux)
+        with open(os.path.join(self.journaux, nom)) as f:
+            self.assertIn("journal d'Odoo", f.read())
+
+    def test_addons_path_de_l_unite_garde(self):
+        self.systeme.proprietes["ExecStart"] = (
+            "{ path=/bin/bash ; argv[]=/bin/bash "
+            + os.path.join(self.wd, "run.sh")
+            + " --addons-path=/srv/exemple/addons -d demo_db ;"
+            " ignore_errors=no ; pid=0 }"
+        )
+        self.lancer_geste("--update-list")
+        (shell,) = self.systeme.shells
+        self.assertIn("--addons-path=/srv/exemple/addons", shell["argv"])
+
+    def test_installes_sans_code_jamais_retires(self):
+        self.reponses({"missing": [], "installed_missing": ["perdu_module"]})
+        self.assertEqual(
+            self.lancer_geste("--remove-missing", "--yes"), um.CODE_OK
+        )
+        self.assertEqual(len(self.systeme.shells), 1)
+        self.assertIn("perdu_module", self.sortie)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertFalse(self.a_appele("backup "))
+
+    def test_retrait_avec_yes_apres_la_sauvegarde(self):
+        self.reponses(
+            {"missing": ["vieux_module_a", "vieux_module_b"]},
+            {
+                "removed": ["vieux_module_a"],
+                "skipped": ["vieux_module_b"],
+            },
+        )
+        self.assertEqual(
+            self.lancer_geste("--remove-missing", "--yes"),
+            um.CODE_OK,
+            self.sortie + self.erreurs,
+        )
+        _premier, second = self.systeme.shells
+        appels = self.systeme.appels
+        rangs_shell = [
+            i for i, a in enumerate(appels) if a.startswith("shell ")
+        ]
+        self.assertLess(rangs_shell[0], self.rang("backup "))
+        self.assertLess(self.rang("backup "), rangs_shell[1])
+        self.assertTrue(
+            second["source"].startswith(
+                "NAMES = ['vieux_module_a', 'vieux_module_b']\n"
+            )
+        )
+        for morceau in (
+            "('state', 'in', ['uninstalled', 'uninstallable'])",
+            "get_module_path",
+            "ir.model.data",
+            "unlink()",
+            "env.cr.commit()",
+        ):
+            self.assertIn(morceau, second["source"])
+        self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertEqual(self.systeme.questions, [])
+        self.assertIn(
+            um.t(
+                "{count} module(s) removed from the apps list: {names}"
+            ).format(count=1, names="vieux_module_a"),
+            self.sortie,
+        )
+        self.assertIn("vieux_module_b", self.sortie)
+        self.assertEqual(len(self.fichiers_de_sauvegarde()), 2)
+        # Liste, sauvegarde, retrait : trois étapes annoncées.
+        self.assertIn("▶ [3/3]", self.sortie)
+
+    def test_sans_terminal_ni_yes_rien_n_est_retire(self):
+        self.reponses({"missing": ["vieux_module_a"]})
+        self.assertEqual(self.lancer_geste("--remove-missing"), um.CODE_ECHEC)
+        self.assertEqual(len(self.systeme.shells), 1)
+        self.assertFalse(self.a_appele("backup "))
+        self.assertTrue(
+            self.sortie.rstrip().endswith(um.t("Apps list update failed."))
+        )
+
+    def test_question_au_terminal(self):
+        for oui, shells in ((True, 2), (False, 1)):
+            with self.subTest(oui=oui):
+                self.systeme.shells = []
+                self.systeme.appels = []
+                self.systeme.questions = []
+                self.systeme.interactif = True
+                self.systeme.reponses_oui = [oui]
+                self.reponses({"missing": ["vieux_module_a"]})
+                self.assertEqual(
+                    self.lancer_geste("--remove-missing", "--no-backup"),
+                    um.CODE_OK,
+                )
+                self.assertEqual(len(self.systeme.shells), shells)
+                (question,) = self.systeme.questions
+                self.assertIn("demo_db", question)
+                self.assertFalse(self.a_appele("backup "))
+
+    def test_noms_invalides_jamais_inseres(self):
+        self.reponses(
+            {"missing": ["bon_module", "x'); import os; ('"]},
+            {"removed": ["bon_module"]},
+        )
+        self.lancer_geste("--remove-missing", "--yes", "--no-backup")
+        _premier, second = self.systeme.shells
+        self.assertTrue(
+            second["source"].startswith("NAMES = ['bon_module']\n")
+        )
+
+    def test_rien_a_retirer_pas_de_second_shell(self):
+        self.reponses({"missing": []})
+        self.assertEqual(
+            self.lancer_geste("--remove-missing", "--yes"), um.CODE_OK
+        )
+        self.assertEqual(len(self.systeme.shells), 1)
+        self.assertFalse(self.a_appele("backup "))
+
+    def test_sauvegarde_en_echec_rien_n_est_retire(self):
+        self.reponses({"missing": ["vieux_module_a"]})
+        self.systeme.dump_issue = (1, "pg_dump: erreur", False)
+        self.assertEqual(
+            self.lancer_geste("--remove-missing", "--yes"), um.CODE_ECHEC
+        )
+        self.assertEqual(len(self.systeme.shells), 1)
+        self.assertIn(um.t("Backup failed: nothing was removed."), self.sortie)
+
+    def test_shell_hors_delai_ou_sans_bilan(self):
+        for reponse, attendu in (
+            ((124, "", "timeout"), "--update-list"),
+            ((1, "Traceback\nValueError: x\n", ""), "ValueError: x"),
+        ):
+            with self.subTest(code=reponse[0]):
+                self.systeme.reponses_shell = [reponse]
+                self.assertEqual(
+                    self.lancer_geste("--update-list"), um.CODE_ECHEC
+                )
+                self.assertIn("[FAIL]", self.sortie)
+                self.assertIn(attendu, self.sortie)
+
+    def test_ctrl_c_rend_130(self):
+        self.systeme.lever["shell"] = KeyboardInterrupt()
+        self.assertEqual(
+            self.lancer_geste("--update-list"), um.CODE_INTERROMPU
+        )
+        self.assertTrue(self.systeme._verrou_libre())
+
+    def test_sigterm_rend_130_signaux_armes_avant_le_shell(self):
+        for options in (("--update-list",), ("--remove-missing", "--yes")):
+            with self.subTest(options=options):
+                self.systeme.shells = []
+                self.systeme.signaux_armes = []
+                self.systeme.lever["shell"] = um.Interruption(15)
+                self.assertEqual(
+                    self.lancer_geste(*options), um.CODE_INTERROMPU
+                )
+                self.assertEqual(self.systeme.signaux_armes, [0])
+                self.assertEqual(len(self.systeme.shells), 1)
+                self.assertTrue(self.systeme._verrou_libre())
+                self.assertIn("[FAIL]", self.sortie)
+                self.assertIn(
+                    um.t(
+                        "Interrupted: run --update-list again to see what"
+                        " was changed."
+                    ),
+                    self.sortie,
+                )
+                self.assertFalse(self.a_appele("backup "))
+
+    def test_odoo_bin_absent_refuse(self):
+        os.unlink(os.path.join(self.wd, "odoo_bin.sh"))
+        self.assertEqual(self.lancer_geste("--update-list"), um.CODE_REFUS)
+        self.assertIn("odoo_bin.sh", self.erreurs)
+        self.assertEqual(self.systeme.shells, [])
+
+    def test_execstart_sans_lanceur_refuse(self):
+        self.systeme.proprietes["ExecStart"] = (
+            "{ path=/usr/bin/python3 ; argv[]=/usr/bin/python3"
+            " /srv/exemple/serveur.py ; ignore_errors=no ; pid=0 }"
+        )
+        self.assertEqual(
+            self.lancer_geste(
+                "--update-list", "--odoo-conf", self.conf, "--db", "demo_db"
+            ),
+            um.CODE_REFUS,
+        )
+        self.assertIn("ExecStart", self.erreurs)
+
+    def test_verrou_pris_rend_75(self):
+        tenu = lock.Verrou("erplibre-db-demo_db", self.verrous)
+        tenu.acquerir()
+        self.addCleanup(tenu.relacher)
+        self.assertEqual(self.lancer_geste("--update-list"), um.CODE_VERROU)
+        self.assertEqual(self.systeme.shells, [])
+
+    def test_simulation_sans_shell(self):
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(
+            self.lancer_geste("--remove-missing", "--dry-run"), um.CODE_OK
+        )
+        self.assertEqual(self.systeme.shells, [])
+        self.assertIn("./odoo_bin.sh shell", self.sortie)
+        self.assertIn("update_list()", self.sortie)
+        self.assertIn("pg_dump", self.sortie)
+        self.assertIn(
+            um.t("second pass: state and code read again, then removal"),
+            self.sortie,
+        )
+        self.assertIn(
+            um.t(
+                "the modules to remove are listed by the first pass, before"
+                " the question: the simulation runs no shell and cannot"
+                " name them"
+            ),
+            self.sortie,
+        )
+        self.assertFalse(os.path.exists(self.journaux))
+
+
+class TestTableauDesVersions(Base):
+    APRES = {
+        "base": "18.0.1.3",
+        "my_module_a": "18.0.1.1",
+        "my_module_b": "18.0.1.0",
+        "my_module_c": "18.0.1.0",
+    }
+
+    def test_avant_et_apres(self):
+        self.systeme.modules_apres = self.APRES
+        self.assertEqual(self.lancer(), um.CODE_OK, self.erreurs)
+        resume = um.t(
+            "{updated} updated, {new} new, {removed} no longer installed,"
+            " {unchanged} unchanged"
+        ).format(updated=1, new=1, removed=0, unchanged=2)
+        self.assertIn(resume, self.sortie)
+        self.assertRegex(
+            self.sortie, r"my_module_a +18\.0\.1\.0 → 18\.0\.1\.1"
+        )
+        self.assertRegex(self.sortie, r"my_module_c +— → 18\.0\.1\.0")
+        self.assertNotRegex(self.sortie, r"my_module_b +18")
+        fin = um.t("Update finished: {modules}").format(
+            modules="my_module_a,my_module_b"
+        )
+        self.assertTrue(self.sortie.rstrip().endswith(fin))
+
+    def test_seconde_lecture_apres_la_relance(self):
+        self.lancer()
+        rangs = [
+            i for i, a in enumerate(self.systeme.appels) if a == "modules"
+        ]
+        self.assertTrue(rangs)
+        self.assertGreater(rangs[-1], self.rang("sante "))
+
+    def test_all_sans_sauvegarde_lit_avant_le_u(self):
+        self.systeme.modules_apres = self.APRES
+        argv = ["--module", "all", "--no-backup", "--log-dir", self.journaux]
+        argv += ["--service", "erplibre_demo"]
+        sortie = io.StringIO()
+        rapport = report.Rapport(flux=sortie, couleur=False)
+        with contextlib.redirect_stdout(sortie):
+            self.assertEqual(um.main(argv, self.systeme, rapport), um.CODE_OK)
+        rangs = [
+            i for i, a in enumerate(self.systeme.appels) if a == "modules"
+        ]
+        self.assertLess(self.rang("systemctl stop"), rangs[0])
+        self.assertLess(rangs[0], self.rang("odoo "))
+        self.assertIn("my_module_c", sortie.getvalue())
+
+    def test_lecture_impossible_en_attn(self):
+        self.systeme.modules_erreur = "connexion refusee"
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertIn(
+            um.t("Module versions after the update not read: {error}").format(
+                error="connexion refusee"
+            ),
+            self.sortie,
+        )
+
+    def test_rien_apres_un_echec(self):
+        self.systeme.odoo_issue = um.Issue(1, False, False)
+        self.lancer()
+        self.assertNotIn(um.t("Versions"), self.sortie)
+
+    def test_tableau_borne(self):
+        nombre = um.LIGNES_VERSIONS + 7
+        apres = dict(self.systeme.faits["modules"])
+        for i in range(nombre):
+            apres[f"module_exemple_{i:03d}"] = "18.0.1.0"
+        self.systeme.modules_apres = apres
+        self.assertEqual(self.lancer(), um.CODE_OK, self.erreurs)
+        details = re.findall(
+            r"^ *module_exemple_\d{3} +— → 18\.0\.1\.0$",
+            self.sortie,
+            re.MULTILINE,
+        )
+        self.assertEqual(len(details), um.LIGNES_VERSIONS)
+        self.assertIn(um.t("… and {count} more").format(count=7), self.sortie)
+
+    def test_difference_pure(self):
+        mis, nouveaux, partis, inchanges = um.difference_versions(
+            {"a": "1", "b": "1", "c": None, "d": "1"},
+            {"a": "2", "b": "1", "c": "1", "e": "1"},
+        )
+        self.assertEqual(mis, [("a", "1", "2"), ("c", None, "1")])
+        self.assertEqual(nouveaux, [("e", "1")])
+        self.assertEqual(partis, [("d", "1")])
+        self.assertEqual(inchanges, 1)
+        self.assertEqual(
+            um.lignes_versions({"a": "1", "d": "1"}, {"a": "2", "ee": "1"}),
+            ["a   1 → 2", "ee  — → 1", "d   1 → —"],
+        )
+
+    def test_versions_de_to_upgrade(self):
+        self.assertEqual(
+            um.versions_de({"modules": {"a": "1"}, "to_upgrade": ["b"]}),
+            {"a": "1", "b": None},
+        )
+
+
+class TestPrechauffageDesVues(Base):
+    def cle(self, mode=0o600, texte="cle-inventee-7c1d\n"):
+        chemin = ecrire(os.path.join(self.tmp, "cle"), texte)
+        os.chmod(chemin, mode)
+        return chemin
+
+    def test_login_et_cle_passes_au_prechauffage(self):
+        chemin = self.cle()
+        self.assertEqual(
+            self.lancer(
+                "--warmup-deep",
+                "--warmup-login",
+                "bot-exemple",
+                "--warmup-key-file",
+                chemin,
+            ),
+            um.CODE_OK,
+            self.erreurs,
+        )
+        self.assertEqual(
+            self.systeme.vu["prechauffage"],
+            ("bot-exemple", "cle-inventee-7c1d"),
+        )
+        self.assertNotIn("cle-inventee-7c1d", self.sortie + self.erreurs)
+        self.assertIn("bot-exemple", self.sortie)
+
+    def test_cle_illisible_refuse_avant_l_arret(self):
+        chemin = os.path.join(self.tmp, "absente")
+        options = ("--warmup-deep", "--warmup-login", "bot-exemple")
+        self.assertEqual(
+            self.lancer(*options, "--warmup-key-file", chemin), um.CODE_REFUS
+        )
+        self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertIn(chemin, self.erreurs)
+
+    def test_cle_illisible_en_simulation_attn(self):
+        self.systeme.euid_valeur = 1000
+        chemin = os.path.join(self.tmp, "absente")
+        self.assertEqual(
+            self.lancer(
+                "--dry-run",
+                "--warmup-deep",
+                "--warmup-login",
+                "bot-exemple",
+                "--warmup-key-file",
+                chemin,
+            ),
+            um.CODE_OK,
+        )
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn(
+            um.t("read-only views as {login}").format(login="bot-exemple"),
+            self.sortie,
+        )
+
+    def test_cle_lisible_par_d_autres_comptes_attn(self):
+        chemin = self.cle(mode=0o644)
+        self.lancer(
+            "--warmup-deep",
+            "--warmup-login",
+            "bot-exemple",
+            "--warmup-key-file",
+            chemin,
+        )
+        self.assertIn(
+            um.t("{path} is readable by other accounts: chmod 600 it.").format(
+                path=chemin
+            ),
+            self.sortie,
+        )
+
+    def lancer_avec_cle(self):
+        return self.lancer(
+            "--warmup-deep",
+            "--warmup-login",
+            "bot-exemple",
+            "--warmup-key-file",
+            self.cle(),
+        )
+
+    def test_ecoute_hors_de_l_unite_cle_retenue(self):
+        # Un autre compte tient le port, ou rien de lisible : la clé ne
+        # part pas, le préchauffage reste anonyme.
+        attn = um.t(
+            "{host}:{port} is not shown as held by root or the account of"
+            " {unit}: the API key is not sent, the views are not warmed up."
+        ).format(host="127.0.0.1", port=10000, unit="erplibre_demo.service")
+        for nom, uids, erreur in (
+            ("autre compte", {os.getuid(), os.getuid() + 1}, None),
+            ("rien de lisible", set(), None),
+            ("lecture en erreur", None, OSError("illisible")),
+        ):
+            with self.subTest(nom):
+                self.systeme.uids_ecoute = uids
+                if erreur is not None:
+                    self.systeme.lever["ecoute"] = erreur
+                self.assertEqual(self.lancer_avec_cle(), um.CODE_OK)
+                self.systeme.lever.pop("ecoute", None)
+                self.assertEqual(
+                    self.systeme.vu["prechauffage"], ("bot-exemple", None)
+                )
+                self.assertIn(attn, self.sortie)
+                self.assertLess(
+                    self.rang("ecoute "), self.rang("prechauffage ")
+                )
+
+    def test_ecoute_de_root_ou_de_l_unite_cle_passee(self):
+        for uids in ({0}, {0, os.getuid()}):
+            with self.subTest(uids=uids):
+                self.systeme.uids_ecoute = uids
+                self.assertEqual(self.lancer_avec_cle(), um.CODE_OK)
+                self.assertEqual(
+                    self.systeme.vu["prechauffage"],
+                    ("bot-exemple", "cle-inventee-7c1d"),
+                )
+
+    def test_sans_cle_l_ecoute_n_est_pas_lue(self):
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        self.assertFalse(self.a_appele("ecoute "))
+
+    def test_sans_warmup_deep_la_cle_n_est_pas_lue(self):
+        chemin = os.path.join(self.tmp, "absente")
+        self.assertEqual(
+            self.lancer(
+                "--warmup-login", "bot-exemple", "--warmup-key-file", chemin
+            ),
+            um.CODE_OK,
+        )
+        self.assertNotIn("prechauffage", self.systeme.vu)
+
+    def test_adresse_hors_boucle_locale_vues_ecartees(self):
+        with open(self.conf, "a") as f:
+            f.write("http_interface = 198.51.100.7\n")
+        chemin = self.cle()
+        self.assertEqual(
+            self.lancer(
+                "--warmup-deep",
+                "--warmup-login",
+                "bot-exemple",
+                "--warmup-key-file",
+                chemin,
+            ),
+            um.CODE_OK,
+        )
+        self.assertEqual(
+            self.systeme.vu["prechauffage"], ("bot-exemple", None)
+        )
+        self.assertIn("198.51.100.7", self.sortie)
+
+    def test_systeme_reel_transmet_login_et_cle(self):
+        plan = um.Plan(base="demo_db", warmup_login="bot", cle_warmup="k")
+        with mock.patch.object(
+            um.warmup_http, "prechauffer_profond", return_value="bilan"
+        ) as profond:
+            self.assertEqual(um.Systeme().prechauffer(plan), "bilan")
+        self.assertEqual(
+            profond.call_args.kwargs, {"login": "bot", "cle": "k"}
+        )
+        plan.cle_warmup = None
+        with mock.patch.object(
+            um.warmup_http, "prechauffer_profond", return_value="bilan"
+        ) as profond:
+            um.Systeme().prechauffer(plan)
+        self.assertEqual(
+            profond.call_args.kwargs, {"login": None, "cle": None}
+        )
+
+
+class TestProfilDuPrechauffage(Base):
+    """`warmup.login` et `warmup.api_key_file` du profil servent à
+    `--warmup-login` et `--warmup-key-file` (alias) ; une clé rangée dans
+    KeePass n'est pas lisible ici, et son login est écarté avec elle."""
+
+    def setUp(self):
+        super().setUp()
+        self.profils = os.path.join(self.tmp, "production")
+        os.makedirs(self.profils)
+        rustine = mock.patch.object(profil, "RACINE_PROFILS", self.profils)
+        rustine.start()
+        self.addCleanup(rustine.stop)
+
+    def profil(self, warmup):
+        doc = {"version": 1, "service": "erplibre_demo.service"}
+        doc["warmup"] = warmup
+        chemin = os.path.join(self.profils, "erplibre_demo.service.json")
+        ecrire(chemin, json.dumps(doc))
+        os.chmod(chemin, 0o644)
+
+    def analyser(self, *options):
+        argv = ["--module", "base", "--service", "erplibre_demo"]
+        return um.analyser(argv + list(options))
+
+    def test_chemin_du_profil(self):
+        self.profil({"login": "bot-exemple", "api_key_file": "/srv/cle"})
+        args = self.analyser()
+        self.assertEqual(args.warmup_login, "bot-exemple")
+        self.assertEqual(args.warmup_key_file, "/srv/cle")
+        self.assertEqual(args.profil.origine("warmup_key_file"), "profil")
+
+    def test_reference_keepass_ecartee_avec_son_login(self):
+        self.profil(
+            {"login": "bot-exemple", "api_key_file": {"kdbx": "ERPLibre/x"}}
+        )
+        args = self.analyser()
+        self.assertIsNone(args.warmup_login)
+        self.assertIsNone(args.warmup_key_file)
+        args = self.analyser("--warmup-key-file", "/run/cle")
+        self.assertEqual(args.warmup_login, "bot-exemple")
+
+    def test_credential_de_l_unite(self):
+        dossier = os.path.join(self.tmp, "creds")
+        cle = ecrire(os.path.join(dossier, "warmup.api_key"), "k\n")
+        self.profil({"login": "bot-exemple", "api_key_file": {"kdbx": "x/y"}})
+        with mock.patch.dict(os.environ, {"CREDENTIALS_DIRECTORY": dossier}):
+            args = self.analyser()
+        self.assertEqual(args.warmup_key_file, cle)
+        self.assertEqual(args.warmup_login, "bot-exemple")
+        self.assertEqual(args.profil.origine("warmup_key_file"), "systemd")
+
+    def test_credential_lisible_sans_attn(self):
+        # Le dossier du credential est tenu par systemd : son mode ne fait
+        # pas d'ATTN, le même fichier passé par la ligne de commande oui.
+        dossier = os.path.join(self.tmp, "creds")
+        cle = ecrire(os.path.join(dossier, "warmup.api_key"), "k\n")
+        os.chmod(cle, 0o644)
+        self.profil({"login": "bot-exemple", "api_key_file": {"kdbx": "x/y"}})
+        attn = um.t(
+            "{path} is readable by other accounts: chmod 600 it."
+        ).format(path=cle)
+        with mock.patch.dict(os.environ, {"CREDENTIALS_DIRECTORY": dossier}):
+            self.assertEqual(
+                self.lancer("--warmup-deep"),
+                um.CODE_OK,
+                self.sortie + self.erreurs,
+            )
+        self.assertEqual(self.systeme.vu["prechauffage"], ("bot-exemple", "k"))
+        self.assertNotIn(attn, self.sortie)
+        self.lancer("--warmup-deep", "--warmup-key-file", cle)
+        self.assertEqual(self.systeme.vu["prechauffage"], ("bot-exemple", "k"))
+        self.assertIn(attn, self.sortie)
+
+    def test_gestes_jamais_lus_du_profil(self):
+        doc = {
+            "version": 1,
+            "service": "erplibre_demo.service",
+            "update_module": {
+                "restart_only": True,
+                "update_list": True,
+                "remove_missing": True,
+                "yes": True,
+                "i18n_overwrite": True,
+            },
+        }
+        chemin = os.path.join(self.profils, "erplibre_demo.service.json")
+        ecrire(chemin, json.dumps(doc))
+        os.chmod(chemin, 0o644)
+        args = self.analyser()
+        for dest in (
+            "restart_only",
+            "update_list",
+            "remove_missing",
+            "yes",
+            "i18n_overwrite",
+        ):
+            with self.subTest(dest=dest):
+                self.assertFalse(getattr(args, dest))
+        self.assertEqual(
+            sorted(e.dest for e in args.profil.ecartees),
+            sorted(
+                [
+                    "restart_only",
+                    "update_list",
+                    "remove_missing",
+                    "yes",
+                    "i18n_overwrite",
+                ]
+            ),
+        )
 
 
 if __name__ == "__main__":

@@ -150,12 +150,15 @@ CHAMPS = collections.OrderedDict(
 )
 
 # Alias (A) : la `dest` d'un outil lit le champ d'un autre groupe. Une `dest`
-# aliasée n'est jamais une clé de son propre groupe.
+# aliasée n'est jamais une clé de son propre groupe. Un alias vers un champ
+# de SECRETS est secret lui aussi (`secrets_du_groupe`).
 ALIAS = {
     "update_module": {
         "db": (GROUPE_INSTANCE, "db"),
         "backup_dest": ("backup", "dest"),
         "state_dir": ("backup", "state_dir"),
+        "warmup_login": ("warmup", "login"),
+        "warmup_key_file": ("warmup", "api_key_file"),
     },
     "backup": {"db": (GROUPE_INSTANCE, "db")},
     "backup_timer": {
@@ -212,6 +215,13 @@ EXCLUSIONS = {
         "no_backup": "securite",
         "force": "securite",
         "dry_run": "mode",
+        # Remplace les traductions modifiées dans la base : choisi à
+        # chaque mise à jour.
+        "i18n_overwrite": "mode",
+        "restart_only": "mode",
+        "update_list": "mode",
+        "remove_missing": "securite",
+        "yes": "securite",
     },
     "backup": {
         "status": "mode",
@@ -291,7 +301,7 @@ GARDE_SECRETS = re.compile(r"key|token|password|secret|credential")
 # ANODINS avec une raison.
 GARDE_DANGER = re.compile(
     r"force|yes|^no_|apply|restart|uninstall|restore|resend|drop|delete"
-    r"|purge|zip|trim|preload|with_db|details"
+    r"|remove|purge|zip|trim|preload|with_db|details"
 )
 
 ANODINS = {
@@ -482,6 +492,21 @@ OUTILS = (
         _jamais,
     ),
 )
+
+
+def secrets_du_groupe(groupe):
+    """[(dest, (groupe du champ, clé), nom du credential)] des secrets que
+    lit l'outil `groupe` : ses champs de SECRETS, puis ses alias vers un
+    champ de SECRETS, dans l'ordre des tables."""
+    resultat = [
+        (cle, (groupe_secret, cle), nom)
+        for (groupe_secret, cle), nom in SECRETS.items()
+        if groupe_secret == groupe and cle in CHAMPS.get(groupe, ())
+    ]
+    for dest, cible in ALIAS.get(groupe, {}).items():
+        if cible in SECRETS:
+            resultat.append((dest, cible, SECRETS[cible]))
+    return resultat
 
 
 def outil(groupe):
@@ -1545,15 +1570,13 @@ def analyser(
 
 
 def _secrets_du_parser(parser, groupe):
-    """{dest: nom du credential} des champs secrets du groupe que le parser
-    porte."""
+    """{dest: nom du credential} des secrets du groupe que le parser
+    porte, alias compris (`secrets_du_groupe`)."""
     actions = _actions(parser)
     return collections.OrderedDict(
-        (cle, nom)
-        for (groupe_secret, cle), nom in SECRETS.items()
-        if groupe_secret == groupe
-        and cle in CHAMPS.get(groupe, ())
-        and cle in actions
+        (dest, nom)
+        for dest, _cible, nom in secrets_du_groupe(groupe)
+        if dest in actions
     )
 
 

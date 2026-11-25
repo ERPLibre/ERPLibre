@@ -41,10 +41,12 @@ Le déroulé
    terminal ; sur un terminal sans `--resend`, un menu ([a] tous,
    [o] les plus anciens, [i] des ids, [n] aucun — le défaut). `--list`
    n'affiche que la liste.
-5. Renvoi par l'ORM, jamais par SQL : `odoo_bin.sh shell` de l'unité,
-   lancé sous son compte dans son dossier de travail, reçoit sur son
-   entrée un court script qui relit les courriels encore en `exception`,
-   appelle `action_retry()` quand la méthode existe, sinon
+5. Renvoi par l'ORM, jamais par SQL : le shell d'Odoo construit à partir
+   de l'ExecStart de l'unité (`service.commande_shell` : `odoo_bin.sh
+   shell` derrière run.sh, les options de l'unité comme `--addons-path`
+   gardées), lancé sous son compte dans son dossier de travail, reçoit
+   sur son entrée un court script qui relit les courriels encore en
+   `exception`, appelle `action_retry()` quand la méthode existe, sinon
    `write({'state': 'outgoing'})`, valide la transaction (`odoo shell`
    annule à sa sortie ce qui n'est pas validé) et rend son bilan en JSON
    entre deux sentinelles. L'action planifiée « Mail: Email Queue
@@ -81,7 +83,6 @@ import io
 import json
 import os
 import re
-import subprocess
 import sys
 import types
 
@@ -288,9 +289,9 @@ def libelle_cause(echec, details=False):
 
 
 class Systeme(odoo_backup.Systeme):
-    """Les effets de bord : systemctl, psql (`requete`), le shell d'Odoo,
-    le terminal. Un test en dérive une classe et rien de réel n'est
-    lancé."""
+    """Les effets de bord : systemctl, psql (`requete`), le shell d'Odoo
+    (`shell_odoo`, hérité d'`odoo_backup.Systeme`), le terminal. Un test
+    en dérive une classe et rien de réel n'est lancé."""
 
     def __init__(self, verbeux=False, interactif=None, demander=None):
         super().__init__(verbeux=verbeux)
@@ -301,74 +302,15 @@ class Systeme(odoo_backup.Systeme):
         )
         self.demander = demander or input
 
-    def shell_odoo(self, argv, cwd, source, delai):
-        """Lance `argv` dans `cwd`, `source` sur son entrée : (code,
-        stdout, stderr). Délai dépassé : 124 ; binaire absent : 127.
-
-        Le processus a sa propre session. `runuser`, puis `env` et
-        `bash ./odoo_bin.sh`, s'intercalent entre ce programme et le
-        python d'Odoo : tuer le seul enfant direct laisserait ce python
-        tourner, valider la remise en file après le constat d'échec et
-        garder ses verrous sur `mail_mail`. Au délai dépassé, comme sur
-        Ctrl-C ou toute exception, le GROUPE entier est arrêté (TERM, puis
-        KILL) et attendu (`odoo_backup._terminer`)."""
-        self._tracer(argv)
-        try:
-            proc = subprocess.Popen(
-                argv,
-                cwd=cwd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-                start_new_session=True,
-            )
-        except OSError as err:
-            return 127, "", str(err)
-        try:
-            sortie, erreurs = proc.communicate(source, timeout=delai)
-        except subprocess.TimeoutExpired:
-            odoo_backup._terminer(proc)
-            _fermer(proc)
-            return 124, "", "timeout"
-        except BaseException:
-            odoo_backup._terminer(proc)
-            _fermer(proc)
-            raise
-        return proc.returncode, sortie or "", erreurs or ""
-
     def existe(self, chemin):
         return os.path.isfile(chemin)
 
 
-def _fermer(proc):
-    """Ferme les tubes d'un processus arrêté sans les lire : un
-    descendant sorti du groupe qui les tiendrait encore ouverts ne bloque
-    pas ce programme."""
-    for tube in (proc.stdin, proc.stdout, proc.stderr):
-        if tube is not None:
-            try:
-                tube.close()
-            except OSError:
-                pass
-
-
 def commande_shell(plan):
-    """La commande du shell d'Odoo de l'unité, sous son compte."""
-    return service.envelopper(
-        [
-            "bash",
-            "./odoo_bin.sh",
-            "shell",
-            "-c",
-            plan.config_path,
-            "-d",
-            plan.base,
-            "--no-http",
-        ],
-        plan,
-        {"ODOO_RC": plan.config_path},
-    )
+    """La commande du shell d'Odoo de l'unité, sous son compte, construite
+    à partir de son ExecStart (`service.commande_shell`). Lève
+    service.Refus quand l'ExecStart ne nomme aucun lanceur d'Odoo."""
+    return service.commande_shell(plan)
 
 
 def script_renvoi(ids):
@@ -379,14 +321,7 @@ def script_renvoi(ids):
 
 def lire_bilan(sortie):
     """Le JSON entre les sentinelles de la sortie du shell, ou None."""
-    if DEBUT_JSON not in sortie or FIN_JSON not in sortie:
-        return None
-    morceau = sortie.split(DEBUT_JSON, 1)[1].split(FIN_JSON, 1)[0]
-    try:
-        donnees = json.loads(morceau.strip())
-    except ValueError:
-        return None
-    return donnees if isinstance(donnees, dict) else None
+    return service.lire_bilan(sortie, DEBUT_JSON, FIN_JSON)
 
 
 # --- Affichage -------------------------------------------------------------
@@ -602,7 +537,10 @@ def menu(systeme, echecs):
 
 def renvoyer(plan, systeme, rapport, args, ids):
     """Le shell d'Odoo remet `ids` en file : (code, bilan ou None)."""
-    argv = commande_shell(plan)
+    if plan.shell is None:
+        rapport.fail(plan.refus_shell)
+        return CODE_REFUS, None
+    argv = plan.shell
     code, sortie, erreurs = systeme.shell_odoo(
         argv, plan.wd, script_renvoi(ids), args.timeout
     )
@@ -650,17 +588,21 @@ def renvoyer(plan, systeme, rapport, args, ids):
     return (CODE_RESTE if ignores else CODE_OK), bilan
 
 
+def _shell_affiche(plan):
+    """`cd WD && COMMANDE` du shell, ou la raison pour laquelle il ne se
+    construit pas."""
+    if plan.shell is None:
+        return plan.refus_shell
+    return f"cd {service.joindre([plan.wd])} && " + service.joindre(plan.shell)
+
+
 def simuler(plan, rapport, ids):
     rapport.sim(
         t("Would resend {count} mail(s): {ids}").format(
             count=len(ids), ids=", ".join(f"#{i}" for i in ids)
         )
     )
-    rapport.sim(
-        f"cd {service.joindre([plan.wd])} && "
-        + service.joindre(commande_shell(plan))
-        + " <<'EOF'"
-    )
+    rapport.sim(_shell_affiche(plan) + " <<'EOF'")
     for ligne in script_renvoi(ids).strip("\n").splitlines():
         rapport.texte(f"      {ligne}")
     rapport.texte("      EOF")
@@ -880,11 +822,7 @@ def _simuler_sans_acces(plan, cible, rapport, sql):
     rapport.sim(
         odoo_backup.decrire(argv, odoo_backup.variables_pg(cible, True))
     )
-    rapport.sim(
-        f"cd {service.joindre([plan.wd])} && "
-        + service.joindre(commande_shell(plan))
-        + " <<'EOF' … EOF"
-    )
+    rapport.sim(_shell_affiche(plan) + " <<'EOF' … EOF")
 
 
 def lister(args, systeme, rapport):
@@ -907,11 +845,24 @@ def lister(args, systeme, rapport):
     if application is not None:
         profil.afficher(application, rapport, t)
     sql = requete_liste(args.days)
-    odoo_bin = os.path.join(plan.wd, "odoo_bin.sh")
-    if args.selection and not systeme.existe(odoo_bin):
+    # Le shell se construit à partir de l'ExecStart de l'unité : les
+    # options qu'elle passe à Odoo, `--addons-path` compris, sont celles
+    # du serveur. Sans lanceur reconnu, la liste reste possible, le renvoi
+    # non.
+    try:
+        plan.shell = commande_shell(plan)
+        programme = service.programme_shell(plan)
+        plan.refus_shell = ""
+    except service.Refus as err:
+        plan.shell, programme = None, None
+        plan.refus_shell = err.message(t)
+    if args.selection and plan.shell is None:
+        rapport.erreur(plan.refus_shell)
+        return CODE_REFUS, None
+    if args.selection and not systeme.existe(programme):
         rapport.erreur(
             t("{path} is missing: the Odoo shell cannot be run.").format(
-                path=odoo_bin
+                path=programme
             )
         )
         return CODE_REFUS, None

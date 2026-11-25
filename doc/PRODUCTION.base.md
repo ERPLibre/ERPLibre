@@ -222,8 +222,23 @@ After a verified restart, the tool checks the health of the local instance
 (see below; findings are warnings, never a failure of the update), and
 `--warmup-deep` first warms up the public pages and their asset bundles.
 
-`--warmup-deep` stays anonymous with the default warm-up settings: the
-profile group `warmup` (login, API key, pages) does not apply to it.
+With `--warmup-login` and `--warmup-key-file`, or the `login` and
+`api_key_file` of the profile group `warmup`, the deep warm-up also loads
+the read-only views; the key is read before anything is stopped, and the
+production menu hands a KeePass key over as a 0600 file. The menu proposes
+the deep warm-up by default. `--i18n-overwrite` lets the translations of
+the modules' `.po` files replace those of the database, edited ones
+included; the menu asks for it, No by default. After a success, the report
+compares the versions of the installed modules before and after the
+update.
+
+`--restart-only` restarts the unit with the same guards, without `-u` or
+backup, for example after a change to `odoo.conf`. `--update-list` updates
+the apps list through an `odoo shell` built from the unit's `ExecStart`
+(its `--addons-path` included), Odoo left running, and lists the modules
+not installed whose code is missing; `--remove-missing` then removes them
+from the list, after a backup and a confirmation on the terminal (or
+`--yes`).
 
 A requested module that the database has not installed is listed as a
 warning, since `-u` ignores it; the update is refused before the stop when
@@ -252,8 +267,23 @@ Après une relance vérifiée, l'outil vérifie la santé de l'instance locale
 la mise à jour), et `--warmup-deep` préchauffe d'abord les pages publiques
 et leurs paquets d'assets.
 
-`--warmup-deep` reste anonyme, aux réglages par défaut du préchauffage :
-le groupe `warmup` du profil (login, clé d'API, pages) ne s'y applique pas.
+Avec `--warmup-login` et `--warmup-key-file`, ou le `login` et
+l'`api_key_file` du groupe `warmup` du profil, le préchauffage profond
+charge aussi les vues en lecture seule ; la clé est lue avant tout arrêt,
+et le menu Production transmet une clé KeePass par un fichier 0600. Le
+menu propose le préchauffage profond par défaut. `--i18n-overwrite` laisse
+les traductions des fichiers `.po` des modules remplacer celles de la
+base, modifiées comprises ; le menu la demande, Non par défaut. Après une
+réussite, le rapport compare les versions des modules installés avant et
+après la mise à jour.
+
+`--restart-only` relance l'unité avec les mêmes garde-fous, sans `-u` ni
+sauvegarde, par exemple après une modification d'`odoo.conf`.
+`--update-list` met à jour la liste des applications par un `odoo shell`
+construit à partir de l'`ExecStart` de l'unité (son `--addons-path`
+compris), Odoo laissé en marche, et liste les modules non installés dont
+le code manque ; `--remove-missing` les retire ensuite de la liste, après
+une sauvegarde et une confirmation au terminal (ou `--yes`).
 
 Un module demandé que la base n'a pas installé est signalé, puisque `-u`
 l'ignore ; la mise à jour est refusée avant l'arrêt quand aucun ne l'est.

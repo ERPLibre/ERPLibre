@@ -26771,9 +26771,9 @@ TRANSLATIONS = {
         "fr": "(détecté)",
         "en": "(detected)",
     },
-    "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'.": {
-        "fr": "Module(s) à mettre à jour ; répétable, virgules permises, motifs * et ?, ou 'all'.",
-        "en": "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'.",
+    "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'. Required, except with --restart-only or --update-list.": {
+        "fr": "Module(s) à mettre à jour ; répétable, virgules permises, motifs * et ?, ou 'all'. Exigé, sauf avec --restart-only ou --update-list.",
+        "en": "Module(s) to update; repeatable, commas allowed, * and ? patterns, or 'all'. Required, except with --restart-only or --update-list.",
     },
     "'all' cannot be combined with other modules.": {
         "fr": "'all' ne se combine pas avec d'autres modules.",
@@ -30063,6 +30063,270 @@ TRANSLATIONS = {
     "{duration}, from the stop to the first answer below 500": {
         "fr": "{duration}, de l'arrêt à la première réponse sous 500",
         "en": "{duration}, from the stop to the first answer below 500",
+    },
+    "--i18n-overwrite goes with an update: give --module.": {
+        "fr": "--i18n-overwrite va avec une mise à jour : donnez --module.",
+        "en": "--i18n-overwrite goes with an update: give --module.",
+    },
+    "--module is required, except with --restart-only or --update-list.": {
+        "fr": "--module est exigé, sauf avec --restart-only ou --update-list.",
+        "en": "--module is required, except with --restart-only or --update-list.",
+    },
+    "--remove-missing removes them from the apps list.": {
+        "fr": "--remove-missing les retire de la liste des applications.",
+        "en": "--remove-missing removes them from the apps list.",
+    },
+    "--warmup-login and --warmup-key-file go together.": {
+        "fr": "--warmup-login et --warmup-key-file vont ensemble.",
+        "en": "--warmup-login and --warmup-key-file go together.",
+    },
+    "--yes only confirms --remove-missing.": {
+        "fr": "--yes ne confirme que --remove-missing.",
+        "en": "--yes only confirms --remove-missing.",
+    },
+    "Action": {
+        "fr": "Geste",
+        "en": "Action",
+    },
+    "Apps list of {database}": {
+        "fr": "Liste des applications de {database}",
+        "en": "Apps list of {database}",
+    },
+    "Apps list update failed.": {
+        "fr": "Mise à jour de la liste des applications en échec.",
+        "en": "Apps list update failed.",
+    },
+    "Apps list update finished.": {
+        "fr": "Mise à jour de la liste des applications terminée.",
+        "en": "Apps list update finished.",
+    },
+    "Apps list updated: {updated} updated, {added} added.": {
+        "fr": "Liste des applications à jour : {updated} mis à jour, {added} ajouté(s).",
+        "en": "Apps list updated: {updated} updated, {added} added.",
+    },
+    "Back up the database before the removal? [Y/n] ": {
+        "fr": "Sauvegarder la base avant le retrait ? [O/n] ",
+        "en": "Back up the database before the removal? [Y/n] ",
+    },
+    "Backup failed: nothing was removed.": {
+        "fr": "Sauvegarde en échec : rien n'a été retiré.",
+        "en": "Backup failed: nothing was removed.",
+    },
+    "Backup interrupted: nothing was removed.": {
+        "fr": "Sauvegarde interrompue : rien n'a été retiré.",
+        "en": "Backup interrupted: nothing was removed.",
+    },
+    "Backup taken before the removal: {path}": {
+        "fr": "Sauvegarde prise avant le retrait : {path}",
+        "en": "Backup taken before the removal: {path}",
+    },
+    "Cannot build an Odoo shell from the ExecStart of {unit}: it names no run.sh, odoo-bin or odoo_bin.sh.": {
+        "fr": "Impossible de construire un shell Odoo à partir de l'ExecStart de {unit} : il ne nomme ni run.sh, ni odoo-bin, ni odoo_bin.sh.",
+        "en": "Cannot build an Odoo shell from the ExecStart of {unit}: it names no run.sh, odoo-bin or odoo_bin.sh.",
+    },
+    "Confirm --remove-missing without asking.": {
+        "fr": "Confirme --remove-missing sans demander.",
+        "en": "Confirm --remove-missing without asking.",
+    },
+    "Deep warm-up after the restart? [Y/n] ": {
+        "fr": "Préchauffage profond après la relance ? [O/n] ",
+        "en": "Deep warm-up after the restart? [Y/n] ",
+    },
+    "Every module not installed has its code.": {
+        "fr": "Chaque module non installé a son code.",
+        "en": "Every module not installed has its code.",
+    },
+    "File holding the Odoo API key of --warmup-login (never on argv); read before anything is stopped.": {
+        "fr": "Fichier de la clé d'API Odoo de --warmup-login (jamais sur argv) ; lu avant tout arrêt.",
+        "en": "File holding the Odoo API key of --warmup-login (never on argv); read before anything is stopped.",
+    },
+    "Implies --update-list: remove from the apps list the modules not installed whose code is missing, after a backup (unless --no-backup) and a confirmation on the terminal or --yes.": {
+        "fr": "Implique --update-list : retire de la liste des applications les modules non installés dont le code manque, après une sauvegarde (sauf --no-backup) et une confirmation au terminal ou --yes.",
+        "en": "Implies --update-list: remove from the apps list the modules not installed whose code is missing, after a backup (unless --no-backup) and a confirmation on the terminal or --yes.",
+    },
+    "Interrupted: run --update-list again to see what was changed.": {
+        "fr": "Interrompu : relancez --update-list pour voir ce qui a changé.",
+        "en": "Interrupted: run --update-list again to see what was changed.",
+    },
+    "Module versions after the update not read: {error}": {
+        "fr": "Versions des modules après la mise à jour non lues : {error}",
+        "en": "Module versions after the update not read: {error}",
+    },
+    "Module versions before the update unknown: no comparison.": {
+        "fr": "Versions des modules avant la mise à jour inconnues : aucune comparaison.",
+        "en": "Module versions before the update unknown: no comparison.",
+    },
+    "Nothing removed.": {
+        "fr": "Rien n'a été retiré.",
+        "en": "Nothing removed.",
+    },
+    "Nothing removed: no terminal to confirm, re-run with --yes.": {
+        "fr": "Rien n'a été retiré : aucun terminal pour confirmer, relancez avec --yes.",
+        "en": "Nothing removed: no terminal to confirm, re-run with --yes.",
+    },
+    "Pass --i18n-overwrite to -u: the translations of the .po files of the updated modules replace those of the database, edited ones included.": {
+        "fr": "Passe --i18n-overwrite à -u : les traductions des fichiers .po des modules mis à jour remplacent celles de la base, modifiées comprises.",
+        "en": "Pass --i18n-overwrite to -u: the translations of the .po files of the updated modules replace those of the database, edited ones included.",
+    },
+    "Removal of the modules without code from {database}": {
+        "fr": "Retrait des modules sans code de {database}",
+        "en": "Removal of the modules without code from {database}",
+    },
+    "Remove the modules without code from the apps list - simulate, confirm, back up, then choose with sudo": {
+        "fr": "Retirer les modules sans code de la liste des applications - simuler, confirmer, sauvegarder, puis choisir avec sudo",
+        "en": "Remove the modules without code from the apps list - simulate, confirm, back up, then choose with sudo",
+    },
+    "Remove {count} module(s) without code from the apps list of {database}? [y/N] ": {
+        "fr": "Retirer {count} module(s) sans code de la liste des applications de {database} ? [o/N] ",
+        "en": "Remove {count} module(s) without code from the apps list of {database}? [y/N] ",
+    },
+    "Replace the translations of the database with those of the .po files (--i18n-overwrite)? [y/N] ": {
+        "fr": "Remplacer les traductions de la base par celles des fichiers .po (--i18n-overwrite) ? [o/N] ",
+        "en": "Replace the translations of the database with those of the .po files (--i18n-overwrite)? [y/N] ",
+    },
+    "Restart failed.": {
+        "fr": "Relance en échec.",
+        "en": "Restart failed.",
+    },
+    "Restart finished.": {
+        "fr": "Relance terminée.",
+        "en": "Restart finished.",
+    },
+    "Restart only - same guards, no update and no backup; simulate, confirm, then run with sudo": {
+        "fr": "Relance seule - mêmes garde-fous, sans mise à jour ni sauvegarde ; simuler, confirmer, puis lancer avec sudo",
+        "en": "Restart only - same guards, no update and no backup; simulate, confirm, then run with sudo",
+    },
+    "Restart the service for real? It stops meanwhile.": {
+        "fr": "Relancer le service pour de vrai ? Il s'arrête entre-temps.",
+        "en": "Restart the service for real? It stops meanwhile.",
+    },
+    "Restart the service with the guards of an update (lock, stop and start checks, warm-up, health, journal), without -u and without backup; no --module.": {
+        "fr": "Relance le service avec les garde-fous d'une mise à jour (verrou, contrôles de l'arrêt et du démarrage, préchauffage, santé, journal), sans -u ni sauvegarde ; sans --module.",
+        "en": "Restart the service with the guards of an update (lock, stop and start checks, warm-up, health, journal), without -u and without backup; no --module.",
+    },
+    "The API key is not sent over plain http:// to {url}: the views are not warmed up.": {
+        "fr": "La clé d'API ne part pas en http:// simple vers {url} : les vues ne sont pas préchauffées.",
+        "en": "The API key is not sent over plain http:// to {url}: the views are not warmed up.",
+    },
+    "The Odoo shell exceeded {seconds} s and was stopped: run --update-list again to see what it changed.": {
+        "fr": "Le shell Odoo a dépassé {seconds} s et a été arrêté : relancez --update-list pour voir ce qu'il a changé.",
+        "en": "The Odoo shell exceeded {seconds} s and was stopped: run --update-list again to see what it changed.",
+    },
+    "Translations": {
+        "fr": "Traductions",
+        "en": "Translations",
+    },
+    "Update the apps list - Odoo keeps running; simulate, confirm, then run with sudo": {
+        "fr": "Mettre à jour la liste des applications - Odoo reste en marche ; simuler, confirmer, puis lancer avec sudo",
+        "en": "Update the apps list - Odoo keeps running; simulate, confirm, then run with sudo",
+    },
+    "Update the apps list now? Odoo keeps running.": {
+        "fr": "Mettre à jour la liste des applications maintenant ? Odoo reste en marche.",
+        "en": "Update the apps list now? Odoo keeps running.",
+    },
+    "Update the apps list through an Odoo shell built from the unit's ExecStart, Odoo left running, then list the modules not installed whose code is missing; no --module.": {
+        "fr": "Met à jour la liste des applications par un shell Odoo construit à partir de l'ExecStart de l'unité, Odoo laissé en marche, puis liste les modules non installés dont le code manque ; sans --module.",
+        "en": "Update the apps list through an Odoo shell built from the unit's ExecStart, Odoo left running, then list the modules not installed whose code is missing; no --module.",
+    },
+    "Update the apps list, then choose on the terminal whether to remove the modules without code?": {
+        "fr": "Mettre à jour la liste des applications, puis choisir au terminal s'il faut retirer les modules sans code ?",
+        "en": "Update the apps list, then choose on the terminal whether to remove the modules without code?",
+    },
+    "Warm-up": {
+        "fr": "Préchauffage",
+        "en": "Warm-up",
+    },
+    "With --warmup-deep: Odoo login whose API key warms up the read-only views; goes with --warmup-key-file.": {
+        "fr": "Avec --warmup-deep : login Odoo dont la clé d'API préchauffe les vues en lecture seule ; va avec --warmup-key-file.",
+        "en": "With --warmup-deep: Odoo login whose API key warms up the read-only views; goes with --warmup-key-file.",
+    },
+    "apps list update, Odoo left running": {
+        "fr": "mise à jour de la liste des applications, Odoo laissé en marche",
+        "en": "apps list update, Odoo left running",
+    },
+    "apps list update, then removal of the modules without code": {
+        "fr": "mise à jour de la liste des applications, puis retrait des modules sans code",
+        "en": "apps list update, then removal of the modules without code",
+    },
+    "check that no Odoo process remains on {database} or on {host}:{port}": {
+        "fr": "vérifier qu'aucun processus Odoo ne reste sur {database} ni sur {host}:{port}",
+        "en": "check that no Odoo process remains on {database} or on {host}:{port}",
+    },
+    "deep, then read-only views as {login}": {
+        "fr": "profond, puis vues en lecture seule en tant que {login}",
+        "en": "deep, then read-only views as {login}",
+    },
+    "deep: public pages and asset bundles": {
+        "fr": "profond : pages publiques et paquets d'assets",
+        "en": "deep: public pages and asset bundles",
+    },
+    "overwritten by the .po files (--i18n-overwrite)": {
+        "fr": "remplacées par les fichiers .po (--i18n-overwrite)",
+        "en": "overwritten by the .po files (--i18n-overwrite)",
+    },
+    "question on the terminal, or --yes, before removing the modules not installed and without code": {
+        "fr": "question au terminal, ou --yes, avant de retirer les modules non installés et sans code",
+        "en": "question on the terminal, or --yes, before removing the modules not installed and without code",
+    },
+    "read-only views as {login}": {
+        "fr": "vues en lecture seule en tant que {login}",
+        "en": "read-only views as {login}",
+    },
+    "restart only: no -u, no backup": {
+        "fr": "relance seule : ni -u, ni sauvegarde",
+        "en": "restart only: no -u, no backup",
+    },
+    "second pass: state and code read again, then removal": {
+        "fr": "seconde passe : état et code relus, puis retrait",
+        "en": "second pass: state and code read again, then removal",
+    },
+    "{count} installed module(s) without code in the addons_path of the service, never removed here: {names}": {
+        "fr": "{count} module(s) installé(s) sans code dans l'addons_path du service, jamais retiré(s) ici : {names}",
+        "en": "{count} installed module(s) without code in the addons_path of the service, never removed here: {names}",
+    },
+    "{count} module(s) kept: installed, or code found, since the first pass: {names}": {
+        "fr": "{count} module(s) gardé(s) : installé(s), ou code retrouvé, depuis la première passe : {names}",
+        "en": "{count} module(s) kept: installed, or code found, since the first pass: {names}",
+    },
+    "{count} module(s) not installed and without code in the addons_path of the service: {names}": {
+        "fr": "{count} module(s) non installé(s) et sans code dans l'addons_path du service : {names}",
+        "en": "{count} module(s) not installed and without code in the addons_path of the service: {names}",
+    },
+    "{count} module(s) removed from the apps list: {names}": {
+        "fr": "{count} module(s) retiré(s) de la liste des applications : {names}",
+        "en": "{count} module(s) removed from the apps list: {names}",
+    },
+    "{count} read-only call(s) as {login}.": {
+        "fr": "{count} appel(s) en lecture seule en tant que {login}.",
+        "en": "{count} read-only call(s) as {login}.",
+    },
+    "{first} and {second} exclude each other.": {
+        "fr": "{first} et {second} s'excluent.",
+        "en": "{first} and {second} exclude each other.",
+    },
+    "{option} takes no --module.": {
+        "fr": "{option} ne prend pas de --module.",
+        "en": "{option} takes no --module.",
+    },
+    "{updated} updated, {new} new, {removed} no longer installed, {unchanged} unchanged": {
+        "fr": "{updated} mis à jour, {new} nouveau(x), {removed} désinstallé(s), {unchanged} inchangé(s)",
+        "en": "{updated} updated, {new} new, {removed} no longer installed, {unchanged} unchanged",
+    },
+    "… and {count} more": {
+        "fr": "… et {count} de plus",
+        "en": "… and {count} more",
+    },
+    "also when it was stopped, once the stop checks pass": {
+        "fr": "même s'il était arrêté, une fois les contrôles de l'arrêt passés",
+        "en": "also when it was stopped, once the stop checks pass",
+    },
+    "the modules to remove are listed by the first pass, before the question: the simulation runs no shell and cannot name them": {
+        "fr": "les modules à retirer sont listés par la première passe, avant la question : la simulation ne lance aucun shell et ne peut pas les nommer",
+        "en": "the modules to remove are listed by the first pass, before the question: the simulation runs no shell and cannot name them",
+    },
+    "{host}:{port} is not shown as held by root or the account of {unit}: the API key is not sent, the views are not warmed up.": {
+        "fr": "{host}:{port} n'apparaît pas tenu par root ou le compte de {unit} : la clé d'API n'est pas envoyée, les vues ne sont pas préchauffées.",
+        "en": "{host}:{port} is not shown as held by root or the account of {unit}: the API key is not sent, the views are not warmed up.",
     },
 }
 

@@ -136,6 +136,9 @@ class FauxSysteme(mr.Systeme):
         self.reponses = []
         self.questions = []
         self.odoo_bin = True
+        # L'argv[] de l'ExecStart de l'unité ; `{wd}` est le dossier de
+        # travail.
+        self.execstart = "/bin/bash {wd}/run.sh"
 
     def _demander(self, question):
         self.questions.append(question)
@@ -158,8 +161,9 @@ class FauxSysteme(mr.Systeme):
             return 0, (
                 "LoadState=loaded\nActiveState=active\nUser=demo\n"
                 f"WorkingDirectory={self.wd}\n"
-                "ExecStart={ path=/bin/bash ; argv[]=/bin/bash"
-                f" {self.wd}/run.sh ; ignore_errors=no }}\n"
+                "ExecStart={ path=/bin/bash ; argv[]="
+                + self.execstart.format(wd=self.wd)
+                + " ; ignore_errors=no }\n"
                 "Environment=LANG=C.UTF-8\n"
             )
         return 1, "commande inattendue"
@@ -665,11 +669,13 @@ class TestRenvoi(Base):
         self.assertIn(f"ODOO_RC={conf}", argv)
         self.assertIn("LANG=C.UTF-8", argv)
         self.assertTrue(any(a.startswith("HOME=") for a in argv))
-        fin = argv[argv.index("bash") :]
+        # Le shell passe par l'interpréteur de l'unité et par le
+        # odoo_bin.sh que lance run.sh.
+        fin = argv[argv.index("/bin/bash") :]
         self.assertEqual(
             fin,
             [
-                "bash",
+                "/bin/bash",
                 "./odoo_bin.sh",
                 "shell",
                 "-c",
@@ -677,6 +683,8 @@ class TestRenvoi(Base):
                 "-d",
                 "base_essai",
                 "--no-http",
+                "--workers=0",
+                "--max-cron-threads=0",
             ],
         )
         self.assertEqual(shell["cwd"], self.wd)
@@ -759,6 +767,61 @@ class TestRenvoi(Base):
             ).format(seconds=mr.DELAI_SHELL),
             self.sortie,
         )
+
+    def test_les_options_de_l_unite_suivent_le_shell(self):
+        """Défaut d'un shell qui perd l'`--addons-path` de l'unité : les
+        modules du shell ne seraient plus ceux du serveur. Les options de
+        run.sh propres à ERPLibre sont retirées, la base de l'unité
+        aussi."""
+        self.systeme.execstart = (
+            "/bin/bash {wd}/run.sh --auto-erplibre"
+            " --addons-path=/srv/exemple/addons -d autre_db"
+        )
+        self.lancer("--resend", "ids", "7404", "--yes")
+        (shell,) = self.systeme.shells
+        argv = shell["argv"]
+        fin = argv[argv.index("./odoo_bin.sh") :]
+        self.assertEqual(
+            fin[:3],
+            ["./odoo_bin.sh", "shell", "--addons-path=/srv/exemple/addons"],
+        )
+        self.assertNotIn("--auto-erplibre", argv)
+        # La base de l'unité, retirée de ses options, revient une seule
+        # fois, après `-c`.
+        self.assertEqual(argv.count("-d"), 1)
+        self.assertEqual(argv[argv.index("-d") + 1], "autre_db")
+
+    def test_odoo_bin_direct_et_son_fichier_verifie(self):
+        self.systeme.execstart = (
+            "/srv/exemple/venv/bin/python /srv/exemple/odoo/odoo-bin"
+            " --addons-path=/srv/exemple/addons"
+        )
+        self.lancer("--resend", "ids", "7404", "--yes")
+        (shell,) = self.systeme.shells
+        argv = shell["argv"]
+        fin = argv[argv.index("/srv/exemple/venv/bin/python") :]
+        self.assertEqual(
+            fin[:4],
+            [
+                "/srv/exemple/venv/bin/python",
+                "/srv/exemple/odoo/odoo-bin",
+                "shell",
+                "--addons-path=/srv/exemple/addons",
+            ],
+        )
+
+    def test_sans_lanceur_la_liste_reste_le_renvoi_refuse(self):
+        self.systeme.execstart = "/bin/sh -c 'cd /srv/exemple && ./run.sh'"
+        conf = os.path.join(self.wd, "config.conf")
+        self.assertEqual(
+            self.lancer("--list", "--odoo-conf", conf), mr.CODE_RESTE
+        )
+        self.assertEqual(
+            self.lancer("--resend", "all", "--yes", "--odoo-conf", conf),
+            mr.CODE_REFUS,
+        )
+        self.assertEqual(self.systeme.shells, [])
+        self.assertIn("ExecStart", self.erreurs)
 
     def test_r10_odoo_bin_absent(self):
         self.systeme.odoo_bin = False

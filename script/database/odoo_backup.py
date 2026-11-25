@@ -360,6 +360,43 @@ class Systeme(service.SystemeBase):
             lecteur.join(5)
         return code, lignes, bool(expire)
 
+    def shell_odoo(self, argv, cwd, source, delai):
+        """Lance `argv` (un `odoo shell`, `service.commande_shell`) dans
+        `cwd`, `source` sur son entrée : (code, stdout, stderr). Délai
+        dépassé : 124 ; binaire absent : 127.
+
+        Le processus a sa propre session. `runuser`, puis `env` et le
+        script qui lance Odoo, s'intercalent entre ce programme et le
+        python d'Odoo : tuer le seul enfant direct laisserait ce python
+        tourner, valider son travail après le constat d'échec et garder
+        ses verrous. Au délai dépassé, comme sur Ctrl-C ou toute exception,
+        le GROUPE entier est arrêté (TERM, puis KILL) et attendu
+        (`_terminer`), puis l'exception remonte."""
+        self._tracer(argv)
+        try:
+            proc = subprocess.Popen(
+                argv,
+                cwd=cwd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                start_new_session=True,
+            )
+        except OSError as err:
+            return 127, "", str(err)
+        try:
+            sortie, erreurs = proc.communicate(source, timeout=delai)
+        except subprocess.TimeoutExpired:
+            _terminer(proc)
+            _fermer(proc)
+            return 124, "", "timeout"
+        except BaseException:
+            _terminer(proc)
+            _fermer(proc)
+            raise
+        return proc.returncode, sortie or "", erreurs or ""
+
     def espace_libre(self, chemin):
         """Les octets disponibles pour un compte ordinaire. Lève OSError."""
         info = os.statvfs(chemin)
@@ -390,6 +427,18 @@ def _lire_borne(flux, morceaux):
             morceaux.append(ligne[: LIMITE_ERREUR - garde])
             garde += len(ligne)
     flux.close()
+
+
+def _fermer(proc):
+    """Ferme les tubes d'un processus arrêté sans les lire : un
+    descendant sorti du groupe qui les tiendrait encore ouverts ne bloque
+    pas ce programme."""
+    for tube in (proc.stdin, proc.stdout, proc.stderr):
+        if tube is not None:
+            try:
+                tube.close()
+            except OSError:
+                pass
 
 
 def _lire_lignes(flux, lignes):

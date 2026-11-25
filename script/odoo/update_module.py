@@ -50,10 +50,11 @@ Le déroulé
 5. Mise à jour : la ligne de commande de l'unité, privée de sa base
    (`-d`, `--database`), suivie de `-c CONFIG -d BASE -u MODULES
    --stop-after-init --no-http --workers=0 --max-cron-threads=0
-   --limit-memory-hard=0 --log-level=info` — le `-c` répété garde la mise
-   à jour sur le fichier que la détection et la sauvegarde ont lu ; la
-   limite de mémoire du serveur ne la tue pas en cours de route —, sous
-   le compte de l'unité (`runuser`), HOME tiré de passwd. Échec si le
+   --limit-memory-hard=0 --log-level=info`, et `--i18n-overwrite` quand
+   l'option est donnée — le `-c` répété garde la mise à jour sur le
+   fichier que la détection et la sauvegarde ont lu ; la limite de
+   mémoire du serveur ne la tue pas en cours de route —, sous le compte
+   de l'unité (`runuser`), HOME tiré de passwd. Échec si le
    code est non nul, si le délai est dépassé, ou si un enregistrement
    ERROR ou CRITICAL paraît dans la sortie ou dans ce qui s'est AJOUTÉ au
    `logfile` configuré — Odoo y écrit au lieu de stderr quand il est
@@ -69,7 +70,9 @@ Le déroulé
 7. Après une relance vérifiée seulement, verrou relâché et signaux rendus
    — un Ctrl-C n'y interrompt que cette étape : avec `--warmup-deep`, le
    préchauffage profond de `warmup_http.py` (pages publiques et paquets
-   d'assets, sans clé), puis la vérification de santé de l'instance
+   d'assets ; avec `--warmup-login` et `--warmup-key-file`, les vues en
+   lecture seule, la clé lue avant tout arrêt et envoyée seulement vers
+   la boucle locale), puis la vérification de santé de l'instance
    locale par `health_check.py`, puis une seconde lecture du journal
    depuis la même époque, après un court délai pour journald : une erreur
    au premier rendu d'une vue mise à jour n'y paraît qu'alors. Leurs
@@ -79,8 +82,34 @@ Le déroulé
    `update-<base>-<horodatage>.log` de plus de `--log-keep-days` jours
    (180 par défaut, 0 n'en retire aucun) sont retirés de leur dossier, les
    JOURNAUX_GARDES plus récents gardés quel que soit leur âge. Le rapport
-   finit par la durée de chaque phase et par le temps où le site est
-   resté coupé, de l'arrêt à la première réponse HTTP sous 500.
+   finit par la durée de chaque phase, par le temps où le site est resté
+   coupé, de l'arrêt à la première réponse HTTP sous 500, et, après une
+   réussite, par le tableau des versions : celles des modules installés
+   lues avant la mise à jour (par la détection, sinon juste avant `-u`)
+   puis après la relance, comparées module par module.
+
+Deux autres gestes
+------------------
+`--restart-only` relance l'unité avec les mêmes garde-fous, sans `-u` ni
+sauvegarde, et sans `--module` : verrou, arrêt vérifié, refus quand un
+Odoo tient encore la base ou le port hors de l'unité (sauf `--force`),
+relance vérifiée, préchauffage, santé, journal. Les sessions PostgreSQL
+restantes ne sont pas attendues : elles ne gênent qu'un `-u`.
+
+`--update-list` fait ce que fait « Mettre à jour la liste des
+applications », Odoo laissé en marche : un `odoo shell` construit à partir
+de l'ExecStart de l'unité (`service.commande_shell`, l'`--addons-path` de
+l'unité compris), sous son compte, reçoit sur son entrée un script qui
+appelle `update_list()`, valide, puis rend en JSON entre deux sentinelles
+les modules non installés dont le code manque à cet addons_path, et les
+modules installés dans ce cas, jamais retirés. Verrou de la base et
+`--timeout` ; la sortie du shell va au journal de la mise à jour.
+`--remove-missing` l'implique : après une sauvegarde (sauf `--no-backup`)
+et une confirmation au terminal, ou `--yes` (sans terminal ni `--yes`,
+rien n'est retiré, code 1), un second shell retire de la liste les
+modules de la première passe encore non installés (`uninstalled`,
+`uninstallable`) et toujours sans code, avec leur `base.module_<nom>` de
+`ir.model.data`, puis valide.
 
 L'invariant
 -----------
@@ -106,11 +135,13 @@ Rien n'est restauré : ce programme ne remplace pas le code, il n'a donc
 rien à remettre. La sauvegarde est là pour une restauration décidée par
 une personne.
 
-Codes de sortie : 0 réussi ; 1 mise à jour en échec, service relancé ;
-2 refusé avant tout arrêt ; 75 verrou pris ; 130 interrompu.
+Codes de sortie : 0 réussi ; 1 mise à jour, relance ou liste en échec,
+service relancé ; 2 refusé avant tout arrêt ; 75 verrou pris ; 130
+interrompu.
 
 `--dry-run` fait toute la détection, affiche les commandes exactes, et
-n'arrête, n'écrit ni ne démarre rien ; il ne demande ni root ni verrou.
+n'arrête, n'écrit ni ne démarre rien ; il ne demande ni root ni verrou,
+et ne lance aucun shell d'Odoo.
 
 Les réglages durables d'une instance viennent de son profil de production
 (`lib_ops/profil.py`, groupe `update_module`, `log_keep_days` compris,
@@ -118,11 +149,14 @@ plus `instance.db`, `backup.dest` et `backup.state_dir`) : `--profile
 FICHIER`, sinon
 `private/production/<unité>.json` de ce checkout. La ligne de commande
 l'emporte sur chaque valeur, `--no-profile` l'ignore. Les modules, l'unité,
-le compte, la configuration, `--force`, `--no-backup` et `--dry-run` ne
-s'y lisent jamais. `--warmup-deep` reste anonyme, aux réglages par défaut
-du préchauffage : il ne lit pas le groupe `warmup` du profil. Avec
-`--no-profile`, l'abréviation `--no` devient ambiguë et argparse la
-refuse.
+le compte, la configuration, les gestes (`--restart-only`,
+`--update-list`, `--remove-missing`, `--i18n-overwrite`), `--force`,
+`--no-backup`, `--yes` et `--dry-run` ne s'y lisent jamais. Du groupe
+`warmup`, `--warmup-deep` ne lit que `login` et `api_key_file`
+(`--warmup-login`, `--warmup-key-file`) : la clé y est une référence
+KeePass que todo passe par un fichier 0600, ou le credential
+`warmup.api_key` de l'unité, jamais une valeur. Avec `--no-profile`,
+l'abréviation `--no` devient ambiguë et argparse la refuse.
 
 Bibliothèque standard seulement, sans syntaxe postérieure à Python 3.7 :
 le programme se lance aussi par le python3 d'un serveur de production.
@@ -205,6 +239,62 @@ JOURNAUX_GARDES = 10
 JOURS_JOURNAUX = 180
 # Un code HTTP sous ce seuil dit le site rendu à ses visiteurs.
 CODE_SERVI = 500
+# Lignes du tableau des versions montrées au plus ; le reste est compté.
+LIGNES_VERSIONS = 60
+# Un nom de module que le script de retrait reçoit : rien d'autre n'y est
+# inséré, et seulement par repr().
+RE_NOM_MODULE = re.compile(r"[A-Za-z0-9_]+")
+
+DEBUT_JSON = "UPDATE_MODULE_JSON_BEGIN"
+FIN_JSON = "UPDATE_MODULE_JSON_END"
+
+# Le script de `--update-list`, donné à `odoo shell` sur son entrée.
+# `update_list()` rend [mis à jour, ajoutés] de 12 à 18 ; `odoo shell`
+# annule à sa sortie ce qui n'est pas validé. `get_module_path` cherche le
+# code dans l'addons_path du shell, celui de l'unité.
+SCRIPT_LISTE = """
+import json
+from odoo.modules import module as erplibre_modules
+def erplibre_a_du_code(nom):
+    return bool(erplibre_modules.get_module_path(nom, display_warning=False))
+Module = env['ir.module.module'].sudo()
+updated, added = Module.update_list()
+env.cr.commit()
+etats = ['uninstalled', 'uninstallable']
+absents = sorted(m.name for m in Module.search([('state', 'in', etats)])
+                 if not erplibre_a_du_code(m.name))
+installes = sorted(m.name
+                   for m in Module.search([('state', 'not in', etats)])
+                   if not erplibre_a_du_code(m.name))
+print('%s')
+print(json.dumps({'updated': updated, 'added': added, 'missing': absents,
+                  'installed_missing': installes}))
+print('%s')
+""" % (DEBUT_JSON, FIN_JSON)
+
+# Le script de `--remove-missing`, NAMES posé devant lui : l'état et
+# l'absence de code sont relus, un module installé ou retrouvé entre les
+# deux passes reste.
+SCRIPT_RETRAIT = """
+import json
+from odoo.modules import module as erplibre_modules
+Module = env['ir.module.module'].sudo()
+candidats = Module.search([('name', 'in', NAMES),
+                           ('state', 'in', ['uninstalled', 'uninstallable'])])
+retires = sorted(m.name for m in candidats
+                 if not erplibre_modules.get_module_path(
+                     m.name, display_warning=False))
+a_retirer = candidats.filtered(lambda m: m.name in retires)
+env['ir.model.data'].sudo().search([
+    ('module', '=', 'base'), ('model', '=', 'ir.module.module'),
+    ('res_id', 'in', a_retirer.ids)]).unlink()
+a_retirer.unlink()
+env.cr.commit()
+print('%s')
+print(json.dumps({'requested': NAMES, 'removed': retires,
+                  'skipped': sorted(set(NAMES) - set(retires))}))
+print('%s')
+""" % (DEBUT_JSON, FIN_JSON)
 
 # L'issue d'un processus long : son code, s'il a été tué pour délai
 # dépassé, s'il a été interrompu à la demande.
@@ -263,6 +353,9 @@ class Systeme(odoo_backup.Systeme):
     def uid_processus(self, pid):
         return odoo_instance.uid_processus(pid, "/proc")
 
+    def uids_a_l_ecoute(self, port):
+        return odoo_instance.uids_a_l_ecoute(port, "/proc")
+
     def pids_exclus(self):
         return (os.getpid(), os.getppid())
 
@@ -275,9 +368,15 @@ class Systeme(odoo_backup.Systeme):
         return warmup_http.premier_code(cible, delai_total=delai)
 
     def prechauffer(self, plan):
-        """Le préchauffage profond de l'instance relancée : un Bilan."""
+        """Le préchauffage profond de l'instance relancée : un Bilan. Les
+        vues ne sont préchauffées qu'avec un login ET une clé lue
+        (`plan.warmup_login`, `plan.cle_warmup`)."""
+        avec_vues = bool(plan.warmup_login and plan.cle_warmup)
         return warmup_http.prechauffer_profond(
-            f"http://{plan.hote}:{plan.port}", plan.base
+            f"http://{plan.hote}:{plan.port}",
+            plan.base,
+            login=plan.warmup_login if avec_vues else None,
+            cle=plan.cle_warmup if avec_vues else None,
         )
 
     def sante(self, plan):
@@ -344,6 +443,15 @@ class Systeme(odoo_backup.Systeme):
                 signal.signal(numero, ancien)
 
         return restaurer
+
+    def confirmer(self, question):
+        """Oui sur o/oui/y/yes ; non sur toute autre réponse, sur la fin
+        de l'entrée et sur Ctrl-C."""
+        try:
+            reponse = input(question)
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return reponse.strip().lower() in ("o", "oui", "y", "yes")
 
     def _demander_interruption(self):
         """Oui sur o/oui/y/yes, un second Ctrl-C ou la fin de l'entrée."""
@@ -466,12 +574,31 @@ class Plan:
         # `list_db` de la configuration, brut : lu par la vérification de
         # santé après la relance.
         self.list_db = None
+        # Le geste : mise à jour (par défaut), `redemarrage_seul`
+        # (--restart-only), ou `liste` (--update-list), `retrait` en plus
+        # avec --remove-missing ; `i18n_overwrite` suit `-u`.
+        self.redemarrage_seul = False
+        self.liste = False
+        self.retrait = False
+        self.i18n_overwrite = False
+        # La commande du shell d'Odoo de l'unité (`--update-list`).
+        self.shell = []
         self.modules = []
         self.motifs_vides = []
         # Les modules demandés que la base n'a pas installés ; quand l'état
         # ne se lit pas, `installes_inconnus` en porte la raison.
         self.non_installes = []
         self.installes_inconnus = ""
+        # {nom: version} des modules installés avant et après la mise à
+        # jour (None : non lus) ; `erreur_versions` dit pourquoi la seconde
+        # lecture a échoué.
+        self.versions_avant = None
+        self.versions_apres = None
+        self.erreur_versions = ""
+        # Le préchauffage des vues : le login, et la clé lue de son fichier
+        # avant tout arrêt. La clé n'est jamais affichée.
+        self.warmup_login = ""
+        self.cle_warmup = None
         self.sauvegarde = True
         # La Cible d'odoo_backup, et les dossiers qui manquent : l'exécution
         # réelle les crée avant l'arrêt. `cible_pg` sert aux requêtes de
@@ -510,26 +637,7 @@ env_supplementaire = service.env_supplementaire
 envelopper = service.envelopper
 
 
-def sans_option_base(argv):
-    """`argv` privé de ses options de base — `-d X`, `--database X`,
-    `--database=X`, `-dX` —, tout le reste recopié tel quel. Le premier
-    élément, le programme lancé, n'est jamais examiné, ni la valeur d'une
-    option retirée."""
-    garde = list(argv[:1])
-    index = 1
-    while index < len(argv):
-        argument = argv[index]
-        if argument in ("-d", "--database"):
-            index += 2
-            continue
-        if argument.startswith("--database=") or (
-            argument.startswith("-d") and not argument.startswith("--")
-        ):
-            index += 1
-            continue
-        garde.append(argument)
-        index += 1
-    return garde
+sans_option_base = service.sans_option_base
 
 
 def commande_mise_a_jour(plan):
@@ -551,7 +659,11 @@ def commande_mise_a_jour(plan):
     lui, logger par logger. Les deux suivent la ligne de l'unité : une
     valeur qu'elle porterait déjà est remplacée. `--limit-time-*` n'est
     pas posé : ces limites ne s'appliquent qu'aux workers et aux requêtes
-    HTTP, absents d'un `-u --no-http --workers=0`."""
+    HTTP, absents d'un `-u --no-http --workers=0`.
+
+    `--i18n-overwrite` (`plan.i18n_overwrite`) vient en dernier : les
+    traductions des fichiers .po des modules mis à jour remplacent celles
+    de la base, modifiées à la main comprises."""
     argv = sans_option_base(plan.execstart) + [
         "-c",
         plan.config_path,
@@ -566,6 +678,8 @@ def commande_mise_a_jour(plan):
         "--limit-memory-hard=0",
         "--log-level=info",
     ]
+    if plan.i18n_overwrite:
+        argv.append("--i18n-overwrite")
     return envelopper(argv, plan)
 
 
@@ -633,6 +747,17 @@ def _preparer_sauvegarde(args, systeme, plan, config):
         )
 
 
+def versions_de(faits):
+    """{nom: version} des modules de `faits` (`postgres.REQUETE_FAITS` ou
+    `REQUETE_MODULES`) : ceux à l'état `installed` avec leur
+    `latest_version`, ceux à l'état `to upgrade` à None (version non
+    lue)."""
+    versions = dict(faits.get("modules") or {})
+    for nom in faits.get("to_upgrade") or []:
+        versions.setdefault(nom, None)
+    return versions
+
+
 def _modules_a_jour_possible(faits):
     """Les noms des modules que `-u` met à jour d'après `faits` : ceux à
     l'état `installed` (clé `modules`) et ceux à l'état `to upgrade` (clé
@@ -651,6 +776,7 @@ def _modules_installes(systeme, plan):
     lit en lecture seule. Une simulation sous un autre compte que celui de
     l'unité, sans root, ne lit pas la base."""
     if plan.estimation is not None:
+        plan.versions_avant = versions_de(plan.estimation.faits)
         return _modules_a_jour_possible(plan.estimation.faits), ""
     if not plan.cible_pg.interrogeable:
         return None, t("requires sudo")
@@ -660,6 +786,7 @@ def _modules_installes(systeme, plan):
         )
     except odoo_backup.ErreurPg as err:
         return None, str(err)
+    plan.versions_avant = versions_de(faits)
     return _modules_a_jour_possible(faits), ""
 
 
@@ -668,9 +795,13 @@ def _verifier_installes(systeme, plan):
     ne se lit pas. Odoo ignore en silence, dans `-u`, un module que la base
     n'a pas installé : refus (rien n'est arrêté) quand AUCUN module demandé
     ne l'est, avertissement sinon. Un module `to upgrade` compte comme
-    installé : `-u` le met à jour. `all` n'est pas examiné. Un état
-    inconnu ne retire ni ne refuse rien."""
+    installé : `-u` le met à jour. `all` n'est pas examiné ; ses versions
+    d'avant viennent de l'évaluation de la sauvegarde quand elle a eu
+    lieu. Un état inconnu ne retire ni ne refuse rien. Pose aussi
+    `plan.versions_avant` quand l'état se lit."""
     if plan.modules == ["all"]:
+        if plan.estimation is not None:
+            plan.versions_avant = versions_de(plan.estimation.faits)
         return
     installes, raison = _modules_installes(systeme, plan)
     if installes is None:
@@ -755,32 +886,72 @@ def valider_config(plan):
         _verifier_fichier(chemin, plan.version_odoo)
 
 
+def _detecter_shell(plan):
+    """La commande du shell d'Odoo de l'unité dans `plan.shell`. Lève
+    Refus quand l'ExecStart ne nomme aucun lanceur, ou quand le fichier
+    lancé manque : rien n'est encore lancé."""
+    plan.shell = service.commande_shell(plan)
+    programme = service.programme_shell(plan)
+    if not os.path.isfile(programme):
+        raise Refus(
+            service.N_("{path} is missing: the Odoo shell cannot be run."),
+            path=programme,
+        )
+
+
 def detecter(args, systeme, racine=RACINE):
-    """Établit le Plan. Lève Refus sur tout ce qui manque, rien arrêté."""
-    plan = Plan()
+    """Établit le Plan du geste demandé (mise à jour, `--restart-only`,
+    `--update-list`). Lève Refus sur tout ce qui manque, rien arrêté.
+
+    La relance seule ne lit ni modules ni sauvegarde, et n'écrit aucun
+    journal de mise à jour. La liste ne prépare la sauvegarde qu'avec
+    `--remove-missing`, et le shell de l'unité dans tous les cas."""
+    plan = Plan(
+        redemarrage_seul=args.restart_only,
+        liste=args.update_list,
+        retrait=args.remove_missing,
+        i18n_overwrite=args.i18n_overwrite,
+    )
+    if args.warmup_deep and not plan.liste:
+        plan.warmup_login = args.warmup_login or ""
     config = service.detecter_instance(
         args, systeme, racine, plan, apres_config=valider_config
     )
     _detecter_adresse(plan, config)
-    _detecter_modules(args, plan, config)
-    _preparer_sauvegarde(args, systeme, plan, config)
+    if plan.liste:
+        _detecter_shell(plan)
+        plan.sauvegarde = False
+        if plan.retrait:
+            _preparer_sauvegarde(args, systeme, plan, config)
+    elif plan.redemarrage_seul:
+        plan.sauvegarde = False
+    else:
+        _detecter_modules(args, plan, config)
+        _preparer_sauvegarde(args, systeme, plan, config)
     plan.cible_pg = plan.cible or odoo_backup.preparer_cible(
         plan, config, args.backup_dest, args.state_dir, systeme
     )
-    _verifier_installes(systeme, plan)
+    if plan.redemarrage_seul:
+        return plan
+    if not plan.liste:
+        _verifier_installes(systeme, plan)
     plan.journal = os.path.join(
         args.log_dir or DOSSIER_JOURNAUX,
         "update-{}-{}.log".format(
             plan.base, _horodatage(systeme, "%Y%m%d-%H%M%S")
         ),
     )
-    plan.commande = commande_mise_a_jour(plan)
+    if not plan.liste:
+        plan.commande = commande_mise_a_jour(plan)
     return plan
 
 
 def preparer_journal(plan):
     """Crée le dossier du journal ; se replie sur le dossier temporaire
-    s'il ne peut pas l'être ou n'est pas inscriptible."""
+    s'il ne peut pas l'être ou n'est pas inscriptible. Sans journal (la
+    relance seule), rien."""
+    if not plan.journal:
+        return plan.journal
     dossier = os.path.dirname(plan.journal)
     try:
         os.makedirs(dossier, mode=0o750, exist_ok=True)
@@ -792,6 +963,24 @@ def preparer_journal(plan):
         tempfile.gettempdir(), os.path.basename(plan.journal)
     )
     return plan.journal
+
+
+def _afficher_sauvegarde(plan, rapport):
+    """Le dossier de la sauvegarde et son estimation, ou « aucune »."""
+    if not plan.sauvegarde:
+        rapport.champ(t("Backup"), t("none (--no-backup)"))
+        return
+    rapport.champ(t("Backup"), plan.cible.dossier)
+    estimation = plan.estimation
+    rapport.champ(
+        t("Estimate"),
+        t("{needed} needed, {free} free").format(
+            needed=odoo_backup.humain(estimation.besoin),
+            free=odoo_backup.humain(estimation.libre),
+        )
+        if estimation is not None
+        else t("unknown (requires sudo)"),
+    )
 
 
 def afficher_plan(plan, rapport, args=None):
@@ -823,22 +1012,37 @@ def afficher_plan(plan, rapport, args=None):
     )
     rapport.champ(t("Database"), f"{plan.base} ({origine_base})")
     rapport.champ(t("Address"), f"{plan.hote}:{plan.port}")
-    rapport.champ(t("Modules"), ", ".join(plan.modules))
-    if plan.sauvegarde:
-        rapport.champ(t("Backup"), plan.cible.dossier)
-        estimation = plan.estimation
+    if plan.redemarrage_seul:
+        rapport.champ(t("Action"), t("restart only: no -u, no backup"))
+    elif plan.liste:
         rapport.champ(
-            t("Estimate"),
-            t("{needed} needed, {free} free").format(
-                needed=odoo_backup.humain(estimation.besoin),
-                free=odoo_backup.humain(estimation.libre),
-            )
-            if estimation is not None
-            else t("unknown (requires sudo)"),
+            t("Action"),
+            t("apps list update, then removal of the modules without code")
+            if plan.retrait
+            else t("apps list update, Odoo left running"),
         )
     else:
-        rapport.champ(t("Backup"), t("none (--no-backup)"))
-    rapport.champ(t("Log"), plan.journal)
+        rapport.champ(t("Modules"), ", ".join(plan.modules))
+        if plan.i18n_overwrite:
+            rapport.champ(
+                t("Translations"),
+                t("overwritten by the .po files (--i18n-overwrite)"),
+            )
+    # La relance seule et la liste sans retrait ne sauvegardent jamais :
+    # aucune ligne de sauvegarde.
+    if not (plan.redemarrage_seul or (plan.liste and not plan.retrait)):
+        _afficher_sauvegarde(plan, rapport)
+    if args is not None and args.warmup_deep and not plan.liste:
+        rapport.champ(
+            t("Warm-up"),
+            t("deep, then read-only views as {login}").format(
+                login=plan.warmup_login
+            )
+            if plan.warmup_login
+            else t("deep: public pages and asset bundles"),
+        )
+    if plan.journal:
+        rapport.champ(t("Log"), plan.journal)
     if application is not None:
         profil.afficher(application, rapport, t)
     if plan.verification_conf is not None:
@@ -879,63 +1083,40 @@ def creer_dossier_sauvegarde(plan, systeme, rapport):
     return False
 
 
-def simuler(plan, rapport, args):
-    if plan.sauvegarde:
-        for ligne in odoo_backup.commandes_creation(
-            plan.dossiers_a_creer, plan.cible
-        ):
-            rapport.sim(ligne)
-        if plan.cible.creation_sudo:
-            rapport.attn(
-                t(
-                    "Some folders can only be created by root: the real run"
-                    " creates them under sudo."
-                )
+def _simuler_dossiers(plan, rapport):
+    """Les dossiers de sauvegarde à créer, quand il y a une sauvegarde."""
+    if not plan.sauvegarde:
+        return
+    for ligne in odoo_backup.commandes_creation(
+        plan.dossiers_a_creer, plan.cible
+    ):
+        rapport.sim(ligne)
+    if plan.cible.creation_sudo:
+        rapport.attn(
+            t(
+                "Some folders can only be created by root: the real run"
+                " creates them under sudo."
             )
-    rapport.sim(joindre(["systemctl", "stop", "--", plan.unite]))
-    rapport.sim(
-        t(
-            "check that no Odoo process and no PostgreSQL session remain"
-            " on {database}"
-        ).format(database=plan.base)
-        + "  # "
-        + t("refused without --force")
-    )
-    dans_wd = f"cd {shlex.quote(plan.wd)} && "
-    vers_journal = f" >> {shlex.quote(plan.journal)} 2>&1"
-    if plan.sauvegarde:
-        rapport.sim(
-            odoo_backup.decrire(
-                odoo_backup.argv_dump(plan.cible),
-                odoo_backup.variables_pg(plan.cible),
-            )
-            + " → "
-            + os.path.join(plan.cible.dossier, plan.base + "_<date>.zip")
         )
-    rapport.sim(dans_wd + joindre(plan.commande) + vers_journal)
+
+
+def _simuler_dump(plan, rapport):
+    """La commande pg_dump de la sauvegarde et son fichier, s'il y en a
+    une."""
+    if not plan.sauvegarde:
+        return
     rapport.sim(
-        joindre(["systemctl", "start", "--", plan.unite])
-        + "  # "
-        + t("only if it was active")
-    )
-    adresse = f"http://{plan.hote}:{plan.port}"
-    if args.warmup_deep:
-        rapport.sim(
-            t("deep cache warm-up of {url}").format(url=adresse)
-            + "  # "
-            + t("after a verified restart")
+        odoo_backup.decrire(
+            odoo_backup.argv_dump(plan.cible),
+            odoo_backup.variables_pg(plan.cible),
         )
-    rapport.sim(
-        t("health check of {url}").format(url=adresse)
-        + "  # "
-        + t("after a verified restart")
+        + " → "
+        + os.path.join(plan.cible.dossier, plan.base + "_<date>.zip")
     )
-    rapport.sim(
-        t("second read of the Odoo log since the start")
-        + "  # "
-        + t("after a verified restart")
-    )
-    if args.log_keep_days:
+
+
+def _simuler_purge(plan, rapport, args):
+    if args.log_keep_days and plan.journal:
         rapport.sim(
             t(
                 "purge of the update logs of {database} in {path} older than"
@@ -947,6 +1128,100 @@ def simuler(plan, rapport, args):
                 count=JOURNAUX_GARDES,
             )
         )
+
+
+def simuler_liste(plan, rapport, args):
+    """Les commandes de `--update-list` et de `--remove-missing` : le
+    shell de l'unité et son script, la sauvegarde, la question, le second
+    shell. Aucun shell n'est lancé."""
+    shell = f"cd {shlex.quote(plan.wd)} && " + joindre(plan.shell)
+    rapport.sim(shell + " <<'EOF'")
+    for ligne in SCRIPT_LISTE.strip("\n").splitlines():
+        rapport.texte(f"      {ligne}")
+    rapport.texte("      EOF")
+    if plan.retrait:
+        _simuler_dossiers(plan, rapport)
+        _simuler_dump(plan, rapport)
+        rapport.sim(
+            t(
+                "question on the terminal, or --yes, before removing the"
+                " modules not installed and without code"
+            )
+        )
+        # La simulation ne lance aucun shell : les noms candidats ne se
+        # lisent qu'à la première passe réelle, avant la question.
+        rapport.sim(
+            t(
+                "the modules to remove are listed by the first pass, before"
+                " the question: the simulation runs no shell and cannot"
+                " name them"
+            )
+        )
+        rapport.sim(
+            shell
+            + " <<'EOF' … EOF  # "
+            + t("second pass: state and code read again, then removal")
+        )
+    _simuler_purge(plan, rapport, args)
+    rapport.ok(
+        t("Simulation finished: nothing was stopped, written or started.")
+    )
+
+
+def simuler(plan, rapport, args):
+    """Les commandes du geste, sans rien lancer : la mise à jour ou la
+    relance seule ici, la liste par `simuler_liste`."""
+    if plan.liste:
+        simuler_liste(plan, rapport, args)
+        return
+    _simuler_dossiers(plan, rapport)
+    rapport.sim(joindre(["systemctl", "stop", "--", plan.unite]))
+    if plan.redemarrage_seul:
+        controle = t(
+            "check that no Odoo process remains on {database} or on"
+            " {host}:{port}"
+        ).format(database=plan.base, host=plan.hote, port=plan.port)
+    else:
+        controle = t(
+            "check that no Odoo process and no PostgreSQL session remain"
+            " on {database}"
+        ).format(database=plan.base)
+    rapport.sim(controle + "  # " + t("refused without --force"))
+    _simuler_dump(plan, rapport)
+    if plan.commande:
+        rapport.sim(
+            f"cd {shlex.quote(plan.wd)} && "
+            + joindre(plan.commande)
+            + f" >> {shlex.quote(plan.journal)} 2>&1"
+        )
+    # La relance seule démarre aussi une unité arrêtée avant, une fois les
+    # contrôles de l'arrêt passés (`executer`).
+    if plan.redemarrage_seul:
+        quand = t("also when it was stopped, once the stop checks pass")
+    else:
+        quand = t("only if it was active")
+    rapport.sim(
+        joindre(["systemctl", "start", "--", plan.unite]) + "  # " + quand
+    )
+    adresse = f"http://{plan.hote}:{plan.port}"
+    if args.warmup_deep:
+        prechauffage = t("deep cache warm-up of {url}").format(url=adresse)
+        if plan.warmup_login:
+            prechauffage += ", " + t("read-only views as {login}").format(
+                login=plan.warmup_login
+            )
+        rapport.sim(prechauffage + "  # " + t("after a verified restart"))
+    rapport.sim(
+        t("health check of {url}").format(url=adresse)
+        + "  # "
+        + t("after a verified restart")
+    )
+    rapport.sim(
+        t("second read of the Odoo log since the start")
+        + "  # "
+        + t("after a verified restart")
+    )
+    _simuler_purge(plan, rapport, args)
     rapport.ok(
         t("Simulation finished: nothing was stopped, written or started.")
     )
@@ -963,17 +1238,26 @@ def _sauvegarder(plan, systeme, rapport, args):
 
     Elle retire elle-même son fichier provisoire sur tout échec. Un Ctrl-C
     pendant pg_dump arrête pg_dump, puis rend 130 : rien n'a été mis à
-    jour. SIGTERM remonte, comme pendant la mise à jour.
+    jour, ni retiré de la liste des applications. SIGTERM remonte, comme
+    pendant la mise à jour.
     """
     try:
         resultat = odoo_backup.sauvegarder(
             plan.cible, systeme, rapport, args.timeout
         )
     except KeyboardInterrupt:
-        rapport.fail(t("Backup interrupted: nothing was updated."))
+        rapport.fail(
+            t("Backup interrupted: nothing was removed.")
+            if plan.liste
+            else t("Backup interrupted: nothing was updated.")
+        )
         return CODE_INTERROMPU
     if resultat.code != CODE_OK:
-        rapport.fail(t("Backup failed: nothing was updated."))
+        rapport.fail(
+            t("Backup failed: nothing was removed.")
+            if plan.liste
+            else t("Backup failed: nothing was updated.")
+        )
         return CODE_ECHEC
     plan.chemin_sauvegarde = resultat.chemin
     return CODE_OK
@@ -1062,7 +1346,24 @@ def decrire_session(session):
     return ", ".join(morceaux)
 
 
+def lire_versions(plan, systeme):
+    """{nom: version} des modules installés de la base, lu en lecture
+    seule (`postgres.REQUETE_MODULES`). Lève odoo_backup.ErreurPg."""
+    return versions_de(
+        odoo_backup.interroger(
+            plan.cible_pg, systeme, sql=postgres.REQUETE_MODULES
+        )
+    )
+
+
 def _mettre_a_jour(plan, systeme, rapport, args):
+    if plan.versions_avant is None and plan.cible_pg.interrogeable:
+        # `all`, sans sauvegarde : les versions d'avant se lisent ici,
+        # Odoo arrêté. Un échec laisse seulement le tableau sans référence.
+        try:
+            plan.versions_avant = lire_versions(plan, systeme)
+        except odoo_backup.ErreurPg:
+            pass
     debut_journal = odoo_instance.taille(plan.journal)
     debut_logfile = odoo_instance.taille(plan.logfile)
     depart = systeme.maintenant()
@@ -1189,7 +1490,13 @@ def _arreter_et_mettre_a_jour(plan, systeme, rapport, args):
     genes = _genes_apres_arret(plan, systeme)
     for gene in genes:
         rapport.detail(gene)
-    sessions = sessions_restantes(plan, systeme, rapport)
+    # Les sessions restantes ne gênent qu'un `-u` : la relance seule ne
+    # les attend pas.
+    sessions = (
+        []
+        if plan.redemarrage_seul
+        else sessions_restantes(plan, systeme, rapport)
+    )
     for session in sessions:
         rapport.detail(decrire_session(session))
     _noter_duree(plan, systeme, service.N_("stop {duration}"), debut_arret)
@@ -1217,6 +1524,8 @@ def _arreter_et_mettre_a_jour(plan, systeme, rapport, args):
             rapport.attn(
                 t("--force: going on despite the PostgreSQL sessions found.")
             )
+    if plan.redemarrage_seul:
+        return CODE_OK
 
     if plan.sauvegarde:
         rapport.etape(t("Backup of {database}").format(database=plan.base))
@@ -1350,10 +1659,13 @@ def _relancer_quoi_qu_il_arrive(plan, systeme, rapport, args):
 
 
 def executer(plan, systeme, rapport, args):
-    """Arrêt, sauvegarde, mise à jour, puis relance si l'unité tournait.
+    """Arrêt, sauvegarde, mise à jour, puis relance si l'unité tournait ;
+    arrêt et relance seulement avec `plan.redemarrage_seul`.
 
     Rend le code de sortie. La relance est dans un `finally` : exception,
-    Ctrl-C ou SIGTERM, l'unité qui tournait est relancée.
+    Ctrl-C ou SIGTERM, l'unité qui tournait est relancée. La relance seule
+    démarre aussi une unité qui ne tournait pas, quand l'arrêt et ses
+    contrôles ont réussi.
 
     L'état d'avant se lit dans ActiveState. Tout état autre que `inactive`
     ou `failed` compte pour « tournait » (`activating`, `reloading`…) ;
@@ -1370,8 +1682,11 @@ def executer(plan, systeme, rapport, args):
         )
         return CODE_REFUS
     etait_actif = not systemd.est_arrete(etat)
-    apres = 4 + int(args.warmup_deep) if etait_actif else 0
-    rapport.total = 2 + int(plan.sauvegarde) + apres
+    a_relancer = etait_actif or plan.redemarrage_seul
+    apres = 4 + int(args.warmup_deep) if a_relancer else 0
+    # Arrêt, mise à jour : la relance seule n'a que l'arrêt.
+    avant = 1 if plan.redemarrage_seul else 2
+    rapport.total = avant + int(plan.sauvegarde) + apres
     code = CODE_ECHEC
     if etait_actif:
         plan.debut_coupure = systeme.maintenant()
@@ -1393,7 +1708,7 @@ def executer(plan, systeme, rapport, args):
             systeme.arme = False
             liberer = systeme.ignorer_interruptions()
             try:
-                if etait_actif:
+                if etait_actif or (plan.redemarrage_seul and code == CODE_OK):
                     plan.relance_verifiee = _relancer_quoi_qu_il_arrive(
                         plan, systeme, rapport, args
                     )
@@ -1413,6 +1728,216 @@ def executer(plan, systeme, rapport, args):
     return code
 
 
+def _ajouter_au_journal(chemin, texte):
+    """Ajoute `texte` au journal `chemin`, au mieux : un journal qui ne
+    s'écrit pas ne change pas l'issue."""
+    if not chemin or not texte:
+        return
+    try:
+        with open(chemin, "a", encoding="utf-8", errors="replace") as f:
+            f.write(texte if texte.endswith("\n") else texte + "\n")
+    except OSError:
+        pass
+
+
+def _lancer_shell(plan, systeme, rapport, args, source):
+    """`source` dans le shell d'Odoo de l'unité : le bilan JSON (dict), ou
+    None quand le shell dépasse `--timeout` ou ne rend pas de bilan (FAIL
+    écrit). Sa sortie, stderr puis stdout, va au journal. Ctrl-C et
+    SIGTERM arrêtent le groupe du shell puis remontent
+    (`Systeme.shell_odoo`)."""
+    code, sortie, erreurs = systeme.shell_odoo(
+        plan.shell, plan.wd, source, args.timeout
+    )
+    _ajouter_au_journal(plan.journal, (erreurs or "") + (sortie or ""))
+    if code == 124:
+        rapport.fail(
+            t(
+                "The Odoo shell exceeded {seconds} s and was stopped: run"
+                " --update-list again to see what it changed."
+            ).format(seconds=args.timeout)
+        )
+        return None
+    bilan = service.lire_bilan(sortie, DEBUT_JSON, FIN_JSON)
+    if bilan is None:
+        rapport.fail(
+            t("The Odoo shell returned no result (code {code}).").format(
+                code=code
+            )
+        )
+        rapport.extrait(
+            (erreurs or sortie).strip().splitlines()[-LIGNES_DE_FIN:],
+            LIGNES_DE_FIN,
+        )
+    return bilan
+
+
+def _noms(bilan, cle):
+    """Les noms de modules valides (`RE_NOM_MODULE`) de la liste `cle` du
+    bilan, triés et sans doublon."""
+    valeurs = bilan.get(cle) or []
+    if not isinstance(valeurs, list):
+        return []
+    return sorted(
+        {
+            v
+            for v in valeurs
+            if isinstance(v, str) and RE_NOM_MODULE.fullmatch(v)
+        }
+    )
+
+
+def script_retrait(noms):
+    """Le script du second shell pour ces noms, validés par
+    `RE_NOM_MODULE` et insérés par repr()."""
+    noms = [n for n in noms if RE_NOM_MODULE.fullmatch(n)]
+    return "NAMES = " + repr(noms) + "\n" + SCRIPT_RETRAIT
+
+
+def _lister(plan, systeme, rapport, args):
+    """La première passe : (code, noms à retirer). Le rapport donne les
+    comptes d'`update_list()`, les modules non installés sans code, et les
+    modules installés sans code, jamais retirés."""
+    rapport.etape(t("Apps list of {database}").format(database=plan.base))
+    rapport.detail(t("Log: {path}").format(path=plan.journal))
+    bilan = _lancer_shell(plan, systeme, rapport, args, SCRIPT_LISTE)
+    if bilan is None:
+        return CODE_ECHEC, []
+    rapport.ok(
+        t("Apps list updated: {updated} updated, {added} added.").format(
+            updated=bilan.get("updated", "?"), added=bilan.get("added", "?")
+        )
+    )
+    installes = _noms(bilan, "installed_missing")
+    if installes:
+        rapport.attn(
+            t(
+                "{count} installed module(s) without code in the addons_path"
+                " of the service, never removed here: {names}"
+            ).format(count=len(installes), names=", ".join(installes))
+        )
+    absents = _noms(bilan, "missing")
+    if not absents:
+        rapport.ok(t("Every module not installed has its code."))
+        return CODE_OK, []
+    rapport.attn(
+        t(
+            "{count} module(s) not installed and without code in the"
+            " addons_path of the service: {names}"
+        ).format(count=len(absents), names=", ".join(absents))
+    )
+    if not plan.retrait:
+        rapport.detail(t("--remove-missing removes them from the apps list."))
+    return CODE_OK, absents
+
+
+def _retirer(plan, systeme, rapport, args, absents):
+    """La seconde passe, après confirmation (`--yes` ou le terminal) et
+    la sauvegarde : rend le code. Sans terminal ni `--yes`, rien n'est
+    retiré (code 1) ; un refus au terminal n'est pas un échec."""
+    if not args.yes:
+        if not systeme.interactif:
+            rapport.fail(
+                t(
+                    "Nothing removed: no terminal to confirm, re-run with"
+                    " --yes."
+                )
+            )
+            return CODE_ECHEC
+        if not systeme.confirmer(
+            t(
+                "Remove {count} module(s) without code from the apps list of"
+                " {database}? [y/N] "
+            ).format(count=len(absents), database=plan.base)
+        ):
+            rapport.texte("  " + t("Nothing removed."))
+            return CODE_OK
+    if plan.sauvegarde:
+        rapport.etape(t("Backup of {database}").format(database=plan.base))
+        code = _sauvegarder(plan, systeme, rapport, args)
+        if code != CODE_OK:
+            return code
+    rapport.etape(
+        t("Removal of the modules without code from {database}").format(
+            database=plan.base
+        )
+    )
+    bilan = _lancer_shell(
+        plan, systeme, rapport, args, script_retrait(absents)
+    )
+    if bilan is None:
+        if plan.sauvegarde:
+            rapport.detail(
+                t("Backup taken before the removal: {path}").format(
+                    path=plan.chemin_sauvegarde
+                )
+            )
+        return CODE_ECHEC
+    retires = _noms(bilan, "removed")
+    gardes = _noms(bilan, "skipped")
+    if retires:
+        rapport.ok(
+            t("{count} module(s) removed from the apps list: {names}").format(
+                count=len(retires), names=", ".join(retires)
+            )
+        )
+    if gardes:
+        rapport.attn(
+            t(
+                "{count} module(s) kept: installed, or code found, since the"
+                " first pass: {names}"
+            ).format(count=len(gardes), names=", ".join(gardes))
+        )
+    return CODE_OK
+
+
+def mettre_a_jour_liste(plan, systeme, rapport, args):
+    """`--update-list`, puis `--remove-missing` : rend le code de sortie.
+    Odoo n'est pas arrêté. Sous le verrou de la base, signaux armés :
+    Ctrl-C ou SIGTERM arrêtent le shell en cours, puis rendent 130."""
+    # La liste, puis la sauvegarde et le retrait.
+    rapport.total = 1 + (1 + int(plan.sauvegarde) if plan.retrait else 0)
+    restaurer = systeme.proteger_signaux()
+    try:
+        code, absents = _lister(plan, systeme, rapport, args)
+        if code == CODE_OK and plan.retrait and absents:
+            code = _retirer(plan, systeme, rapport, args, absents)
+    except (KeyboardInterrupt, Interruption):
+        systeme.arme = False
+        rapport.fail(
+            t("Interrupted: run --update-list again to see what was changed.")
+        )
+        code = CODE_INTERROMPU
+    finally:
+        systeme.arme = False
+        restaurer()
+    return code
+
+
+def _cle_pour_l_unite_seule(plan, systeme, rapport):
+    """Retire `plan.cle_warmup` quand le port de l'instance n'est pas tenu
+    par root ou le compte de l'unité seuls (`_comptes_de_l_instance`) :
+    un autre compte local qui écoute sur le port libéré par l'arrêt, et
+    que l'unité relancée n'a pas pu reprendre, recevrait sinon le login
+    et la clé d'API. Aucune écoute lisible retire aussi la clé. Un ATTN
+    le dit ; le préchauffage se fait alors sans les vues."""
+    if not plan.cle_warmup:
+        return
+    try:
+        uids = systeme.uids_a_l_ecoute(plan.port)
+    except Exception:  # noqa: BLE001 - une lecture ratée retire la clé
+        uids = set()
+    if uids and uids <= _comptes_de_l_instance(plan, systeme):
+        return
+    plan.cle_warmup = None
+    rapport.attn(
+        t(
+            "{host}:{port} is not shown as held by root or the account of"
+            " {unit}: the API key is not sent, the views are not warmed up."
+        ).format(host=plan.hote, port=plan.port, unit=plan.unite)
+    )
+
+
 def verifier_apres_relance(plan, systeme, rapport, args):
     """Préchauffage profond (`--warmup-deep`), santé de l'instance
     relancée, puis seconde lecture du journal (`relire_le_journal`).
@@ -1424,6 +1949,7 @@ def verifier_apres_relance(plan, systeme, rapport, args):
         rapport.etape(t("Deep cache warm-up"))
         debut = systeme.maintenant()
         try:
+            _cle_pour_l_unite_seule(plan, systeme, rapport)
             bilan = systeme.prechauffer(plan)
             resume = t(
                 "{pages} page(s), {assets} asset bundle(s) in {seconds} s."
@@ -1432,6 +1958,10 @@ def verifier_apres_relance(plan, systeme, rapport, args):
                 assets=bilan.assets,
                 seconds=f"{bilan.duree:.1f}",
             )
+            if bilan.connexion == "ok":
+                resume += " " + t(
+                    "{count} read-only call(s) as {login}."
+                ).format(count=bilan.rpc, login=plan.warmup_login)
             if bilan.echecs:
                 rapport.attn(
                     resume
@@ -1620,12 +2150,118 @@ def purger_journaux(plan, systeme, rapport, args):
         )
 
 
+def difference_versions(avant, apres):
+    """(mis à jour, nouveaux, désinstallés, inchangés) entre deux
+    {nom: version} : [(nom, avant, après)] des versions qui diffèrent —
+    une version d'avant inconnue (None) compte comme différente —,
+    [(nom, après)] des modules installés après seulement, [(nom, avant)]
+    de ceux installés avant seulement, et le nombre de modules à la même
+    version. Fonction pure, listes triées par nom."""
+    mis_a_jour = [
+        (nom, avant[nom], apres[nom])
+        for nom in sorted(apres)
+        if nom in avant and (avant[nom] is None or avant[nom] != apres[nom])
+    ]
+    nouveaux = [(nom, apres[nom]) for nom in sorted(apres) if nom not in avant]
+    partis = [(nom, avant[nom]) for nom in sorted(avant) if nom not in apres]
+    inchanges = sum(
+        1
+        for nom, version in apres.items()
+        if nom in avant and version is not None and avant[nom] == version
+    )
+    return mis_a_jour, nouveaux, partis, inchanges
+
+
+def lignes_versions(avant, apres):
+    """Les lignes du tableau des versions : `nom  avant → après`, les
+    modules mis à jour, puis les nouveaux (`—` avant), puis ceux qui ne
+    sont plus installés (`—` après) ; une version inconnue s'écrit `?`.
+    Les noms sont alignés."""
+    mis_a_jour, nouveaux, partis, _inchanges = difference_versions(
+        avant, apres
+    )
+    rangees = [(nom, a or "?", b or "?") for nom, a, b in mis_a_jour]
+    rangees += [(nom, "—", b or "?") for nom, b in nouveaux]
+    rangees += [(nom, a or "?", "—") for nom, a in partis]
+    largeur = max([len(nom) for nom, _a, _b in rangees] or [0])
+    return [f"{nom:<{largeur}}  {a} → {b}" for nom, a, b in rangees]
+
+
+def lire_versions_apres(plan, systeme):
+    """Après une mise à jour réussie : `plan.versions_apres`, ou la
+    raison de l'échec de la lecture dans `plan.erreur_versions`. Ne lève
+    pas : le tableau n'est qu'un constat."""
+    try:
+        plan.versions_apres = lire_versions(plan, systeme)
+    except odoo_backup.ErreurPg as err:
+        plan.erreur_versions = str(err)
+    except Exception as err:  # noqa: BLE001 - le rapport doit finir
+        plan.erreur_versions = str(err) or type(err).__name__
+
+
+def afficher_versions(plan, rapport):
+    """Le tableau des versions avant et après la mise à jour : une ligne
+    de comptes, puis LIGNES_VERSIONS lignes au plus (`lignes_versions`).
+    Une lecture manquante le dit par un ATTN ; rien sans seconde
+    lecture tentée."""
+    if plan.versions_apres is None:
+        if plan.erreur_versions:
+            rapport.attn(
+                t("Module versions after the update not read: {error}").format(
+                    error=plan.erreur_versions
+                )
+            )
+        return
+    if plan.versions_avant is None:
+        rapport.attn(
+            t("Module versions before the update unknown: no comparison.")
+        )
+        return
+    mis_a_jour, nouveaux, partis, inchanges = difference_versions(
+        plan.versions_avant, plan.versions_apres
+    )
+    rapport.champ(
+        t("Versions"),
+        t(
+            "{updated} updated, {new} new, {removed} no longer installed,"
+            " {unchanged} unchanged"
+        ).format(
+            updated=len(mis_a_jour),
+            new=len(nouveaux),
+            removed=len(partis),
+            unchanged=inchanges,
+        ),
+    )
+    lignes = lignes_versions(plan.versions_avant, plan.versions_apres)
+    for ligne in lignes[:LIGNES_VERSIONS]:
+        rapport.detail(ligne)
+    if len(lignes) > LIGNES_VERSIONS:
+        rapport.detail(
+            t("… and {count} more").format(count=len(lignes) - LIGNES_VERSIONS)
+        )
+
+
 def conclure(plan, rapport, code):
-    """Les durées (`resumer_durees`), puis la dernière ligne du rapport :
-    réussite ou échec de la mise à jour. La réussite nomme les modules
-    que `-u` a mis à jour, ceux que la base n'a pas installés exclus."""
+    """Les durées (`resumer_durees`), le tableau des versions après une
+    mise à jour réussie (`afficher_versions`), puis la dernière ligne du
+    rapport : réussite ou échec du geste. La réussite d'une mise à jour
+    nomme les modules que `-u` a mis à jour, ceux que la base n'a pas
+    installés exclus."""
     resumer_durees(plan, rapport)
+    if plan.liste:
+        if code == CODE_OK:
+            rapport.ok(t("Apps list update finished."))
+        elif code == CODE_ECHEC:
+            rapport.fail(t("Apps list update failed."))
+        return
+    if plan.redemarrage_seul:
+        if code == CODE_OK:
+            rapport.ok(t("Restart finished."))
+        elif code == CODE_ECHEC:
+            rapport.fail(t("Restart failed."))
+        return
     if code == CODE_OK:
+        afficher_versions(plan, rapport)
         rapport.ok(
             t("Update finished: {modules}").format(
                 modules=",".join(modules_mis_a_jour(plan))
@@ -1673,11 +2309,52 @@ def construire_parseur():
         dest="modules",
         action="append",
         type=_type_motifs,
-        required=True,
         help=t(
             "Module(s) to update; repeatable, commas allowed, * and ?"
-            " patterns, or 'all'."
+            " patterns, or 'all'. Required, except with --restart-only or"
+            " --update-list."
         ),
+    )
+    parser.add_argument(
+        "--i18n-overwrite",
+        action="store_true",
+        help=t(
+            "Pass --i18n-overwrite to -u: the translations of the .po files"
+            " of the updated modules replace those of the database, edited"
+            " ones included."
+        ),
+    )
+    parser.add_argument(
+        "--restart-only",
+        action="store_true",
+        help=t(
+            "Restart the service with the guards of an update (lock, stop"
+            " and start checks, warm-up, health, journal), without -u and"
+            " without backup; no --module."
+        ),
+    )
+    parser.add_argument(
+        "--update-list",
+        action="store_true",
+        help=t(
+            "Update the apps list through an Odoo shell built from the"
+            " unit's ExecStart, Odoo left running, then list the modules"
+            " not installed whose code is missing; no --module."
+        ),
+    )
+    parser.add_argument(
+        "--remove-missing",
+        action="store_true",
+        help=t(
+            "Implies --update-list: remove from the apps list the modules"
+            " not installed whose code is missing, after a backup (unless"
+            " --no-backup) and a confirmation on the terminal or --yes."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help=t("Confirm --remove-missing without asking."),
     )
     parser.add_argument(
         "--service",
@@ -1774,6 +2451,20 @@ def construire_parseur():
         ),
     )
     parser.add_argument(
+        "--warmup-login",
+        help=t(
+            "With --warmup-deep: Odoo login whose API key warms up the"
+            " read-only views; goes with --warmup-key-file."
+        ),
+    )
+    parser.add_argument(
+        "--warmup-key-file",
+        help=t(
+            "File holding the Odoo API key of --warmup-login (never on"
+            " argv); read before anything is stopped."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help=t("Detect and show the commands; stop, write or start nothing."),
@@ -1788,10 +2479,45 @@ def construire_parseur():
 
 
 def valider(parser, args):
-    """Contrôles d'après analyse, profil déjà posé : aplatit
-    `args.modules` et refuse `all` mêlé à d'autres modules (code 2, par
-    `parser.error`)."""
-    args.modules = [m for groupe in args.modules for m in groupe]
+    """Contrôles d'après analyse, profil déjà posé, refus par
+    `parser.error` (code 2) : `--remove-missing` pose `--update-list` ;
+    `--restart-only` et `--update-list` s'excluent et ne prennent pas de
+    `--module`, qu'exige sinon la mise à jour ; `--i18n-overwrite` ne va
+    qu'avec elle, `--yes` qu'avec `--remove-missing` ; `--warmup-login`
+    et `--warmup-key-file` vont ensemble. Aplatit `args.modules` et refuse
+    `all` mêlé à d'autres modules."""
+    if args.remove_missing:
+        args.update_list = True
+    gestes = []
+    if args.restart_only:
+        gestes.append("--restart-only")
+    if args.update_list:
+        gestes.append(
+            "--remove-missing" if args.remove_missing else "--update-list"
+        )
+    if len(gestes) > 1:
+        parser.error(
+            t("{first} and {second} exclude each other.").format(
+                first=gestes[0], second=gestes[1]
+            )
+        )
+    groupes = args.modules or []
+    if gestes and groupes:
+        parser.error(t("{option} takes no --module.").format(option=gestes[0]))
+    if not gestes and not groupes:
+        parser.error(
+            t(
+                "--module is required, except with --restart-only or"
+                " --update-list."
+            )
+        )
+    if gestes and args.i18n_overwrite:
+        parser.error(t("--i18n-overwrite goes with an update: give --module."))
+    if args.yes and not args.remove_missing:
+        parser.error(t("--yes only confirms --remove-missing."))
+    if bool(args.warmup_login) != bool(args.warmup_key_file):
+        parser.error(t("--warmup-login and --warmup-key-file go together."))
+    args.modules = [m for groupe in groupes for m in groupe]
     if "all" in args.modules and len(args.modules) > 1:
         parser.error(t("'all' cannot be combined with other modules."))
 
@@ -1814,6 +2540,50 @@ def analyser(argv=None, lanceur=None):
     )
     valider(parser, args)
     return args
+
+
+def preparer_prechauffage(plan, args, rapport, reel):
+    """Lit la clé d'API de `--warmup-key-file` dans `plan.cle_warmup`,
+    avant tout arrêt ; rend False quand l'exécution réelle doit refuser
+    (code 2). Sans `--warmup-deep` et un login, rien n'est lu.
+
+    Un fichier illisible refuse l'exécution réelle et n'est qu'un ATTN en
+    simulation, lancée sous un autre compte ; un fichier lisible par
+    d'autres comptes est un ATTN, sauf le credential de l'unité, dont
+    systemd tient le dossier. La clé ne part que vers la boucle locale
+    (`warmup_http.chiffree_ou_locale`) : sinon les vues ne sont pas
+    préchauffées, et un ATTN le dit. La clé n'est jamais affichée."""
+    if not plan.warmup_login or not args.warmup_key_file:
+        return True
+    chemin = args.warmup_key_file
+    application = getattr(args, "profil", None)
+    origine = application.origine("warmup_key_file") if application else ""
+    try:
+        cle, ouverte = warmup_http.lire_cle(chemin)
+    except (OSError, ValueError):
+        message = t("Cannot read the API key from {path}.").format(path=chemin)
+        if reel:
+            rapport.erreur(message + " " + t("Nothing was stopped."))
+            return False
+        rapport.attn(message)
+        return True
+    if ouverte and origine != "systemd":
+        rapport.attn(
+            t("{path} is readable by other accounts: chmod 600 it.").format(
+                path=chemin
+            )
+        )
+    adresse = f"http://{plan.hote}:{plan.port}"
+    if not warmup_http.chiffree_ou_locale(adresse):
+        rapport.attn(
+            t(
+                "The API key is not sent over plain http:// to {url}: the"
+                " views are not warmed up."
+            ).format(url=adresse)
+        )
+        return True
+    plan.cle_warmup = cle
+    return True
 
 
 def main(argv=None, systeme=None, rapport=None):
@@ -1839,10 +2609,13 @@ def main(argv=None, systeme=None, rapport=None):
         return CODE_INTERROMPU
     afficher_plan(plan, rapport, args)
     if args.dry_run:
+        preparer_prechauffage(plan, args, rapport, reel=False)
         simuler(plan, rapport, args)
         return CODE_OK
     if systeme.euid() != 0:
         rapport.erreur(t("Root is required (sudo), except with --dry-run."))
+        return CODE_REFUS
+    if not preparer_prechauffage(plan, args, rapport, reel=True):
         return CODE_REFUS
     # Construit dans le `try` : un verrou partagé dont le dossier manque
     # lève dès sa construction (voir lock.Verrou).
@@ -1863,12 +2636,18 @@ def main(argv=None, systeme=None, rapport=None):
         preparer_journal(plan)
         if not creer_dossier_sauvegarde(plan, systeme, rapport):
             return CODE_REFUS
-        code = executer(plan, systeme, rapport, args)
+        if plan.liste:
+            code = mettre_a_jour_liste(plan, systeme, rapport, args)
+        else:
+            code = executer(plan, systeme, rapport, args)
     finally:
         verrou.relacher()
     if code == CODE_OK and plan.relance_verifiee:
         verifier_apres_relance(plan, systeme, rapport, args)
-    purger_journaux(plan, systeme, rapport, args)
+    if code == CODE_OK and plan.commande:
+        lire_versions_apres(plan, systeme)
+    if plan.journal:
+        purger_journaux(plan, systeme, rapport, args)
     conclure(plan, rapport, code)
     return code
 

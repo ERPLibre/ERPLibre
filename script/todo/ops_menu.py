@@ -35,6 +35,11 @@ Tout ce qui écrit passe par deux temps :
    porte `--profile-sha256` : l'outil refuse un profil modifié depuis la
    simulation.
 
+La relance seule, la liste des applications et le retrait des modules
+sans code passent par `update_module.py` et ces deux temps aussi. Le
+retrait n'est jamais confirmé d'avance : l'exécution réelle, sans
+`--yes`, liste les modules puis demande au terminal.
+
 Une simulation qui refuse (code non nul) arrête là : il n'y a rien à
 confirmer. L'état des sauvegardes, le journal d'Odoo, la liste des
 courriels en échec, la santé de l'instance locale, le préchauffage et la
@@ -131,7 +136,9 @@ def _empreinte(commande):
 
 
 def _a_des_secrets(groupe):
-    return any(g == groupe for g, _cle in profil.SECRETS)
+    """Vrai quand l'outil `groupe` lit un secret, le sien ou celui d'un
+    autre groupe par un alias (`profil.secrets_du_groupe`)."""
+    return bool(profil.secrets_du_groupe(groupe))
 
 
 class OpsMenuMixin:
@@ -209,6 +216,24 @@ class OpsMenuMixin:
                     "Simulate only - show what an update would do"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Restart only - same guards, no update and no backup;"
+                    " simulate, confirm, then run with sudo"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Update the apps list - Odoo keeps running; simulate,"
+                    " confirm, then run with sudo"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Remove the modules without code from the apps list -"
+                    " simulate, confirm, back up, then choose with sudo"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -220,6 +245,12 @@ class OpsMenuMixin:
                 self._ops_update_modules()
             elif status == "2":
                 self._ops_simulate_modules()
+            elif status == "3":
+                self._ops_restart_only()
+            elif status == "4":
+                self._ops_update_list()
+            elif status == "5":
+                self._ops_remove_missing()
             else:
                 print(t("Command not found !"))
 
@@ -552,7 +583,13 @@ class OpsMenuMixin:
         return "\n".join(lignes)
 
     def _ops_lancer(
-        self, groupe, args, question, simulation_seule=False, forme="option"
+        self,
+        groupe,
+        args,
+        question,
+        simulation_seule=False,
+        forme="option",
+        avec_secrets=True,
     ):
         """Simulation (`--dry-run`), confirmation, puis exécution réelle
         sous sudo par `lancer_au_terminal`, avec `--profile-sha256` quand
@@ -560,7 +597,8 @@ class OpsMenuMixin:
         Les valeurs saisies sont transmises telles quelles : l'outil les
         valide et refuse avant d'agir. Les secrets du profil passent par
         un fichier temporaire, sous la forme `forme` de
-        `fichiers_secrets`."""
+        `fichiers_secrets` ; `avec_secrets` faux n'en lit aucun, pour un
+        geste qui ne s'en sert pas."""
         commande = self._ops_commande(groupe, args)
         # L'empreinte est prise avant la simulation : un profil modifié
         # ensuite fait refuser l'exécution réelle.
@@ -577,7 +615,12 @@ class OpsMenuMixin:
             return False
         if not click.confirm(self._ops_question(groupe, question, args)):
             return False
-        with self._ops_secrets(groupe, args, forme=forme) as fournis:
+        secrets = (
+            self._ops_secrets(groupe, args, forme=forme)
+            if avec_secrets
+            else contextlib.nullcontext(ops_settings.SecretsFournis())
+        )
+        with secrets as fournis:
             if fournis.abandon:
                 return False
             reelle = ["sudo"] + commande + fournis.argv
@@ -681,9 +724,11 @@ class OpsMenuMixin:
         """Les arguments d'update_module.py tirés des réponses, ou None.
 
         Modules exigés ; base vide = celle du profil ou celle que le
-        programme détecte ; sauvegarde par défaut. Les valeurs sont
-        transmises telles quelles : update_module.py les valide et refuse
-        avant d'arrêter quoi que ce soit.
+        programme détecte ; sauvegarde par défaut ; traductions gardées
+        par défaut (`--i18n-overwrite` sur oui) ; préchauffage profond par
+        défaut (`_ops_warmup_arguments`). Les valeurs sont transmises
+        telles quelles : update_module.py les valide et refuse avant
+        d'arrêter quoi que ce soit.
         """
         modules = input(
             t("Modules to update (commas, * and ? patterns, or all): ")
@@ -698,7 +743,30 @@ class OpsMenuMixin:
         args = ["--module", modules] + base
         if not sauvegarde:
             args.append("--no-backup")
-        return args
+        if self._is_yes(
+            input(
+                t(
+                    "Replace the translations of the database with those of"
+                    " the .po files (--i18n-overwrite)? [y/N] "
+                )
+            )
+        ):
+            args.append("--i18n-overwrite")
+        return args + self._ops_warmup_arguments()
+
+    def _ops_warmup_arguments(self):
+        """Le préchauffage profond après la relance, oui par défaut :
+        `--warmup-deep` sur oui quand le profil ne le pose pas déjà, et
+        `--profile-unset warmup_deep` sur non quand il le pose. Le login
+        et la clé d'API du groupe `warmup` du profil suivent ; la clé
+        passe par un fichier 0600 (`_ops_lancer`)."""
+        du_profil = self._ops_valeur("update_module", "warmup_deep") is True
+        oui = self._is_yes_default_yes(
+            input(t("Deep warm-up after the restart? [Y/n] "))
+        )
+        if oui:
+            return [] if du_profil else ["--warmup-deep"]
+        return ["--profile-unset", "warmup_deep"] if du_profil else []
 
     def _ops_simulate_modules(self):
         """La simulation seule : jamais d'exécution réelle ni de sudo.
@@ -718,6 +786,66 @@ class OpsMenuMixin:
             args,
             t("Run this update for real? The service stops meanwhile."),
             simulation_seule=simulation_seule,
+            avec_secrets=self._ops_prechauffe(args),
+        )
+
+    def _ops_prechauffe(self, args):
+        """Vrai quand update_module.py préchauffera en profondeur avec ces
+        `args` : `--warmup-deep`, ou le profil sans `--profile-unset`.
+        Sinon la clé d'API du profil n'est pas lue : elle ne servirait
+        pas."""
+        if "--warmup-deep" in args:
+            return True
+        return (
+            self._ops_valeur("update_module", "warmup_deep") is True
+            and "--profile-unset" not in args
+        )
+
+    def _ops_restart_only(self):
+        """La relance seule : mêmes garde-fous qu'une mise à jour, sans
+        `-u` ni sauvegarde. Simulation, accord, puis sudo."""
+        args = (
+            ["--restart-only"]
+            + self._ops_base("update_module")
+            + self._ops_warmup_arguments()
+        )
+        self._ops_lancer(
+            "update_module",
+            args,
+            t("Restart the service for real? It stops meanwhile."),
+            avec_secrets=self._ops_prechauffe(args),
+        )
+
+    def _ops_update_list(self):
+        """La liste des applications, Odoo en marche : simulation, accord,
+        puis sudo. Les modules sans code sont listés, jamais retirés."""
+        self._ops_lancer(
+            "update_module",
+            ["--update-list"] + self._ops_base("update_module"),
+            t("Update the apps list now? Odoo keeps running."),
+            avec_secrets=False,
+        )
+
+    def _ops_remove_missing(self):
+        """Le retrait des modules sans code : simulation, accord, puis
+        sudo SANS `--yes` — l'outil liste les modules et demande au
+        terminal avant de retirer quoi que ce soit. Sauvegarde par
+        défaut."""
+        base = self._ops_base("update_module")
+        sauvegarde = self._is_yes_default_yes(
+            input(t("Back up the database before the removal? [Y/n] "))
+        )
+        args = ["--remove-missing"] + base
+        if not sauvegarde:
+            args.append("--no-backup")
+        self._ops_lancer(
+            "update_module",
+            args,
+            t(
+                "Update the apps list, then choose on the terminal whether"
+                " to remove the modules without code?"
+            ),
+            avec_secrets=False,
         )
 
     # -- Sauvegardes -----------------------------------------------------

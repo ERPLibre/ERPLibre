@@ -426,6 +426,35 @@ def uid_processus(pid, racine="/proc"):
         return None
 
 
+# État LISTEN d'une socket dans /proc/net/tcp et tcp6 (colonne `st`).
+ETAT_LISTEN = "0A"
+
+
+def uids_a_l_ecoute(port, racine="/proc"):
+    """Les uid des sockets TCP en écoute sur `port`, IPv4 et IPv6, lus dans
+    `net/tcp` et `net/tcp6` sous `racine` (espace réseau du processus
+    courant). Un fichier illisible ne compte pas : rien de lisible rend un
+    ensemble vide."""
+    uids = set()
+    for nom in ("tcp", "tcp6"):
+        try:
+            with open(os.path.join(racine, "net", nom)) as f:
+                lignes = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for ligne in lignes:
+            colonnes = ligne.split()
+            if len(colonnes) < 8 or colonnes[3] != ETAT_LISTEN:
+                continue
+            _adresse, _sep, port_hex = colonnes[1].rpartition(":")
+            try:
+                if int(port_hex, 16) == port:
+                    uids.add(int(colonnes[7]))
+            except ValueError:
+                continue
+    return uids
+
+
 def processus_odoo(base, processus, exclus=()):
     """Les processus de `processus` qui lancent Odoo sur `base`.
 

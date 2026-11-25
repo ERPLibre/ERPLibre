@@ -765,21 +765,68 @@ def purger_secrets_restants(environ=None):
     return retires
 
 
-def options_secretes(groupe):
-    """{clé: option} des champs secrets du groupe."""
-    cles = [cle for (g, cle) in profil.SECRETS if g == groupe]
-    if not cles:
-        return {}
+def _options_du_groupe(groupe):
+    """{dest: option} de toutes les actions du parser de l'outil
+    `groupe`."""
     parser = construire_parseurs((groupe,))[groupe]
-    return {
-        champ.cle: champ.option
-        for champ in profil.champs(parser, groupe)
-        if champ.cle in cles
-    }
+    return {action.dest: profil.option(action) for action in parser._actions}
 
 
 def _sur_la_ligne(option, argv):
     return any(a == option or a.startswith(option + "=") for a in argv)
+
+
+def _retires_par_unset(argv):
+    """Les `dest` que `--profile-unset NOM` (ou `=NOM`) retire sur
+    `argv`."""
+    retires = set()
+    for i, morceau in enumerate(argv):
+        if morceau.startswith("--profile-unset="):
+            nom = morceau.split("=", 1)[1]
+        elif morceau == "--profile-unset" and i + 1 < len(argv):
+            nom = argv[i + 1]
+        else:
+            continue
+        retires.add(nom.strip().lstrip("-").replace("-", "_"))
+    return retires
+
+
+def _dest_du_champ(groupe, champ):
+    """La `dest` par laquelle l'outil `groupe` lit le champ `champ`
+    ((groupe, clé)) du profil : son propre champ, ou un alias ; None s'il
+    ne le lit pas."""
+    if champ[0] == groupe and champ[1] in profil.CHAMPS.get(groupe, ()):
+        return champ[1]
+    for dest, cible in profil.ALIAS.get(groupe, {}).items():
+        if cible == champ:
+            return dest
+    return None
+
+
+def _dependance_effective(doc, groupe, champ, args_lancement, options):
+    """Vrai quand la dépendance du champ secret `champ`
+    (`profil.DEPENDANCES`) atteindra l'outil `groupe` : sur
+    `args_lancement`, ou dans le profil `doc` sans `--profile-unset`.
+    Un champ sans dépendance, ou dont l'outil ne lit pas la dépendance,
+    l'est toujours. Une dépendance rangée dans KeePass ne compte que si
+    elle est elle-même un secret résolu ici."""
+    dependance = profil.DEPENDANCES.get(champ)
+    if dependance is None:
+        return True
+    dest = _dest_du_champ(groupe, dependance)
+    if dest is None:
+        return True
+    option = options.get(dest)
+    if option and _sur_la_ligne(option, args_lancement):
+        return True
+    if dest in _retires_par_unset(args_lancement):
+        return False
+    brut = ((doc or {}).get(dependance[0]) or {}).get(dependance[1])
+    if brut is None or brut is False or brut == "":
+        return False
+    if isinstance(brut, dict):
+        return dependance in profil.SECRETS
+    return True
 
 
 @contextlib.contextmanager
@@ -793,34 +840,44 @@ def fichiers_secrets(
     environ=None,
 ):
     """Rend un `SecretsFournis` dont `argv` passe à l'outil `groupe` les
-    secrets du profil `doc` rangés dans KeePass et absents de
-    `args_lancement`.
+    secrets du profil `doc` qu'il lit — les siens, ou ceux d'un autre
+    groupe par un alias (`profil.secrets_du_groupe`) —, rangés dans
+    KeePass et absents de `args_lancement`.
 
     Chaque secret est lu par `coffre` (un `SecretStore`, ou une fonction
     qui le rend, appelée seulement s'il y a un secret à lire), écrit dans
     un fichier 0600 (`O_EXCL`, `O_NOFOLLOW`) d'un dossier `mkdtemp` du
-    tmpfs de `dossier_tmpfs`, et seul son chemin va sur argv :
-    `--api-key-file CHEMIN`, ou `--credential NOM=CHEMIN` avec `forme`
-    "credential". Le dossier est retiré à la sortie du bloc, exception et
+    tmpfs de `dossier_tmpfs`, et seul son chemin va sur argv, derrière
+    l'option du secret dans l'outil (`--api-key-file CHEMIN`,
+    `--warmup-key-file CHEMIN`), ou `--credential NOM=CHEMIN` avec
+    `forme` "credential". Le dossier est retiré à la sortie du bloc, exception et
     Ctrl-C compris, et `atexit` en est le filet. Le bloc englobe toutes
     les tentatives d'un même geste, reprise sous sudo comprise.
 
     En `simulation`, aucun fichier n'est créé. Sans coffre, sans tmpfs ou
     sans valeur, le secret va dans `manquants` : l'outil écarte alors ses
-    dépendants lui-même. Un secret donné par chemin absolu dans le profil
+    dépendants lui-même. Un secret dont la dépendance
+    (`profil.DEPENDANCES`) n'atteindra pas l'outil
+    (`_dependance_effective`) n'est ni lu ni passé : l'outil refuserait
+    la paire incomplète. Un secret donné par chemin absolu dans le profil
     est lu par l'outil et n'est pas traité ici."""
     fournis = SecretsFournis()
     a_resoudre = []
-    valeurs = (doc or {}).get(groupe) or {}
     options = None
-    for (groupe_secret, cle), nom in profil.SECRETS.items():
-        brut = valeurs.get(cle)
-        if groupe_secret != groupe or not isinstance(brut, dict):
+    for dest, cible, nom in profil.secrets_du_groupe(groupe):
+        brut = valeur_du_groupe(doc, groupe, dest)
+        if not isinstance(brut, dict):
             continue
         if options is None:
-            options = options_secretes(groupe)
-        option = options.get(cle)
+            options = _options_du_groupe(groupe)
+        option = options.get(dest)
         if option is None or _sur_la_ligne(option, args_lancement):
+            continue
+        # Seul, le secret ferait refuser la paire à l'outil : il n'est
+        # ni lu ni passé, comme le profil écarte un dépendant.
+        if not _dependance_effective(
+            doc, groupe, cible, args_lancement, options
+        ):
             continue
         a_resoudre.append((nom, option, brut.get("kdbx")))
     if not a_resoudre:

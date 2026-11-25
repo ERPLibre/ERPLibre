@@ -16,10 +16,16 @@
 ```bash
 ./script/odoo/update_module.py --module my_module_a --dry-run
 sudo ./script/odoo/update_module.py --module 'my_module_*' --db demo_db
+sudo ./script/odoo/update_module.py --module my_module_a --i18n-overwrite
+sudo ./script/odoo/update_module.py --restart-only --warmup-deep
+sudo ./script/odoo/update_module.py --update-list
+sudo ./script/odoo/update_module.py --remove-missing
 ```
 
 It is also reachable from `make todo`: `TODO › Execute › Production ›
-Update`, which runs the simulation first and asks before the real run.
+Update`, which runs the simulation first and asks before the real run;
+its entries 3 to 5 are the restart only, the apps list update and the
+removal of the modules without code.
 
 What it does, in order:
 
@@ -73,7 +79,10 @@ What it does, in order:
    does.
 5. **Update**: the unit's command line followed by `-c CONFIG -d DB -u
    MODULES --stop-after-init --no-http --workers=0 --max-cron-threads=0
-   --limit-memory-hard=0 --log-level=info`, as the unit's account — the
+   --limit-memory-hard=0 --log-level=info`, then `--i18n-overwrite` when
+   given (the translations of the modules' `.po` files
+   replace those of the database, edited ones included), as the unit's
+   account — the
    repeated `-c` keeps the update on the file the detection and the
    backup read (`--odoo-conf` included). Odoo keeps the last value of an
    option: the server's memory limit (2560 MiB by default) cannot stop a
@@ -88,8 +97,11 @@ What it does, in order:
    (`--start-wait`), one HTTP request, then the unit's journal and the
    `logfile` are read since the start.
 7. **After a verified restart**, lock released: with `--warmup-deep`, the
-   deep warm-up of `warmup_http.py` (public pages and asset bundles, no
-   key), then the health check of the local instance (`health_check.py`),
+   deep warm-up of `warmup_http.py` (public pages and asset bundles; with
+   `--warmup-login` and `--warmup-key-file`, the read-only views too, the
+   key read before anything is stopped — an unreadable file refuses with
+   code 2 — and sent only to the loopback address, when root or the
+   unit's account alone listens on the port), then the health check of the local instance (`health_check.py`),
    then a second read of the unit's journal and of the `logfile` since the
    same start, after 2 s for journald: an error raised by the first
    rendering of an updated view shows only then. Their findings are
@@ -97,7 +109,37 @@ What it does, in order:
    only stops that step.
 8. **End of the report**: the duration of each phase (stop, backup,
    update, start, first answer, warm-up, health check), then how long the
-   site stayed down, from the stop to the first HTTP answer below 500.
+   site stayed down, from the stop to the first HTTP answer below 500,
+   then, after a success, the version table: the installed modules read
+   before the update (by the detection, else just before `-u`) and again
+   after the restart, with one line per module updated, newly installed
+   or no longer installed, and the count of unchanged ones.
+
+**Restart only.** `--restart-only` (no `--module`) restarts the unit with
+the guards of an update: lock, verified stop, refusal when an Odoo still
+holds the database or the port outside the unit (unless `--force`),
+verified start, warm-up, health check and journal. No `-u`, no backup, no
+update log; the PostgreSQL sessions are not waited for, they only matter
+to a `-u`. A unit that was stopped is started.
+
+**Apps list.** `--update-list` (no `--module`) does what Apps › Update Apps
+List does, Odoo left running: an `odoo shell` built from the unit's
+`ExecStart` — `./odoo_bin.sh shell` behind `run.sh`, `shell` right after
+`odoo-bin` otherwise, the unit's options such as `--addons-path` kept and
+its database removed, then `-c CONFIG -d DB --no-http --workers=0
+--max-cron-threads=0` — runs as the unit's account and reads a script on
+its standard input: `update_list()`, commit, then the modules not
+installed whose code is missing from that addons_path, and the installed
+ones in that case (an ATTN, never removed). The database lock is held,
+`--timeout` bounds each shell, and the shell's output goes to the update
+log. An `ExecStart` that names no launcher, or a missing `odoo_bin.sh`,
+refuses with code 2. `--remove-missing` implies it: after a backup (unless
+`--no-backup`) and a `[y/N]` question on the terminal, or `--yes`, a
+second shell removes the modules of the first pass that are still
+`uninstalled` or `uninstallable` and still without code, with their
+`base.module_<name>` record, then commits. Without a terminal and without
+`--yes`, nothing is removed (code 1). `--dry-run` shows the shell, its
+script and the planned steps without running any shell.
 
 The unit is never modified: the tool only reads it and runs `systemctl
 stop` / `start`. Whatever happens after the stop — failure, exception,
@@ -108,7 +150,7 @@ restore decided by a person.
 | Code | Meaning |
 |------|---------|
 | 0 | success (or simulation) |
-| 1 | update failed, service restarted |
+| 1 | update, restart or apps list failed, service restarted |
 | 2 | refused before anything was stopped |
 | 75 | another update or backup of this database is running |
 | 130 | interrupted, service restarted |
@@ -123,25 +165,30 @@ removed.
 profile: `--profile FILE`, else `private/production/<unit>.json` of this
 checkout (the unit given by `--service`, else the detected one). The tool
 reads its group `update_module` (`timeout`, `start_wait`, `ignore_error`,
-`log_dir`, `log_keep_days`, `warmup_deep`, `verbose`), plus `instance.db`, `backup.dest` and
-`backup.state_dir`. Paths must be absolute, and an `ignore_error` pattern
+`log_dir`, `log_keep_days`, `warmup_deep`, `verbose`), plus `instance.db`, `backup.dest`,
+`backup.state_dir`, `warmup.login` and `warmup.api_key_file` (for
+`--warmup-login` and `--warmup-key-file`). Paths must be absolute, and an `ignore_error` pattern
 that matches any error line or any traceback title (`ValueError: …`) is
 refused (code 2). The command line wins over every value,
 `--profile-unset NAME` drops one, `--no-profile` ignores the file. A
 profile found through the unit that this account cannot open is ignored
 with an ATTN; given by `--profile`, or with `--profile-required`, it is
-refused. The modules, the unit, the account, the configuration,
-`--force`, `--no-backup` and `--dry-run` are never read from it: such a
-key is ignored with an ATTN. The plan lists each value taken from the
+refused. The modules, the unit, the account, the configuration, the
+actions (`--restart-only`, `--update-list`, `--remove-missing`,
+`--i18n-overwrite`), `--force`, `--no-backup`, `--yes` and `--dry-run`
+are never read from it: such a key is ignored with an ATTN. The plan lists each value taken from the
 profile, one line per `--ignore-error` pattern, before any simulated
 command.
 
 `--no-profile` makes the abbreviation `--no` ambiguous: argparse refuses
 it, so spell `--no-backup` in full.
 
-`--warmup-deep` stays anonymous and uses the default settings of the
-warm-up: it does not read the profile group `warmup` (login, API key,
-pages), and the health check does not read `health_check.timeout`.
+Of the profile group `warmup`, `--warmup-deep` reads only the login and
+the API key: the key is a KeePass reference that `TODO › Execute ›
+Production` hands over as a 0600 file, an absolute path, or the unit's
+`warmup.api_key` credential; a KeePass reference unreachable here drops
+the login with it. The pages and the other warm-up settings keep their
+defaults, and the health check does not read `health_check.timeout`.
 
 ## log_check.py
 
@@ -248,8 +295,10 @@ unset or above 20 may hit the same limit.
 **Resend, through the ORM.** `--resend all | oldest N | ids LIST` with
 `--yes` (without a terminal, nothing is resent without it); on a terminal
 without `--resend`, a menu: `[a]ll`, `[o]ldest batch`, `[i]ds`, `[n]one`
-(default). `--list` only lists. The unit's `odoo_bin.sh shell` runs as its
-account in its working directory with a short script on its standard input:
+(default). `--list` only lists. The unit's Odoo shell, built from its
+`ExecStart` as `update_module.py --update-list` builds it (its options,
+`--addons-path` included, kept), runs as its account in its working
+directory with a short script on its standard input:
 it re-reads the mails still in `exception`, calls `action_retry()` when the
 method exists, else `write({'state': 'outgoing'})`, commits, and prints its
 result as JSON. The scheduled action "Mail: Email Queue Manager" then sends

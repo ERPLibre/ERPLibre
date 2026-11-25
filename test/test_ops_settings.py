@@ -1114,6 +1114,47 @@ class TestFichiersSecrets(unittest.TestCase):
             self.assertEqual(fournis.argv, [])
         self.assertEqual(self.coffre.appels, [])
 
+    def test_secret_sans_sa_dependance_ni_lu_ni_passe(self):
+        # `warmup.api_key_file` dépend de `warmup.login`
+        # (profil.DEPENDANCES) : seule, la clé ferait refuser la paire.
+        sans_login = {"warmup": {"api_key_file": {"kdbx": REFERENCE}}}
+        for groupe, args, passe in (
+            ("warmup", [], False),
+            ("warmup", ["--login", "bot-exemple"], True),
+            ("warmup", ["--login=bot-exemple"], True),
+            ("update_module", [], False),
+            ("update_module", ["--warmup-login", "bot-exemple"], True),
+        ):
+            with self.subTest(groupe=groupe, args=args):
+                self.coffre.appels = []
+                with ops_settings.fichiers_secrets(
+                    sans_login,
+                    groupe,
+                    args,
+                    coffre=self.coffre,
+                    environ=self.environ,
+                ) as fournis:
+                    self.assertEqual(bool(fournis.argv), passe)
+                    self.assertEqual(fournis.manquants, [])
+                self.assertEqual(bool(self.coffre.appels), passe)
+
+    def test_dependance_retiree_par_profile_unset(self):
+        for args in (
+            ["--profile-unset", "warmup_login"],
+            ["--profile-unset=warmup-login"],
+        ):
+            with self.subTest(args=args):
+                with ops_settings.fichiers_secrets(
+                    self.DOC,
+                    "update_module",
+                    args,
+                    coffre=self.coffre,
+                    environ=self.environ,
+                ) as fournis:
+                    self.assertEqual(fournis.argv, [])
+        with self.bloc(args_lancement=["--profile-unset", "deep"]) as fournis:
+            self.assertEqual(fournis.argv[0], "--api-key-file")
+
     def test_forme_credential(self):
         with self.bloc(forme="credential") as fournis:
             option, valeur = fournis.argv

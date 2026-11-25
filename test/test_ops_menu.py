@@ -202,7 +202,9 @@ class TestMiseAJour(Base):
             update_module={"ignore_error": ["^odoo\\.addons\\.exemple_a"]},
         )
         empreinte = profil.empreinte_fichier(chemin_profil())
-        jeu = self.jouer("_ops_update_modules", ["my_module_a", "", ""])
+        jeu = self.jouer(
+            "_ops_update_modules", ["my_module_a", "", "", "", ""]
+        )
         (simulation,) = jeu.todo.execute.commandes
         self.assertIn("update_module.py", simulation)
         self.assertIn(f"--service {SERVICE}", simulation)
@@ -227,11 +229,11 @@ class TestMiseAJour(Base):
 
     def test_la_question_rappelle_la_purge_des_journaux(self):
         ecrire_profil(update_module={"log_keep_days": 30})
-        jeu = self.jouer("_ops_update_modules", ["base", "", ""])
+        jeu = self.jouer("_ops_update_modules", ["base", "", "", "", ""])
         self.assertIn("--log-keep-days 30", jeu.confirm.call_args.args[0])
 
     def test_sans_profil_ni_empreinte(self):
-        jeu = self.jouer("_ops_update_modules", ["base", "", ""])
+        jeu = self.jouer("_ops_update_modules", ["base", "", "", "", ""])
         argv = self.reelle(jeu)
         self.assertNotIn("--profile", argv)
         self.assertNotIn("--profile-sha256", argv)
@@ -239,7 +241,9 @@ class TestMiseAJour(Base):
         self.assertIn(t_("(detected)"), jeu.confirm.call_args.args[0])
 
     def test_base_tapee_et_sans_sauvegarde(self):
-        jeu = self.jouer("_ops_update_modules", ["base", "demo_db", "n"])
+        jeu = self.jouer(
+            "_ops_update_modules", ["base", "demo_db", "n", "", ""]
+        )
         argv = self.reelle(jeu)
         self.assertEqual(argv[argv.index("--db") + 1], "demo_db")
         self.assertIn("--no-backup", argv)
@@ -247,22 +251,26 @@ class TestMiseAJour(Base):
 
     def test_la_base_du_profil_sert_de_defaut(self):
         ecrire_profil(instance={"db": "exemple_db"})
-        jeu = self.jouer("_ops_update_modules", ["base", "", ""])
+        jeu = self.jouer("_ops_update_modules", ["base", "", "", "", ""])
         self.assertNotIn("--db", self.reelle(jeu))
         self.assertIn("exemple_db", jeu.sortie)
 
     def test_refus_de_la_confirmation(self):
-        jeu = self.jouer("_ops_update_modules", ["base", "", ""], confirme=0)
+        jeu = self.jouer(
+            "_ops_update_modules", ["base", "", "", "", ""], confirme=0
+        )
         self.assertEqual(len(jeu.todo.execute.commandes), 1)
         self.assertFalse(jeu.terminal.called)
 
     def test_simulation_qui_refuse_n_execute_rien(self):
-        jeu = self.jouer("_ops_update_modules", ["base", "", ""], code=2)
+        jeu = self.jouer(
+            "_ops_update_modules", ["base", "", "", "", ""], code=2
+        )
         self.assertFalse(jeu.confirm.called)
         self.assertFalse(jeu.terminal.called)
 
     def test_simulation_seule(self):
-        jeu = self.jouer("_ops_simulate_modules", ["base", "", ""])
+        jeu = self.jouer("_ops_simulate_modules", ["base", "", "", "", ""])
         self.assertEqual(len(jeu.todo.execute.commandes), 1)
         self.assertFalse(jeu.confirm.called)
         self.assertFalse(jeu.terminal.called)
@@ -274,20 +282,85 @@ class TestMiseAJour(Base):
 
     def test_valeurs_citees_pour_le_shell(self):
         jeu = self.jouer(
-            "_ops_update_modules", ["base; id", "", ""], confirme=False
+            "_ops_update_modules", ["base; id", "", "", "", ""], confirme=False
         )
         self.assertIn("'base; id'", jeu.todo.execute.commandes[0])
 
     def test_code_de_l_execution_reelle_affiche(self):
-        jeu = self.jouer("_ops_update_modules", ["base", "", ""], code_reel=3)
+        jeu = self.jouer(
+            "_ops_update_modules", ["base", "", "", "", ""], code_reel=3
+        )
         self.assertIn(f"{t_('The command ended with code')} 3", jeu.sortie)
 
     def test_autre_checkout_annonce_dans_la_question(self):
         self.WORKING_DIRECTORY = "/srv/autre-checkout-invente"
-        jeu = self.jouer("_ops_update_modules", ["base", "", ""])
+        jeu = self.jouer("_ops_update_modules", ["base", "", "", "", ""])
         question = jeu.confirm.call_args.args[0]
         self.assertIn("[ATTN]", question)
         self.assertIn("/srv/autre-checkout-invente", question)
+
+    def test_traductions_et_prechauffage(self):
+        """`--i18n-overwrite` sur oui seulement ; le préchauffage profond
+        est le défaut, et un non le retire même quand le profil le pose."""
+        for saisies, profil_pose, presents, absents in (
+            (["o", ""], False, ["--i18n-overwrite", "--warmup-deep"], []),
+            (["", ""], False, ["--warmup-deep"], ["--i18n-overwrite"]),
+            (["", "n"], False, [], ["--warmup-deep", "--profile-unset"]),
+            (["", ""], True, [], ["--warmup-deep", "--profile-unset"]),
+            (["", "n"], True, ["--profile-unset", "warmup_deep"], []),
+        ):
+            with self.subTest(saisies=saisies, profil=profil_pose):
+                if profil_pose:
+                    ecrire_profil(update_module={"warmup_deep": True})
+                elif os.path.lexists(chemin_profil()):
+                    os.unlink(chemin_profil())
+                jeu = self.jouer(
+                    "_ops_update_modules", ["base", "", ""] + saisies
+                )
+                argv = self.reelle(jeu)
+                for option in presents:
+                    self.assertIn(option, argv)
+                for option in absents:
+                    self.assertNotIn(option, argv)
+
+    def test_relance_seule(self):
+        jeu = self.jouer("_ops_restart_only", ["", ""])
+        (simulation,) = jeu.todo.execute.commandes
+        self.assertIn("--restart-only", simulation)
+        self.assertTrue(simulation.endswith("--dry-run"))
+        argv = self.reelle(jeu)
+        self.assertEqual(argv[0], "sudo")
+        self.assertIn("--restart-only", argv)
+        self.assertIn("--warmup-deep", argv)
+        self.assertNotIn("--module", argv)
+        self.assertIn(SERVICE, jeu.confirm.call_args.args[0])
+
+    def test_liste_des_applications(self):
+        jeu = self.jouer("_ops_update_list", ["demo_db"])
+        argv = self.reelle(jeu)
+        self.assertIn("--update-list", argv)
+        self.assertEqual(argv[argv.index("--db") + 1], "demo_db")
+        self.assertNotIn("--remove-missing", argv)
+        self.assertNotIn("--module", argv)
+
+    def test_retrait_simule_puis_choisi_au_terminal(self):
+        """Le retrait n'est jamais confirmé d'avance : ni `--yes` dans la
+        simulation, ni dans l'exécution réelle, que l'outil confirme au
+        terminal. La sauvegarde est le défaut."""
+        jeu = self.jouer("_ops_remove_missing", ["", ""])
+        (simulation,) = jeu.todo.execute.commandes
+        self.assertIn("--remove-missing", simulation)
+        self.assertTrue(simulation.endswith("--dry-run"))
+        argv = self.reelle(jeu)
+        self.assertIn("--remove-missing", argv)
+        self.assertNotIn("--yes", argv)
+        self.assertNotIn("--yes", simulation)
+        self.assertNotIn("--no-backup", argv)
+        jeu = self.jouer("_ops_remove_missing", ["", "n"])
+        self.assertIn("--no-backup", self.reelle(jeu))
+        jeu = self.jouer("_ops_remove_missing", ["", ""], code=2)
+        self.assertFalse(jeu.confirm.called)
+        self.assertFalse(jeu.terminal.called)
 
 
 def t_(texte):
@@ -905,6 +978,79 @@ class TestSecretsDuPrechauffage(Base):
         self.assertNotIn("--api-key-file", todo.execute.commandes[0])
         self.assertNotIn(SECRET, sortie)
 
+    def test_la_mise_a_jour_recoit_la_cle_du_groupe_warmup(self):
+        """Le login et la clé du groupe `warmup` servent au préchauffage
+        d'update_module (alias) : la clé arrive à l'exécution réelle par
+        `--warmup-key-file`, un fichier 0600 retiré ensuite, jamais à la
+        simulation."""
+
+        def run(argv, **kw):
+            chemin = argv[argv.index("--warmup-key-file") + 1]
+            info = os.stat(chemin)
+            self.vus.append(
+                (stat.S_IMODE(info.st_mode), Path(chemin).read_text())
+            )
+            return mock.Mock(returncode=0)
+
+        todo = self.todo()
+        sortie = io.StringIO()
+        with (
+            mock.patch("builtins.input", side_effect=["base", "", "", "", ""]),
+            mock.patch(
+                "script.todo.ops_menu.click.confirm", return_value=True
+            ),
+            mock.patch(
+                "script.todo.todo_journal.subprocess.run", side_effect=run
+            ),
+            contextlib.redirect_stdout(sortie),
+            contextlib.redirect_stderr(sortie),
+        ):
+            todo._ops_update_modules()
+        self.assertEqual(self.vus, [(0o600, SECRET)])
+        (simulation,) = todo.execute.commandes
+        self.assertNotIn("--warmup-key-file", simulation)
+        self.assertIn("--warmup-deep", simulation)
+        self.assertJamaisExpose(todo, sortie.getvalue())
+
+    def test_sans_prechauffage_le_coffre_n_est_pas_ouvert(self):
+        """La liste des applications, ou une mise à jour sans
+        préchauffage profond, ne lit pas la clé : le coffre n'est pas
+        ouvert, aucune option de clé ne part."""
+        for methode, saisies in (
+            ("_ops_update_list", [""]),
+            ("_ops_remove_missing", ["", ""]),
+            ("_ops_update_modules", ["base", "", "", "", "n"]),
+            ("_ops_restart_only", ["", "n"]),
+        ):
+            with self.subTest(methode=methode):
+                todo = self.todo()
+                todo._ops_coffre = mock.Mock(
+                    side_effect=AssertionError("coffre ouvert")
+                )
+                jeu = self.jouer(methode, saisies, todo=todo)
+                self.assertNotIn("--warmup-key-file", self.reelle(jeu))
+
+    def test_cle_sans_login_ni_lue_ni_passee(self):
+        """Une clé du profil sans `warmup.login` : update_module refuserait
+        la paire incomplète (code 2). La clé n'est ni lue ni passée, et
+        l'exécution réelle préchauffe sans les vues, comme la
+        simulation."""
+        ecrire_profil(warmup={"api_key_file": {"kdbx": REFERENCE}})
+        for methode, saisies in (
+            ("_ops_update_modules", ["base", "", "", "", ""]),
+            ("_ops_restart_only", ["", ""]),
+        ):
+            with self.subTest(methode=methode):
+                todo = self.todo()
+                todo._ops_coffre = mock.Mock(
+                    side_effect=AssertionError("coffre ouvert")
+                )
+                jeu = self.jouer(methode, saisies, todo=todo)
+                reelle = self.reelle(jeu)
+                self.assertIn("--warmup-deep", reelle)
+                self.assertNotIn("--warmup-key-file", reelle)
+                self.assertFalse(todo._ops_coffre.called)
+
     def test_purge_a_l_entree_du_menu(self):
         reste = os.path.join(self.tmpfs, "erplibre-secret-abc123")
         os.mkdir(reste)
@@ -951,6 +1097,9 @@ class TestLesMenusSontBranches(Base):
         (["1"], "_ops_choisir_instance"),
         (["2", "1"], "_ops_update_modules"),
         (["2", "2"], "_ops_simulate_modules"),
+        (["2", "3"], "_ops_restart_only"),
+        (["2", "4"], "_ops_update_list"),
+        (["2", "5"], "_ops_remove_missing"),
         (["3", "1"], "_ops_backup_now"),
         (["3", "2"], "_ops_backup_status"),
         (["3", "3"], "_ops_test_restore"),

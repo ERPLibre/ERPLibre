@@ -7,8 +7,10 @@ Ce que plusieurs outils d'exploitation partagent : retrouver l'unité, son
 compte, son dossier de travail, sa ligne de commande, son environnement,
 le fichier de configuration qu'Odoo lit et la base visée ; construire une
 commande lancée sous le compte de l'unité, ou y exécuter une fonction
-(`SystemeBase.sous_le_compte`) ; savoir si ce compte peut écrire dans un
-dossier.
+(`SystemeBase.sous_le_compte`) ; construire l'`odoo shell` de l'unité à
+partir de son ExecStart (`commande_shell`) et lire le JSON qu'un script de
+ce shell rend entre deux sentinelles (`lire_bilan`) ; savoir si ce compte
+peut écrire dans un dossier.
 
 Les fonctions `detecter_*` remplissent un objet `plan` quelconque, par
 attributs (`unite`, `namespace`, `utilisateur`, `wd`, `execstart`,
@@ -43,6 +45,18 @@ import types
 from script.lib_ops import lock, odoo_instance, postgres, systemd
 
 RE_UTILISATEUR = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_.-]*")
+
+# Options de run.sh propres à ERPLibre : run.sh les retire avant de lancer
+# Odoo, dont l'analyseur les refuserait.
+OPTIONS_RUN_SH = (
+    "--auto-erplibre",
+    "--no-cli-erplibre",
+    "--erplibre-disable-warmup-http",
+)
+
+# Ce que `commande_shell` ajoute après les options de l'unité : ni HTTP, ni
+# workers, ni cron. Odoo retient la dernière valeur d'une option.
+OPTIONS_SHELL = ("--no-http", "--workers=0", "--max-cron-threads=0")
 
 
 def N_(texte):
@@ -517,6 +531,128 @@ def envelopper(argv, plan, extra=None):
         + [f"{cle}={valeur}" for cle, valeur in supp.items()]
         + list(argv)
     )
+
+
+def sans_option_base(argv):
+    """`argv` privé de ses options de base — `-d X`, `--database X`,
+    `--database=X`, `-dX` —, tout le reste recopié tel quel. Le premier
+    élément, le programme lancé, n'est jamais examiné, ni la valeur d'une
+    option retirée."""
+    garde = list(argv[:1])
+    index = 1
+    while index < len(argv):
+        argument = argv[index]
+        if argument in ("-d", "--database"):
+            index += 2
+            continue
+        if argument.startswith("--database=") or (
+            argument.startswith("-d") and not argument.startswith("--")
+        ):
+            index += 1
+            continue
+        garde.append(argument)
+        index += 1
+    return garde
+
+
+def _lanceur_de(argv):
+    """(index, nature) du premier lanceur d'Odoo de `argv` : "run.sh", ou
+    "odoo" pour odoo-bin, odoo_bin.sh ou un `odoo` rangé dans un dossier
+    `bin` ; (None, "") sans lanceur. Une option, ou un mot qui porte une
+    espace (le script d'un `bash -c`), n'est jamais un lanceur : la
+    commande qu'il cache ne se reconstruit pas."""
+    for index, argument in enumerate(argv):
+        if argument.startswith("-") or any(c.isspace() for c in argument):
+            continue
+        nom = os.path.basename(argument)
+        if nom == "run.sh":
+            return index, "run.sh"
+        if nom in ("odoo-bin", "odoo_bin.sh") or (
+            nom == "odoo"
+            and os.path.basename(os.path.dirname(argument)) == "bin"
+        ):
+            return index, "odoo"
+    return None, ""
+
+
+def _refus_shell(plan):
+    return Refus(
+        N_(
+            "Cannot build an Odoo shell from the ExecStart of {unit}: it"
+            " names no run.sh, odoo-bin or odoo_bin.sh."
+        ),
+        unit=plan.unite,
+    )
+
+
+def programme_shell(plan):
+    """Le fichier que lance `commande_shell`, en chemin absolu : le
+    `odoo_bin.sh` du dossier de travail derrière run.sh, sinon le lanceur
+    de l'ExecStart, relatif au dossier de travail. Lève Refus comme
+    `commande_shell`."""
+    index, nature = _lanceur_de(plan.execstart)
+    if index is None:
+        raise _refus_shell(plan)
+    if nature == "run.sh":
+        return os.path.join(plan.wd, "odoo_bin.sh")
+    return os.path.join(plan.wd, plan.execstart[index])
+
+
+def commande_shell(plan):
+    """La commande d'un `odoo shell` sur `plan.base`, construite à partir
+    de l'ExecStart de l'unité et lancée sous son compte (`envelopper`,
+    `ODOO_RC` compris) ; le dossier de travail de l'unité est celui où
+    elle se lance.
+
+    Les options de l'unité sont gardées — un `--addons-path` passé par
+    l'unité donne au shell les mêmes modules que le serveur —, sa base
+    retirée (`sans_option_base`). Derrière run.sh, le shell passe par le
+    `./odoo_bin.sh` que run.sh lance lui-même, sous le même interpréteur,
+    et les options propres à run.sh (`OPTIONS_RUN_SH`) sont retirées ;
+    sinon `shell` suit le lanceur, et remplace la sous-commande que
+    l'unité y aurait mise (`server`), comme Odoo la cherche : juste après
+    le lanceur, ou après un premier `--addons-path=`. Suivent `-c` (le
+    fichier de la détection), `-d` et `OPTIONS_SHELL`. Lève Refus quand
+    l'ExecStart ne nomme aucun lanceur."""
+    argv = sans_option_base(plan.execstart)
+    index, nature = _lanceur_de(argv)
+    if index is None:
+        raise _refus_shell(plan)
+    reste = argv[index + 1 :]
+    if nature == "run.sh":
+        programme = (argv[:index] or ["bash"]) + ["./odoo_bin.sh", "shell"]
+        reste = [a for a in reste if a not in OPTIONS_RUN_SH]
+    else:
+        programme = argv[: index + 1] + ["shell"]
+        if reste and not reste[0].startswith("-"):
+            reste = reste[1:]
+        elif (
+            len(reste) > 1
+            and reste[0].startswith("--addons-path=")
+            and not reste[1].startswith("-")
+        ):
+            reste = reste[:1] + reste[2:]
+    commande = (
+        programme
+        + reste
+        + ["-c", plan.config_path, "-d", plan.base]
+        + list(OPTIONS_SHELL)
+    )
+    return envelopper(commande, plan, {"ODOO_RC": plan.config_path})
+
+
+def lire_bilan(sortie, debut, fin):
+    """L'objet JSON écrit entre les sentinelles `debut` et `fin` dans la
+    sortie d'un shell d'Odoo, ou None : sentinelle absente, JSON invalide
+    ou autre chose qu'un objet. Ce qu'Odoo écrit autour est ignoré."""
+    if debut not in sortie or fin not in sortie:
+        return None
+    morceau = sortie.split(debut, 1)[1].split(fin, 1)[0]
+    try:
+        donnees = json.loads(morceau.strip())
+    except ValueError:
+        return None
+    return donnees if isinstance(donnees, dict) else None
 
 
 def types_argparse(t):
