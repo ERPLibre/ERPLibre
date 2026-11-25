@@ -5,7 +5,8 @@
 
 Ce module ne crée, ne modifie ni ne supprime aucune unité : il lit ce que
 `systemctl show` en dit et passe par `systemctl stop` / `start` /
-`is-active`. Le contenu de l'unité reste l'affaire de qui l'a installée.
+`restart` / `is-active`. Le contenu de l'unité reste l'affaire de qui l'a
+installée.
 
 Chaque fonction reçoit un `lanceur` : `lanceur(argv, timeout) -> (code,
 sortie)`, qui ne lève jamais. Par défaut c'est `lancer`, qui exécute
@@ -30,6 +31,14 @@ RE_NOM_UNITE = re.compile(r"[A-Za-z0-9@_.:-]+")
 # Unités candidates à l'auto-détection : celles qu'ERPLibre ou un paquet
 # Odoo installent.
 RE_CANDIDATE = re.compile(r"(erplibre|odoo)[A-Za-z0-9@_.:-]*\.service")
+
+# Unités du serveur PostgreSQL : `postgresql.service` des paquets, qui
+# sous Debian ne fait que regrouper les grappes `postgresql@<ver>-<nom>`,
+# et `postgresql-<ver>.service` des paquets du PGDG.
+RE_POSTGRESQL = re.compile(
+    r"postgresql(?:-[0-9.]+)?(?:@[A-Za-z0-9_.:-]+)?\.service"
+)
+UNITE_POSTGRESQL = "postgresql.service"
 
 # LogNamespace (systemd 245+) range le journal de l'unité dans un journal
 # à part, que `journalctl -u` seul ne lit pas ; un systemd plus ancien ne
@@ -343,6 +352,37 @@ def arreter(unite, lanceur=lancer, timeout=300):
 def demarrer(unite, lanceur=lancer, timeout=300):
     """`systemctl start` ; rend (code, sortie)."""
     return lanceur(["systemctl", "start", "--", unite], timeout)
+
+
+def redemarrer(unite, lanceur=lancer, timeout=300):
+    """`systemctl restart` ; rend (code, sortie)."""
+    return lanceur(["systemctl", "restart", "--", unite], timeout)
+
+
+def unite_postgresql(lanceur=lancer):
+    """L'unité qui fait tourner le serveur PostgreSQL de ce poste.
+
+    La seule unité active propre à une grappe ou à une version
+    (`postgresql@<version>-<grappe>.service`,
+    `postgresql-<version>.service`) ; à défaut,
+    `postgresql.service` active. ErreurUnite quand plusieurs grappes
+    tournent (« ambiguous », `candidates` les nomme) ou qu'aucune unité
+    PostgreSQL n'est active (« none active »)."""
+    unites = [
+        (nom, actif)
+        for nom, actif in lister_unites(lanceur)
+        if RE_POSTGRESQL.fullmatch(nom)
+    ]
+    propres = [
+        nom for nom, actif in unites if actif and nom != UNITE_POSTGRESQL
+    ]
+    if len(propres) == 1:
+        return propres[0]
+    if propres:
+        raise ErreurUnite("ambiguous", propres)
+    if (UNITE_POSTGRESQL, True) in unites:
+        return UNITE_POSTGRESQL
+    raise ErreurUnite("none active", [nom for nom, _actif in unites])
 
 
 def namespace_valide(nom):

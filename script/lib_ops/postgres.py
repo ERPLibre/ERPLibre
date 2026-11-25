@@ -115,6 +115,61 @@ REQUETE_SESSIONS = (
 
 REQUETE_BASES = "SELECT datname FROM pg_database"
 
+# Le nombre de sessions de clients de chaque base du serveur, la sienne
+# exclue, sous la clé `databases` ({base: nombre}) : redémarrer le serveur
+# les coupe toutes. `datname` et `backend_type` se lisent pour les
+# sessions de tous les rôles ; PostgreSQL 9.x n'a pas `backend_type`, et
+# toute session y compte.
+REQUETE_CONNEXIONS = (
+    "SELECT json_build_object('databases', (SELECT json_object_agg(d, n)"
+    " FROM (SELECT a.datname AS d, count(*) AS n FROM pg_stat_activity a"
+    " WHERE a.datname IS NOT NULL AND a.pid <> pg_backend_pid()"
+    " AND COALESCE(row_to_json(a)->>'backend_type', 'client backend')"
+    " = 'client backend' GROUP BY a.datname) s))"
+)
+
+# Le renommage d'une base, lu par psql sur son entrée : les noms viennent
+# des variables `ancienne` et `nouvelle` (`-v`), que psql cite comme
+# identifiants (`:"nom"`) ; aucun nom n'est interpolé ici.
+SCRIPT_RENOMMAGE = 'ALTER DATABASE :"ancienne" RENAME TO :"nouvelle";\n'
+
+# La base `base` fermée aux connexions, puis les sessions que ce rôle peut
+# terminer coupées : PostgreSQL refuse de renommer une base où une autre
+# session est connectée, et attend quelques secondes la fin de celles qui
+# se terminent. Une base fermée n'est plus listée par Odoo (`list_dbs`
+# exige `datallowconn`) : ni ses crons ni sa file de courriels ne tournent.
+# `pg_has_role(…, 'USAGE')` reprend le droit qu'exige
+# `pg_terminate_backend` ; une session d'un rôle hors de portée reste, et
+# le renommage le dit.
+SCRIPT_FERMETURE = (
+    'ALTER DATABASE :"base" WITH ALLOW_CONNECTIONS false;\n'
+    "SELECT pg_terminate_backend(a.pid) FROM pg_stat_activity a"
+    " WHERE a.datname = :'base' AND a.pid <> pg_backend_pid()"
+    " AND pg_has_role(a.usesysid, 'USAGE');\n"
+)
+
+# La base `base` rouverte aux connexions.
+SCRIPT_OUVERTURE = 'ALTER DATABASE :"base" WITH ALLOW_CONNECTIONS true;\n'
+
+# Vrai sous la clé `createdb` quand le rôle connecté peut créer une base
+# (CREATEDB ou superutilisateur) : la restauration crée la copie, et
+# `ALTER DATABASE … RENAME` exige ce droit en plus de la propriété.
+REQUETE_DROITS = (
+    "SELECT json_build_object('createdb', (SELECT rolcreatedb OR rolsuper"
+    " FROM pg_roles WHERE rolname = current_user))"
+)
+
+# L'empreinte des modules de la base, sous la clé `stamp` : nom, état,
+# version et date d'écriture de chaque ligne d'`ir_module_module`. Tout
+# `-u`, toute installation et toute mise à jour de la liste des
+# applications qui change une ligne la changent.
+REQUETE_EMPREINTE_MODULES = (
+    "SELECT json_build_object('stamp', (SELECT md5(string_agg(name || ':'"
+    " || COALESCE(state, '') || ':' || COALESCE(latest_version, '') || ':'"
+    " || COALESCE(write_date::text, ''), ',' ORDER BY name))"
+    " FROM ir_module_module))"
+)
+
 # Le dossier de données du serveur : lisible par un superutilisateur ou un
 # membre de `pg_read_all_settings`.
 REQUETE_DOSSIER = "SHOW data_directory"

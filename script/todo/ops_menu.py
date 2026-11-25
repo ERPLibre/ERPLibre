@@ -38,7 +38,11 @@ Tout ce qui écrit passe par deux temps :
 La relance seule, la liste des applications et le retrait des modules
 sans code passent par `update_module.py` et ces deux temps aussi. Le
 retrait n'est jamais confirmé d'avance : l'exécution réelle, sans
-`--yes`, liste les modules puis demande au terminal.
+`--yes`, liste les modules puis demande au terminal. La relance avec
+PostgreSQL non plus : l'outil liste les bases qui ont des sessions et
+demande au terminal. La mise à jour depuis une archive zip et celle avec
+retour git sauvegardent toujours : un échec y remet le code et restaure
+la base.
 
 Une simulation qui refuse (code non nul) arrête là : il n'y a rien à
 confirmer. L'état des sauvegardes, le journal d'Odoo, la liste des
@@ -106,7 +110,8 @@ ATTENTE_RAPPORT_S = 60
 # Les `dest` dont la valeur venue du profil est rappelée dans la question
 # d'un geste qui écrit : elles décident de ce qui est supprimé, copié
 # ailleurs ou tu. `log_keep_days` règle la purge des journaux de mise à
-# jour qui suit chaque exécution.
+# jour qui suit chaque exécution ; `rollback` décide qu'un échec remet le
+# code et restaure la base.
 A_RAPPELER = (
     "keep_daily",
     "keep_weekly",
@@ -115,6 +120,7 @@ A_RAPPELER = (
     "copy_to",
     "ignore_error",
     "log_keep_days",
+    "rollback",
 )
 
 
@@ -234,6 +240,26 @@ class OpsMenuMixin:
                     " simulate, confirm, back up, then choose with sudo"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Restart Odoo and PostgreSQL - every database loses its"
+                    " sessions; simulate, confirm, then choose with sudo"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Update from a zip archive - tar copy, code and database"
+                    " put back on failure; simulate, confirm, then run with"
+                    " sudo"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Update with git rollback - commits noted, code and"
+                    " database put back on failure; simulate, confirm, then"
+                    " run with sudo"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -251,6 +277,12 @@ class OpsMenuMixin:
                 self._ops_update_list()
             elif status == "5":
                 self._ops_remove_missing()
+            elif status == "6":
+                self._ops_restart_postgresql()
+            elif status == "7":
+                self._ops_update_zip()
+            elif status == "8":
+                self._ops_update_git_rollback()
             else:
                 print(t("Command not found !"))
 
@@ -743,6 +775,11 @@ class OpsMenuMixin:
         args = ["--module", modules] + base
         if not sauvegarde:
             args.append("--no-backup")
+        return args + self._ops_i18n_arguments() + self._ops_warmup_arguments()
+
+    def _ops_i18n_arguments(self):
+        """`--i18n-overwrite` sur oui, rien par défaut : les traductions de
+        la base sont gardées."""
         if self._is_yes(
             input(
                 t(
@@ -751,8 +788,8 @@ class OpsMenuMixin:
                 )
             )
         ):
-            args.append("--i18n-overwrite")
-        return args + self._ops_warmup_arguments()
+            return ["--i18n-overwrite"]
+        return []
 
     def _ops_warmup_arguments(self):
         """Le préchauffage profond après la relance, oui par défaut :
@@ -846,6 +883,90 @@ class OpsMenuMixin:
                 " to remove the modules without code?"
             ),
             avec_secrets=False,
+        )
+
+    def _ops_restart_postgresql(self):
+        """La relance d'Odoo avec celle de PostgreSQL, Odoo arrêté :
+        simulation, accord, puis sudo SANS `--yes` — l'outil liste les
+        bases qui ont des sessions et demande au terminal avant tout
+        arrêt."""
+        args = (
+            ["--restart-only", "--restart-postgresql"]
+            + self._ops_base("update_module")
+            + self._ops_warmup_arguments()
+        )
+        self._ops_lancer(
+            "update_module",
+            args,
+            t(
+                "Restart Odoo and PostgreSQL for real? The tool lists the"
+                " databases that have sessions and asks again on the terminal."
+            ),
+            avec_secrets=self._ops_prechauffe(args),
+        )
+
+    def _ops_update_zip(self):
+        """La mise à jour depuis une archive zip : l'archive (chemin
+        absolu), le dossier d'addons (vide = celui que l'outil détecte),
+        les modules (vide = ceux de l'archive), la base. La sauvegarde est
+        obligatoire : un échec remet la copie tar et restaure la base."""
+        archive = input(t("Zip archive of the modules: ")).strip()
+        if not archive:
+            print(t("Cancelled: no file given."))
+            return
+        dossier = input(
+            t(
+                "Addons directory to extract into (empty = the first one that"
+                " already holds a module of the archive): "
+            )
+        ).strip()
+        modules = input(
+            t(
+                "Modules to update (empty = those of the archive; commas, *"
+                " and ? patterns, or all): "
+            )
+        ).strip()
+        args = ["--zip", os.path.abspath(os.path.expanduser(archive))]
+        if dossier:
+            args += ["--addons-dir", dossier]
+        if modules:
+            args += ["--module", modules]
+        args += self._ops_base("update_module")
+        args += self._ops_i18n_arguments() + self._ops_warmup_arguments()
+        self._ops_lancer(
+            "update_module",
+            args,
+            t(
+                "Run this update from the archive for real? The service stops"
+                " meanwhile; on failure the code and the database are put"
+                " back."
+            ),
+            avec_secrets=self._ops_prechauffe(args),
+        )
+
+    def _ops_update_git_rollback(self):
+        """La mise à jour avec retour git : `--rollback git`, sauf quand le
+        profil le pose déjà. La sauvegarde est obligatoire : un échec
+        ramène les dépôts sur la référence et restaure la base."""
+        modules = input(
+            t("Modules to update (commas, * and ? patterns, or all): ")
+        ).strip()
+        if not modules:
+            print(t("Cancelled: no module given."))
+            return
+        args = ["--module", modules] + self._ops_base("update_module")
+        if self._ops_valeur("update_module", "rollback") != "git":
+            args += ["--rollback", "git"]
+        args += self._ops_i18n_arguments() + self._ops_warmup_arguments()
+        self._ops_lancer(
+            "update_module",
+            args,
+            t(
+                "Run this update with git rollback for real? The service stops"
+                " meanwhile; on failure the repositories and the database are"
+                " put back."
+            ),
+            avec_secrets=self._ops_prechauffe(args),
         )
 
     # -- Sauvegardes -----------------------------------------------------

@@ -8,7 +8,8 @@
 en anglais sans que rien ne signale l'oubli. Le test lit les appels
 `t("…")` des outils et du menu, et les modèles `N_("…")` que
 `lib_ops/service.py`, `lib_ops/mail_diagnostic.py`, `lib_ops/profil.py`,
-`lib_ops/credentials.py` et `lib_ops/odoo_conf.py` laissent traduire à
+`lib_ops/credentials.py`, `lib_ops/odoo_conf.py` et
+`lib_ops/retour_code.py` laissent traduire à
 l'outil qui les affiche.
 """
 
@@ -37,6 +38,7 @@ FICHIERS = (
     "script/todo/ops_settings_form.py",
     "script/lib_ops/odoo_conf.py",
     "script/odoo/odoo_conf_check.py",
+    "script/lib_ops/retour_code.py",
 )
 
 

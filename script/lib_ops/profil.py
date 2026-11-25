@@ -93,6 +93,8 @@ CHAMPS = collections.OrderedDict(
                 "log_keep_days",
                 "warmup_deep",
                 "verbose",
+                "rollback",
+                "pg_service",
             ),
         ),
         (
@@ -222,6 +224,11 @@ EXCLUSIONS = {
         "update_list": "mode",
         "remove_missing": "securite",
         "yes": "securite",
+        # Coupe les sessions de toutes les bases du serveur.
+        "restart_postgresql": "securite",
+        # L'archive et son dossier : le code apporté par cette exécution.
+        "zip": "objet",
+        "addons_dir": "objet",
     },
     "backup": {
         "status": "mode",
@@ -338,6 +345,38 @@ CONFLITS = (
         "days",
         ("resend",),
         N_("--resend selects from the list: give --days explicitly"),
+    ),
+    # Le retour git ne suit qu'une mise à jour avec sauvegarde ; l'archive
+    # apporte sa propre copie.
+    Conflit(
+        "update_module",
+        "rollback",
+        ("restart_only",),
+        N_("--rollback goes with an update"),
+    ),
+    Conflit(
+        "update_module",
+        "rollback",
+        ("update_list",),
+        N_("--rollback goes with an update"),
+    ),
+    Conflit(
+        "update_module",
+        "rollback",
+        ("remove_missing",),
+        N_("--rollback goes with an update"),
+    ),
+    Conflit(
+        "update_module",
+        "rollback",
+        ("zip",),
+        N_("--zip brings its own copy of the code"),
+    ),
+    Conflit(
+        "update_module",
+        "rollback",
+        ("no_backup",),
+        N_("the rollback restores the database from the backup"),
     ),
 )
 

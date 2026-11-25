@@ -760,8 +760,10 @@ class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
 class TestOpsUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
     """La mise à jour réelle et la simulation seule se distinguent par le
     nom de leur méthode : un décalage du dispatch — la vraie mise à jour
-    sous le libellé de la simulation — fait échouer la table. Le retrait
-    des modules sans code, destructif, est la dernière entrée."""
+    sous le libellé de la simulation — fait échouer la table. La relance
+    avec PostgreSQL, la mise à jour depuis une archive et celle avec
+    retour git suivent le retrait des modules sans code, ajoutées en fin
+    sans renuméroter."""
 
     SOURCE = TODO_DIR / "ops_menu.py"
     ENTRY = "def _ops_menu_update(self):"
@@ -774,6 +776,9 @@ class TestOpsUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
         "Restart only": "_ops_restart_only",
         "Update the apps list": "_ops_update_list",
         "Remove the modules without code": "_ops_remove_missing",
+        "Restart Odoo and PostgreSQL": "_ops_restart_postgresql",
+        "Update from a zip archive": "_ops_update_zip",
+        "Update with git rollback": "_ops_update_git_rollback",
     }
 
 

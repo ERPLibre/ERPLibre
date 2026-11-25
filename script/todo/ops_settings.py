@@ -109,6 +109,7 @@ DETECTES = frozenset(
     [
         (profil.GROUPE_INSTANCE, "db"),
         ("update_module", "log_dir"),
+        ("update_module", "pg_service"),
         ("log_check", "namespace"),
         ("odoo_conf", "cpus"),
         ("odoo_conf", "memory_mb"),

@@ -402,6 +402,10 @@ class Systeme(service.SystemeBase):
         info = os.statvfs(chemin)
         return info.f_bavail * info.f_frsize
 
+    def dispositif(self, chemin):
+        """Le dispositif (`st_dev`) qui porte `chemin`. Lève OSError."""
+        return os.stat(chemin).st_dev
+
     def taille_dossier(self, chemin):
         """(octets, nombre) des fichiers ordinaires sous `chemin`, liens
         non suivis."""
@@ -641,6 +645,71 @@ def argv_dropdb(cible, nom):
     return argv_pg(cible, "dropdb", "-w", "--", nom)
 
 
+def argv_script(cible, variables):
+    """psql connecté à la base `postgres`, chaque paire de `variables`
+    passée par `-v` : le script arrive sur son entrée, où psql cite les
+    noms comme identifiants (`:"nom"`) ou littéraux (`:'nom'`).
+    ON_ERROR_STOP rend un code non nul sur la première erreur SQL."""
+    argv = ["-X", "-w", "-q", "-v", "ON_ERROR_STOP=1"]
+    for cle, valeur in variables:
+        argv += ["-v", f"{cle}={valeur}"]
+    return argv_pg(cible, "psql", *(argv + ["-d", "postgres"]))
+
+
+def argv_renommage(cible, ancienne, nouvelle):
+    """`argv_script` du renommage : les deux noms dans les variables
+    `ancienne` et `nouvelle` de `postgres.SCRIPT_RENOMMAGE`."""
+    return argv_script(cible, (("ancienne", ancienne), ("nouvelle", nouvelle)))
+
+
+def _lancer_script(cible, systeme, script, variables):
+    """Lance `script` (`argv_script`) : "" en cas de réussite, sinon le
+    message de psql. Chaque valeur de `variables` est un nom de base
+    validé (`postgres.nom_valide`) avant tout lancement."""
+    for _cle, nom in variables:
+        if not postgres.nom_valide(nom):
+            return t("Invalid database name: {database}").format(database=nom)
+    code, lignes, tue = systeme.alimenter(
+        argv_script(cible, variables),
+        env_pg(cible),
+        [script.encode("utf-8")],
+        DELAI_COMMANDE,
+    )
+    if code == 0 and not tue:
+        return ""
+    return " ".join(lignes).strip()[:EXTRAIT] or f"code {code}"
+
+
+def renommer_base(cible, systeme, ancienne, nouvelle):
+    """Renomme la base `ancienne` en `nouvelle` (`ALTER DATABASE … RENAME
+    TO`) : rend "" en cas de réussite, sinon le message de psql. Aucune
+    session ne doit être connectée à `ancienne` (`fermer_base`), et le
+    rôle de l'unité doit la posséder et avoir CREATEDB."""
+    return _lancer_script(
+        cible,
+        systeme,
+        postgres.SCRIPT_RENOMMAGE,
+        (("ancienne", ancienne), ("nouvelle", nouvelle)),
+    )
+
+
+def fermer_base(cible, systeme, nom):
+    """Ferme la base `nom` aux connexions et coupe ses sessions
+    (`postgres.SCRIPT_FERMETURE`) : "" ou le message de psql. La base
+    reste fermée sous tout nom qu'elle prend ensuite ; `ouvrir_base` la
+    rouvre."""
+    return _lancer_script(
+        cible, systeme, postgres.SCRIPT_FERMETURE, (("base", nom),)
+    )
+
+
+def ouvrir_base(cible, systeme, nom):
+    """Rouvre la base `nom` aux connexions : "" ou le message de psql."""
+    return _lancer_script(
+        cible, systeme, postgres.SCRIPT_OUVERTURE, (("base", nom),)
+    )
+
+
 def interroger(cible, systeme, base=None, sql=postgres.REQUETE_FAITS):
     """Le JSON que rend `sql` sur `base` (la base de la cible par défaut),
     en lecture seule. ErreurPg si psql échoue ou ne rend pas de JSON."""
@@ -697,6 +766,26 @@ def verifier_espace(systeme, chemin, besoin):
             needed=humain(besoin),
         )
     return libre, lieu
+
+
+def verifier_espaces(systeme, besoins):
+    """Refus quand un système de fichiers n'a pas la place de la SOMME des
+    besoins qu'il porte. `besoins` est [(chemin, octets)] ; les chemins se
+    groupent par le dispositif (`systeme.dispositif`) de leur premier
+    dossier existant, et chaque groupe est vérifié sous son premier
+    chemin. Un dispositif qui ne se lit pas laisse le chemin seul dans son
+    groupe."""
+    groupes = {}
+    for chemin, besoin in besoins:
+        lieu = ancetre_existant(chemin)
+        try:
+            cle = ("dev", systeme.dispositif(lieu))
+        except OSError:
+            cle = ("chemin", lieu)
+        premier, total = groupes.get(cle, (chemin, 0))
+        groupes[cle] = (premier, total + int(besoin))
+    for chemin, total in groupes.values():
+        verifier_espace(systeme, chemin, total)
 
 
 def evaluer(cible, systeme):
@@ -2185,7 +2274,8 @@ def _restaurer_dans(cible, systeme, rapport, archive, nouvelle, traces):
             "Restored into {database}, filestore {path} ({count} files)."
         ).format(database=nouvelle, path=traces["final"], count=nombre)
     )
-    _rappels(cible, rapport, nouvelle, manifeste_lu)
+    if traces.get("rappels", True):
+        _rappels(cible, rapport, nouvelle, manifeste_lu)
     return CODE_OK
 
 
@@ -2197,10 +2287,14 @@ def restaurer(
     nouvelle,
     simulation=False,
     forcer_espace=False,
+    rappels=True,
 ):
     """Restaure `fichier` dans la base `nouvelle`, qui ne doit pas exister,
     et son filestore dans `<data_dir>/filestore/<nouvelle>`, qui ne doit
-    pas exister non plus ; rend le code de sortie.
+    pas exister non plus ; rend le code de sortie. `rappels` faux tait ce
+    qu'il reste à faire avant de démarrer Odoo sur une copie (neutraliser,
+    database.uuid) : la remise d'une base de production après une mise à
+    jour en échec n'est pas une copie.
 
     Refus (code 2) avant toute création sur ce qui manque ou existe déjà.
     Le filestore s'écrit sous le compte de l'unité, d'abord dans
@@ -2223,6 +2317,7 @@ def restaurer(
         "reussi": False,
         "simulation": simulation,
         "forcer_espace": forcer_espace,
+        "rappels": rappels,
     }
     rapport.champ(t("File"), fichier)
     rapport.champ(t("New database"), nouvelle)

@@ -59,6 +59,8 @@ EXEMPLES = {
         "log_keep_days": 30,
         "warmup_deep": True,
         "verbose": True,
+        "rollback": "git",
+        "pg_service": "postgresql@16-main.service",
     },
     "backup": {
         "dest": "/var/backups/exemple",
@@ -135,6 +137,16 @@ CAS = {
         ),
         (["--module", "base", "--ignore-error", "exemple: avis"], 0, 0),
         (["--module", "all", "--module", "base"], 2, 2),
+        # `rollback` du profil écarté : la relance seule, la liste et
+        # l'archive n'en ont pas, `--no-backup` le rendrait impossible.
+        (["--restart-only", "--restart-postgresql", "--dry-run"], 0, 0),
+        (["--remove-missing", "--yes"], 0, 0),
+        (["--zip", "/var/tmp/exemple.zip", "--dry-run"], 0, 0),
+        (["--module", "base", "--rollback", "none"], 0, 0),
+        (["--module", "base", "--rollback", "git", "--no-backup"], 2, 2),
+        (["--update-list", "--restart-postgresql"], 2, 2),
+        (["--module", "base", "--yes"], 2, 2),
+        (["--module", "base", "--addons-dir", "custom"], 2, 2),
     ],
     "backup": [
         (["--dry-run"], 0, 0),

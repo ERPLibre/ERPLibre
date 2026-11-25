@@ -25,12 +25,17 @@ sudo ./script/odoo/update_module.py --module my_module_a --i18n-overwrite
 sudo ./script/odoo/update_module.py --restart-only --warmup-deep
 sudo ./script/odoo/update_module.py --update-list
 sudo ./script/odoo/update_module.py --remove-missing
+sudo ./script/odoo/update_module.py --restart-only --restart-postgresql
+sudo ./script/odoo/update_module.py --zip /var/tmp/modules.zip
+sudo ./script/odoo/update_module.py --module my_module_a --rollback git
 ```
 
 It is also reachable from `make todo`: `TODO › Execute › Production ›
 Update`, which runs the simulation first and asks before the real run;
 its entries 3 to 5 are the restart only, the apps list update and the
-removal of the modules without code.
+removal of the modules without code, 6 to 8 the restart of Odoo with
+PostgreSQL, the update from a zip archive and the update with git
+rollback.
 
 What it does, in order:
 
@@ -146,11 +151,79 @@ second shell removes the modules of the first pass that are still
 `--yes`, nothing is removed (code 1). `--dry-run` shows the shell, its
 script and the planned steps without running any shell.
 
+**PostgreSQL restart.** `--restart-postgresql`, with an update or
+`--restart-only` (not with the apps list, Odoo keeps running there), also
+restarts the PostgreSQL server while Odoo is stopped: after the checks
+of the stop, before the backup. The unit is `--pg-service`, else the only
+active unit of a cluster or version (`postgresql@<version>-<cluster>`,
+`postgresql-<version>`), else `postgresql.service`; several active
+clusters, or a `db_host` on another host, refuse with code 2. Every
+database of the server loses its sessions: before anything is stopped
+their sessions are read and listed, then a `[y/N]` question on the
+terminal recalls them (`--yes` skips it). Without a terminal and without
+`--yes`, another database with sessions, or sessions that cannot be read,
+refuse with code 2; the instance's own sessions alone do not, and they
+are read again just before the restart: another database connected
+meanwhile skips it (code 1). `--pg-service`, from the command line or the
+profile, must name a PostgreSQL unit, never the instance's: any other
+name refuses with code 2. After `systemctl restart`, the tool waits for
+`pg_isready` (else `SELECT 1`), `--start-wait` seconds at most; a restart
+or a wait that fails and leaves the unit `inactive` or `failed` gets one
+`systemctl start` and the same wait. A PostgreSQL failure gives code 1,
+no `-u`, and the Odoo unit is restarted all the same.
+
+**Zip archive.** `--zip ARCHIVE` brings the code, for servers without
+git. The archive is inspected before anything is stopped: an absolute
+path, `..`, a backslash, a symbolic link, a special file, a name used
+twice, a file at its root or a root folder that is not a module (technical
+name and `__manifest__.py`) refuse with code 2. Each module folder of the
+archive replaces, as a whole, the one of the addons directory:
+`--addons-dir`, else the first `addons_path` directory that already holds
+one of its modules; a module of the archive found earlier in the
+`addons_path` refuses (Odoo would load that code). The space for the
+extraction and for the copy is checked before the stop, with the backup
+and the rollback, summed by file system. After the backup,
+a tar.gz copy of the replaced folders is written next to it
+(`code-<db>-<timestamp>.tar.gz`), then the archive is extracted, both as
+the unit's account. Without `--module`, the modules of the archive are
+updated.
+
+**Git rollback.** `--rollback git` notes HEAD of each git repository that
+holds an `addons_path` directory under the unit's working directory (that
+directory itself excluded: it carries the tools). The reference to come
+back to is the one of the last successful update with `--rollback git`,
+recorded in `<state-dir>/<db>/git_heads.json` with a stamp of the
+modules of the database (`ir_module_module`); without it, or when the
+modules changed since (another update, the apps list), the HEAD read
+before the stop, and a rollback then restores the database only. A
+repository that must move back and has modified tracked files, or lacks
+the reference commit, refuses before the stop.
+
+**Rollback.** With `--zip` or `--rollback git`, when `-u` fails
+(interruption included), or when the restart after a successful `-u`
+fails (the unit is then stopped again), the database is restored from
+the verified backup of this run: loaded into a copy
+`<db>_rollback_<timestamp>` (the checksum, the space and the load checked
+as by `odoo_backup.py --restore`), which then takes the place of the
+database by renaming, filestore included. Before the renaming, the
+database is closed to connections and its sessions are ended. Then only
+the code is put back — the tar copy, or `git checkout --detach` of the
+reference in each repository that moved, branches left where they are:
+when the database cannot be restored, the code of the update stays, the
+one that matches the database it left. The database left by the update
+stays as `<db>_failed_<timestamp>`, closed to connections (Odoo does not
+list it, its crons do not run), to drop once examined. What the rollback
+needs is checked before the stop: the space for the copy in the data
+directory of PostgreSQL, which must be readable, and the CREATEDB right
+of the role; a lack refuses with code 2. The exit code stays 1.
+`--no-backup` is refused with both options.
+
 The unit is never modified: the tool only reads it and runs `systemctl
-stop` / `start`. Whatever happens after the stop — failure, exception,
-Ctrl-C, SIGTERM — a unit that was running is restarted. Nothing is
-restored: the tool does not replace the code; the backup is there for a
-restore decided by a person.
+stop` / `start` (and `restart` of the PostgreSQL unit with
+`--restart-postgresql`). Whatever happens after the stop — failure,
+exception, Ctrl-C, SIGTERM — a unit that was running is restarted.
+Without `--zip` or `--rollback git`, nothing is restored: the backup is
+there for a restore decided by a person.
 
 | Code | Meaning |
 |------|---------|
@@ -170,7 +243,8 @@ removed.
 profile: `--profile FILE`, else `private/production/<unit>.json` of this
 checkout (the unit given by `--service`, else the detected one). The tool
 reads its group `update_module` (`timeout`, `start_wait`, `ignore_error`,
-`log_dir`, `log_keep_days`, `warmup_deep`, `verbose`), plus `instance.db`, `backup.dest`,
+`log_dir`, `log_keep_days`, `warmup_deep`, `verbose`, `rollback`,
+`pg_service`), plus `instance.db`, `backup.dest`,
 `backup.state_dir`, `warmup.login` and `warmup.api_key_file` (for
 `--warmup-login` and `--warmup-key-file`). Paths must be absolute, and an `ignore_error` pattern
 that matches any error line or any traceback title (`ValueError: …`) is
@@ -180,8 +254,12 @@ profile found through the unit that this account cannot open is ignored
 with an ATTN; given by `--profile`, or with `--profile-required`, it is
 refused. The modules, the unit, the account, the configuration, the
 actions (`--restart-only`, `--update-list`, `--remove-missing`,
-`--i18n-overwrite`), `--force`, `--no-backup`, `--yes` and `--dry-run`
-are never read from it: such a key is ignored with an ATTN. The plan lists each value taken from the
+`--i18n-overwrite`, `--restart-postgresql`), the archive and its folder
+(`--zip`, `--addons-dir`), `--force`, `--no-backup`, `--yes` and
+`--dry-run` are never read from it: such a key is ignored with an ATTN.
+A `rollback` from the profile is set aside, with an ATTN, under
+`--restart-only`, `--update-list`, `--remove-missing`, `--zip` and
+`--no-backup`. The plan lists each value taken from the
 profile, one line per `--ignore-error` pattern, before any simulated
 command.
 
@@ -595,12 +673,17 @@ sudo ./script/odoo/update_module.py --module my_module_a --i18n-overwrite
 sudo ./script/odoo/update_module.py --restart-only --warmup-deep
 sudo ./script/odoo/update_module.py --update-list
 sudo ./script/odoo/update_module.py --remove-missing
+sudo ./script/odoo/update_module.py --restart-only --restart-postgresql
+sudo ./script/odoo/update_module.py --zip /var/tmp/modules.zip
+sudo ./script/odoo/update_module.py --module my_module_a --rollback git
 ```
 
 Aussi accessible depuis `make todo` : `TODO › Exécuter › Production › Mise
 à jour`, qui lance d'abord la simulation et demande avant l'exécution
 réelle ; ses entrées 3 à 5 sont la relance seule, la mise à jour de la
-liste des applications et le retrait des modules sans code.
+liste des applications et le retrait des modules sans code, 6 à 8 la
+relance d'Odoo avec PostgreSQL, la mise à jour depuis une archive zip et
+la mise à jour avec retour git.
 
 Ce qu'il fait, dans l'ordre :
 
@@ -720,11 +803,81 @@ leur enregistrement `base.module_<nom>`, puis valide. Sans terminal ni
 `--yes`, rien n'est retiré (code 1). `--dry-run` montre le shell, son
 script et les étapes prévues sans lancer aucun shell.
 
+**Redémarrage de PostgreSQL.** `--restart-postgresql`, avec une mise à
+jour ou `--restart-only` (pas avec la liste des applications, Odoo y reste
+en marche), redémarre aussi le serveur PostgreSQL pendant qu'Odoo est
+arrêté : après les contrôles de l'arrêt, avant la sauvegarde. L'unité est
+`--pg-service`, sinon la seule unité active d'une grappe ou d'une version
+(`postgresql@<version>-<grappe>`, `postgresql-<version>`), sinon
+`postgresql.service` ; plusieurs grappes actives, ou un `db_host` sur un
+autre hôte, refusent en code 2. Chaque base du serveur perd ses sessions :
+avant tout arrêt, elles sont lues et listées, puis une question `[o/N]` au
+terminal les rappelle (`--yes` la saute). Sans terminal ni `--yes`, une
+autre base qui a des sessions, ou des sessions illisibles, refusent en
+code 2 ; les seules sessions de l'instance, non, et elles sont relues
+juste avant le redémarrage : une autre base connectée entre-temps le
+saute (code 1). `--pg-service`, en ligne de commande ou dans le profil,
+doit nommer une unité PostgreSQL, jamais celle de l'instance : tout autre
+nom refuse en code 2. Après `systemctl restart`, l'outil attend
+`pg_isready` (sinon `SELECT 1`), `--start-wait` secondes au plus ; un
+redémarrage ou une attente en échec qui laisse l'unité `inactive` ou
+`failed` reçoit un `systemctl start` et la même attente. Un échec de
+PostgreSQL rend le code 1, sans `-u`, et l'unité Odoo est relancée quand
+même.
+
+**Archive zip.** `--zip ARCHIVE` apporte le code, pour les serveurs sans
+git. L'archive est inspectée avant tout arrêt : un chemin absolu, `..`,
+une barre oblique inverse, un lien symbolique, un fichier spécial, un nom
+en double, un fichier à sa racine ou un dossier de la racine qui n'est pas
+un module (nom technique et `__manifest__.py`) refusent en code 2. Chaque
+dossier de module de l'archive remplace en entier celui du dossier
+d'addons : `--addons-dir`, sinon le premier dossier de l'`addons_path` qui
+porte déjà un de ses modules ; un module de l'archive présent plus tôt
+dans l'`addons_path` refuse (Odoo chargerait ce code-là). L'espace pour
+l'extraction et pour la copie est vérifié avant l'arrêt, avec celui de la
+sauvegarde et du retour arrière, en somme par système de fichiers. Après la
+sauvegarde, une copie tar.gz des dossiers remplacés est écrite à côté
+d'elle (`code-<base>-<horodatage>.tar.gz`), puis l'archive est extraite,
+toutes deux sous le compte de l'unité. Sans `--module`, les modules de
+l'archive sont mis à jour.
+
+**Retour git.** `--rollback git` note HEAD de chaque dépôt git qui porte
+un dossier de l'`addons_path` sous le dossier de travail de l'unité (ce
+dossier lui-même exclu : il porte les outils). La référence où revenir est
+celle de la dernière mise à jour réussie avec `--rollback git`, notée dans
+`<state-dir>/<base>/git_heads.json` avec une empreinte des modules de la
+base (`ir_module_module`) ; sans elle, ou quand les modules ont changé
+depuis (une autre mise à jour, la liste des applications), HEAD lu avant
+l'arrêt, et un retour arrière ne restaure alors que la base. Un dépôt
+qui doit revenir et dont un fichier suivi est modifié, ou à qui manque le
+commit de référence, refuse avant l'arrêt.
+
+**Retour arrière.** Avec `--zip` ou `--rollback git`, quand `-u` échoue
+(interruption comprise), ou quand la relance qui suit un `-u` réussi
+échoue (l'unité est alors arrêtée de nouveau), la base est restaurée
+depuis la sauvegarde vérifiée de cette exécution : chargée dans une copie
+`<base>_rollback_<horodatage>` (empreinte, espace et chargement contrôlés
+comme par `odoo_backup.py --restore`), qui prend ensuite la place de la
+base par renommage, filestore compris. Avant le renommage, la base est
+fermée aux connexions et ses sessions sont coupées. Le code n'est remis
+qu'ensuite — la copie tar, ou `git checkout --detach` de la référence
+dans chaque dépôt qui a bougé, les branches laissées où elles sont :
+quand la base ne peut pas être restaurée, le code de la mise à jour
+reste, celui qui correspond à la base qu'elle a laissée. La base laissée
+par la mise à jour reste sous `<base>_failed_<horodatage>`, fermée aux
+connexions (Odoo ne la liste pas, ses crons ne tournent pas), à supprimer
+une fois examinée. Ce dont le retour arrière a besoin est vérifié avant
+l'arrêt : l'espace de la copie dans le dossier de données de PostgreSQL,
+qui doit se lire, et le droit CREATEDB du rôle ; un manque refuse en
+code 2. Le code de sortie reste 1. `--no-backup` est refusé avec ces deux
+options.
+
 L'unité n'est jamais modifiée : l'outil la lit et lance seulement
-`systemctl stop` / `start`. Quoi qu'il arrive après l'arrêt — échec,
-exception, Ctrl-C, SIGTERM —, une unité qui tournait est relancée. Rien
-n'est restauré : l'outil ne remplace pas le code ; la sauvegarde sert à une
-restauration décidée par une personne.
+`systemctl stop` / `start` (et `restart` de l'unité PostgreSQL avec
+`--restart-postgresql`). Quoi qu'il arrive après l'arrêt — échec,
+exception, Ctrl-C, SIGTERM —, une unité qui tournait est relancée. Sans
+`--zip` ni `--rollback git`, rien n'est restauré : la sauvegarde sert à
+une restauration décidée par une personne.
 
 | Code | Sens |
 |------|------|
@@ -746,7 +899,8 @@ retiré.
 production : `--profile FICHIER`, sinon `private/production/<unité>.json`
 de ce checkout (l'unité de `--service`, sinon celle qui est détectée).
 L'outil lit son groupe `update_module` (`timeout`, `start_wait`,
-`ignore_error`, `log_dir`, `log_keep_days`, `warmup_deep`, `verbose`), plus `instance.db`,
+`ignore_error`, `log_dir`, `log_keep_days`, `warmup_deep`, `verbose`,
+`rollback`, `pg_service`), plus `instance.db`,
 `backup.dest`, `backup.state_dir`, `warmup.login` et `warmup.api_key_file`
 (pour `--warmup-login` et `--warmup-key-file`). Les chemins doivent être absolus, et
 un motif `ignore_error` qui trouve n'importe quelle ligne d'erreur ou
@@ -757,8 +911,11 @@ que ce compte ne peut pas ouvrir est ignoré avec un ATTN ; donné par
 `--profile`, ou avec `--profile-required`, il est refusé. Les
 modules, l'unité, le compte, la configuration, les gestes
 (`--restart-only`, `--update-list`, `--remove-missing`,
-`--i18n-overwrite`), `--force`, `--no-backup`, `--yes` et `--dry-run` ne
-s'y lisent jamais : une telle clé est ignorée avec un ATTN.
+`--i18n-overwrite`, `--restart-postgresql`), l'archive et son dossier
+(`--zip`, `--addons-dir`), `--force`, `--no-backup`, `--yes` et
+`--dry-run` ne s'y lisent jamais : une telle clé est ignorée avec un ATTN.
+Un `rollback` du profil est écarté, avec un ATTN, sous `--restart-only`,
+`--update-list`, `--remove-missing`, `--zip` et `--no-backup`.
 Le plan liste chaque valeur venue du profil, un motif `--ignore-error` par
 ligne, avant toute commande simulée.
 

@@ -30080,10 +30080,6 @@ TRANSLATIONS = {
         "fr": "--warmup-login et --warmup-key-file vont ensemble.",
         "en": "--warmup-login and --warmup-key-file go together.",
     },
-    "--yes only confirms --remove-missing.": {
-        "fr": "--yes ne confirme que --remove-missing.",
-        "en": "--yes only confirms --remove-missing.",
-    },
     "Action": {
         "fr": "Geste",
         "en": "Action",
@@ -30123,10 +30119,6 @@ TRANSLATIONS = {
     "Cannot build an Odoo shell from the ExecStart of {unit}: it names no run.sh, odoo-bin or odoo_bin.sh.": {
         "fr": "Impossible de construire un shell Odoo à partir de l'ExecStart de {unit} : il ne nomme ni run.sh, ni odoo-bin, ni odoo_bin.sh.",
         "en": "Cannot build an Odoo shell from the ExecStart of {unit}: it names no run.sh, odoo-bin or odoo_bin.sh.",
-    },
-    "Confirm --remove-missing without asking.": {
-        "fr": "Confirme --remove-missing sans demander.",
-        "en": "Confirm --remove-missing without asking.",
     },
     "Deep warm-up after the restart? [Y/n] ": {
         "fr": "Préchauffage profond après la relance ? [O/n] ",
@@ -30327,6 +30319,494 @@ TRANSLATIONS = {
     "{host}:{port} is not shown as held by root or the account of {unit}: the API key is not sent, the views are not warmed up.": {
         "fr": "{host}:{port} n'apparaît pas tenu par root ou le compte de {unit} : la clé d'API n'est pas envoyée, les vues ne sont pas préchauffées.",
         "en": "{host}:{port} is not shown as held by root or the account of {unit}: the API key is not sent, the views are not warmed up.",
+    },
+    "(this instance)": {
+        "fr": "(cette instance)",
+        "en": "(this instance)",
+    },
+    "--addons-dir goes with --zip.": {
+        "fr": "--addons-dir va avec --zip.",
+        "en": "--addons-dir goes with --zip.",
+    },
+    "--no-backup is refused with --zip and --rollback git: the rollback restores the database from the backup taken before.": {
+        "fr": "--no-backup est refusé avec --zip et --rollback git : le retour arrière restaure la base depuis la sauvegarde prise avant.",
+        "en": "--no-backup is refused with --zip and --rollback git: the rollback restores the database from the backup taken before.",
+    },
+    "--restart-postgresql goes with an update or --restart-only: Odoo keeps running during {option}.": {
+        "fr": "--restart-postgresql va avec une mise à jour ou --restart-only : Odoo reste en marche pendant {option}.",
+        "en": "--restart-postgresql goes with an update or --restart-only: Odoo keeps running during {option}.",
+    },
+    "--restart-postgresql: db_host {host} is another host, whose PostgreSQL is not restarted from here.": {
+        "fr": "--restart-postgresql : db_host {host} est un autre hôte, dont le PostgreSQL ne se redémarre pas d'ici.",
+        "en": "--restart-postgresql: db_host {host} is another host, whose PostgreSQL is not restarted from here.",
+    },
+    "--rollback git goes with an update: give --module.": {
+        "fr": "--rollback git va avec une mise à jour : donnez --module.",
+        "en": "--rollback git goes with an update: give --module.",
+    },
+    "--rollback git: no git repository holds a directory of the addons_path under {path}.": {
+        "fr": "--rollback git : aucun dépôt git ne porte un dossier de l'addons_path sous {path}.",
+        "en": "--rollback git: no git repository holds a directory of the addons_path under {path}.",
+    },
+    "--rollback goes with an update": {
+        "fr": "--rollback va avec une mise à jour",
+        "en": "--rollback goes with an update",
+    },
+    "--yes only confirms --remove-missing or --restart-postgresql.": {
+        "fr": "--yes ne confirme que --remove-missing ou --restart-postgresql.",
+        "en": "--yes only confirms --remove-missing or --restart-postgresql.",
+    },
+    "--zip and --rollback git exclude each other: the archive brings its own copy.": {
+        "fr": "--zip et --rollback git s'excluent : l'archive apporte sa propre copie.",
+        "en": "--zip and --rollback git exclude each other: the archive brings its own copy.",
+    },
+    "--zip brings its own copy of the code": {
+        "fr": "--zip apporte sa propre copie du code",
+        "en": "--zip brings its own copy of the code",
+    },
+    "Added by the archive, removed: {names}": {
+        "fr": "Ajoutés par l'archive, retirés : {names}",
+        "en": "Added by the archive, removed: {names}",
+    },
+    "Addons dir": {
+        "fr": "Dossier d'addons",
+        "en": "Addons dir",
+    },
+    "Addons directory to extract into (empty = the first one that already holds a module of the archive): ": {
+        "fr": "Dossier d'addons où extraire (vide = le premier qui porte déjà un module de l'archive) : ",
+        "en": "Addons directory to extract into (empty = the first one that already holds a module of the archive): ",
+    },
+    "Also restart PostgreSQL while Odoo is stopped, then wait until it accepts connections (--start-wait). Every database of the server loses its sessions: they are listed, then asked on the terminal, or --yes.": {
+        "fr": "Redémarre aussi PostgreSQL pendant qu'Odoo est arrêté, puis attend qu'il accepte les connexions (--start-wait). Chaque base du serveur perd ses sessions : elles sont listées, puis une question est posée au terminal, ou --yes.",
+        "en": "Also restart PostgreSQL while Odoo is stopped, then wait until it accepts connections (--start-wait). Every database of the server loses its sessions: they are listed, then asked on the terminal, or --yes.",
+    },
+    "Archive": {
+        "fr": "Archive",
+        "en": "Archive",
+    },
+    "Archive {path} holds no module.": {
+        "fr": "L'archive {path} ne porte aucun module.",
+        "en": "Archive {path} holds no module.",
+    },
+    "Archive {path} refused: file(s) outside a module folder: {names}": {
+        "fr": "Archive {path} refusée : fichier(s) hors d'un dossier de module : {names}",
+        "en": "Archive {path} refused: file(s) outside a module folder: {names}",
+    },
+    "Archive {path} refused: folder(s) at its root that are not modules (technical name and __manifest__.py): {names}": {
+        "fr": "Archive {path} refusée : dossier(s) à sa racine qui ne sont pas des modules (nom technique et __manifest__.py) : {names}",
+        "en": "Archive {path} refused: folder(s) at its root that are not modules (technical name and __manifest__.py): {names}",
+    },
+    "Archive {path} refused: unsafe member(s) (absolute path, '..', symbolic link or special file): {names}": {
+        "fr": "Archive {path} refusée : membre(s) dangereux (chemin absolu, « .. », lien symbolique ou fichier spécial) : {names}",
+        "en": "Archive {path} refused: unsafe member(s) (absolute path, '..', symbolic link or special file): {names}",
+    },
+    "Cannot read HEAD of the repository {path}.": {
+        "fr": "Impossible de lire HEAD du dépôt {path}.",
+        "en": "Cannot read HEAD of the repository {path}.",
+    },
+    "Cannot read the archive {path}: {error}": {
+        "fr": "Impossible de lire l'archive {path} : {error}",
+        "en": "Cannot read the archive {path}: {error}",
+    },
+    "Cannot record the git reference in {path}: {error}": {
+        "fr": "Impossible de noter la référence git dans {path} : {error}",
+        "en": "Cannot record the git reference in {path}: {error}",
+    },
+    "Code of the modules from {archive}": {
+        "fr": "Code des modules depuis {archive}",
+        "en": "Code of the modules from {archive}",
+    },
+    "Confirm --remove-missing or --restart-postgresql without asking.": {
+        "fr": "Confirme --remove-missing ou --restart-postgresql sans demander.",
+        "en": "Confirm --remove-missing or --restart-postgresql without asking.",
+    },
+    "Copy of the module folders impossible: {error}. Nothing was updated.": {
+        "fr": "Copie des dossiers de modules impossible : {error}. Rien n'a été mis à jour.",
+        "en": "Copy of the module folders impossible: {error}. Nothing was updated.",
+    },
+    "Drop it once examined: {command}, then remove {path}.": {
+        "fr": "La supprimer une fois examinée : {command}, puis retirer {path}.",
+        "en": "Drop it once examined: {command}, then remove {path}.",
+    },
+    "Extraction of {archive} into {path} failed: {error}": {
+        "fr": "Extraction de {archive} dans {path} en échec : {error}",
+        "en": "Extraction of {archive} into {path} failed: {error}",
+    },
+    "Git reference of the next rollback: {path}": {
+        "fr": "Référence git du prochain retour arrière : {path}",
+        "en": "Git reference of the next rollback: {path}",
+    },
+    "Git repositories not read ({reason}).": {
+        "fr": "Dépôts git non lus ({reason}).",
+        "en": "Git repositories not read ({reason}).",
+    },
+    "HEAD of each repository noted as the reference in {path}": {
+        "fr": "HEAD de chaque dépôt noté comme référence dans {path}",
+        "en": "HEAD of each repository noted as the reference in {path}",
+    },
+    "Module folders put back from {path}: {names}": {
+        "fr": "Dossiers de modules remis depuis {path} : {names}",
+        "en": "Module folders put back from {path}: {names}",
+    },
+    "Modules to update (empty = those of the archive; commas, * and ? patterns, or all): ": {
+        "fr": "Modules à mettre à jour (vide = ceux de l'archive ; virgules, motifs * et ?, ou all) : ",
+        "en": "Modules to update (empty = those of the archive; commas, * and ? patterns, or all): ",
+    },
+    "No active PostgreSQL unit found: name it with --pg-service.": {
+        "fr": "Aucune unité PostgreSQL active trouvée : nommez-la avec --pg-service.",
+        "en": "No active PostgreSQL unit found: name it with --pg-service.",
+    },
+    "No addons_path directory holds a module of the archive yet: name the one to extract into with --addons-dir.": {
+        "fr": "Aucun dossier de l'addons_path ne porte encore un module de l'archive : nommez celui où extraire avec --addons-dir.",
+        "en": "No addons_path directory holds a module of the archive yet: name the one to extract into with --addons-dir.",
+    },
+    "No backup of this run: the database is not restored.": {
+        "fr": "Aucune sauvegarde de cette exécution : la base n'est pas restaurée.",
+        "en": "No backup of this run: the database is not restored.",
+    },
+    "No database has a session.": {
+        "fr": "Aucune base n'a de session.",
+        "en": "No database has a session.",
+    },
+    "No repository moved since the reference: the code stays.": {
+        "fr": "Aucun dépôt n'a bougé depuis la référence : le code reste.",
+        "en": "No repository moved since the reference: the code stays.",
+    },
+    "Other databases have sessions ({names}): PostgreSQL is not restarted without a confirmation on the terminal or --yes. Nothing was stopped.": {
+        "fr": "D'autres bases ont des sessions ({names}) : PostgreSQL n'est pas redémarré sans confirmation au terminal ou --yes. Rien n'a été arrêté.",
+        "en": "Other databases have sessions ({names}): PostgreSQL is not restarted without a confirmation on the terminal or --yes. Nothing was stopped.",
+    },
+    "PostgreSQL does not accept connections {seconds} s after systemctl restart {unit} (journalctl -u {unit} -n 50).": {
+        "fr": "PostgreSQL n'accepte pas les connexions {seconds} s après systemctl restart {unit} (journalctl -u {unit} -n 50).",
+        "en": "PostgreSQL does not accept connections {seconds} s after systemctl restart {unit} (journalctl -u {unit} -n 50).",
+    },
+    "PostgreSQL not restarted. Nothing was stopped.": {
+        "fr": "PostgreSQL non redémarré. Rien n'a été arrêté.",
+        "en": "PostgreSQL not restarted. Nothing was stopped.",
+    },
+    "PostgreSQL restarted and accepting connections.": {
+        "fr": "PostgreSQL redémarré, il accepte les connexions.",
+        "en": "PostgreSQL restarted and accepting connections.",
+    },
+    "PostgreSQL unit of --restart-postgresql; default: the only active postgresql@<version>-<cluster>.service, else postgresql.service.": {
+        "fr": "Unité PostgreSQL de --restart-postgresql ; par défaut : la seule postgresql@<version>-<grappe>.service active, sinon postgresql.service.",
+        "en": "PostgreSQL unit of --restart-postgresql; default: the only active postgresql@<version>-<cluster>.service, else postgresql.service.",
+    },
+    "PostgreSQL {duration}": {
+        "fr": "PostgreSQL {duration}",
+        "en": "PostgreSQL {duration}",
+    },
+    "Renaming {old} to {new} failed: {error}": {
+        "fr": "Le renommage de {old} en {new} a échoué : {error}",
+        "en": "Renaming {old} to {new} failed: {error}",
+    },
+    "Restart Odoo and PostgreSQL - every database loses its sessions; simulate, confirm, then choose with sudo": {
+        "fr": "Relancer Odoo et PostgreSQL - chaque base perd ses sessions ; simuler, confirmer, puis choisir avec sudo",
+        "en": "Restart Odoo and PostgreSQL - every database loses its sessions; simulate, confirm, then choose with sudo",
+    },
+    "Restart Odoo and PostgreSQL for real? The tool lists the databases that have sessions and asks again on the terminal.": {
+        "fr": "Relancer Odoo et PostgreSQL pour de vrai ? L'outil liste les bases qui ont des sessions et redemande au terminal.",
+        "en": "Restart Odoo and PostgreSQL for real? The tool lists the databases that have sessions and asks again on the terminal.",
+    },
+    "Restart {unit}? Every database of the server loses its sessions: {databases}. [y/N] ": {
+        "fr": "Redémarrer {unit} ? Chaque base du serveur perd ses sessions : {databases}. [o/N] ",
+        "en": "Restart {unit}? Every database of the server loses its sessions: {databases}. [y/N] ",
+    },
+    "Restarting PostgreSQL ({unit})": {
+        "fr": "Redémarrage de PostgreSQL ({unit})",
+        "en": "Restarting PostgreSQL ({unit})",
+    },
+    "Rollback": {
+        "fr": "Retour arrière",
+        "en": "Rollback",
+    },
+    "Rollback done: the code and the database are those of before the update.": {
+        "fr": "Retour arrière fait : le code et la base sont ceux d'avant la mise à jour.",
+        "en": "Rollback done: the code and the database are those of before the update.",
+    },
+    "Rollback failed: {error}": {
+        "fr": "Retour arrière en échec : {error}",
+        "en": "Rollback failed: {error}",
+    },
+    "Rollback: code of the modules": {
+        "fr": "Retour arrière : code des modules",
+        "en": "Rollback: code of the modules",
+    },
+    "Rollback: database {database}": {
+        "fr": "Retour arrière : base {database}",
+        "en": "Rollback: database {database}",
+    },
+    "Rollback: the code was not put back.": {
+        "fr": "Retour arrière : le code n'a pas été remis.",
+        "en": "Rollback: the code was not put back.",
+    },
+    "Rollback: the database was not restored.": {
+        "fr": "Retour arrière : la base n'a pas été restaurée.",
+        "en": "Rollback: the database was not restored.",
+    },
+    "Run this update from the archive for real? The service stops meanwhile; on failure the code and the database are put back.": {
+        "fr": "Lancer cette mise à jour depuis l'archive pour de vrai ? Le service s'arrête entre-temps ; en cas d'échec, le code et la base sont remis.",
+        "en": "Run this update from the archive for real? The service stops meanwhile; on failure the code and the database are put back.",
+    },
+    "Run this update with git rollback for real? The service stops meanwhile; on failure the repositories and the database are put back.": {
+        "fr": "Lancer cette mise à jour avec retour git pour de vrai ? Le service s'arrête entre-temps ; en cas d'échec, les dépôts et la base sont remis.",
+        "en": "Run this update with git rollback for real? The service stops meanwhile; on failure the repositories and the database are put back.",
+    },
+    "Sessions of the databases unknown ({reason}): PostgreSQL is not restarted without --yes. Nothing was stopped.": {
+        "fr": "Sessions des bases inconnues ({reason}) : PostgreSQL n'est pas redémarré sans --yes. Rien n'a été arrêté.",
+        "en": "Sessions of the databases unknown ({reason}): PostgreSQL is not restarted without --yes. Nothing was stopped.",
+    },
+    "Sessions of the databases unknown ({reason}): the real run reads them, then asks on the terminal, or refuses without --yes when it cannot.": {
+        "fr": "Sessions des bases inconnues ({reason}) : l'exécution réelle les lit, puis demande au terminal, ou refuse sans --yes quand elle ne le peut pas.",
+        "en": "Sessions of the databases unknown ({reason}): the real run reads them, then asks on the terminal, or refuses without --yes when it cannot.",
+    },
+    "Several PostgreSQL units are active, choose one with --pg-service: {names}": {
+        "fr": "Plusieurs unités PostgreSQL sont actives, choisissez-en une avec --pg-service : {names}",
+        "en": "Several PostgreSQL units are active, choose one with --pg-service: {names}",
+    },
+    "Stopping {unit} for the rollback": {
+        "fr": "Arrêt de {unit} pour le retour arrière",
+        "en": "Stopping {unit} for the rollback",
+    },
+    "The backup {path} could not be restored: {database} stays as the update left it.": {
+        "fr": "La sauvegarde {path} n'a pas pu être restaurée : {database} reste comme la mise à jour l'a laissée.",
+        "en": "The backup {path} could not be restored: {database} stays as the update left it.",
+    },
+    "The commit {sha} noted for {path} is missing: the git rollback could not come back to it.": {
+        "fr": "Le commit {sha} noté pour {path} manque : le retour git ne pourrait pas y revenir.",
+        "en": "The commit {sha} noted for {path} is missing: the git rollback could not come back to it.",
+    },
+    "The copy {path} could not be put back: {error}": {
+        "fr": "La copie {path} n'a pas pu être remise : {error}",
+        "en": "The copy {path} could not be put back: {error}",
+    },
+    "The restored copy {copy} could not take the place of {database}: both are kept, put them in place by hand.": {
+        "fr": "La copie restaurée {copy} n'a pas pu prendre la place de {database} : les deux sont gardées, mettez-les en place à la main.",
+        "en": "The restored copy {copy} could not take the place of {database}: both are kept, put them in place by hand.",
+    },
+    "The service is not stopped (code {code}, state {state}): no rollback.": {
+        "fr": "Le service n'est pas arrêté (code {code}, état {state}) : pas de retour arrière.",
+        "en": "The service is not stopped (code {code}, state {state}): no rollback.",
+    },
+    "Update from a zip archive - tar copy, code and database put back on failure; simulate, confirm, then run with sudo": {
+        "fr": "Mettre à jour depuis une archive zip - copie tar, code et base remis en cas d'échec ; simuler, confirmer, puis lancer avec sudo",
+        "en": "Update from a zip archive - tar copy, code and database put back on failure; simulate, confirm, then run with sudo",
+    },
+    "Update with git rollback - commits noted, code and database put back on failure; simulate, confirm, then run with sudo": {
+        "fr": "Mettre à jour avec retour git - commits notés, code et base remis en cas d'échec ; simuler, confirmer, puis lancer avec sudo",
+        "en": "Update with git rollback - commits noted, code and database put back on failure; simulate, confirm, then run with sudo",
+    },
+    "With --zip: addons_path directory to extract into; default: the first one that already holds a module of the archive.": {
+        "fr": "Avec --zip : dossier de l'addons_path où extraire ; par défaut : le premier qui porte déjà un module de l'archive.",
+        "en": "With --zip: addons_path directory to extract into; default: the first one that already holds a module of the archive.",
+    },
+    "Zip archive of modules: each module folder at its root replaces the one of the addons directory, after a tar copy; on failure of -u or of the restart, the copy is put back and the database restored from the backup. Without --module, its modules are updated.": {
+        "fr": "Archive zip de modules : chaque dossier de module à sa racine remplace celui du dossier d'addons, après une copie tar ; en cas d'échec de -u ou de la relance, la copie est remise et la base restaurée depuis la sauvegarde. Sans --module, ses modules sont mis à jour.",
+        "en": "Zip archive of modules: each module folder at its root replaces the one of the addons directory, after a tar copy; on failure of -u or of the restart, the copy is put back and the database restored from the backup. Without --module, its modules are updated.",
+    },
+    "Zip archive of the modules: ": {
+        "fr": "Archive zip des modules : ",
+        "en": "Zip archive of the modules: ",
+    },
+    "after a successful update": {
+        "fr": "après une mise à jour réussie",
+        "en": "after a successful update",
+    },
+    "extraction of {archive} into {path}, each module folder replaced as a whole": {
+        "fr": "extraction de {archive} dans {path}, chaque dossier de module remplacé en entier",
+        "en": "extraction of {archive} into {path}, each module folder replaced as a whole",
+    },
+    "git checkout --detach of the reference in each repository that moved": {
+        "fr": "git checkout --detach de la référence dans chaque dépôt qui a bougé",
+        "en": "git checkout --detach of the reference in each repository that moved",
+    },
+    "git: note HEAD of each repository of the addons_path under the working directory of the unit; on failure of -u or of the restart, come back to the commits of the last successful update and restore the database from the backup.": {
+        "fr": "git : note HEAD de chaque dépôt de l'addons_path sous le dossier de travail de l'unité ; en cas d'échec de -u ou de la relance, revient aux commits de la dernière mise à jour réussie et restaure la base depuis la sauvegarde.",
+        "en": "git: note HEAD of each repository of the addons_path under the working directory of the unit; on failure of -u or of the restart, come back to the commits of the last successful update and restore the database from the backup.",
+    },
+    "git: on failure of -u or of the restart, the repositories come back to the reference and the database is restored from the backup": {
+        "fr": "git : en cas d'échec de -u ou de la relance, les dépôts reviennent à la référence et la base est restaurée depuis la sauvegarde",
+        "en": "git: on failure of -u or of the restart, the repositories come back to the reference and the database is restored from the backup",
+    },
+    "new": {
+        "fr": "nouveau",
+        "en": "new",
+    },
+    "no session": {
+        "fr": "aucune session",
+        "en": "no session",
+    },
+    "on failure of -u or of the restart: the tar copy put back, the database restored from the backup": {
+        "fr": "en cas d'échec de -u ou de la relance : la copie tar remise, la base restaurée depuis la sauvegarde",
+        "en": "on failure of -u or of the restart: the tar copy put back, the database restored from the backup",
+    },
+    "on failure of -u or of the restart: the backup restored into a copy that takes the place of {database}, the failed database kept aside and closed, then {code}": {
+        "fr": "en cas d'échec de -u ou de la relance : la sauvegarde restaurée dans une copie qui prend la place de {database}, la base en échec gardée à part et fermée, puis {code}",
+        "en": "on failure of -u or of the restart: the backup restored into a copy that takes the place of {database}, the failed database kept aside and closed, then {code}",
+    },
+    "question on the terminal listing the databases that have sessions, or --yes; without them, refused when another database has sessions": {
+        "fr": "question au terminal listant les bases qui ont des sessions, ou --yes ; sans l'un ni l'autre, refus quand une autre base a des sessions",
+        "en": "question on the terminal listing the databases that have sessions, or --yes; without them, refused when another database has sessions",
+    },
+    "reference: HEAD read now (no successful update recorded yet): a rollback would restore the database only": {
+        "fr": "référence : HEAD lu maintenant (aucune mise à jour réussie notée) : un retour arrière ne restaurerait que la base",
+        "en": "reference: HEAD read now (no successful update recorded yet): a rollback would restore the database only",
+    },
+    "reference: the commits of the update of {date}": {
+        "fr": "référence : les commits de la mise à jour du {date}",
+        "en": "reference: the commits of the update of {date}",
+    },
+    "replaced": {
+        "fr": "remplacé",
+        "en": "replaced",
+    },
+    "sessions unknown ({reason})": {
+        "fr": "sessions inconnues ({reason})",
+        "en": "sessions unknown ({reason})",
+    },
+    "systemctl restart {unit} failed (journalctl -u {unit} -n 50).": {
+        "fr": "systemctl restart {unit} a échoué (journalctl -u {unit} -n 50).",
+        "en": "systemctl restart {unit} failed (journalctl -u {unit} -n 50).",
+    },
+    "tar copy of {names} → {path}": {
+        "fr": "copie tar de {names} → {path}",
+        "en": "tar copy of {names} → {path}",
+    },
+    "the rollback restores the database from the backup": {
+        "fr": "le retour arrière restaure la base depuis la sauvegarde",
+        "en": "the rollback restores the database from the backup",
+    },
+    "the tar copy put back": {
+        "fr": "la copie tar remise",
+        "en": "the tar copy put back",
+    },
+    "then wait until PostgreSQL accepts connections, {seconds} s at most": {
+        "fr": "puis attente que PostgreSQL accepte les connexions, {seconds} s au plus",
+        "en": "then wait until PostgreSQL accepts connections, {seconds} s at most",
+    },
+    "{count} module folder(s) copied: {path}": {
+        "fr": "{count} dossier(s) de module copié(s) : {path}",
+        "en": "{count} module folder(s) copied: {path}",
+    },
+    "{count} module(s) of the archive placed in {path}, each folder replaced as a whole.": {
+        "fr": "{count} module(s) de l'archive placé(s) dans {path}, chaque dossier remplacé en entier.",
+        "en": "{count} module(s) of the archive placed in {path}, each folder replaced as a whole.",
+    },
+    "{database} restored from {path}; the database left by the update is kept as {failed}.": {
+        "fr": "{database} restaurée depuis {path} ; la base laissée par la mise à jour est gardée sous {failed}.",
+        "en": "{database} restored from {path}; the database left by the update is kept as {failed}.",
+    },
+    "{database}: {count} session(s)": {
+        "fr": "{database} : {count} session(s)",
+        "en": "{database}: {count} session(s)",
+    },
+    "{names} also in {path}, earlier in the addons_path: Odoo would load that code, not the archive's.": {
+        "fr": "{names} aussi dans {path}, plus tôt dans l'addons_path : Odoo chargerait ce code, pas celui de l'archive.",
+        "en": "{names} also in {path}, earlier in the addons_path: Odoo would load that code, not the archive's.",
+    },
+    "{option} takes no --zip.": {
+        "fr": "{option} ne prend pas de --zip.",
+        "en": "{option} takes no --zip.",
+    },
+    "{path} ({count} module(s))": {
+        "fr": "{path} ({count} module(s))",
+        "en": "{path} ({count} module(s))",
+    },
+    "{path} has modified tracked files: the git rollback could not come back to {sha}. Commit or stash them first.": {
+        "fr": "{path} a des fichiers suivis modifiés : le retour git ne pourrait pas revenir à {sha}. Validez-les ou remisez-les d'abord.",
+        "en": "{path} has modified tracked files: the git rollback could not come back to {sha}. Commit or stash them first.",
+    },
+    "{path} is not a directory of the addons_path of {config}.": {
+        "fr": "{path} n'est pas un dossier de l'addons_path de {config}.",
+        "en": "{path} is not a directory of the addons_path of {config}.",
+    },
+    "{path}: back to {sha}": {
+        "fr": "{path} : revenu à {sha}",
+        "en": "{path}: back to {sha}",
+    },
+    "{path}: git checkout {sha} failed: {error}": {
+        "fr": "{path} : git checkout {sha} a échoué : {error}",
+        "en": "{path}: git checkout {sha} failed: {error}",
+    },
+    "{unit}{detected}, restarted while Odoo is stopped": {
+        "fr": "{unit}{detected}, redémarré pendant qu'Odoo est arrêté",
+        "en": "{unit}{detected}, restarted while Odoo is stopped",
+    },
+    "Archive {path} refused: member(s) named twice: {names}": {
+        "fr": "Archive {path} refusée : membre(s) nommé(s) deux fois : {names}",
+        "en": "Archive {path} refused: member(s) named twice: {names}",
+    },
+    "Not enough space for the update and its rollback: {reason} Nothing was stopped.": {
+        "fr": "Pas assez d'espace pour la mise à jour et son retour arrière : {reason} Rien n'a été arrêté.",
+        "en": "Not enough space for the update and its rollback: {reason} Nothing was stopped.",
+    },
+    "The PostgreSQL role of {unit} lacks CREATEDB: the rollback could not restore {database}. Nothing was stopped.": {
+        "fr": "Le rôle PostgreSQL de {unit} n'a pas CREATEDB : le retour arrière ne pourrait pas restaurer {database}. Rien n'a été arrêté.",
+        "en": "The PostgreSQL role of {unit} lacks CREATEDB: the rollback could not restore {database}. Nothing was stopped.",
+    },
+    "data directory of PostgreSQL unreadable": {
+        "fr": "dossier de données de PostgreSQL illisible",
+        "en": "data directory of PostgreSQL unreadable",
+    },
+    "The rollback cannot be checked before the stop ({reason}): nothing was stopped.": {
+        "fr": "Le retour arrière ne peut pas être vérifié avant l'arrêt ({reason}) : rien n'a été arrêté.",
+        "en": "The rollback cannot be checked before the stop ({reason}): nothing was stopped.",
+    },
+    "the modules of the database changed since it was noted": {
+        "fr": "les modules de la base ont changé depuis qu'elle a été notée",
+        "en": "the modules of the database changed since it was noted",
+    },
+    "--pg-service {unit} is not a PostgreSQL unit (postgresql.service, postgresql@<version>-<cluster>.service, postgresql-<version>.service): refused.": {
+        "fr": "--pg-service {unit} n'est pas une unité PostgreSQL (postgresql.service, postgresql@<version>-<grappe>.service, postgresql-<version>.service) : refusé.",
+        "en": "--pg-service {unit} is not a PostgreSQL unit (postgresql.service, postgresql@<version>-<cluster>.service, postgresql-<version>.service): refused.",
+    },
+    "Rollback needs not checked ({reason}): the real run checks them before the stop, or refuses.": {
+        "fr": "Besoins du retour arrière non vérifiés ({reason}) : l'exécution réelle les vérifie avant l'arrêt, ou refuse.",
+        "en": "Rollback needs not checked ({reason}): the real run checks them before the stop, or refuses.",
+    },
+    "Git reference {path} set aside ({reason}): a rollback would restore the database only.": {
+        "fr": "Référence git {path} écartée ({reason}) : un retour arrière ne restaurerait que la base.",
+        "en": "Git reference {path} set aside ({reason}): a rollback would restore the database only.",
+    },
+    "Sessions of the databases unreadable before the restart ({reason}): PostgreSQL is not restarted without --yes.": {
+        "fr": "Sessions des bases illisibles avant le redémarrage ({reason}) : PostgreSQL n'est pas redémarré sans --yes.",
+        "en": "Sessions of the databases unreadable before the restart ({reason}): PostgreSQL is not restarted without --yes.",
+    },
+    "Other databases have sessions now ({names}): PostgreSQL is not restarted without a confirmation on the terminal or --yes.": {
+        "fr": "D'autres bases ont maintenant des sessions ({names}) : PostgreSQL n'est pas redémarré sans confirmation au terminal ni --yes.",
+        "en": "Other databases have sessions now ({names}): PostgreSQL is not restarted without a confirmation on the terminal or --yes.",
+    },
+    "{unit} is {state} after the restart: systemctl start.": {
+        "fr": "{unit} est {state} après le redémarrage : systemctl start.",
+        "en": "{unit} is {state} after the restart: systemctl start.",
+    },
+    "PostgreSQL started again and accepting connections.": {
+        "fr": "PostgreSQL démarré de nouveau et acceptant les connexions.",
+        "en": "PostgreSQL started again and accepting connections.",
+    },
+    "PostgreSQL is not available: {unit} is {state}. Every database of the server stays down until it is started.": {
+        "fr": "PostgreSQL n'est pas disponible : {unit} est {state}. Chaque base du serveur reste inaccessible tant qu'il n'est pas démarré.",
+        "en": "PostgreSQL is not available: {unit} is {state}. Every database of the server stays down until it is started.",
+    },
+    "Closing {database} first failed: {error}": {
+        "fr": "La fermeture préalable de {database} a échoué : {error}",
+        "en": "Closing {database} first failed: {error}",
+    },
+    "{database} could not be opened again to connections ({error}): ALTER DATABASE {database} WITH ALLOW_CONNECTIONS true": {
+        "fr": "{database} n'a pas pu être rouverte aux connexions ({error}) : ALTER DATABASE {database} WITH ALLOW_CONNECTIONS true",
+        "en": "{database} could not be opened again to connections ({error}): ALTER DATABASE {database} WITH ALLOW_CONNECTIONS true",
+    },
+    "{failed} still accepts connections ({error}): an Odoo without db_name lists it, and runs its crons and its mail queue.": {
+        "fr": "{failed} accepte encore les connexions ({error}) : un Odoo sans db_name la liste, et fait tourner ses crons et sa file de courriels.",
+        "en": "{failed} still accepts connections ({error}): an Odoo without db_name lists it, and runs its crons and its mail queue.",
+    },
+    "{failed} accepts no connection (Odoo does not list it); to examine it: ALTER DATABASE {failed} WITH ALLOW_CONNECTIONS true": {
+        "fr": "{failed} n'accepte aucune connexion (Odoo ne la liste pas) ; pour l'examiner : ALTER DATABASE {failed} WITH ALLOW_CONNECTIONS true",
+        "en": "{failed} accepts no connection (Odoo does not list it); to examine it: ALTER DATABASE {failed} WITH ALLOW_CONNECTIONS true",
+    },
+    "The code of the update stays: it matches the database the update left. The code of before: {source}": {
+        "fr": "Le code de la mise à jour reste : il correspond à la base que la mise à jour a laissée. Le code d'avant : {source}",
+        "en": "The code of the update stays: it matches the database the update left. The code of before: {source}",
     },
 }
 

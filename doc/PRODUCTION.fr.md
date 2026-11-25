@@ -145,6 +145,20 @@ compris), Odoo laissé en marche, et liste les modules non installés dont
 le code manque ; `--remove-missing` les retire ensuite de la liste, après
 une sauvegarde et une confirmation au terminal (ou `--yes`).
 
+`--restart-postgresql` redémarre aussi le serveur PostgreSQL pendant
+qu'Odoo est arrêté, puis attend qu'il accepte les connexions. Chaque base
+du serveur perd ses sessions : elles sont listées avant tout arrêt et
+confirmées au terminal (ou `--yes`) ; sans l'un ni l'autre, une autre base
+qui a des sessions refuse (code 2). `--zip ARCHIVE` apporte le code des
+modules à un serveur sans git : l'archive est contrôlée avant l'arrêt
+(aucun chemin qui sort du dossier d'addons, aucun lien symbolique), et
+chaque dossier de module remplace celui du dossier d'addons après une
+copie tar de ce dernier. `--rollback git` note plutôt les commits des
+dépôts de l'`addons_path`. Avec l'un ou l'autre, un échec de `-u` ou de la
+relance remet le code et restaure la base depuis la sauvegarde prise
+avant ; la base laissée par la mise à jour est gardée à part.
+`--no-backup` est refusé avec eux.
+
 Un module demandé que la base n'a pas installé est signalé, puisque `-u`
 l'ignore ; la mise à jour est refusée avant l'arrêt quand aucun ne l'est.
 Après l'arrêt, un Odoo sans `-d` dont la configuration sert cette base, ou
@@ -251,7 +265,9 @@ TODO › Exécuter › Production
 🏭 Instance : <unité> · profil : private/production/<unité>.json (n valeur(s))
 [1] Choisir l'instance
 ── Exploiter ──
-[2] Mise à jour             mettre à jour, simuler seulement
+[2] Mise à jour             mettre à jour, simuler seulement, relancer (avec
+                            PostgreSQL), liste des applications, archive zip,
+                            retour git
 [3] Sauvegardes             maintenant, état, restauration d'essai,
                             restauration dans une nouvelle base
 [4] Journal et courriels    erreurs d'Odoo (depuis la dernière lecture,

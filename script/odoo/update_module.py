@@ -131,9 +131,60 @@ peut, elle, finir son instruction en cours et garder ses verrous jusqu'à
 ce que le serveur remarque la déconnexion. Le redémarrage peut donc
 attendre ces verrous ; un avertissement le dit.
 
-Rien n'est restauré : ce programme ne remplace pas le code, il n'a donc
-rien à remettre. La sauvegarde est là pour une restauration décidée par
-une personne.
+PostgreSQL et retour arrière
+----------------------------
+`--restart-postgresql` redémarre aussi le serveur PostgreSQL, Odoo
+arrêté : après les contrôles de l'arrêt, avant la sauvegarde (ou la
+relance seule). L'unité est `--pg-service`, sinon la seule unité active
+d'une grappe (`postgresql@<version>-<grappe>.service`), sinon
+`postgresql.service` ; un `db_host` d'un autre hôte refuse. Avant tout
+arrêt, les sessions de chaque base du serveur sont lues et listées, puis
+une question au terminal les rappelle (`--yes` la saute) ; sans terminal
+ni `--yes`, une autre base que celle de l'instance qui a des sessions, ou
+des sessions illisibles, refusent (code 2) ; sans accord, elles sont
+relues juste avant le geste. `--pg-service` ne nomme qu'une unité
+PostgreSQL. Après `systemctl restart`, l'attente de `pg_isready` (à
+défaut, `SELECT 1`) est bornée par `--start-wait` ; une unité laissée
+arrêtée reçoit un `systemctl start`. Un échec de PostgreSQL rend 1,
+l'unité Odoo relancée quand même par le `finally`.
+
+`--zip ARCHIVE` apporte le code : chaque dossier de module à la racine de
+l'archive, inspectée avant tout arrêt (`lib_ops/retour_code.py` : aucun
+chemin absolu, `..`, lien symbolique ni fichier spécial, aucun fichier
+hors d'un dossier de module), remplace en entier celui du dossier
+d'addons visé — `--addons-dir`, sinon le premier dossier de l'addons_path
+qui porte déjà un de ses modules ; un module de l'archive présent plus
+tôt dans l'addons_path refuse, Odoo chargerait l'autre. L'espace pour
+l'extraction et pour la copie est vérifié avant l'arrêt, avec celui de la
+sauvegarde et de la restauration, en somme par système de fichiers. Après
+la sauvegarde, une copie tar.gz des dossiers remplacés est écrite à côté
+d'elle, puis l'archive est extraite, toujours sous le compte de l'unité.
+Sans `--module`, les modules de l'archive sont mis à jour.
+
+`--rollback git` note HEAD de chaque dépôt git qui porte un dossier de
+l'addons_path sous le dossier de travail de l'unité (ce dossier lui-même
+exclu : il porte les outils). La référence où revenir est celle de la
+dernière mise à jour réussie avec `--rollback git`, notée dans
+`<state-dir>/<base>/git_heads.json` avec l'empreinte des modules de la
+base ; sans elle, ou pour d'autres modules, HEAD lu avant l'arrêt. Un
+dépôt qui doit revenir et dont un fichier suivi est modifié, ou dont
+le commit de référence manque, refuse avant l'arrêt.
+
+Dans les deux cas, quand `-u` échoue (interruption comprise), ou quand la
+relance qui suit un `-u` réussi échoue — l'unité est alors arrêtée de
+nouveau —, la base est restaurée depuis la sauvegarde vérifiée de cette
+exécution : chargée dans une copie `<base>_rollback_<horodatage>`
+(`odoo_backup.restaurer`), qui prend ensuite la place de la base par
+renommage, filestore compris, la base fermée aux connexions avant. Le
+code n'est remis (copie tar, ou `git checkout --detach` de la référence
+dans chaque dépôt qui a bougé) que si la base l'est. La base laissée par
+la mise à jour reste sous `<base>_failed_<horodatage>`, fermée, à
+supprimer une fois examinée. L'espace et les droits qu'exige la
+restauration sont vérifiés avant l'arrêt. Ces gestes ont lieu Odoo arrêté, signaux
+ignorés, avant la relance ; le code de sortie reste 1. Sans sauvegarde
+pas de retour : `--no-backup` est refusé avec `--zip` et `--rollback
+git`. Sans ces options, rien n'est restauré : la sauvegarde est là pour
+une restauration décidée par une personne.
 
 Codes de sortie : 0 réussi ; 1 mise à jour, relance ou liste en échec,
 service relancé ; 2 refusé avant tout arrêt ; 75 verrou pris ; 130
@@ -150,8 +201,10 @@ FICHIER`, sinon
 `private/production/<unité>.json` de ce checkout. La ligne de commande
 l'emporte sur chaque valeur, `--no-profile` l'ignore. Les modules, l'unité,
 le compte, la configuration, les gestes (`--restart-only`,
-`--update-list`, `--remove-missing`, `--i18n-overwrite`), `--force`,
-`--no-backup`, `--yes` et `--dry-run` ne s'y lisent jamais. Du groupe
+`--update-list`, `--remove-missing`, `--i18n-overwrite`,
+`--restart-postgresql`), l'archive et son dossier (`--zip`,
+`--addons-dir`), `--force`, `--no-backup`, `--yes` et `--dry-run` ne s'y
+lisent jamais ; `rollback` et `pg_service` s'y lisent. Du groupe
 `warmup`, `--warmup-deep` ne lit que `login` et `api_key_file`
 (`--warmup-login`, `--warmup-key-file`) : la clé y est une référence
 KeePass que todo passe par un fichier 0600, ou le credential
@@ -175,8 +228,10 @@ import socket
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
+import zipfile
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -191,6 +246,7 @@ from script.lib_ops import (  # noqa: E402
     postgres,
     profil,
     report,
+    retour_code,
     service,
     systemd,
 )
@@ -244,6 +300,27 @@ LIGNES_VERSIONS = 60
 # Un nom de module que le script de retrait reçoit : rien d'autre n'y est
 # inséré, et seulement par repr().
 RE_NOM_MODULE = re.compile(r"[A-Za-z0-9_]+")
+# `--rollback` : sans retour git, ou avec.
+RETOURS = ("none", "git")
+# La référence git notée après une mise à jour réussie, dans le dossier
+# d'état de la base.
+NOM_REFERENCE_GIT = "git_heads.json"
+DELAI_GIT = 120
+# Le renommage d'une base au retour arrière : PostgreSQL attend lui-même
+# quelques secondes la fin des sessions coupées, puis refuse ; l'outil
+# retente, borné.
+TENTATIVES_RENOMMAGE = 3
+PAUSE_RENOMMAGE = 2
+# Les erreurs qu'une copie, une extraction ou une remise du code lèvent,
+# directement ou par `sous_le_compte` (EchecSousCompte est un OSError).
+ERREURS_CODE = (
+    OSError,
+    ValueError,
+    tarfile.TarError,
+    zipfile.BadZipFile,
+    EOFError,
+    RuntimeError,
+)
 
 DEBUT_JSON = "UPDATE_MODULE_JSON_BEGIN"
 FIN_JSON = "UPDATE_MODULE_JSON_END"
@@ -624,6 +701,48 @@ class Plan:
         # l'unité ne tournait pas) à la première réponse sous CODE_SERVI.
         self.debut_coupure = None
         self.fin_coupure = None
+        # `--restart-postgresql` : l'unité du serveur et d'où elle vient,
+        # puis les sessions de chaque base lues avant l'arrêt ({base:
+        # nombre}), None quand elles ne se lisent pas — la raison dans
+        # `erreur_connexions`.
+        self.postgresql = ""
+        self.origine_postgresql = ""
+        self.connexions = None
+        self.erreur_connexions = ""
+        # Vrai quand le redémarrage de PostgreSQL est accordé (`--yes`, ou
+        # « oui » au terminal) ; faux, les sessions sont relues juste avant.
+        self.postgresql_confirme = False
+        # Le retour arrière : "zip", "git" ou "". Pour le zip : l'archive,
+        # son Inspection, le dossier d'addons visé, la copie tar et les
+        # modules qu'elle porte. Pour git : {dépôt: sha} de HEAD lu avant
+        # l'arrêt, la référence où revenir, l'époque de la mise à jour qui
+        # l'a notée (None : HEAD lu ici), ou la raison qui les laisse
+        # inconnus en simulation.
+        self.retour = ""
+        self.archive = ""
+        self.inspection = None
+        self.destination = ""
+        self.copie_code = ""
+        self.sauves = []
+        self.tetes = {}
+        self.reference = {}
+        self.date_reference = None
+        self.git_inconnu = ""
+        # L'empreinte des modules de la base lue avant l'arrêt
+        # (`postgres.REQUETE_EMPREINTE_MODULES`), et la raison qui écarte
+        # une référence notée pour d'autres modules que ceux-là.
+        self.empreinte_modules = ""
+        self.reference_ecartee = ""
+        # Ce que la vérification du retour arrière n'a pas pu lire en
+        # simulation ; l'exécution réelle refuse dans ce cas.
+        self.retour_inconnu = ""
+        # Vrais une fois le code remplacé (zip) et la mise à jour lancée :
+        # ce qu'un échec doit alors remettre. `issue_retour` vaut (code
+        # remis, base restaurée) après un retour arrière, None avant.
+        self.code_remplace = False
+        self.mise_a_jour_lancee = False
+        self.issue_retour = None
+        self.base_echouee = ""
         self.__dict__.update(valeurs)
 
 
@@ -692,8 +811,15 @@ def _detecter_adresse(plan, config):
 
 
 def _detecter_modules(args, plan, config):
+    """Les modules de `-u` dans `plan.modules`. Avec `--zip`, ceux de
+    l'archive quand `--module` manque, et un nom exact de l'archive est
+    admis même absent du disque : l'extraction l'y mettra."""
+    du_zip = sorted(plan.inspection.modules) if plan.inspection else []
     if args.modules == ["all"]:
         plan.modules = ["all"]
+        return
+    if du_zip and not args.modules:
+        plan.modules = du_zip
         return
     chemins = odoo_instance.chemins_addons(config, plan.wd)
     if not chemins:
@@ -705,6 +831,8 @@ def _detecter_modules(args, plan, config):
     modules, absents, vides = odoo_instance.developper_modules(
         args.modules, chemins
     )
+    modules += [n for n in absents if n in du_zip and n not in modules]
+    absents = [n for n in absents if n not in du_zip]
     if absents:
         raise Refus(
             t("Module not found in addons_path: {names}").format(
@@ -899,6 +1027,397 @@ def _detecter_shell(plan):
         )
 
 
+def _detecter_archive(args, plan):
+    """`--zip` : l'archive inspectée dans `plan.inspection`, sans rien
+    écrire. Lève Refus sur une archive illisible ou dangereuse."""
+    if not args.zip:
+        return
+    plan.retour = "zip"
+    plan.archive = os.path.abspath(args.zip)
+    plan.inspection = retour_code.inspecter_zip(plan.archive)
+
+
+def _est_module(dossier):
+    return os.path.isfile(os.path.join(dossier, retour_code.MANIFESTE))
+
+
+def _destination_zip(args, systeme, plan, config):
+    """Le dossier d'addons où l'archive s'extrait, dans
+    `plan.destination`. Rend [(chemin, octets)] de l'espace qu'il faut :
+    l'extraction sous ce dossier, la copie tar des dossiers remplacés à
+    côté de la sauvegarde (`_verifier_retour` les vérifie). Lève Refus,
+    rien arrêté."""
+    noms = sorted(plan.inspection.modules)
+    chemins = odoo_instance.chemins_addons(config, plan.wd)
+    reels = [os.path.realpath(c) for c in chemins]
+    if args.addons_dir:
+        dossier = os.path.join(plan.wd, args.addons_dir)
+        if os.path.realpath(dossier) not in reels:
+            raise Refus(
+                service.N_(
+                    "{path} is not a directory of the addons_path of {config}."
+                ),
+                path=dossier,
+                config=plan.config_path,
+            )
+        rang = reels.index(os.path.realpath(dossier))
+    else:
+        porteurs = [
+            i
+            for i, chemin in enumerate(chemins)
+            if any(os.path.lexists(os.path.join(chemin, n)) for n in noms)
+        ]
+        if not porteurs:
+            raise Refus(
+                service.N_(
+                    "No addons_path directory holds a module of the archive"
+                    " yet: name the one to extract into with --addons-dir."
+                )
+            )
+        rang = porteurs[0]
+    plan.destination = chemins[rang]
+    for chemin in chemins[:rang]:
+        doublons = [n for n in noms if _est_module(os.path.join(chemin, n))]
+        if doublons:
+            raise Refus(
+                service.N_(
+                    "{names} also in {path}, earlier in the addons_path:"
+                    " Odoo would load that code, not the archive's."
+                ),
+                names=", ".join(doublons),
+                path=chemin,
+            )
+    copie = sum(
+        systeme.taille_dossier(os.path.join(plan.destination, n))[0]
+        for n in noms
+        if os.path.isdir(os.path.join(plan.destination, n))
+    )
+    return [
+        (plan.destination, int(plan.inspection.octets * odoo_backup.MARGE)),
+        (plan.cible.dossier, int(copie * odoo_backup.MARGE)),
+    ]
+
+
+def _verifier_retour(args, systeme, plan, besoins):
+    """Avant tout arrêt, ce dont le retour arrière aura besoin, ajouté à
+    `besoins` (ceux de `--zip`) : la sauvegarde, puis la copie que la
+    restauration crée — la base dans le dossier de données de PostgreSQL
+    (sa taille actuelle), le filestore à côté du sien. L'espace se vérifie
+    en somme par système de fichiers (`odoo_backup.verifier_espaces`). Le
+    rôle de l'unité doit avoir CREATEDB : la copie se crée, puis se
+    renomme.
+
+    Lève Refus. Un dossier de données de PostgreSQL ou des droits qui ne
+    se lisent pas refusent aussi, sauf en simulation, où
+    `plan.retour_inconnu` en garde la raison. Sans évaluation de la base
+    (simulation sous un autre compte), seuls `besoins` sont vérifiés."""
+    estimation = plan.estimation
+    raisons = []
+    if estimation is None:
+        raisons.append(t("requires sudo"))
+    else:
+        marge = odoo_backup.MARGE
+        taille = int(estimation.faits.get("size") or 0)
+        besoins = [(plan.cible.dossier, estimation.besoin)] + list(besoins)
+        besoins.append(
+            (
+                os.path.dirname(plan.cible.filestore),
+                int(estimation.octets_filestore * marge),
+            )
+        )
+        lieu = odoo_backup.dossier_pg(plan.cible, systeme)
+        if lieu:
+            besoins.append((lieu, int(taille * marge)))
+        else:
+            raisons.append(t("data directory of PostgreSQL unreadable"))
+        try:
+            droits = odoo_backup.interroger(
+                plan.cible,
+                systeme,
+                base="postgres",
+                sql=postgres.REQUETE_DROITS,
+            )
+        except odoo_backup.ErreurPg as err:
+            raisons.append(str(err))
+        else:
+            if not droits.get("createdb"):
+                raise Refus(
+                    service.N_(
+                        "The PostgreSQL role of {unit} lacks CREATEDB: the"
+                        " rollback could not restore {database}. Nothing was"
+                        " stopped."
+                    ),
+                    unit=plan.unite,
+                    database=plan.base,
+                )
+    try:
+        odoo_backup.verifier_espaces(systeme, besoins)
+    except odoo_backup.ManqueEspace as err:
+        raise Refus(
+            service.N_(
+                "Not enough space for the update and its rollback: {reason}"
+                " Nothing was stopped."
+            ),
+            reason=err.message(t),
+        )
+    if not raisons:
+        return
+    if args.dry_run:
+        plan.retour_inconnu = "; ".join(raisons)
+        return
+    raise Refus(
+        service.N_(
+            "The rollback cannot be checked before the stop ({reason}):"
+            " nothing was stopped."
+        ),
+        reason="; ".join(raisons),
+    )
+
+
+def _peut_lancer_sous_le_compte(plan, systeme):
+    """Vrai quand une commande peut tourner sous le compte de l'unité :
+    c'est le compte courant, ou root."""
+    return plan.utilisateur == plan.courant or systeme.euid() == 0
+
+
+def lanceur_git(plan, systeme):
+    """Un `lancer(argv) -> (code, stdout, stderr)` qui passe les commandes
+    git sous le compte de l'unité (`runuser`), propriétaire des dépôts :
+    git refuse un dépôt d'un autre compte. HOME du compte, aucune
+    variable GIT_* héritée, aucune question de mot de passe."""
+    prefixe = []
+    if plan.utilisateur and plan.utilisateur != plan.courant:
+        prefixe = ["runuser", "-u", plan.utilisateur, "--"]
+    env = {
+        cle: valeur
+        for cle, valeur in os.environ.items()
+        if not cle.startswith("GIT_")
+    }
+    env.update({"HOME": plan.home, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"})
+
+    def lancer(argv):
+        return systeme.requete(prefixe + list(argv), env, DELAI_GIT)
+
+    return lancer
+
+
+def chemin_reference(plan):
+    """Le fichier de la référence git de la base, dans son dossier
+    d'état."""
+    return os.path.join(plan.cible.dossier_etat, NOM_REFERENCE_GIT)
+
+
+def _lire_reference(plan, systeme):
+    """(données, raison) de la référence git notée : ({}, "") sans
+    fichier. Sous root, le fichier n'est repris que s'il appartient au
+    compte de l'unité ou à root."""
+    proprietaires = None
+    if systeme.euid() == 0:
+        proprietaires = {0, systeme.uid(plan.utilisateur)}
+    try:
+        return (
+            odoo_backup.lire_etat(chemin_reference(plan), proprietaires),
+            "",
+        )
+    except OSError as err:
+        return {}, str(err)
+
+
+def lire_empreinte(plan, systeme):
+    """L'empreinte des modules de la base
+    (`postgres.REQUETE_EMPREINTE_MODULES`). ErreurPg quand elle ne se lit
+    pas."""
+    faits = odoo_backup.interroger(
+        plan.cible_pg, systeme, sql=postgres.REQUETE_EMPREINTE_MODULES
+    )
+    empreinte = faits.get("stamp")
+    if not isinstance(empreinte, str) or not empreinte:
+        raise odoo_backup.ErreurPg(t("no JSON answer"))
+    return empreinte
+
+
+def _reference_valable(systeme, plan, donnees, notee):
+    """`notee` quand la référence a été notée pour les modules que la base
+    porte encore (même empreinte), sinon {} et la raison dans
+    `plan.reference_ecartee` : une mise à jour faite depuis par un autre
+    moyen a migré la base avec un code plus récent que la référence, et
+    revenir à celle-ci remettrait un code plus ancien que la base
+    restaurée. Le retour ne restaure alors que la base."""
+    try:
+        plan.empreinte_modules = lire_empreinte(plan, systeme)
+    except odoo_backup.ErreurPg as err:
+        plan.reference_ecartee = str(err)
+        return {}
+    if retour_code.empreinte_de_reference(donnees) != plan.empreinte_modules:
+        plan.reference_ecartee = t(
+            "the modules of the database changed since it was noted"
+        )
+        return {}
+    return notee
+
+
+def _preparer_git(systeme, plan, config):
+    """`--rollback git` : les dépôts, leur HEAD et la référence où revenir
+    dans `plan`. La référence notée n'est reprise que pour la base dont
+    elle a noté les modules (`_reference_valable`). Lève Refus quand aucun
+    dépôt ne porte l'addons_path sous le dossier de travail, quand un HEAD
+    ne se lit pas, ou quand un dépôt qui doit revenir a un fichier suivi
+    modifié ou n'a plus le commit de la référence. En simulation sous un
+    autre compte, rien n'est lu (`plan.git_inconnu`)."""
+    plan.retour = "git"
+    if not _peut_lancer_sous_le_compte(plan, systeme):
+        plan.git_inconnu = t("requires sudo")
+        return
+    lancer = lanceur_git(plan, systeme)
+    chemins = odoo_instance.chemins_addons(config, plan.wd)
+    depots = retour_code.depots_git(chemins, plan.wd, lancer)
+    if not depots:
+        raise Refus(
+            service.N_(
+                "--rollback git: no git repository holds a directory of the"
+                " addons_path under {path}."
+            ),
+            path=plan.wd,
+        )
+    for depot in depots:
+        sha = retour_code.tete(depot, lancer)
+        if not sha:
+            raise Refus(
+                service.N_("Cannot read HEAD of the repository {path}."),
+                path=depot,
+            )
+        plan.tetes[depot] = sha
+    donnees, _raison = _lire_reference(plan, systeme)
+    notee = retour_code.depots_de_reference(donnees)
+    if notee:
+        notee = _reference_valable(systeme, plan, donnees, notee)
+    plan.reference = {d: notee.get(d, plan.tetes[d]) for d in depots}
+    if notee:
+        plan.date_reference = donnees.get("date")
+    for depot in depots:
+        sha = plan.reference[depot]
+        if sha == plan.tetes[depot]:
+            continue
+        if not retour_code.commit_existe(depot, sha, lancer):
+            raise Refus(
+                service.N_(
+                    "The commit {sha} noted for {path} is missing: the git"
+                    " rollback could not come back to it."
+                ),
+                sha=sha,
+                path=depot,
+            )
+        if retour_code.modifie(depot, lancer):
+            raise Refus(
+                service.N_(
+                    "{path} has modified tracked files: the git rollback"
+                    " could not come back to {sha}. Commit or stash them"
+                    " first."
+                ),
+                path=depot,
+                sha=sha[:12],
+            )
+
+
+def _detecter_postgresql(args, systeme, plan):
+    """`--restart-postgresql` : l'unité du serveur, puis les sessions de
+    chaque base, dans `plan`. Lève Refus quand `db_host` vise un autre
+    hôte, quand l'unité ne se trouve pas ou n'est pas chargée."""
+    config = plan.cible_pg.config
+    if not postgres.hote_local(config):
+        raise Refus(
+            service.N_(
+                "--restart-postgresql: db_host {host} is another host, whose"
+                " PostgreSQL is not restarted from here."
+            ),
+            host=config.get("db_host"),
+        )
+    if args.pg_service:
+        # La valeur peut venir du profil : seule une unité PostgreSQL
+        # reçoit le `systemctl restart`, jamais celle de l'instance.
+        if (
+            not systemd.RE_POSTGRESQL.fullmatch(args.pg_service)
+            or args.pg_service == plan.unite
+        ):
+            raise Refus(
+                service.N_(
+                    "--pg-service {unit} is not a PostgreSQL unit"
+                    " (postgresql.service, postgresql@<version>-<cluster>"
+                    ".service, postgresql-<version>.service): refused."
+                ),
+                unit=args.pg_service,
+            )
+        plan.postgresql, plan.origine_postgresql = args.pg_service, ""
+    else:
+        try:
+            plan.postgresql = systemd.unite_postgresql(systeme.lanceur)
+        except systemd.ErreurUnite as err:
+            if str(err) == "ambiguous":
+                raise Refus(
+                    service.N_(
+                        "Several PostgreSQL units are active, choose one with"
+                        " --pg-service: {names}"
+                    ),
+                    names=", ".join(err.candidates),
+                )
+            raise Refus(
+                service.N_(
+                    "No active PostgreSQL unit found: name it with"
+                    " --pg-service."
+                )
+            )
+        plan.origine_postgresql = "detected"
+    try:
+        chargee = systemd.lire_proprietes(
+            plan.postgresql, ("LoadState",), systeme.lanceur
+        )["LoadState"]
+    except systemd.ErreurUnite:
+        chargee = ""
+    if chargee in ("", "not-found"):
+        raise Refus(
+            service.N_("Service {unit} not found (systemctl)."),
+            unit=plan.postgresql,
+        )
+    plan.connexions, plan.erreur_connexions = lire_connexions(plan, systeme)
+
+
+def lire_connexions(plan, systeme):
+    """({base: sessions}, "") des bases du serveur qui ont des sessions de
+    clients, lues par la base `postgres` (`postgres.REQUETE_CONNEXIONS`) ;
+    (None, raison) quand elles ne se lisent pas."""
+    if not plan.cible_pg.interrogeable:
+        return None, t("requires sudo")
+    try:
+        faits = odoo_backup.interroger(
+            plan.cible_pg,
+            systeme,
+            base="postgres",
+            sql=postgres.REQUETE_CONNEXIONS,
+        )
+    except odoo_backup.ErreurPg as err:
+        return None, str(err)
+    bases = faits.get("databases") or {}
+    if not isinstance(bases, dict):
+        return None, t("no JSON answer")
+    connexions = {}
+    for base, nombre in bases.items():
+        try:
+            connexions[str(base)] = int(nombre)
+        except (TypeError, ValueError):
+            continue
+    return connexions, ""
+
+
+def autres_bases_connectees(plan):
+    """Les bases autres que celle de l'instance qui ont des sessions,
+    triées."""
+    return sorted(
+        base
+        for base, nombre in (plan.connexions or {}).items()
+        if base != plan.base and nombre
+    )
+
+
 def detecter(args, systeme, racine=RACINE):
     """Établit le Plan du geste demandé (mise à jour, `--restart-only`,
     `--update-list`). Lève Refus sur tout ce qui manque, rien arrêté.
@@ -926,15 +1445,25 @@ def detecter(args, systeme, racine=RACINE):
     elif plan.redemarrage_seul:
         plan.sauvegarde = False
     else:
+        _detecter_archive(args, plan)
         _detecter_modules(args, plan, config)
         _preparer_sauvegarde(args, systeme, plan, config)
     plan.cible_pg = plan.cible or odoo_backup.preparer_cible(
         plan, config, args.backup_dest, args.state_dir, systeme
     )
+    if args.restart_postgresql:
+        _detecter_postgresql(args, systeme, plan)
     if plan.redemarrage_seul:
         return plan
     if not plan.liste:
         _verifier_installes(systeme, plan)
+        besoins = []
+        if plan.retour == "zip":
+            besoins = _destination_zip(args, systeme, plan, config)
+        elif args.rollback == "git":
+            _preparer_git(systeme, plan, config)
+        if plan.retour:
+            _verifier_retour(args, systeme, plan, besoins)
     plan.journal = os.path.join(
         args.log_dir or DOSSIER_JOURNAUX,
         "update-{}-{}.log".format(
@@ -981,6 +1510,129 @@ def _afficher_sauvegarde(plan, rapport):
         if estimation is not None
         else t("unknown (requires sudo)"),
     )
+
+
+def _afficher_retour(plan, rapport):
+    """L'archive et ses modules (remplacé ou nouveau), ou les dépôts git
+    et leur référence, puis ce qu'un échec remettrait. Ce que la
+    vérification du retour n'a pas pu lire en simulation est un ATTN."""
+    if plan.retour_inconnu:
+        rapport.attn(
+            t(
+                "Rollback needs not checked ({reason}): the real run checks"
+                " them before the stop, or refuses."
+            ).format(reason=plan.retour_inconnu)
+        )
+    if plan.retour == "zip":
+        modules = plan.inspection.modules
+        rapport.champ(
+            t("Archive"),
+            t("{path} ({count} module(s))").format(
+                path=plan.archive, count=len(modules)
+            ),
+        )
+        rapport.champ(t("Addons dir"), plan.destination)
+        for nom, version in sorted(modules.items()):
+            present = os.path.lexists(os.path.join(plan.destination, nom))
+            rapport.detail(
+                "{} {} ({})".format(
+                    nom, version, t("replaced") if present else t("new")
+                )
+            )
+        rapport.champ(
+            t("Rollback"),
+            t(
+                "on failure of -u or of the restart: the tar copy put back,"
+                " the database restored from the backup"
+            ),
+        )
+    elif plan.retour == "git":
+        rapport.champ(
+            t("Rollback"),
+            t(
+                "git: on failure of -u or of the restart, the repositories"
+                " come back to the reference and the database is restored"
+                " from the backup"
+            ),
+        )
+        if plan.git_inconnu:
+            rapport.attn(
+                t("Git repositories not read ({reason}).").format(
+                    reason=plan.git_inconnu
+                )
+            )
+            return
+        if plan.reference_ecartee:
+            rapport.attn(
+                t(
+                    "Git reference {path} set aside ({reason}): a rollback"
+                    " would restore the database only."
+                ).format(
+                    path=chemin_reference(plan), reason=plan.reference_ecartee
+                )
+            )
+        if plan.date_reference is not None:
+            rapport.detail(
+                t("reference: the commits of the update of {date}").format(
+                    date=_date_lisible(plan.date_reference)
+                )
+            )
+        elif not plan.reference_ecartee:
+            rapport.detail(
+                t(
+                    "reference: HEAD read now (no successful update recorded"
+                    " yet): a rollback would restore the database only"
+                )
+            )
+        for depot, sha in sorted(plan.tetes.items()):
+            ligne = f"{depot}  {sha[:12]}"
+            if plan.reference.get(depot, sha) != sha:
+                ligne += f" → {plan.reference[depot][:12]}"
+            rapport.detail(ligne)
+
+
+def _date_lisible(epoque):
+    try:
+        return datetime.datetime.fromtimestamp(float(epoque)).strftime(
+            "%Y-%m-%d %H:%M"
+        )
+    except (TypeError, ValueError, OverflowError, OSError):
+        return "?"
+
+
+def _afficher_postgresql(plan, rapport):
+    """L'unité PostgreSQL redémarrée et les sessions de chaque base."""
+    if not plan.postgresql:
+        return
+    detecte = (
+        " " + t("(detected)") if plan.origine_postgresql == "detected" else ""
+    )
+    rapport.champ(
+        "PostgreSQL",
+        t("{unit}{detected}, restarted while Odoo is stopped").format(
+            unit=plan.postgresql, detected=detecte
+        ),
+    )
+    if plan.connexions is None:
+        rapport.attn(
+            t(
+                "Sessions of the databases unknown ({reason}): the real run"
+                " reads them, then asks on the terminal, or refuses without"
+                " --yes when it cannot."
+            ).format(reason=plan.erreur_connexions)
+        )
+        return
+    if not any(plan.connexions.values()):
+        rapport.detail(t("No database has a session."))
+    for base, nombre in sorted(plan.connexions.items()):
+        if not nombre:
+            continue
+        ligne = t("{database}: {count} session(s)").format(
+            database=base, count=nombre
+        )
+        if base == plan.base:
+            ligne += " " + t("(this instance)")
+        rapport.detail(ligne)
 
 
 def afficher_plan(plan, rapport, args=None):
@@ -1043,6 +1695,8 @@ def afficher_plan(plan, rapport, args=None):
         )
     if plan.journal:
         rapport.champ(t("Log"), plan.journal)
+    _afficher_retour(plan, rapport)
+    _afficher_postgresql(plan, rapport)
     if application is not None:
         profil.afficher(application, rapport, t)
     if plan.verification_conf is not None:
@@ -1168,6 +1822,50 @@ def simuler_liste(plan, rapport, args):
     )
 
 
+def _simuler_code(plan, rapport):
+    """`--zip` : la copie tar des dossiers remplacés, puis l'extraction."""
+    if plan.retour != "zip":
+        return
+    noms = sorted(plan.inspection.modules)
+    presents = [
+        n for n in noms if os.path.lexists(os.path.join(plan.destination, n))
+    ]
+    rapport.sim(
+        t("tar copy of {names} → {path}").format(
+            names=", ".join(presents) or "—",
+            path=os.path.join(
+                plan.cible.dossier, f"code-{plan.base}-<date>.tar.gz"
+            ),
+        )
+    )
+    rapport.sim(
+        t(
+            "extraction of {archive} into {path}, each module folder"
+            " replaced as a whole"
+        ).format(archive=plan.archive, path=plan.destination)
+    )
+
+
+def _simuler_retour(plan, rapport):
+    """Ce qu'un échec de `-u` ou de la relance remettrait."""
+    if not plan.retour:
+        return
+    if plan.retour == "zip":
+        code = t("the tar copy put back")
+    else:
+        code = t(
+            "git checkout --detach of the reference in each repository that"
+            " moved"
+        )
+    rapport.sim(
+        t(
+            "on failure of -u or of the restart: the backup restored into a"
+            " copy that takes the place of {database}, the failed database"
+            " kept aside and closed, then {code}"
+        ).format(code=code, database=plan.base)
+    )
+
+
 def simuler(plan, rapport, args):
     """Les commandes du geste, sans rien lancer : la mise à jour ou la
     relance seule ici, la liste par `simuler_liste`."""
@@ -1175,6 +1873,14 @@ def simuler(plan, rapport, args):
         simuler_liste(plan, rapport, args)
         return
     _simuler_dossiers(plan, rapport)
+    if plan.postgresql:
+        rapport.sim(
+            t(
+                "question on the terminal listing the databases that have"
+                " sessions, or --yes; without them, refused when another"
+                " database has sessions"
+            )
+        )
     rapport.sim(joindre(["systemctl", "stop", "--", plan.unite]))
     if plan.redemarrage_seul:
         controle = t(
@@ -1187,13 +1893,24 @@ def simuler(plan, rapport, args):
             " on {database}"
         ).format(database=plan.base)
     rapport.sim(controle + "  # " + t("refused without --force"))
+    if plan.postgresql:
+        rapport.sim(
+            joindre(["systemctl", "restart", "--", plan.postgresql])
+            + "  # "
+            + t(
+                "then wait until PostgreSQL accepts connections, {seconds} s"
+                " at most"
+            ).format(seconds=args.start_wait)
+        )
     _simuler_dump(plan, rapport)
+    _simuler_code(plan, rapport)
     if plan.commande:
         rapport.sim(
             f"cd {shlex.quote(plan.wd)} && "
             + joindre(plan.commande)
             + f" >> {shlex.quote(plan.journal)} 2>&1"
         )
+    _simuler_retour(plan, rapport)
     # La relance seule démarre aussi une unité arrêtée avant, une fois les
     # contrôles de l'arrêt passés (`executer`).
     if plan.redemarrage_seul:
@@ -1221,6 +1938,14 @@ def simuler(plan, rapport, args):
         + "  # "
         + t("after a verified restart")
     )
+    if plan.retour == "git":
+        rapport.sim(
+            t(
+                "HEAD of each repository noted as the reference in {path}"
+            ).format(path=chemin_reference(plan))
+            + "  # "
+            + t("after a successful update")
+        )
     _simuler_purge(plan, rapport, args)
     rapport.ok(
         t("Simulation finished: nothing was stopped, written or started.")
@@ -1367,6 +2092,9 @@ def _mettre_a_jour(plan, systeme, rapport, args):
     debut_journal = odoo_instance.taille(plan.journal)
     debut_logfile = odoo_instance.taille(plan.logfile)
     depart = systeme.maintenant()
+    # À partir d'ici, la base peut changer : un échec la restaure quand un
+    # retour arrière est armé.
+    plan.mise_a_jour_lancee = True
     issue = systeme.lancer_long(
         plan.commande, plan.wd, os.environ.copy(), plan.journal, args.timeout
     )
@@ -1467,6 +2195,512 @@ def _genes_apres_arret(plan, systeme):
     return genes
 
 
+def postgresql_pret(plan, systeme):
+    """Vrai quand PostgreSQL accepte les connexions : `pg_isready -q`
+    (dans `pg_path` quand il y est), ou, quand il manque, `SELECT 1` sur
+    la base `postgres`, sous le compte de l'unité."""
+    cible = plan.cible_pg
+    env = odoo_backup.env_pg(cible, True)
+    code, _sortie, _erreur = systeme.requete(
+        cible.prefixe + [postgres.outil("pg_isready", cible.config), "-q"],
+        env,
+        30,
+    )
+    if code == 127:
+        code, _sortie, _erreur = systeme.requete(
+            odoo_backup.argv_psql(cible, "postgres", "SELECT 1"), env, 30
+        )
+    return code == 0
+
+
+def _attendre_postgresql(plan, systeme, limite):
+    """Attend que PostgreSQL accepte les connexions, jusqu'à l'époque
+    `limite`. Rend True quand il les accepte."""
+    while not postgresql_pret(plan, systeme):
+        if systeme.maintenant() >= limite:
+            return False
+        systeme.dormir(1)
+    return True
+
+
+def _sessions_admises(plan, systeme, rapport):
+    """Sans accord (`plan.postgresql_confirme`), les sessions relues juste
+    avant le redémarrage : la lecture d'avant l'arrêt a pu précéder
+    l'arrivée de sessions sur une autre base. Rend False (FAIL écrit)
+    quand une autre base a des sessions, ou qu'elles ne se lisent plus."""
+    plan.connexions, plan.erreur_connexions = lire_connexions(plan, systeme)
+    if plan.connexions is None:
+        rapport.fail(
+            t(
+                "Sessions of the databases unreadable before the restart"
+                " ({reason}): PostgreSQL is not restarted without --yes."
+            ).format(reason=plan.erreur_connexions)
+        )
+        return False
+    autres = autres_bases_connectees(plan)
+    if autres:
+        rapport.fail(
+            t(
+                "Other databases have sessions now ({names}): PostgreSQL is"
+                " not restarted without a confirmation on the terminal or"
+                " --yes."
+            ).format(names=", ".join(autres))
+        )
+        return False
+    return True
+
+
+def _ranimer_postgresql(plan, systeme, rapport, args):
+    """Après un `systemctl restart` en échec ou une attente dépassée : une
+    unité PostgreSQL arrêtée (`inactive`, `failed`) — un arrêt qui a
+    dépassé son délai l'y laisse — reçoit un `systemctl start`, puis la
+    même attente bornée ; une unité dans un autre état est laissée telle.
+    Rend True quand PostgreSQL accepte de nouveau les connexions ; sinon
+    le FAIL nomme l'état de l'unité."""
+    if postgresql_pret(plan, systeme):
+        return True
+    lanceur = systeme.lanceur
+    etat = systemd.etat(plan.postgresql, lanceur)
+    if systemd.est_arrete(etat):
+        rapport.attn(
+            t("{unit} is {state} after the restart: systemctl start.").format(
+                unit=plan.postgresql, state=etat
+            )
+        )
+        code, sortie = systemd.demarrer(plan.postgresql, lanceur)
+        rapport.extrait(sortie.splitlines(), 5)
+        if code == 0 and _attendre_postgresql(
+            plan, systeme, systeme.maintenant() + args.start_wait
+        ):
+            rapport.ok(
+                t("PostgreSQL started again and accepting connections.")
+            )
+            return True
+        etat = systemd.etat(plan.postgresql, lanceur)
+    rapport.fail(
+        t(
+            "PostgreSQL is not available: {unit} is {state}. Every database"
+            " of the server stays down until it is started."
+        ).format(unit=plan.postgresql, state=etat or "?")
+    )
+    return False
+
+
+def redemarrer_postgresql(plan, systeme, rapport, args):
+    """`systemctl restart` de l'unité PostgreSQL, Odoo arrêté, puis
+    l'attente qu'il accepte les connexions, `--start-wait` secondes au
+    plus. Rend True quand il les accepte.
+
+    Sans accord, les sessions sont d'abord relues (`_sessions_admises`) :
+    une autre base connectée entre-temps saute le redémarrage. Un échec
+    du restart ou de l'attente passe par `_ranimer_postgresql` : le
+    serveur, partagé par toutes les bases, ne reste pas arrêté. Le geste
+    rend alors False quand même : pas de `-u`, Odoo relancé."""
+    rapport.etape(
+        t("Restarting PostgreSQL ({unit})").format(unit=plan.postgresql)
+    )
+    if not plan.postgresql_confirme and not _sessions_admises(
+        plan, systeme, rapport
+    ):
+        return False
+    debut = systeme.maintenant()
+    code, sortie = systemd.redemarrer(plan.postgresql, systeme.lanceur)
+    if code != 0:
+        rapport.fail(
+            t(
+                "systemctl restart {unit} failed (journalctl -u {unit} -n 50)."
+            ).format(unit=plan.postgresql)
+        )
+        rapport.extrait(sortie.splitlines(), 5)
+        _ranimer_postgresql(plan, systeme, rapport, args)
+        return False
+    if not _attendre_postgresql(plan, systeme, debut + args.start_wait):
+        rapport.fail(
+            t(
+                "PostgreSQL does not accept connections {seconds} s after"
+                " systemctl restart {unit} (journalctl -u {unit} -n 50)."
+            ).format(seconds=args.start_wait, unit=plan.postgresql)
+        )
+        _ranimer_postgresql(plan, systeme, rapport, args)
+        return False
+    _noter_duree(plan, systeme, service.N_("PostgreSQL {duration}"), debut)
+    rapport.ok(t("PostgreSQL restarted and accepting connections."))
+    return True
+
+
+def remplacer_code(plan, systeme, rapport):
+    """`--zip`, Odoo arrêté et la base sauvegardée : la copie tar des
+    dossiers que l'archive remplace, à côté de la sauvegarde, puis
+    l'extraction, toutes deux sous le compte de l'unité. L'archive est
+    ouverte ici et passée ouverte : le compte n'a pas à pouvoir la lire.
+    Rend le code ; `plan.code_remplace` est posé avant l'extraction, qu'un
+    échec fait donc remettre."""
+    noms = sorted(plan.inspection.modules)
+    rapport.etape(
+        t("Code of the modules from {archive}").format(
+            archive=os.path.basename(plan.archive)
+        )
+    )
+    plan.copie_code = os.path.join(
+        plan.cible.dossier,
+        "code-{}-{}.tar.gz".format(
+            plan.base, _horodatage(systeme, "%Y%m%d-%H%M%S")
+        ),
+    )
+    try:
+        plan.sauves = systeme.sous_le_compte(
+            plan.utilisateur,
+            retour_code.copier_modules,
+            plan.destination,
+            noms,
+            plan.copie_code,
+        )
+    except ERREURS_CODE as err:
+        plan.copie_code = ""
+        rapport.fail(
+            t(
+                "Copy of the module folders impossible: {error}. Nothing was"
+                " updated."
+            ).format(error=err)
+        )
+        return CODE_ECHEC
+    rapport.ok(
+        t("{count} module folder(s) copied: {path}").format(
+            count=len(plan.sauves), path=plan.copie_code
+        )
+    )
+    plan.code_remplace = True
+    try:
+        with open(plan.archive, "rb") as fichier:
+            places = systeme.sous_le_compte(
+                plan.utilisateur,
+                retour_code.extraire_zip,
+                fichier,
+                plan.destination,
+                noms,
+            )
+    except ERREURS_CODE as err:
+        rapport.fail(
+            t("Extraction of {archive} into {path} failed: {error}").format(
+                archive=plan.archive, path=plan.destination, error=err
+            )
+        )
+        return CODE_ECHEC
+    rapport.ok(
+        t(
+            "{count} module(s) of the archive placed in {path}, each folder"
+            " replaced as a whole."
+        ).format(count=len(places), path=plan.destination)
+    )
+    return CODE_OK
+
+
+def _remettre_code(plan, systeme, rapport):
+    """Le code d'avant : la copie tar remise (zip), ou chaque dépôt qui a
+    bougé ramené sur sa référence (git). Rend True quand tout est remis."""
+    rapport.etape(t("Rollback: code of the modules"))
+    if plan.retour == "zip":
+        try:
+            issue = systeme.sous_le_compte(
+                plan.utilisateur,
+                retour_code.remettre_modules,
+                plan.destination,
+                sorted(plan.inspection.modules),
+                plan.copie_code,
+                plan.sauves,
+            )
+        except ERREURS_CODE as err:
+            rapport.fail(
+                t("The copy {path} could not be put back: {error}").format(
+                    path=plan.copie_code, error=err
+                )
+            )
+            return False
+        rapport.ok(
+            t("Module folders put back from {path}: {names}").format(
+                path=plan.copie_code, names=", ".join(issue["remis"]) or "—"
+            )
+        )
+        if issue["retires"]:
+            rapport.detail(
+                t("Added by the archive, removed: {names}").format(
+                    names=", ".join(issue["retires"])
+                )
+            )
+        return True
+    lancer = lanceur_git(plan, systeme)
+    remis = True
+    bouge = False
+    for depot, sha in sorted(plan.reference.items()):
+        if retour_code.tete(depot, lancer) == sha:
+            continue
+        bouge = True
+        code, sortie, erreur = lancer(retour_code.argv_revenir(depot, sha))
+        if code == 0:
+            rapport.ok(
+                t("{path}: back to {sha}").format(path=depot, sha=sha[:12])
+            )
+            continue
+        remis = False
+        rapport.fail(
+            t("{path}: git checkout {sha} failed: {error}").format(
+                path=depot,
+                sha=sha[:12],
+                error=(erreur or sortie).strip()[:300] or f"code {code}",
+            )
+        )
+    if not bouge:
+        rapport.ok(
+            t("No repository moved since the reference: the code stays.")
+        )
+    return remis
+
+
+def _renommer(plan, systeme, nature, ancien, nouveau):
+    """Un renommage du retour arrière : une base (`db`) ou un filestore
+    (`fs`, sous le compte de l'unité). Rend "" ou le message d'erreur.
+    Une base est retentée `TENTATIVES_RENOMMAGE` fois, à
+    `PAUSE_RENOMMAGE` secondes d'intervalle : une session coupée
+    (`odoo_backup.fermer_base`) met un moment à finir."""
+    if nature == "db":
+        for tentative in range(TENTATIVES_RENOMMAGE):
+            if tentative:
+                systeme.dormir(PAUSE_RENOMMAGE)
+            erreur = odoo_backup.renommer_base(
+                plan.cible, systeme, ancien, nouveau
+            )
+            if not erreur:
+                return ""
+        return erreur
+    try:
+        systeme.sous_le_compte(
+            plan.utilisateur, retour_code.renommer, ancien, nouveau
+        )
+    except OSError as err:
+        return str(err) or type(err).__name__
+    return ""
+
+
+def echanger_bases(plan, systeme, rapport, copie, echouee):
+    """Met la base restaurée `copie` à la place de la base de l'instance,
+    filestores compris : la base et le filestore laissés par la mise à
+    jour prennent le nom `echouee`. Quatre renommages au plus, dans cet
+    ordre ; un échec défait ceux déjà faits, au mieux.
+
+    Avant de renommer la base, elle est fermée aux connexions et ses
+    sessions sont coupées (`odoo_backup.fermer_base`) : celles qu'un
+    `--force` a laissées, celle d'un `-u` tué, un client de rapports.
+    Fermée, elle le reste sous le nom `echouee` : Odoo ne la liste plus, et
+    ses crons ne tournent pas sur cette copie. Un échec la rouvre sous son
+    nom. Rend (True quand tout est en place, "" ou l'erreur de la
+    fermeture)."""
+    filestore = odoo_instance.filestore
+    data = plan.cible.data_dir
+    etapes = []
+    if os.path.lexists(filestore(data, plan.base)):
+        etapes.append(
+            ("fs", filestore(data, plan.base), filestore(data, echouee))
+        )
+    if os.path.lexists(filestore(data, copie)):
+        etapes.append(
+            ("fs", filestore(data, copie), filestore(data, plan.base))
+        )
+    etapes += [("db", plan.base, echouee), ("db", copie, plan.base)]
+    faites = []
+    fermeture = None
+    for nature, ancien, nouveau in etapes:
+        if nature == "db" and fermeture is None:
+            fermeture = odoo_backup.fermer_base(plan.cible, systeme, plan.base)
+        erreur = _renommer(plan, systeme, nature, ancien, nouveau)
+        if erreur:
+            rapport.fail(
+                t("Renaming {old} to {new} failed: {error}").format(
+                    old=ancien, new=nouveau, error=erreur
+                )
+            )
+            if fermeture:
+                rapport.detail(
+                    t("Closing {database} first failed: {error}").format(
+                        database=plan.base, error=fermeture
+                    )
+                )
+            for nature_faite, a, b in reversed(faites):
+                _renommer(plan, systeme, nature_faite, b, a)
+            if fermeture is not None:
+                _rouvrir(plan, systeme, rapport)
+            return False, fermeture or ""
+        faites.append((nature, ancien, nouveau))
+    return True, fermeture or ""
+
+
+def _rouvrir(plan, systeme, rapport):
+    """Rouvre aux connexions la base de l'instance, après un échange
+    défait : Odoo doit pouvoir s'y connecter à la relance."""
+    erreur = odoo_backup.ouvrir_base(plan.cible, systeme, plan.base)
+    if erreur:
+        rapport.fail(
+            t(
+                "{database} could not be opened again to connections"
+                " ({error}): ALTER DATABASE {database} WITH ALLOW_CONNECTIONS"
+                " true"
+            ).format(database=plan.base, error=erreur)
+        )
+
+
+def restaurer_base(plan, systeme, rapport):
+    """La base d'avant la mise à jour, depuis la sauvegarde vérifiée de
+    cette exécution : restaurée dans une copie (`odoo_backup.restaurer`,
+    qui contrôle l'empreinte, l'espace et le chargement), qui prend
+    ensuite la place de la base (`echanger_bases`). Rend True quand la
+    base restaurée est en place."""
+    rapport.etape(
+        t("Rollback: database {database}").format(database=plan.base)
+    )
+    if not plan.chemin_sauvegarde:
+        rapport.fail(t("No backup of this run: the database is not restored."))
+        return False
+    horodatage = _horodatage(systeme, "%Y%m%d%H%M%S")
+    copie = postgres.nom_temporaire(plan.base, horodatage, "_rollback_")
+    echouee = postgres.nom_temporaire(plan.base, horodatage, "_failed_")
+    code = odoo_backup.restaurer(
+        plan.cible,
+        systeme,
+        rapport,
+        plan.chemin_sauvegarde,
+        copie,
+        rappels=False,
+    )
+    if code != CODE_OK:
+        rapport.fail(
+            t(
+                "The backup {path} could not be restored: {database} stays as"
+                " the update left it."
+            ).format(path=plan.chemin_sauvegarde, database=plan.base)
+        )
+        return False
+    en_place, fermeture = echanger_bases(
+        plan, systeme, rapport, copie, echouee
+    )
+    if not en_place:
+        rapport.fail(
+            t(
+                "The restored copy {copy} could not take the place of"
+                " {database}: both are kept, put them in place by hand."
+            ).format(copy=copie, database=plan.base)
+        )
+        return False
+    plan.base_echouee = echouee
+    rapport.ok(
+        t(
+            "{database} restored from {path}; the database left by the update"
+            " is kept as {failed}."
+        ).format(
+            database=plan.base, path=plan.chemin_sauvegarde, failed=echouee
+        )
+    )
+    if fermeture:
+        rapport.attn(
+            t(
+                "{failed} still accepts connections ({error}): an Odoo"
+                " without db_name lists it, and runs its crons and its mail"
+                " queue."
+            ).format(failed=echouee, error=fermeture)
+        )
+    else:
+        rapport.detail(
+            t(
+                "{failed} accepts no connection (Odoo does not list it); to"
+                " examine it: ALTER DATABASE {failed} WITH ALLOW_CONNECTIONS"
+                " true"
+            ).format(failed=echouee)
+        )
+    rapport.detail(
+        t("Drop it once examined: {command}, then remove {path}.").format(
+            command=joindre(odoo_backup.argv_dropdb(plan.cible, echouee)),
+            path=odoo_instance.filestore(plan.cible.data_dir, echouee),
+        )
+    )
+    return True
+
+
+def retour_requis(plan):
+    """Vrai quand un échec doit remettre le code et la base : un retour
+    arrière armé, pas encore fait, et du code remplacé ou une mise à jour
+    lancée."""
+    return (
+        bool(plan.retour)
+        and plan.issue_retour is None
+        and (plan.code_remplace or plan.mise_a_jour_lancee)
+    )
+
+
+def revenir(plan, systeme, rapport):
+    """Le retour arrière, Odoo arrêté. Quand la mise à jour a été lancée,
+    la base d'abord (`restaurer_base`), puis le code (`_remettre_code`)
+    seulement si elle est restaurée : `-u` valide module par module, et
+    l'ancien code sur une base à moitié migrée serait pire que le code de
+    la mise à jour sur la base qu'elle a laissée. Sans `-u` (extraction en
+    échec), le code seul. Pose `plan.issue_retour`. Ne lève pas : il
+    s'exécute dans le `finally` qui tient l'invariant."""
+    rapport.total += 1 + int(plan.mise_a_jour_lancee)
+    code_remis = base_remise = False
+    try:
+        base_remise = (
+            restaurer_base(plan, systeme, rapport)
+            if plan.mise_a_jour_lancee
+            else True
+        )
+        if base_remise:
+            code_remis = _remettre_code(plan, systeme, rapport)
+        else:
+            rapport.total -= 1
+            rapport.attn(
+                t(
+                    "The code of the update stays: it matches the database"
+                    " the update left. The code of before: {source}"
+                ).format(
+                    source=plan.copie_code
+                    if plan.retour == "zip"
+                    else ", ".join(
+                        f"{depot} {sha[:12]}"
+                        for depot, sha in sorted(plan.reference.items())
+                    )
+                )
+            )
+    except BaseException as err:  # noqa: B036 - la relance doit suivre
+        rapport.fail(
+            t("Rollback failed: {error}").format(
+                error=str(err) or type(err).__name__
+            )
+        )
+    plan.issue_retour = (code_remis, base_remise)
+
+
+def _arreter_pour_revenir(plan, systeme, rapport):
+    """Arrête de nouveau l'unité après une relance en échec, pour le
+    retour arrière. Rend True quand elle est arrêtée."""
+    rapport.total += 1
+    rapport.etape(
+        t("Stopping {unit} for the rollback").format(unit=plan.unite)
+    )
+    try:
+        code, sortie = systemd.arreter(plan.unite, systeme.lanceur)
+        etat = systemd.etat(plan.unite, systeme.lanceur)
+    except Exception as err:  # noqa: BLE001 - la relance doit suivre
+        code, sortie, etat = 1, str(err), ""
+    if code == 0 and systemd.est_arrete(etat):
+        rapport.ok(t("Service stopped."))
+        return True
+    rapport.fail(
+        t(
+            "The service is not stopped (code {code}, state {state}): no"
+            " rollback."
+        ).format(code=code, state=etat or "?")
+    )
+    rapport.extrait(sortie.splitlines(), 5)
+    return False
+
+
 def _arreter_et_mettre_a_jour(plan, systeme, rapport, args):
     lanceur = systeme.lanceur
     rapport.etape(t("Stopping {unit}").format(unit=plan.unite))
@@ -1524,6 +2758,10 @@ def _arreter_et_mettre_a_jour(plan, systeme, rapport, args):
             rapport.attn(
                 t("--force: going on despite the PostgreSQL sessions found.")
             )
+    if plan.postgresql and not redemarrer_postgresql(
+        plan, systeme, rapport, args
+    ):
+        return CODE_ECHEC
     if plan.redemarrage_seul:
         return CODE_OK
 
@@ -1532,6 +2770,10 @@ def _arreter_et_mettre_a_jour(plan, systeme, rapport, args):
         debut = systeme.maintenant()
         code = _sauvegarder(plan, systeme, rapport, args)
         _noter_duree(plan, systeme, service.N_("backup {duration}"), debut)
+        if code != CODE_OK:
+            return code
+    if plan.retour == "zip":
+        code = remplacer_code(plan, systeme, rapport)
         if code != CODE_OK:
             return code
 
@@ -1667,6 +2909,11 @@ def executer(plan, systeme, rapport, args):
     démarre aussi une unité qui ne tournait pas, quand l'arrêt et ses
     contrôles ont réussi.
 
+    Avec un retour arrière armé (`retour_requis`), le même `finally` remet
+    le code et la base AVANT la relance quand la mise à jour a échoué ;
+    quand c'est la relance qui échoue après un `-u` réussi, il arrête de
+    nouveau l'unité, fait le retour arrière, puis la relance.
+
     L'état d'avant se lit dans ActiveState. Tout état autre que `inactive`
     ou `failed` compte pour « tournait » (`activating`, `reloading`…) ;
     sans réponse de systemctl, rien n'est arrêté (code 2) : une unité
@@ -1684,8 +2931,10 @@ def executer(plan, systeme, rapport, args):
     etait_actif = not systemd.est_arrete(etat)
     a_relancer = etait_actif or plan.redemarrage_seul
     apres = 4 + int(args.warmup_deep) if a_relancer else 0
-    # Arrêt, mise à jour : la relance seule n'a que l'arrêt.
+    # Arrêt, mise à jour : la relance seule n'a que l'arrêt. PostgreSQL et
+    # le code de l'archive ont chacun leur étape.
     avant = 1 if plan.redemarrage_seul else 2
+    avant += int(bool(plan.postgresql)) + int(plan.retour == "zip")
     rapport.total = avant + int(plan.sauvegarde) + apres
     code = CODE_ECHEC
     if etait_actif:
@@ -1708,12 +2957,27 @@ def executer(plan, systeme, rapport, args):
             systeme.arme = False
             liberer = systeme.ignorer_interruptions()
             try:
+                # Le retour arrière précède la relance : l'unité repart sur
+                # le code et la base d'avant.
+                if code != CODE_OK and retour_requis(plan):
+                    revenir(plan, systeme, rapport)
                 if etait_actif or (plan.redemarrage_seul and code == CODE_OK):
                     plan.relance_verifiee = _relancer_quoi_qu_il_arrive(
                         plan, systeme, rapport, args
                     )
                     if not plan.relance_verifiee and code == CODE_OK:
                         code = CODE_ECHEC
+                        # Le `-u` a réussi, la relance non : arrêt, retour
+                        # arrière, puis relance sur l'état d'avant.
+                        if retour_requis(plan) and _arreter_pour_revenir(
+                            plan, systeme, rapport
+                        ):
+                            revenir(plan, systeme, rapport)
+                            plan.relance_verifiee = (
+                                _relancer_quoi_qu_il_arrive(
+                                    plan, systeme, rapport, args
+                                )
+                            )
                 else:
                     rapport.attn(
                         t(
@@ -2267,7 +3531,21 @@ def conclure(plan, rapport, code):
                 modules=",".join(modules_mis_a_jour(plan))
             )
         )
-    elif code == CODE_ECHEC:
+        return
+    if plan.issue_retour is not None:
+        code_remis, base_remise = plan.issue_retour
+        if code_remis and base_remise:
+            rapport.ok(
+                t(
+                    "Rollback done: the code and the database are those of"
+                    " before the update."
+                )
+            )
+        if not code_remis:
+            rapport.fail(t("Rollback: the code was not put back."))
+        if not base_remise:
+            rapport.fail(t("Rollback: the database was not restored."))
+    if code == CODE_ECHEC:
         rapport.fail(t("Update failed."))
 
 
@@ -2354,7 +3632,57 @@ def construire_parseur():
     parser.add_argument(
         "--yes",
         action="store_true",
-        help=t("Confirm --remove-missing without asking."),
+        help=t(
+            "Confirm --remove-missing or --restart-postgresql without asking."
+        ),
+    )
+    parser.add_argument(
+        "--restart-postgresql",
+        action="store_true",
+        help=t(
+            "Also restart PostgreSQL while Odoo is stopped, then wait until"
+            " it accepts connections (--start-wait). Every database of the"
+            " server loses its sessions: they are listed, then asked on the"
+            " terminal, or --yes."
+        ),
+    )
+    parser.add_argument(
+        "--pg-service",
+        type=TYPES.unite,
+        help=t(
+            "PostgreSQL unit of --restart-postgresql; default: the only"
+            " active postgresql@<version>-<cluster>.service, else"
+            " postgresql.service."
+        ),
+    )
+    parser.add_argument(
+        "--zip",
+        metavar="ARCHIVE",
+        help=t(
+            "Zip archive of modules: each module folder at its root replaces"
+            " the one of the addons directory, after a tar copy; on failure"
+            " of -u or of the restart, the copy is put back and the database"
+            " restored from the backup. Without --module, its modules are"
+            " updated."
+        ),
+    )
+    parser.add_argument(
+        "--addons-dir",
+        help=t(
+            "With --zip: addons_path directory to extract into; default: the"
+            " first one that already holds a module of the archive."
+        ),
+    )
+    parser.add_argument(
+        "--rollback",
+        choices=RETOURS,
+        default="none",
+        help=t(
+            "git: note HEAD of each repository of the addons_path under the"
+            " working directory of the unit; on failure of -u or of the"
+            " restart, come back to the commits of the last successful"
+            " update and restore the database from the backup."
+        ),
     )
     parser.add_argument(
         "--service",
@@ -2481,11 +3809,15 @@ def construire_parseur():
 def valider(parser, args):
     """Contrôles d'après analyse, profil déjà posé, refus par
     `parser.error` (code 2) : `--remove-missing` pose `--update-list` ;
-    `--restart-only` et `--update-list` s'excluent et ne prennent pas de
-    `--module`, qu'exige sinon la mise à jour ; `--i18n-overwrite` ne va
-    qu'avec elle, `--yes` qu'avec `--remove-missing` ; `--warmup-login`
-    et `--warmup-key-file` vont ensemble. Aplatit `args.modules` et refuse
-    `all` mêlé à d'autres modules."""
+    `--restart-only` et `--update-list` s'excluent et ne prennent ni
+    `--module` ni `--zip`, dont l'un est sinon exigé ; `--i18n-overwrite`
+    et `--rollback git` ne vont qu'avec une mise à jour,
+    `--restart-postgresql` pas avec la liste, `--yes` qu'avec
+    `--remove-missing` ou `--restart-postgresql`, `--addons-dir` qu'avec
+    `--zip`, qu'exclut `--rollback git` ; `--no-backup` est refusé avec un
+    retour arrière ; `--warmup-login` et `--warmup-key-file` vont
+    ensemble. Aplatit `args.modules` et refuse `all` mêlé à d'autres
+    modules."""
     if args.remove_missing:
         args.update_list = True
     gestes = []
@@ -2504,7 +3836,9 @@ def valider(parser, args):
     groupes = args.modules or []
     if gestes and groupes:
         parser.error(t("{option} takes no --module.").format(option=gestes[0]))
-    if not gestes and not groupes:
+    if gestes and args.zip:
+        parser.error(t("{option} takes no --zip.").format(option=gestes[0]))
+    if not gestes and not groupes and not args.zip:
         parser.error(
             t(
                 "--module is required, except with --restart-only or"
@@ -2513,8 +3847,36 @@ def valider(parser, args):
         )
     if gestes and args.i18n_overwrite:
         parser.error(t("--i18n-overwrite goes with an update: give --module."))
-    if args.yes and not args.remove_missing:
-        parser.error(t("--yes only confirms --remove-missing."))
+    if args.restart_postgresql and args.update_list:
+        parser.error(
+            t(
+                "--restart-postgresql goes with an update or --restart-only:"
+                " Odoo keeps running during {option}."
+            ).format(option=gestes[-1])
+        )
+    if args.yes and not (args.remove_missing or args.restart_postgresql):
+        parser.error(
+            t("--yes only confirms --remove-missing or --restart-postgresql.")
+        )
+    if args.addons_dir and not args.zip:
+        parser.error(t("--addons-dir goes with --zip."))
+    if args.rollback == "git" and args.zip:
+        parser.error(
+            t(
+                "--zip and --rollback git exclude each other: the archive"
+                " brings its own copy."
+            )
+        )
+    if args.rollback == "git" and gestes:
+        parser.error(t("--rollback git goes with an update: give --module."))
+    if args.no_backup and (args.zip or args.rollback == "git"):
+        parser.error(
+            t(
+                "--no-backup is refused with --zip and --rollback git: the"
+                " rollback restores the database from the backup taken"
+                " before."
+            )
+        )
     if bool(args.warmup_login) != bool(args.warmup_key_file):
         parser.error(t("--warmup-login and --warmup-key-file go together."))
     args.modules = [m for groupe in groupes for m in groupe]
@@ -2586,6 +3948,106 @@ def preparer_prechauffage(plan, args, rapport, reel):
     return True
 
 
+def confirmer_postgresql(plan, systeme, rapport, args):
+    """Avant tout arrêt, l'accord pour redémarrer PostgreSQL : rend False
+    quand l'exécution doit refuser (code 2). `--yes` l'accorde. Sur un
+    terminal, la question rappelle chaque base qui a des sessions. Sans
+    terminal, une autre base que celle de l'instance qui a des sessions,
+    ou des sessions illisibles, refusent ; sinon rien n'est demandé, et
+    `redemarrer_postgresql` relit les sessions juste avant le geste.
+    L'accord pose `plan.postgresql_confirme`."""
+    if not plan.postgresql:
+        return True
+    if args.yes:
+        plan.postgresql_confirme = True
+        return True
+    autres = autres_bases_connectees(plan)
+    if not systeme.interactif:
+        if plan.connexions is None:
+            rapport.erreur(
+                t(
+                    "Sessions of the databases unknown ({reason}): PostgreSQL"
+                    " is not restarted without --yes. Nothing was stopped."
+                ).format(reason=plan.erreur_connexions)
+            )
+            return False
+        if autres:
+            rapport.erreur(
+                t(
+                    "Other databases have sessions ({names}): PostgreSQL is"
+                    " not restarted without a confirmation on the terminal"
+                    " or --yes. Nothing was stopped."
+                ).format(names=", ".join(autres))
+            )
+            return False
+        return True
+    if plan.connexions is None:
+        resume = t("sessions unknown ({reason})").format(
+            reason=plan.erreur_connexions
+        )
+    else:
+        resume = ", ".join(
+            "{} ({})".format(base, nombre)
+            for base, nombre in sorted(plan.connexions.items())
+            if nombre
+        ) or t("no session")
+    if systeme.confirmer(
+        t(
+            "Restart {unit}? Every database of the server loses its sessions:"
+            " {databases}. [y/N] "
+        ).format(unit=plan.postgresql, databases=resume)
+    ):
+        plan.postgresql_confirme = True
+        return True
+    rapport.erreur(t("PostgreSQL not restarted. Nothing was stopped."))
+    return False
+
+
+def noter_reference(plan, systeme, rapport):
+    """Après une mise à jour réussie avec `--rollback git` : HEAD de
+    chaque dépôt, relu, noté comme la référence du prochain retour
+    arrière (`chemin_reference`), sous le compte de l'unité, avec
+    l'empreinte des modules de la base mise à jour : le prochain retour ne
+    reprend la référence que pour ces modules-là. Un échec n'est qu'un
+    ATTN ; une empreinte qui ne se lit pas laisse la référence d'avant,
+    qu'elle écarte déjà."""
+    chemin = chemin_reference(plan)
+    try:
+        empreinte = lire_empreinte(plan, systeme)
+    except odoo_backup.ErreurPg as err:
+        rapport.attn(
+            t("Cannot record the git reference in {path}: {error}").format(
+                path=chemin, error=err
+            )
+        )
+        return
+    lancer = lanceur_git(plan, systeme)
+    tetes = {}
+    for depot in sorted(plan.tetes):
+        sha = retour_code.tete(depot, lancer)
+        if sha:
+            tetes[depot] = sha
+    try:
+        systeme.sous_le_compte(
+            plan.utilisateur,
+            retour_code.ecrire_reference,
+            chemin,
+            tetes,
+            systeme.maintenant(),
+            empreinte,
+        )
+    except OSError as err:
+        rapport.attn(
+            t("Cannot record the git reference in {path}: {error}").format(
+                path=chemin, error=err
+            )
+        )
+        return
+    rapport.detail(
+        t("Git reference of the next rollback: {path}").format(path=chemin)
+    )
+
+
 def main(argv=None, systeme=None, rapport=None):
     # Le système se construit après l'analyse (`--verbose`) : la devinette
     # de l'unité du profil passe alors par le lanceur par défaut.
@@ -2617,6 +4079,8 @@ def main(argv=None, systeme=None, rapport=None):
         return CODE_REFUS
     if not preparer_prechauffage(plan, args, rapport, reel=True):
         return CODE_REFUS
+    if not confirmer_postgresql(plan, systeme, rapport, args):
+        return CODE_REFUS
     # Construit dans le `try` : un verrou partagé dont le dossier manque
     # lève dès sa construction (voir lock.Verrou).
     try:
@@ -2646,6 +4110,8 @@ def main(argv=None, systeme=None, rapport=None):
         verifier_apres_relance(plan, systeme, rapport, args)
     if code == CODE_OK and plan.commande:
         lire_versions_apres(plan, systeme)
+    if code == CODE_OK and plan.retour == "git":
+        noter_reference(plan, systeme, rapport)
     if plan.journal:
         purger_journaux(plan, systeme, rapport, args)
     conclure(plan, rapport, code)

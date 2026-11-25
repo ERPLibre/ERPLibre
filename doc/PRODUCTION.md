@@ -145,6 +145,20 @@ not installed whose code is missing; `--remove-missing` then removes them
 from the list, after a backup and a confirmation on the terminal (or
 `--yes`).
 
+`--restart-postgresql` also restarts the PostgreSQL server while Odoo is
+stopped, then waits until it accepts connections. Every database of the
+server loses its sessions: they are listed before anything is stopped and
+confirmed on the terminal (or `--yes`); without either, another database
+with sessions refuses (code 2). `--zip ARCHIVE` brings the code of the
+modules for a server without git: the archive is checked before the stop
+(no path leaving the addons directory, no symbolic link), and each module
+folder replaces the one of the addons directory after a tar copy of it.
+`--rollback git` notes the commits of the repositories of the
+`addons_path` instead. With either, a failure of `-u` or of the restart
+puts the code back and restores the database from the backup taken
+before; the database left by the update is kept aside. `--no-backup` is
+refused with them.
+
 A requested module that the database has not installed is listed as a
 warning, since `-u` ignores it; the update is refused before the stop when
 none is installed. After the stop, an Odoo without `-d` whose configuration
@@ -248,7 +262,8 @@ TODO › Execute › Production
 🏭 Instance: <unit> · profile: private/production/<unit>.json (n value(s))
 [1] Choose the instance
 ── Operate ──
-[2] Update              update, simulate only
+[2] Update              update, simulate only, restart (with PostgreSQL),
+                        apps list, zip archive, git rollback
 [3] Backups             now, status, test restore, restore into a new database
 [4] Journal and mail    Odoo errors (since the last check, last hours, per hour),
                         failed outgoing mail (list, retry)

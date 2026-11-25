@@ -362,6 +362,58 @@ class TestMiseAJour(Base):
         self.assertFalse(jeu.confirm.called)
         self.assertFalse(jeu.terminal.called)
 
+    def test_relance_avec_postgresql_sans_yes(self):
+        """L'outil demande au terminal : ni la simulation ni l'exécution
+        réelle ne portent `--yes`."""
+        jeu = self.jouer("_ops_restart_postgresql", ["", ""])
+        (simulation,) = jeu.todo.execute.commandes
+        self.assertIn("--restart-only --restart-postgresql", simulation)
+        argv = self.reelle(jeu)
+        self.assertEqual(argv[0], "sudo")
+        self.assertIn("--restart-postgresql", argv)
+        self.assertNotIn("--yes", argv)
+        self.assertNotIn("--yes", simulation)
+        jeu = self.jouer("_ops_restart_postgresql", ["", ""], code=2)
+        self.assertFalse(jeu.terminal.called)
+
+    def test_mise_a_jour_depuis_une_archive(self):
+        jeu = self.jouer(
+            "_ops_update_zip",
+            ["/var/tmp/exemple.zip", "custom", "", "", "", ""],
+        )
+        argv = self.reelle(jeu)
+        self.assertEqual(argv[argv.index("--zip") + 1], "/var/tmp/exemple.zip")
+        self.assertEqual(argv[argv.index("--addons-dir") + 1], "custom")
+        self.assertNotIn("--module", argv)
+        self.assertNotIn("--no-backup", argv)
+        self.assertNotIn("--rollback", argv)
+        jeu = self.jouer(
+            "_ops_update_zip",
+            ["/var/tmp/exemple.zip", "", "my_module_a", "exemple_db", "", ""],
+        )
+        argv = self.reelle(jeu)
+        self.assertNotIn("--addons-dir", argv)
+        self.assertEqual(argv[argv.index("--module") + 1], "my_module_a")
+        self.assertEqual(argv[argv.index("--db") + 1], "exemple_db")
+
+    def test_archive_absente_rien_n_est_lance(self):
+        jeu = self.jouer("_ops_update_zip", [""])
+        self.assertEqual(jeu.todo.execute.commandes, [])
+        self.assertFalse(jeu.terminal.called)
+
+    def test_mise_a_jour_avec_retour_git(self):
+        jeu = self.jouer("_ops_update_git_rollback", ["base", "", "", ""])
+        argv = self.reelle(jeu)
+        self.assertEqual(argv[argv.index("--rollback") + 1], "git")
+        self.assertNotIn("--no-backup", argv)
+        # Posé par le profil, il n'est pas répété ; la question le rappelle.
+        ecrire_profil(update_module={"rollback": "git"})
+        jeu = self.jouer("_ops_update_git_rollback", ["base", "", "", ""])
+        self.assertNotIn("--rollback", self.reelle(jeu))
+        self.assertIn("--rollback git", jeu.confirm.call_args.args[0])
+        jeu = self.jouer("_ops_update_git_rollback", [""])
+        self.assertFalse(jeu.terminal.called)
+
 
 def t_(texte):
     return ops_menu.t(texte)
@@ -1100,6 +1152,9 @@ class TestLesMenusSontBranches(Base):
         (["2", "3"], "_ops_restart_only"),
         (["2", "4"], "_ops_update_list"),
         (["2", "5"], "_ops_remove_missing"),
+        (["2", "6"], "_ops_restart_postgresql"),
+        (["2", "7"], "_ops_update_zip"),
+        (["2", "8"], "_ops_update_git_rollback"),
         (["3", "1"], "_ops_backup_now"),
         (["3", "2"], "_ops_backup_status"),
         (["3", "3"], "_ops_test_restore"),
