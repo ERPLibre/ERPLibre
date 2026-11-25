@@ -219,34 +219,58 @@ def approfondir(chemin, remote_manifeste):
     return code, err.strip()
 
 
-def pousser_un(chemin, remote, specs):
-    """Pousse `specs` vers `remote`, sans force. Rend (code, erreur)."""
+def pousser_un(chemin, remote, specs, delai=repo_upgrade.DELAI_GIT):
+    """Pousse `specs` vers `remote`, sans force, en `delai` secondes au
+    plus. Rend (code, erreur)."""
     _out, err, code = repo_upgrade.git(
-        ["push", "--porcelain", remote, *specs], chemin
+        ["push", "--porcelain", remote, *specs], chemin, delai
     )
     return code, err.strip()
 
 
-def pousser_en_parallele(cibles, jobs=PARALLELE, suivi=None):
+def pousser_en_parallele(
+    cibles,
+    jobs=PARALLELE,
+    suivi=None,
+    delai=repo_upgrade.DELAI_GIT,
+    reessais=1,
+):
     """Pousse chaque cible, `jobs` à la fois. Rend les résultats dans
     l'ordre des cibles.
 
     Une cible est un dict « chemin », « remote », « specs » ; son résultat
-    la complète de « code » et « erreur ». `suivi`, appelé avec chaque
-    résultat dès qu'il arrive, sert à l'affichage d'avancement.
+    la complète de « code », « erreur » et « essais ». `suivi`, appelé avec
+    chaque résultat définitif dès qu'il arrive, sert à l'affichage
+    d'avancement. Chaque push dispose de `delai` secondes.
+
+    Un push échoué est retenté `reessais` fois, un à la fois, une fois la
+    passe parallèle finie : une forge qui crée des dépôts au push en
+    refuse parfois un quand plusieurs se créent en même temps, et le même
+    push passe seul. Un refus réel (branche divergente) échoue de nouveau,
+    jamais de force, et reste rapporté.
     """
     resultats = [None] * len(cibles)
+
+    def pousser(c):
+        return pousser_un(c["chemin"], c["remote"], c["specs"], delai)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        futurs = {
-            pool.submit(pousser_un, c["chemin"], c["remote"], c["specs"]): i
-            for i, c in enumerate(cibles)
-        }
+        futurs = {pool.submit(pousser, c): i for i, c in enumerate(cibles)}
         for futur in concurrent.futures.as_completed(futurs):
             i = futurs[futur]
             code, erreur = futur.result()
-            resultats[i] = dict(cibles[i], code=code, erreur=erreur)
-            if suivi:
+            resultats[i] = dict(cibles[i], code=code, erreur=erreur, essais=1)
+            if suivi and (not code or not reessais):
                 suivi(resultats[i])
+    for i, r in enumerate(resultats):
+        essais = 1
+        while r["code"] and essais <= reessais:
+            essais += 1
+            code, erreur = pousser(cibles[i])
+            r = dict(cibles[i], code=code, erreur=erreur, essais=essais)
+        resultats[i] = r
+        if suivi and r["essais"] > 1:
+            suivi(r)
     return resultats
 
 

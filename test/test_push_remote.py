@@ -224,6 +224,61 @@ class TestPousser(_Depots):
         self.assertNotEqual(r["code"], 0)
         self.assertEqual(_git(self.forge, "rev-parse", "X.0"), tete)
 
+    def test_un_echec_passager_est_retente_une_fois_seul(self):
+        """Le premier essai échoue (remote absent), le second passe : le
+        résultat dit deux essais, et le suivi ne voit que le définitif."""
+        manque = os.path.join(self.dossier, "tardif.git")
+        cible = {
+            "chemin": self.clone,
+            "remote": f"file://{manque}",
+            "specs": ["HEAD:refs/heads/X.0"],
+        }
+        appels = []
+        original = pr.pousser_un
+
+        def pousser(chemin, remote, specs, delai=None):
+            appels.append(remote)
+            if len(appels) == 1:
+                _git(self.dossier, "init", "-q", "--bare", manque)
+                return 1, "forge occupée"
+            return original(chemin, remote, specs)
+
+        vus = []
+        with patch.object(pr, "pousser_un", side_effect=pousser):
+            (r,) = pr.pousser_en_parallele([cible], suivi=vus.append)
+        self.assertEqual((r["code"], r["essais"]), (0, 2))
+        self.assertEqual(len(appels), 2)
+        self.assertEqual([v["essais"] for v in vus], [2])
+
+    def test_un_refus_reel_reste_un_echec(self):
+        """Un distant en avance refuse deux fois : jamais de force."""
+        autre = os.path.join(self.dossier, "autre")
+        _git(self.dossier, "clone", "-q", self.forge, autre)
+        with open(os.path.join(autre, "b.txt"), "w") as fh:
+            fh.write("ailleurs")
+        _git(autre, "add", "b.txt")
+        _git(autre, "commit", "-q", "-m", "ailleurs")
+        _git(autre, "push", "-q", "origin", "HEAD:X.0")
+        specs, _ = pr.refspecs(self.clone, pr.MODE_MANIFESTE, "Orig", "X.0")
+        (r,) = pr.pousser_en_parallele(
+            [{"chemin": self.clone, "remote": "forge", "specs": specs}]
+        )
+        self.assertNotEqual(r["code"], 0)
+        self.assertEqual(r["essais"], 2)
+
+    def test_sans_reessai(self):
+        (r,) = pr.pousser_en_parallele(
+            [
+                {
+                    "chemin": self.clone,
+                    "remote": "file:///absent.invalid.git",
+                    "specs": ["HEAD:refs/heads/X.0"],
+                }
+            ],
+            reessais=0,
+        )
+        self.assertEqual(r["essais"], 1)
+
     def test_resultats_dans_l_ordre_et_suivi(self):
         """Plusieurs pushes en parallèle : un résultat par cible, dans
         l'ordre des cibles, et le suivi appelé pour chacun."""
