@@ -39,6 +39,30 @@ ${DNF} \
   krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
   GeographicLib-devel pkgconf-pkg-config cmake
 
+# Le Python des versions supportées, quand la distribution le livre :
+# el_python_exec (lib_python_provider.sh) prend alors l'interpréteur du
+# système au lieu de compiler CPython. Ici cette compilation est le seul
+# autre chemin, et elle échoue dès que l'OpenSSL du système est plus récent
+# que ce que le module _ssl de cette version sait lire : OpenSSL 4 rend
+# opaques les types ASN1_* que CPython 3.12 manipule directement (« invalid
+# use of incomplete typedef 'ASN1_OCTET_STRING' »). Le -devel porte Python.h,
+# sans lequel aucune extension C du venv ne compile. Une version absente du
+# dépôt est sautée, et un patch plus ancien que celui que conf/ exige est
+# écarté par el_python_exec : pyenv reste alors le repli.
+for py_minor in $(python3 -c '
+import json
+with open("conf/supported_version_erplibre.json") as f:
+    data = json.load(f)
+print(" ".join(sorted({
+    ".".join(v["python_version"].split(".")[:2])
+    for v in data.values() if not v.get("is_deprecated")
+})))' 2> /dev/null); do
+  if dnf repoquery -q --latest-limit 1 "python${py_minor}-devel" 2> /dev/null \
+    | grep -q .; then
+    ${DNF} "python${py_minor}" "python${py_minor}-devel"
+  fi
+done
+
 # qpdf : pikepdf en exige ${EL_QPDF_MIN} (S390x/lib_qpdf.sh), que le paquet de
 # la distribution ne donne pas toujours. EL9 livre 10.3 — même pas « qpdf/QPDFJob.hh », d'où trois
 # cents lignes de g++ sans un mot sur qpdf ; EL10 livre 11.9.
