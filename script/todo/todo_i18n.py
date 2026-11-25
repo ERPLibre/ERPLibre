@@ -14686,6 +14686,13 @@ TRANSLATIONS = {
         "fr": "le sujet doit commencer par un tag : %s",
         "en": "the subject must start with a tag: %s",
     },
+    "the line after the subject must be blank: git takes the\n"
+    "     whole first paragraph as the subject.": {
+        "fr": "la ligne qui suit le sujet doit être vide : git prend tout\n"
+        "     le premier paragraphe pour sujet.",
+        "en": "the line after the subject must be blank: git takes the\n"
+        "     whole first paragraph as the subject.",
+    },
     "the subject is %s characters, %s at most.\n"
     "     Do not truncate it: at that length, write KEYWORDS that\n"
     "     summarise rather than an amputated sentence. « proxmox: pmxcfs,\n"

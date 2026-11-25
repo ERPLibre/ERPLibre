@@ -143,6 +143,19 @@ class TestCeQuiEstRefuse(unittest.TestCase):
             [], check("[FIX] proxmox : pmxcfs à terre, dit « aucun stockage »")
         )
 
+    def test_un_corps_colle_au_sujet(self):
+        """git lit tout le premier paragraphe comme sujet : la deuxième ligne
+        d'un message doit être vide, même quand la première est conforme."""
+        problemes = check(
+            "[REF] portée : un sujet conforme\nun corps sans ligne vide\n"
+        )
+        self.assertEqual(1, len(problemes))
+        self.assertIn("ligne qui suit le sujet", problemes[0])
+
+    def test_un_sujet_suivi_dune_ligne_vide_passe(self):
+        self.assertEqual([], check("[REF] portée : sujet\n\ncorps\n"))
+        self.assertEqual([], check("[REF] portée : sujet seul\n"))
+
     def test_deux_problemes_sont_rapportes_ensemble(self):
         problemes = check(
             "proxmox : « un sujet sans tag et beaucoup trop long » " + "a" * 40

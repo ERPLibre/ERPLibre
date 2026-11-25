@@ -298,6 +298,25 @@ def _check_langues(subject: str, sans_trailers: str) -> list:
     ]
 
 
+def _check_separation(message: str) -> list:
+    """La ligne qui suit le sujet doit être vide.
+
+    git prend pour sujet tout le premier PARAGRAPHE, et non la première
+    ligne : un corps collé au sujet en fait un sujet de plusieurs centaines
+    de caractères dans `git log --oneline`, que _check_subject, qui ne lit
+    que la première ligne, laisserait passer.
+    """
+    suite = _apres_le_sujet(message)
+    if suite and suite[0].strip():
+        return [
+            t(
+                "the line after the subject must be blank: git takes the\n"
+                "     whole first paragraph as the subject."
+            )
+        ]
+    return []
+
+
 def check(message: str) -> list:
     """Rend la liste des problèmes. Vide si le message passe."""
     subject = subject_of(message)
@@ -306,6 +325,7 @@ def check(message: str) -> list:
     sans_trailers = body_of(message)
     return (
         _check_subject(subject)
+        + _check_separation(message)
         + _check_langues(subject, sans_trailers)
         + _check_body(sans_trailers, body_of(message, trailers=True))
     )
