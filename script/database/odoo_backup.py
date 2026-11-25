@@ -6,13 +6,19 @@
 
 Les modes
 ---------
-- (défaut) sauvegarder la base, puis la copier hors site (`--copy-to`) et
-  appliquer la rétention ;
-- `--status` : l'âge de la dernière sauvegarde réussie de chaque base ;
+- (défaut) sauvegarder la base, appliquer la rétention, puis copier hors
+  site (`--copy-to`) ;
+- `--status` : l'âge de la dernière sauvegarde réussie de chaque base, ses
+  archives, sa minuterie, sa copie hors site et son dernier essai de
+  restauration ;
 - `--test-restore` : restaurer la dernière sauvegarde (ou `--file`) dans
   une base TEMPORAIRE, la contrôler, puis la supprimer ;
 - `--restore --file F --into NOUVELLE` : restaurer dans une base qui
   n'existe pas encore, jamais par-dessus une base existante.
+
+`--file` lit aussi les `.tar.xz` d'un outil antérieur : `dump.sql`,
+`manifest.json` et `filestore/` à la racine de l'archive, le même contenu
+que le zip (voir `ArchiveTarXz`). L'outil n'en produit jamais.
 
 L'instance se détecte comme pour `update_module` : l'unité (`--service`,
 sinon celle dont WorkingDirectory est ce checkout, sinon la seule
@@ -43,6 +49,21 @@ de l'unité.
 
 Un filestore absent est un avertissement quand la base ne stocke aucune
 pièce jointe sur disque, un échec sinon.
+
+La copie hors site
+------------------
+Elle suit la rétention : rsync, sous le compte de l'unité, rend le dossier
+distant de la base au moins égal au dossier local, pour les seuls noms de
+l'outil pour cette base (`<base>_<horodatage>.zip` et son `.sha256`). Une
+copie manquée ou tronquée à un passage repart donc au suivant. Un
+transfert interrompu reste dans `.rsync-partial/` et ne prend jamais le nom
+final (`--partial-dir`, `--delay-updates`). `--copy-prune` y ajoute
+`--delete` borné par `--copy-prune-max` : une archive que la rétention
+locale a supprimée part aussi de la destination. Un autre fichier distant
+n'est jamais supprimé, puisque les filtres l'excluent et que
+`--delete-excluded` n'est pas passé ; un dossier local vide ou illisible
+ne lance aucune copie, et ne vide donc jamais la destination. rsync qui
+s'arrête sur la borne (code 25) est un avertissement.
 
 PostgreSQL et les comptes
 -------------------------
@@ -85,10 +106,21 @@ temps ne lui retire pas le fichier.
 L'état
 ------
 Chaque base a son fichier `<state-dir>/<base>/state.json` (dernier succès,
-dernier échec, dernière copie), réécrit par fichier temporaire puis
-renommage. Un échec n'écrase jamais le dernier succès. Fichier et
+dernier échec, dernière copie, dernier essai de restauration, crons
+`auto_backup` vus à la dernière sauvegarde, seuil d'âge déduit du
+calendrier par `install_backup_timer.py`), réécrit par fichier temporaire
+puis renommage. Un échec n'écrase jamais le dernier succès. Fichier et
 dossier sont lisibles par tous (0644, 0755) : `--status` se lance sans
 sudo.
+
+`--status` juge chaque base sans lancer PostgreSQL : l'âge du dernier
+succès (`--max-age`, sinon le seuil du calendrier, sinon 26 h), le nombre
+et la taille des archives (sous sudo quand le dossier est au compte), la
+minuterie et l'ExecStart de son service (`systemctl show`, sans root : une
+minuterie absente ou arrêtée, aucune `--copy-to`, un programme disparu),
+et le dernier essai de restauration (échec : FAIL ; absent ou plus vieux
+que `--max-restore-age` jours : ATTN). Les dates s'affichent avec leur
+décalage horaire : les noms d'archives sont en heure locale.
 
 Codes de sortie : 0 réussi ; 1 échec (sauvegarde, vérification, copie,
 état trop ancien ou absent, restauration d'essai) ; 2 refusé avant de
@@ -103,7 +135,8 @@ demande pas root.
 Le profil
 ---------
 Les réglages persistants de l'instance (`--dest`, `--state-dir`, `keep_*`,
-`--copy-to`, `--max-age`, `--timeout`, `--verbose`, et `db` du groupe
+`--copy-to`, `--copy-prune`, `--copy-prune-max`, `--max-age`,
+`--max-restore-age`, `--timeout`, `--verbose`, et `db` du groupe
 `instance`) se lisent du groupe `backup` du profil JSON de l'instance
 (voir `lib_ops/profil.py`) : `--profile FICHIER`, sinon
 `private/production/<service>.json` de ce checkout. La ligne de commande
@@ -118,6 +151,7 @@ le programme se lance aussi par le python3 d'un serveur de production.
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime
 import errno
 import hashlib
@@ -129,12 +163,18 @@ import signal
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
 import types
 import zipfile
 import zlib
+
+try:
+    import lzma
+except ImportError:  # pragma: no cover - python3 construit sans liblzma
+    lzma = None
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -165,6 +205,8 @@ RACINE = os.path.normpath(
 
 # Groupe du profil de production (voir lib_ops/profil.py).
 GROUPE = "backup"
+# Le programme, tel que `--status` le cite dans une commande à lancer.
+OUTIL_RELATIF = os.path.join("script", "database", "odoo_backup.py")
 
 CODE_OK = 0
 CODE_ECHEC = 1
@@ -179,7 +221,18 @@ GARDE_QUOTIDIEN = 7
 GARDE_HEBDO = 4
 GARDE_MENSUEL = 12
 GARDE_RECENTS = 2
+# Seuil d'âge de `--status` sans `--max-age` ni seuil du calendrier.
 AGE_MAX = 26
+# Âge, en jours, au-delà duquel le dernier essai de restauration est vieux.
+AGE_ESSAI_MAX = 7
+# Sauvegardes supprimées à la destination au plus par passage de
+# `--copy-prune`.
+SUPPRESSIONS_COPIE_MAX = 20
+# Clé de l'état où l'installeur de la minuterie note le seuil d'âge.
+CLE_SEUIL = "expected_max_age_hours"
+# Marqueurs du ramasse-miettes d'Odoo (`_mark_for_gc`) : des fichiers vides
+# rangés sous `checklist/` du filestore, qui ne sont pas des pièces jointes.
+PREFIXE_MARQUEURS_GC = "filestore/checklist/"
 
 # Marge sur l'estimation de l'espace : le zip d'un dump texte est plus
 # petit que la base, mais un filestore déjà compressé ne rétrécit pas.
@@ -209,6 +262,9 @@ MODE_PARTAGE = 0o755
 MODE_ETAT = 0o644
 
 SSH_COPIE = "ssh -o BatchMode=yes -o ConnectTimeout=20"
+# Dossier distant, relatif à celui de la base, où rsync garde un transfert
+# interrompu jusqu'au suivant.
+DOSSIER_PARTIEL_COPIE = ".rsync-partial"
 # Destination d'une copie : `[compte@]hôte:/chemin` ou un chemin absolu.
 RE_COPIE_DISTANTE = re.compile(r"(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9.-]+:/\S*")
 RE_COPIE_LOCALE = re.compile(r"/\S*")
@@ -1461,62 +1517,288 @@ def copie_valide(valeur):
     )
 
 
-def argv_copie(cible, chemin, destination):
-    """rsync du zip et de son empreinte vers `destination/<base>/`, sous le
-    compte de l'unité (ses clés ssh et son known_hosts). rsync crée le
-    dernier dossier du chemin de lui-même."""
-    return cible.prefixe + [
+def _filtres_copie(cible):
+    """Les filtres rsync qui ne laissent passer que les noms de l'outil
+    pour la base (`retention.motifs_rsync`)."""
+    return [
+        "--include=" + motif for motif in retention.motifs_rsync(cible.base)
+    ] + ["--exclude=*"]
+
+
+def _distant(cible, destination):
+    return destination.rstrip("/") + "/" + cible.base + "/"
+
+
+def argv_copie(cible, destination):
+    """rsync du dossier de la base vers `destination/<base>/`, sous le
+    compte de l'unité (ses clés ssh et son known_hosts) ; rsync crée le
+    dernier dossier du chemin de lui-même.
+
+    Seuls les noms de `retention.motifs_rsync` passent : rien d'autre n'est
+    envoyé, et rien n'est supprimé à la destination (l'élagage est
+    `argv_elagage_copie`). Un transfert interrompu attend dans
+    DOSSIER_PARTIEL_COPIE, et `--delay-updates` ne renomme les fichiers
+    reçus qu'à la fin : un nom final désigne toujours un fichier complet.
+    ValueError sur un nom de base invalide."""
+    if not postgres.nom_valide(cible.base):
+        raise ValueError(cible.base)
+    return (
+        cible.prefixe
+        + [
+            "rsync",
+            "-a",
+            "--partial-dir=" + DOSSIER_PARTIEL_COPIE,
+            "--delay-updates",
+        ]
+        + _filtres_copie(cible)
+        + [
+            "-e",
+            SSH_COPIE,
+            cible.dossier.rstrip("/") + "/",
+            _distant(cible, destination),
+        ]
+    )
+
+
+def argv_liste_copie(cible, destination):
+    """`rsync --list-only` du dossier distant de la base, filtré aux noms
+    de l'outil, sous le compte de l'unité. ValueError sur un nom de base
+    invalide."""
+    if not postgres.nom_valide(cible.base):
+        raise ValueError(cible.base)
+    return (
+        cible.prefixe
+        + ["rsync", "--list-only"]
+        + _filtres_copie(cible)
+        + ["-e", SSH_COPIE, _distant(cible, destination)]
+    )
+
+
+def noms_listes(sortie):
+    """Les noms des fichiers ordinaires que liste `rsync --list-only`
+    (permissions, taille, date, heure, nom). Les noms de l'outil ne portent
+    pas d'espace : le dernier champ est le nom entier."""
+    noms = []
+    for ligne in (sortie or "").splitlines():
+        champs = ligne.split()
+        if len(champs) >= 5 and champs[0].startswith("-"):
+            noms.append(champs[-1])
+    return noms
+
+
+def argv_elagage_copie(cible, destination, noms):
+    """rsync qui supprime du dossier distant de la base exactement `noms`
+    (des sauvegardes de la base) et leurs empreintes, chaque paire dans le
+    même passage, et rien d'autre : seuls ces noms sont inclus, absents de
+    la source, et `--existing --ignore-existing` ne transfère aucun
+    fichier. `--max-delete` borne au nombre de fichiers visés. ValueError
+    sur un nom de base invalide ou un nom qui n'est pas une sauvegarde de
+    la base."""
+    if not postgres.nom_valide(cible.base):
+        raise ValueError(cible.base)
+    argv = cible.prefixe + [
         "rsync",
-        "-a",
-        "--partial",
+        "-r",
+        "--delete",
+        "--existing",
+        "--ignore-existing",
+        f"--max-delete={2 * len(noms)}",
+    ]
+    for nom in noms:
+        if retention.date_de(nom, cible.base) is None:
+            raise ValueError(nom)
+        argv += [
+            "--include=/" + nom,
+            "--include=/" + nom + retention.SUFFIXE_SHA,
+        ]
+    return argv + [
+        "--exclude=*",
         "-e",
         SSH_COPIE,
-        chemin,
-        chemin + retention.SUFFIXE_SHA,
-        destination.rstrip("/") + "/" + cible.base + "/",
+        cible.dossier.rstrip("/") + "/",
+        _distant(cible, destination),
     ]
 
 
-def copier(cible, systeme, rapport, chemin, destination):
-    """Copie hors site ; True si réussie. L'échec est noté dans l'état et
-    signalé, la sauvegarde locale reste."""
-    env = os.environ.copy()
-    env["HOME"] = cible.home
-    code, sortie, erreur = systeme.requete(
-        argv_copie(cible, chemin, destination), env, DELAI_COPIE
-    )
-    epoque = int(systeme.maintenant())
-    if code == 0:
-        rapport.ok(
-            t("Copied to {destination}.").format(destination=destination)
-        )
-        noter(
-            cible,
-            systeme,
-            rapport,
-            {"last_copy": {"time": epoque, "ok": True, "message": ""}},
-        )
-        return True
-    message = (erreur or sortie).strip()[:EXTRAIT]
-    rapport.attn(
-        t(
-            "Off-site copy failed (rsync code {code}): {error}. The local"
-            " backup is kept."
-        ).format(code=code, error=message)
-    )
+def _noter_copie(cible, systeme, rapport, ok, message=""):
     noter(
         cible,
         systeme,
         rapport,
         {
             "last_copy": {
-                "time": epoque,
-                "ok": False,
-                "message": f"rsync code {code}: {message}",
+                "time": int(systeme.maintenant()),
+                "ok": ok,
+                "message": message,
             }
         },
     )
-    return False
+
+
+def copier(
+    cible,
+    systeme,
+    rapport,
+    destination,
+    elaguer=False,
+    suppressions=SUPPRESSIONS_COPIE_MAX,
+    garde=None,
+):
+    """Copie hors site (`argv_copie`) ; False quand elle fait échouer la
+    sauvegarde. L'issue est notée dans l'état, la sauvegarde locale reste.
+
+    Un dossier local illisible ou sans sauvegarde de la base n'envoie
+    rien. `elaguer` applique ensuite la rétention `garde` (quotidien,
+    hebdomadaire, mensuel, jours récents ; celle par défaut si None) aux
+    sauvegardes listées à la destination (`elaguer_copie`). Un élagage qui
+    échoue ou s'arrête à `suppressions` n'est qu'un avertissement : les
+    archives sont envoyées."""
+    try:
+        noms = os.listdir(cible.dossier)
+    except OSError as err:
+        message = t("Off-site copy skipped: {error}").format(error=err)
+        rapport.attn(message)
+        _noter_copie(cible, systeme, rapport, False, message)
+        return False
+    if not retention.sauvegardes(noms, cible.base):
+        message = t(
+            "Off-site copy skipped: no backup of {database} in {path};"
+            " nothing is deleted at the destination."
+        ).format(database=cible.base, path=cible.dossier)
+        rapport.attn(message)
+        _noter_copie(cible, systeme, rapport, False, message)
+        return False
+    env = os.environ.copy()
+    env["HOME"] = cible.home
+    code, sortie, erreur = systeme.requete(
+        argv_copie(cible, destination), env, DELAI_COPIE
+    )
+    if code != 0:
+        message = (erreur or sortie).strip()[:EXTRAIT]
+        rapport.attn(
+            t(
+                "Off-site copy failed (rsync code {code}): {error}. The local"
+                " backup is kept."
+            ).format(code=code, error=message)
+        )
+        _noter_copie(
+            cible, systeme, rapport, False, f"rsync code {code}: {message}"
+        )
+        return False
+    rapport.ok(t("Copied to {destination}.").format(destination=destination))
+    if not elaguer:
+        _noter_copie(cible, systeme, rapport, True)
+        return True
+    if garde is None:
+        garde = (GARDE_QUOTIDIEN, GARDE_HEBDO, GARDE_MENSUEL, GARDE_RECENTS)
+    message = elaguer_copie(
+        cible, systeme, rapport, destination, noms, garde, suppressions, env
+    )
+    _noter_copie(cible, systeme, rapport, not message, message)
+    return True
+
+
+def elaguer_copie(
+    cible, systeme, rapport, destination, locaux, garde, suppressions, env
+):
+    """Supprime à la destination les sauvegardes de la base que la
+    rétention ne garde pas, appliquée à celles qui y sont listées
+    (`argv_liste_copie`) : jamais une archive encore présente en local, au
+    plus `suppressions` par passage, les plus anciennes d'abord. `locaux`
+    sont les noms du dossier local, `garde` la rétention (quotidien,
+    hebdomadaire, mensuel, jours récents).
+
+    La rétention juge l'historique distant lui-même : un dossier local
+    reconstruit, vidé à la main ou une destination neuve ne fait rien
+    supprimer de plus que ce qu'elle garde. Rend le message d'un élagage
+    incomplet, ou "" quand il est complet."""
+    code, sortie, erreur = systeme.requete(
+        argv_liste_copie(cible, destination), env, DELAI_COPIE
+    )
+    if code == 0:
+        jour = datetime.date.fromtimestamp(systeme.maintenant())
+        en_trop = sorted(
+            retention.a_supprimer(
+                noms_listes(sortie), cible.base, *garde, aujourd_hui=jour
+            )
+            - set(locaux)
+        )
+        if not en_trop:
+            return ""
+        lot = en_trop[:suppressions]
+        code, sortie, erreur = systeme.requete(
+            argv_elagage_copie(cible, destination, lot), env, DELAI_COPIE
+        )
+    if code != 0:
+        message = t(
+            "Off-site pruning failed (rsync code {code}): {error}. The"
+            " backups are copied."
+        ).format(code=code, error=(erreur or sortie).strip()[:EXTRAIT])
+        rapport.attn(message)
+        return message
+    rapport.ok(
+        t("Retention at the destination: {deleted} backup(s) deleted.").format(
+            deleted=len(lot)
+        )
+    )
+    if len(en_trop) > len(lot):
+        message = t(
+            "Off-site pruning stopped at --copy-prune-max {count}: the"
+            " backups are copied, some old ones remain at the"
+            " destination. Check it, then raise the limit."
+        ).format(count=suppressions)
+        rapport.attn(message)
+        return message
+    return ""
+
+
+def verifier_auto_backup(cible, systeme, rapport, noter_etat=False):
+    """Avertit quand des tâches planifiées actives d'un module de
+    sauvegarde d'Odoo ont une configuration à sauvegarder dans la base
+    (`postgres.REQUETE_AUTO_BACKUP`, puis `REQUETES_CONFIG_AUTO_BACKUP`
+    pour chaque modèle qui en a, en lecture seule) : Odoo y lance une
+    seconde sauvegarde, sur le même serveur. Une tâche sans configuration
+    ne compte pas. `noter_etat` garde le compte dans l'état, que `--status`
+    relit sans PostgreSQL. Une requête en échec n'est qu'un détail : rien
+    n'est noté."""
+    try:
+        donnees = interroger(cible, systeme, sql=postgres.REQUETE_AUTO_BACKUP)
+        crons = donnees.get("auto_backup_crons") or {}
+        nombre = 0
+        for modele, compte in sorted(crons.items()):
+            sql = postgres.REQUETES_CONFIG_AUTO_BACKUP.get(modele)
+            if sql is None or not int(compte):
+                continue
+            config = interroger(cible, systeme, sql=sql)
+            if int(config.get("configured") or 0):
+                nombre += int(compte)
+    except (ErreurPg, ValueError, TypeError, AttributeError) as err:
+        rapport.detail(
+            t("auto_backup crons not checked: {error}").format(error=err)
+        )
+        return
+    if nombre:
+        rapport.attn(_message_auto_backup(cible.base, nombre))
+    if noter_etat:
+        noter(
+            cible,
+            systeme,
+            rapport,
+            {
+                "auto_backup_crons": {
+                    "time": int(systeme.maintenant()),
+                    "count": nombre,
+                }
+            },
+        )
+
+
+def _message_auto_backup(base, nombre):
+    return t(
+        "{database}: {count} active cron(s) of an Odoo backup module"
+        " (auto_backup, auto_database_backup) also back up from Odoo: two"
+        " schedules fill the disk and load the server. Keep one."
+    ).format(database=base, count=nombre)
 
 
 def appliquer_retention(cible, systeme, rapport, args):
@@ -1561,12 +1843,37 @@ def appliquer_retention(cible, systeme, rapport, args):
 # --- État des sauvegardes (--status) --------------------------------------
 
 
-def afficher_etat(etat_dir, base, age_max, systeme, rapport):
+def horodatage(epoque):
+    """`epoque` en heure locale, avec son décalage et l'abréviation du
+    fuseau quand elle existe : `2031-03-10 03:00 -0400 EDT`. Les noms
+    d'archives sont en heure locale : un changement d'heure les rend
+    ambigus sans le décalage."""
+    moment = datetime.datetime.fromtimestamp(float(epoque)).astimezone()
+    texte = moment.strftime("%Y-%m-%d %H:%M %z")
+    zone = moment.strftime("%Z")
+    if zone and not zone.startswith(("+", "-")):
+        texte += " " + zone
+    return texte
+
+
+def afficher_etat(
+    etat_dir,
+    base,
+    age_max,
+    systeme,
+    rapport,
+    dest=DEST_PAR_DEFAUT,
+    age_essai=AGE_ESSAI_MAX,
+):
     """L'état de chaque base (ou de `base`) ; rend le code de sortie : 1
-    s'il n'y a aucun état, ou qu'une base n'a pas de succès plus récent
-    que `age_max` heures ; 2 si le dossier d'état ne se lit pas, ou si le
-    dossier d'une base y est un lien symbolique — son état n'est alors pas
-    lu (voir `refuser_liens`)."""
+    s'il n'y a aucun état, ou qu'une base échoue (`_etat_d_une_base`) ; 2
+    si le dossier d'état ne se lit pas, ou si le dossier d'une base y est
+    un lien symbolique — son état n'est alors pas lu (voir
+    `refuser_liens`).
+
+    `age_max` None prend le seuil noté par l'installeur de la minuterie
+    (CLE_SEUIL) tant que la minuterie est installée, sinon AGE_MAX. `dest` situe les archives d'une base dont
+    l'état ne nomme aucun fichier ; `age_essai` est en jours."""
     try:
         if base:
             if os.path.islink(os.path.join(etat_dir, base)):
@@ -1618,16 +1925,41 @@ def afficher_etat(etat_dir, base, age_max, systeme, rapport):
                 )
             )
             return CODE_REFUS
-        if not _etat_d_une_base(nom, donnees, maintenant, age_max, rapport):
+        minuterie = lire_minuterie(nom, systeme)
+        seuil = age_max
+        if seuil is None:
+            seuil = (
+                _seuil(donnees) if minuterie.chargee is not False else AGE_MAX
+            )
+        bon = _etat_d_une_base(nom, donnees, maintenant, seuil, rapport)
+        bon = _archives_d_une_base(nom, donnees, dest, rapport) and bon
+        bon = _minuterie_d_une_base(nom, minuterie, rapport) and bon
+        bon = (
+            _essai_d_une_base(nom, donnees, maintenant, age_essai, rapport)
+            and bon
+        )
+        if not bon:
             code = CODE_ECHEC
     return code
 
 
+def _seuil(donnees):
+    """Le seuil d'âge noté dans l'état par l'installeur de la minuterie (un
+    nombre positif, CLE_SEUIL), sinon AGE_MAX."""
+    seuil = donnees.get(CLE_SEUIL)
+    if isinstance(seuil, (int, float)) and not isinstance(seuil, bool):
+        if seuil > 0:
+            return seuil
+    return AGE_MAX
+
+
 def _etat_d_une_base(nom, donnees, maintenant, age_max, rapport):
-    """Écrit l'état d'une base ; False si elle fait échouer `--status`."""
+    """Écrit l'âge du dernier succès, le dernier échec et la dernière
+    copie d'une base ; False si elle fait échouer `--status`."""
     succes = donnees.get("last_success") or {}
     echec = donnees.get("last_failure") or {}
     copie = donnees.get("last_copy") or {}
+    crons = donnees.get("auto_backup_crons") or {}
     bon = True
     if not succes.get("time"):
         rapport.fail(
@@ -1652,6 +1984,7 @@ def _etat_d_une_base(nom, donnees, maintenant, age_max, rapport):
                     database=nom, hours=heures
                 )
             )
+        rapport.champ(t("Date"), horodatage(succes["time"]))
         rapport.champ(t("File"), succes.get("file", ""))
         rapport.champ(t("Size"), humain(succes.get("size")))
         rapport.champ("sha256", succes.get("sha256", ""))
@@ -1680,15 +2013,263 @@ def _etat_d_une_base(nom, donnees, maintenant, age_max, rapport):
                 database=nom, message=copie.get("message", "")
             )
         )
+    try:
+        nombre = int(crons.get("count") or 0)
+    except (TypeError, ValueError):
+        nombre = 0
+    if nombre:
+        rapport.attn(_message_auto_backup(nom, nombre))
     return bon
+
+
+def _archives_d_une_base(nom, donnees, dest, rapport):
+    """Le nombre et la taille des sauvegardes de la base sur le disque,
+    lues dans le dossier du dernier fichier noté, sinon dans
+    `<dest>/<base>`. Un dossier illisible sans root est un avertissement ;
+    rend toujours True."""
+    fichier = (donnees.get("last_success") or {}).get("file") or ""
+    if isinstance(fichier, str) and os.path.isabs(fichier):
+        dossier = os.path.dirname(fichier)
+    else:
+        dossier = os.path.join(os.path.abspath(dest), nom)
+    try:
+        noms = os.listdir(dossier)
+    except FileNotFoundError:
+        noms = []
+    except OSError:
+        rapport.attn(
+            t("Backups in {path}: unknown (requires sudo).").format(
+                path=dossier
+            )
+        )
+        return True
+    archives = retention.sauvegardes(noms, nom)
+    octets = 0
+    for _moment, archive in archives:
+        try:
+            octets += os.lstat(os.path.join(dossier, archive)).st_size
+        except OSError:
+            pass
+    rapport.champ(
+        t("Backups kept"),
+        t("{count} in {path} ({size})").format(
+            count=len(archives), path=dossier, size=humain(octets)
+        ),
+    )
+    return True
+
+
+def lire_minuterie(base, systeme):
+    """La sauvegarde planifiée de `base`, lue par `systemctl show` sans
+    root : un espace de noms (`service`, `minuterie`, `chargee`, `active`,
+    `argv` de l'ExecStart du service, `erreur`). `chargee` est None quand
+    systemctl ne répond pas (`erreur` dit pourquoi), False quand la
+    minuterie n'est pas installée."""
+    lu = types.SimpleNamespace(
+        service="", minuterie="", chargee=None, active="", argv=[], erreur=""
+    )
+    try:
+        lu.service, lu.minuterie = systemd.unites_sauvegarde(base)
+        props = systemd.lire_proprietes(
+            lu.minuterie, ("LoadState", "ActiveState"), systeme.lanceur
+        )
+        execstart = systemd.lire_proprietes(
+            lu.service, ("ExecStart",), systeme.lanceur
+        )["ExecStart"]
+    except (ValueError, systemd.ErreurUnite) as err:
+        lu.erreur = str(err)
+        return lu
+    lu.chargee = props["LoadState"] not in ("", "not-found")
+    lu.active = props["ActiveState"]
+    lu.argv = systemd.argv_execstart(execstart)
+    return lu
+
+
+def _minuterie_d_une_base(nom, lu, rapport):
+    """Écrit ce que `lire_minuterie` a lu : une minuterie absente ou
+    inactive, un service sans `--copy-to` sont des avertissements ; un
+    programme de l'ExecStart qui n'existe plus fait échouer `--status`
+    (chaque passage échouerait). Un chemin que ce compte ne peut pas
+    examiner (dossier personnel fermé, EACCES) n'est qu'un détail, comme
+    systemctl muet."""
+    if lu.chargee is None:
+        rapport.detail(
+            t("{database}: scheduled backup unknown: {error}").format(
+                database=nom, error=lu.erreur
+            )
+        )
+        return True
+    if not lu.chargee:
+        rapport.attn(
+            t(
+                "{database}: no scheduled backup ({timer} is not installed)."
+            ).format(database=nom, timer=lu.minuterie)
+        )
+        return True
+    if lu.active != "active":
+        rapport.attn(
+            t("{database}: {timer} is {state}, not active.").format(
+                database=nom, timer=lu.minuterie, state=lu.active or "?"
+            )
+        )
+    manquants = []
+    for chemin in lu.argv[:2]:
+        try:
+            os.stat(chemin)
+        except (FileNotFoundError, NotADirectoryError):
+            manquants.append(chemin)
+        except OSError as err:
+            rapport.detail(
+                t(
+                    "{database}: {path} in the ExecStart of {unit} not"
+                    " checked: {error}"
+                ).format(database=nom, path=chemin, unit=lu.service, error=err)
+            )
+    if manquants:
+        rapport.fail(
+            t(
+                "{database}: {path} in the ExecStart of {unit} does not"
+                " exist: every scheduled backup fails. Reinstall the timer."
+            ).format(database=nom, path=manquants[0], unit=lu.service)
+        )
+        return False
+    if lu.argv and "--copy-to" not in lu.argv:
+        rapport.attn(
+            t(
+                "{database}: no off-site copy (--copy-to) in {unit}: a backup"
+                " kept on this server is lost with it."
+            ).format(database=nom, unit=lu.service)
+        )
+    return True
+
+
+def _essai_d_une_base(nom, donnees, maintenant, age_essai, rapport):
+    """Le dernier essai de restauration de la base : False s'il a échoué ;
+    un avertissement s'il n'y en a pas, ou s'il date de plus de
+    `age_essai` jours."""
+    essai = donnees.get("last_restore_test") or {}
+    commande = service.joindre([OUTIL_RELATIF, "--test-restore", "--db", nom])
+    if not essai.get("time"):
+        rapport.attn(
+            t(
+                "{database}: no test restore recorded: an untested backup"
+                " may not restore. Run: {command}"
+            ).format(database=nom, command=commande)
+        )
+        return True
+    jours = (maintenant - float(essai["time"])) / 86400.0
+    quand = horodatage(essai["time"])
+    if not essai.get("ok"):
+        rapport.fail(
+            t(
+                "{database}: the last test restore failed ({date}): {message}."
+                " Run it again after fixing: {command}"
+            ).format(
+                database=nom,
+                date=quand,
+                message=essai.get("message", ""),
+                command=commande,
+            )
+        )
+        return False
+    if jours > age_essai:
+        rapport.attn(
+            t(
+                "{database}: last test restore {days:.0f} day(s) old, more"
+                " than {limit}. Run: {command}"
+            ).format(
+                database=nom, days=jours, limit=age_essai, command=commande
+            )
+        )
+    else:
+        rapport.ok(
+            t("{database}: last test restore passed ({date}).").format(
+                database=nom, date=quand
+            )
+        )
+    return True
 
 
 # --- Restauration -----------------------------------------------------------
 
 
+# Les six premiers octets d'un flux xz.
+MAGIE_XZ = b"\xfd7zXZ\x00"
+# Les erreurs d'une archive illisible ou tronquée, zip ou tar.xz.
+ERREURS_ARCHIVE = (zipfile.BadZipFile, zlib.error, tarfile.TarError, EOFError)
+if lzma is not None:
+    ERREURS_ARCHIVE += (lzma.LZMAError,)
+
+
+class _MembreTar:
+    """Ce qu'un appelant lit d'un membre (`file_size`), comme d'un
+    `zipfile.ZipInfo`."""
+
+    def __init__(self, info):
+        self.info = info
+        self.file_size = info.size
+
+
+class ArchiveTarXz:
+    """Un `.tar.xz` de l'outil antérieur, lu par l'interface du zip dont
+    se servent la restauration et l'essai : `namelist`, `getinfo`,
+    `open`, `read`, `close`.
+
+    `namelist` ne rend que les fichiers ordinaires, `./` de tête retiré ;
+    un lien (symbolique ou physique), un fichier spécial ou un nom en
+    double y apparaît sous son nom brut et rend l'archive dangereuse pour
+    `controler_archive` : rien n'est jamais créé d'après un lien de
+    l'archive, et un nom en double ferait écrire deux fois le même
+    fichier. Les dossiers ne sont pas des membres : l'extraction crée
+    ceux qu'il faut.
+
+    Un `.tar.xz` ne se lit pas à rebours : la liste des membres, puis
+    chaque retour en arrière (le manifeste lu avant le dump) décompressent
+    depuis le début. Une restauration le décompresse ainsi trois ou quatre
+    fois, le prix d'un format qu'on ne produit plus."""
+
+    def __init__(self, fichier):
+        if lzma is None:
+            raise tarfile.CompressionError("lzma module is not available")
+        self.tar = tarfile.open(fileobj=fichier, mode="r:xz")
+        self.membres = collections.OrderedDict()
+        self.refuses = []
+        for info in self.tar.getmembers():
+            nom = info.name
+            while nom.startswith("./"):
+                nom = nom[2:]
+            if info.isdir():
+                continue
+            if not info.isreg() or nom in self.membres:
+                self.refuses.append(info.name)
+                continue
+            self.membres[nom] = info
+
+    def namelist(self):
+        return list(self.membres) + list(self.refuses)
+
+    def getinfo(self, nom):
+        return _MembreTar(self.membres[nom])
+
+    def open(self, nom):
+        flux = self.tar.extractfile(self.membres[nom])
+        if flux is None:
+            raise tarfile.ExtractError(nom)
+        return flux
+
+    def read(self, nom):
+        with self.open(nom) as flux:
+            return flux.read()
+
+    def close(self):
+        self.tar.close()
+
+
 class Archive:
-    """Un zip de sauvegarde ouvert une fois pour toutes : le descripteur
-    reste valide si le fichier est supprimé entre-temps."""
+    """Une sauvegarde ouverte une fois pour toutes : le descripteur reste
+    valide si le fichier est supprimé entre-temps. Un zip, ou un
+    `.tar.xz` de l'outil antérieur reconnu à ses premiers octets
+    (`ArchiveTarXz`) ; `zip` porte l'un ou l'autre."""
 
     def __init__(self, chemin):
         self.chemin = chemin
@@ -1696,12 +2277,18 @@ class Archive:
         self.zip = None
 
     def ouvrir(self):
-        """Ouvre le zip ; Echec si ce n'en est pas un."""
+        """Ouvre l'archive ; Echec si ce n'est ni un zip ni un tar.xz
+        lisible."""
         try:
-            self.zip = zipfile.ZipFile(self.fichier)
-        except (zipfile.BadZipFile, OSError) as err:
+            entete = self.fichier.read(len(MAGIE_XZ))
+            self.fichier.seek(0)
+            if entete == MAGIE_XZ:
+                self.zip = ArchiveTarXz(self.fichier)
+            else:
+                self.zip = zipfile.ZipFile(self.fichier)
+        except ERREURS_ARCHIVE + (OSError,) as err:
             raise Echec(
-                t("{path} is not a readable zip: {error}").format(
+                t("{path} is not a readable zip or tar.xz: {error}").format(
                     path=self.chemin, error=err
                 )
             )
@@ -1736,6 +2323,9 @@ def controler_archive(archive, rapport):
     zf = archive.ouvrir()
     noms = zf.namelist()
     extraire, dangereux = odoo_instance.membres_a_extraire(noms)
+    refuses = list(getattr(zf, "refuses", ()))
+    extraire = [nom for nom in extraire if nom not in refuses]
+    dangereux += [nom for nom in refuses if nom not in dangereux]
     if dangereux:
         raise Echec(
             t("Dangerous paths in the archive, refused: {names}").format(
@@ -1750,6 +2340,12 @@ def controler_archive(archive, rapport):
             donnees = json.loads(zf.read("manifest.json").decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             donnees = {}
+        except ERREURS_ARCHIVE + (OSError,) as err:
+            raise Echec(
+                t("{path} is not a readable zip or tar.xz: {error}").format(
+                    path=archive.chemin, error=err
+                )
+            )
     if not isinstance(donnees, dict):
         donnees = {}
     modules = donnees.get("modules") or {}
@@ -1758,6 +2354,13 @@ def controler_archive(archive, rapport):
     rapport.champ("PostgreSQL", donnees.get("pg_version", "?"))
     rapport.champ(t("Modules"), len(modules))
     return extraire, donnees
+
+
+def est_marqueur_gc(nom):
+    """True si le membre `nom` est un marqueur du ramasse-miettes d'Odoo
+    (`filestore/checklist/…`) et non une pièce jointe : il ne compte pas
+    parmi les fichiers que la base référence."""
+    return nom.startswith(PREFIXE_MARQUEURS_GC)
 
 
 def _octets_filestore(zf, membres):
@@ -2095,7 +2698,13 @@ def _essai(cible, systeme, rapport, archive, temporaire, traces):
     """Le corps de la restauration d'essai ; `traces` note la base créée
     (`cree`), pour que l'appelant la supprime. Le filestore s'extrait sous
     le compte de l'unité, dans un dossier provisoire retiré par
-    `essayer_filestore` elle-même."""
+    `essayer_filestore` elle-même : celui des sauvegardes de la base, ou,
+    quand il n'existe pas encore (une archive d'un outil antérieur essayée
+    avant toute sauvegarde), le dossier des filestores d'Odoo, où ce
+    compte écrit aussi."""
+    dossier = cible.dossier
+    if not os.path.isdir(dossier):
+        dossier = os.path.dirname(cible.filestore)
     try:
         membres, manifeste_lu = controler_archive(archive, rapport)
     except Echec as err:
@@ -2110,7 +2719,7 @@ def _essai(cible, systeme, rapport, archive, temporaire, traces):
         archive,
         membres,
         temporaire,
-        cible.dossier,
+        dossier,
         manifeste_lu,
         traces,
     )
@@ -2128,12 +2737,12 @@ def _essai(cible, systeme, rapport, archive, temporaire, traces):
             essayer_filestore,
             archive.zip,
             membres,
-            cible.dossier,
+            dossier,
         )
     except Echec as err:
         rapport.fail(str(err))
         return CODE_ECHEC
-    except (OSError, zipfile.BadZipFile, zlib.error) as err:
+    except (OSError,) + ERREURS_ARCHIVE as err:
         rapport.fail(t("Test restore failed: {error}").format(error=err))
         return CODE_ECHEC
     prevus = len([m for m in membres if m.startswith("filestore/")])
@@ -2145,12 +2754,21 @@ def _essai(cible, systeme, rapport, archive, temporaire, traces):
         )
         return CODE_ECHEC
     rapport.ok(t("Filestore extracted: {count} files.").format(count=nombre))
-    if attendus > nombre:
+    marqueurs = len([m for m in membres if est_marqueur_gc(m)])
+    pieces = nombre - marqueurs
+    if marqueurs:
+        rapport.detail(
+            t(
+                "{count} garbage-collection marker(s) under checklist/ are"
+                " not attachments."
+            ).format(count=marqueurs)
+        )
+    if attendus > pieces:
         rapport.attn(
             t(
                 "The database references {expected} stored files, the"
                 " backup holds {count}."
-            ).format(expected=attendus, count=nombre)
+            ).format(expected=attendus, count=pieces)
         )
     rapport.ok(t("Test restore passed: the backup is restorable."))
     return CODE_OK
@@ -2171,6 +2789,14 @@ def restauration_essai(
     supprimée que si CETTE exécution l'a créée : un nom déjà pris refuse
     avant createdb. Une suppression qui échoue fait échouer l'essai (code
     1), même réussi : une base `_restoretest_` reste sur le serveur.
+
+    Hors simulation, l'issue d'un essai mené sur une archive ouverte est
+    notée dans `last_restore_test` de l'état de la base (date, réussite,
+    fichier, dernier message d'échec), que `--status` juge, quand l'archive
+    est une sauvegarde de la base, sous son nom d'outil, dans son dossier
+    (`_de_la_chaine`). L'essai d'un autre fichier (`--file` : archive de
+    l'outil antérieur, copie rangée ailleurs, autre base) ne dit rien des
+    sauvegardes en cours : il n'est pas noté, et le rapport le dit.
     """
     horodatage = datetime.datetime.fromtimestamp(
         systeme.maintenant()
@@ -2187,13 +2813,65 @@ def restauration_essai(
         "forcer_espace": forcer_espace,
     }
     code = CODE_ECHEC
+    retenu = _Retenu(rapport)
     try:
-        code = _essai(cible, systeme, rapport, archive, temporaire, traces)
+        code = _essai(cible, systeme, retenu, archive, temporaire, traces)
     finally:
-        if traces["cree"] and not _dropdb(cible, systeme, rapport, temporaire):
+        if traces["cree"] and not _dropdb(cible, systeme, retenu, temporaire):
             code = CODE_ECHEC
         archive.fermer()
+    if simulation:
+        return code
+    if not _de_la_chaine(cible, archive.chemin):
+        rapport.detail(
+            t(
+                "{path} is not a backup of {database} in {folder}: --status"
+                " does not count this test restore."
+            ).format(
+                path=archive.chemin, database=cible.base, folder=cible.dossier
+            )
+        )
+    elif os.path.isdir(cible.dossier_etat):
+        noter(
+            cible,
+            systeme,
+            rapport,
+            {
+                "last_restore_test": {
+                    "time": int(systeme.maintenant()),
+                    "ok": code == CODE_OK,
+                    "file": archive.chemin,
+                    "message": "" if code == CODE_OK else retenu.dernier[:500],
+                }
+            },
+        )
     return code
+
+
+def _de_la_chaine(cible, chemin):
+    """True si `chemin` est une sauvegarde de la base, sous le nom de
+    l'outil (`retention.date_de`), dans le dossier des sauvegardes."""
+    dossier, nom = os.path.split(os.path.abspath(chemin))
+    return (
+        dossier == os.path.abspath(cible.dossier)
+        and retention.date_de(nom, cible.base) is not None
+    )
+
+
+class _Retenu:
+    """Un rapport qui garde le texte du dernier FAIL écrit (`dernier`) et
+    passe tout le reste au rapport enveloppé."""
+
+    def __init__(self, rapport):
+        self._rapport = rapport
+        self.dernier = ""
+
+    def fail(self, message):
+        self.dernier = str(message)
+        self._rapport.fail(message)
+
+    def __getattr__(self, nom):
+        return getattr(self._rapport, nom)
 
 
 def _simuler_restauration(cible, rapport, nom, essai, filestore=None):
@@ -2265,7 +2943,7 @@ def _restaurer_dans(cible, systeme, rapport, archive, nouvelle, traces):
     except Echec as err:
         rapport.fail(str(err))
         return CODE_ECHEC
-    except (OSError, KeyError, zipfile.BadZipFile, zlib.error) as err:
+    except (OSError, KeyError) + ERREURS_ARCHIVE as err:
         rapport.fail(t("Restore failed: {error}").format(error=err))
         return CODE_ECHEC
     traces["reussi"] = True
@@ -2472,14 +3150,6 @@ def simuler_sauvegarde(cible, systeme, rapport, a_creer, args):
         + " → "
         + os.path.join(cible.dossier, exemple)
     )
-    if args.copy_to:
-        rapport.sim(
-            service.joindre(
-                argv_copie(
-                    cible, os.path.join(cible.dossier, exemple), args.copy_to
-                )
-            )
-        )
     rapport.sim(
         t(
             "retention: {daily} daily, {weekly} weekly, {monthly} monthly,"
@@ -2491,6 +3161,19 @@ def simuler_sauvegarde(cible, systeme, rapport, a_creer, args):
             recent=args.keep_recent_days,
         )
     )
+    if args.copy_to:
+        rapport.sim(service.joindre(argv_copie(cible, args.copy_to)))
+        if args.copy_prune:
+            rapport.sim(service.joindre(argv_liste_copie(cible, args.copy_to)))
+            rapport.sim(
+                t(
+                    "then delete there the backups this retention does not"
+                    " keep, except those kept locally, at most {count} per"
+                    " run"
+                ).format(count=args.copy_prune_max)
+            )
+    if cible.interrogeable:
+        verifier_auto_backup(cible, systeme, rapport)
     rapport.ok(t("Simulation finished: nothing was created or written."))
     return CODE_OK
 
@@ -2534,14 +3217,26 @@ def mode_sauvegarde(cible, systeme, rapport, args):
         if resultat.code != CODE_OK and not resultat.chemin:
             return resultat.code
         code = resultat.code if resultat.etat_ok else CODE_ECHEC
+        verifier_auto_backup(cible, systeme, rapport, noter_etat=True)
+        rapport.etape(t("Retention"))
+        appliquer_retention(cible, systeme, rapport, args)
         if args.copy_to:
             rapport.etape(t("Off-site copy"))
             if not copier(
-                cible, systeme, rapport, resultat.chemin, args.copy_to
+                cible,
+                systeme,
+                rapport,
+                args.copy_to,
+                args.copy_prune,
+                args.copy_prune_max,
+                (
+                    args.keep_daily,
+                    args.keep_weekly,
+                    args.keep_monthly,
+                    args.keep_recent_days,
+                ),
             ):
                 code = CODE_ECHEC
-        rapport.etape(t("Retention"))
-        appliquer_retention(cible, systeme, rapport, args)
         return code
     finally:
         verrou.relacher()
@@ -2585,7 +3280,13 @@ def construire_parseur():
         action="store_true",
         help=t("Restore --file into the new database --into."),
     )
-    parser.add_argument("--file", help=t("Backup file (.zip) to restore."))
+    parser.add_argument(
+        "--file",
+        help=t(
+            "Backup file to restore: .zip, or .tar.xz of the older backup"
+            " tool."
+        ),
+    )
     parser.add_argument(
         "--into",
         type=types_.base,
@@ -2670,13 +3371,41 @@ def construire_parseur():
         ),
     )
     parser.add_argument(
+        "--copy-prune",
+        action="store_true",
+        help=t(
+            "With --copy-to: also apply the retention to the backups at the"
+            " destination, except those kept locally; only this tool's names"
+            " for this database."
+        ),
+    )
+    parser.add_argument(
+        "--copy-prune-max",
+        type=types_.entier,
+        default=SUPPRESSIONS_COPIE_MAX,
+        help=t(
+            "--copy-prune deletes at most this many backups per run;"
+            " default: {value}."
+        ).format(value=SUPPRESSIONS_COPIE_MAX),
+    )
+    parser.add_argument(
         "--max-age",
         type=types_.secondes,
-        default=AGE_MAX,
+        default=None,
         help=t(
             "--status fails when the last success is older than this many"
-            " hours; default: {value}."
+            " hours; default: the threshold derived from the timer"
+            " schedule, else {value}."
         ).format(value=AGE_MAX),
+    )
+    parser.add_argument(
+        "--max-restore-age",
+        type=types_.entier,
+        default=AGE_ESSAI_MAX,
+        help=t(
+            "--status warns when the last test restore is older than this"
+            " many days; default: {value}."
+        ).format(value=AGE_ESSAI_MAX),
     )
     parser.add_argument(
         "--force-space",
@@ -2719,6 +3448,8 @@ def valider(parser, args):
         parser.error(
             t("--file is only used with --restore or --test-restore.")
         )
+    if args.copy_prune_max < 1:
+        parser.error(t("--copy-prune-max must be at least 1."))
 
 
 def analyser(argv=None, lanceur=None):
@@ -2775,14 +3506,11 @@ def main(argv=None, systeme=None, rapport=None):
             args.max_age,
             systeme,
             rapport,
+            dest=args.dest,
+            age_essai=args.max_restore_age,
         )
     rapport.texte(
-        "{} — {}".format(
-            t("Odoo backup"),
-            datetime.datetime.fromtimestamp(systeme.maintenant()).strftime(
-                "%Y-%m-%d %H:%M"
-            ),
-        )
+        "{} — {}".format(t("Odoo backup"), horodatage(systeme.maintenant()))
     )
     try:
         cible = detecter(args, systeme, base_exigee=not args.restore)

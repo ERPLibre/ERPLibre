@@ -43,7 +43,7 @@ one `/web/database/manager` restores as is. It also reports their age,
 test-restores them into a temporary database, and restores one into a new
 database. It needs neither the Odoo venv nor `list_db`. In `make todo`:
 `TODO › Execute › Production › Backups` (now, status, test restore,
-restore into a new database) and `TODO › Execute › Production › systemd
+restore into a new database, test restore of a file) and `TODO › Execute › Production › systemd
 timers` for the scheduled backup.
 
 <!-- [fr] -->
@@ -55,7 +55,8 @@ celui que `/web/database/manager` restaure tel quel. Il en donne aussi
 l'âge, les essaie dans une base temporaire et en restaure une dans une
 nouvelle base. Il n'a besoin ni du venv Odoo ni de `list_db`. Dans
 `make todo` : `TODO › Exécuter › Production › Sauvegardes` (maintenant,
-état, restauration d'essai, restauration dans une nouvelle base) et
+état, restauration d'essai, restauration dans une nouvelle base,
+restauration d'essai d'un fichier) et
 `TODO › Exécuter › Production › Minuteries systemd` pour la sauvegarde
 planifiée.
 
@@ -115,10 +116,27 @@ deleted; a gap in backups never deletes everything.
 
 **State.** Each database has `<state-dir>/<db>/state.json` (default
 `/var/lib/erplibre-backup`): last success (time, file, size, sha256), last
-failure, last copy. It is readable by everyone, so `--status` needs no
-sudo. `--status` fails (code 1) when a database has no success, or one
-older than `--max-age` hours (26); it warns about a failure newer than the
-last success, a recorded file missing on disk, and a failed copy.
+failure, last copy, last test restore, the active crons of the
+`auto_backup` module seen by the last backup, and the age threshold the
+timer installer derived from the schedule. It is readable by everyone, so
+`--status` needs no sudo, and `--status` runs no PostgreSQL command.
+
+**Status.** `--status` fails (code 1) when a database has no success, or
+one older than `--max-age` hours; without `--max-age`, the threshold
+derived from the schedule while the timer is installed, else 26. It also
+fails when the last test restore failed, or when the program in the
+`ExecStart` of the backup service no longer exists (a moved checkout makes
+every run fail); a path the account running `--status` cannot examine
+(a closed home folder) is only a detail. It warns about a failure newer than the last success, a
+recorded file missing on disk, a failed copy, a timer missing or not
+active, a service without `--copy-to` (a backup kept on the server is lost
+with it), active crons of `auto_backup` or `auto_database_backup` that
+have a backup configuration (a second backup from Odoo, on the same disk;
+a cron without one backs up nothing), and a test restore missing or older than `--max-restore-age`
+days (7). It shows the number and total size of the backups (their folder
+belongs to the unit's account: under sudo) and every date with its UTC
+offset, since backup names use local time. The timer is read with
+`systemctl show`, which needs no root.
 
 **Test restore.** `--test-restore` restores the newest backup (or
 `--file`) into a temporary database `<db>_restoretest_<stamp>` (cut to
@@ -127,6 +145,13 @@ tables, `ir_module_module`, the `base` module and the installed modules
 against the manifest, extracts the filestore as the unit's account into a
 temporary folder, then always drops what it created; a temporary database
 it cannot drop ends with code 1. The source database is never touched.
+The garbage-collection markers of Odoo 18 (`filestore/checklist/`) are not
+counted as attachments when the number of files the database references is
+compared with the backup. Except with `--dry-run`, the outcome (time,
+success, file, last error) is recorded as `last_restore_test`, which
+`--status` judges, when the file is a backup of the database, under the
+tool's name, in its folder. The temporary folder is the database's backup folder,
+or Odoo's filestore folder when no backup was taken yet.
 
 **Room in PostgreSQL.** A test restore or a restore creates a full copy on
 the same PostgreSQL server: a full volume would stop the production
@@ -140,7 +165,11 @@ or `db_host` is another host, the tool refuses, unless `--force-space`.
 **Restore.** `--restore --file F --into NEW` only restores into a database
 that does not exist yet, and a filestore folder
 `<data_dir>/filestore/NEW` that does not exist either. Archive paths that
-would leave the extraction folder are refused. The filestore is written as
+would leave the extraction folder are refused. `--file` also takes a
+`.tar.xz` of the older backup tool (`dump.sql`, `manifest.json` and
+`filestore/` at its root, the zip's content), recognised by its first
+bytes: a link, a special file or a duplicate name in it refuses the
+archive. The tool never writes one. The filestore is written as
 the unit's account. A failure after `createdb` drops the new database and
 its partial filestore. Before starting Odoo on
 the copy, neutralize it (`odoo-bin neutralize`, from Odoo 16); its
@@ -164,16 +193,43 @@ Database › Restore from backup (.zip)` asks the same questions for a zip
 placed in `image_db/`.
 
 **Off-site copy.** `--copy-to [user@]host:/path` (or an absolute path),
-disabled by default: `rsync -a --partial` over `ssh -o BatchMode=yes`, as
-the unit's account, so its ssh key and `known_hosts` are used. A failed
-copy keeps the local backup, is recorded, and ends with code 1. Retention
-does not apply on the remote side: it keeps growing.
+disabled by default, runs after the retention: rsync over
+`ssh -o BatchMode=yes`, as the unit's account, so its ssh key and
+`known_hosts` are used. It sends the database's folder, filtered to the
+tool's names for this database (`<db>_<stamp>.zip` and its `.sha256`), so
+a copy missed or cut short at one run is sent again at the next. An
+interrupted transfer waits in `.rsync-partial/` and never takes the final
+name (`--partial-dir`, `--delay-updates`). A failed copy keeps the local
+backup, is recorded, and ends with code 1. `--copy-prune` then lists the
+destination (`rsync --list-only`) and applies the same retention to the
+backups found there: those it does not keep are deleted, each with its
+`.sha256`, never one still present locally, at most `--copy-prune-max`
+backups per run (20), the oldest first. The remote history is judged by
+itself: a rebuilt server, a new destination or local backups deleted by
+hand never make it delete more than the retention keeps. No other remote
+file is deleted (only the targeted names are included), and a local folder
+that is empty or unreadable sends nothing. A failed pruning or one that
+stops at the limit is a warning: the backups are copied. Without
+`--copy-prune`, the remote side keeps growing.
+
+**Backups of the older tool.** Its archives are named
+`<db>_<YYYY-MM-DD>_<HHMMSS>.zip` or `.tar.xz`: retention, `--status` and the
+choice of the newest backup ignore them, and `--copy-prune` never deletes
+them remotely. Restore or test one with `--file` (a test of a file that is
+not a backup of the database in its folder is not recorded for
+`--status`), then delete them by hand
+once the new backups cover the period:
+
+```bash
+sudo ./script/database/odoo_backup.py --test-restore --db demo_db --file /var/backups/odoo/demo_db/demo_db_2031-03-09_030000.tar.xz
+```
 
 **Profile.** The lasting settings of an instance live in its JSON profile,
 group `backup`: `dest`, `state_dir` (absolute paths), `keep_daily` (at
 least 1), `keep_weekly`, `keep_monthly`, `keep_recent_days` (together at
 least 2, counting the tool's default for a value the command line
-replaces), `copy_to`, `max_age` (at most 168), `timeout`, `verbose`, and
+replaces), `copy_to`, `copy_prune`, `copy_prune_max` (at least 1),
+`max_age` (at most 168), `max_restore_age`, `timeout`, `verbose`, and
 `db` from the shared group `instance`. The file is `--profile FILE`, else
 `private/production/<service>.json` of this checkout, the service being
 `--service` or the guessed unit; no file means no profile. The command
@@ -212,8 +268,16 @@ a large database, restore it on the server with `--restore`.
 The scheduled backup is installed by `script/systemd/install_backup_timer.py`,
 see [doc/PRODUCTION.md](../../doc/PRODUCTION.md). It reads the same
 profile: its own group `backup_timer` (`on_calendar`, `randomized_delay`,
-`verbose`), plus `dest`, `state_dir`, the `keep_*` settings and `copy_to`
-from `backup`, and `db` from `instance`. `--on-calendar` and
+`verbose`), plus `dest`, `state_dir`, the `keep_*` settings, `copy_to`,
+`copy_prune` and `copy_prune_max` from `backup` (the last two written with
+`--copy-to` only), and `db` from `instance`. It derives the age threshold
+of `--status` from the schedule: the largest gap between two of the next
+64 runs (`systemd-analyze calendar --iterations`), plus the randomized
+delay and 2 h, recorded as `expected_max_age_hours` in the database's
+state; when no threshold can be derived (a systemd too old for
+`--iterations`, an unreadable output), it keeps 26 h, with a warning, and
+clears the threshold of an earlier installation.
+It ends by reminding to run a test restore once. `--on-calendar` and
 `--randomized-delay` refuse a malformed value at parsing (code 2), from
 the command line or the profile; `systemd-analyze calendar` still checks
 the calendar at installation. The command line always wins, and the same
@@ -328,11 +392,30 @@ jamais tout.
 
 **État.** Chaque base a son `<state-dir>/<base>/state.json` (par défaut
 `/var/lib/erplibre-backup`) : dernier succès (heure, fichier, taille,
-sha256), dernier échec, dernière copie. Il est lisible par tous : `--status`
-se passe de sudo. `--status` échoue (code 1) quand une base n'a aucun
-succès, ou un succès plus vieux que `--max-age` heures (26) ; il signale un
-échec plus récent que le dernier succès, un fichier noté absent du disque
-et une copie en échec.
+sha256), dernier échec, dernière copie, dernier essai de restauration, les
+tâches planifiées actives du module `auto_backup` vues par la dernière
+sauvegarde, et le seuil d'âge que l'installeur de la minuterie a déduit du
+calendrier. Il est lisible par tous : `--status` se passe de sudo, et ne
+lance aucune commande PostgreSQL.
+
+**État des sauvegardes.** `--status` échoue (code 1) quand une base n'a
+aucun succès, ou un succès plus vieux que `--max-age` heures ; sans
+`--max-age`, le seuil déduit du calendrier tant que la minuterie est
+installée, sinon 26. Il échoue aussi quand le dernier essai de restauration
+a échoué, ou quand le programme de l'`ExecStart` du service de sauvegarde
+n'existe plus (un checkout déplacé fait échouer chaque passage) ; un chemin
+que le compte qui lance `--status` ne peut pas examiner (dossier personnel
+fermé) n'est qu'un détail. Il signale
+un échec plus récent que le dernier succès, un fichier noté absent du
+disque, une copie en échec, une minuterie absente ou inactive, un service
+sans `--copy-to` (une sauvegarde gardée sur le serveur se perd avec lui),
+des tâches actives d'`auto_backup` ou d'`auto_database_backup` qui ont une
+configuration de sauvegarde (une seconde sauvegarde depuis Odoo, sur le
+même disque ; une tâche sans configuration ne sauvegarde rien), et un essai de restauration absent ou plus vieux que
+`--max-restore-age` jours (7). Il donne le nombre et la taille totale des
+sauvegardes (leur dossier est au compte de l'unité : sous sudo) et chaque
+date avec son décalage UTC, puisque les noms d'archives sont en heure
+locale. La minuterie se lit par `systemctl show`, sans root.
 
 **Restauration d'essai.** `--test-restore` restaure la sauvegarde la plus
 récente (ou `--file`) dans une base temporaire
@@ -342,7 +425,15 @@ PostgreSQL), vérifie le sha256, charge `dump.sql`, contrôle les tables,
 au manifeste, extrait le filestore sous le compte de l'unité dans un
 dossier provisoire, puis supprime toujours ce qu'elle a créé ; une base
 temporaire qu'elle ne peut pas supprimer finit en code 1. La base source
-n'est jamais touchée.
+n'est jamais touchée. Les marqueurs du ramasse-miettes d'Odoo 18
+(`filestore/checklist/`) ne comptent pas comme pièces jointes quand le
+nombre de fichiers que la base référence est comparé à la sauvegarde. Sauf
+avec `--dry-run`, l'issue (heure, réussite, fichier, dernière erreur) est
+notée dans `last_restore_test`, que `--status` juge, quand le fichier est
+une sauvegarde de la base, sous le nom de l'outil, dans son dossier. Le
+dossier provisoire
+est celui des sauvegardes de la base, ou celui des filestores d'Odoo
+quand aucune sauvegarde n'a encore été prise.
 
 **Place dans PostgreSQL.** Une restauration, d'essai ou non, crée une
 copie complète sur le même serveur PostgreSQL : un volume plein arrêterait
@@ -356,8 +447,12 @@ ou `db_host` sur un autre hôte, l'outil refuse, sauf `--force-space`.
 **Restauration.** `--restore --file F --into NOUVELLE` ne restaure que dans
 une base qui n'existe pas encore, et un dossier
 `<data_dir>/filestore/NOUVELLE` qui n'existe pas non plus. Les chemins
-d'archive qui sortiraient du dossier d'extraction sont refusés. Le
-filestore s'écrit sous le compte de l'unité. Un échec après `createdb`
+d'archive qui sortiraient du dossier d'extraction sont refusés. `--file`
+prend aussi un `.tar.xz` de l'ancien outil de sauvegarde (`dump.sql`,
+`manifest.json` et `filestore/` à sa racine, le contenu du zip), reconnu à
+ses premiers octets : un lien, un fichier spécial ou un nom en double y
+refuse l'archive. L'outil n'en écrit jamais. Le filestore s'écrit sous le
+compte de l'unité. Un échec après `createdb`
 supprime la nouvelle base et son filestore provisoire.
 Avant d'y démarrer Odoo, la neutraliser (`odoo-bin neutralize`, dès Odoo
 16) ; son `database.uuid` est celui de la source.
@@ -381,17 +476,44 @@ désactivés). `TODO › Exécuter › Database › Restaurer a partir d'une sau
 `image_db/`.
 
 **Copie hors site.** `--copy-to [compte@]hôte:/chemin` (ou un chemin
-absolu), désactivée par défaut : `rsync -a --partial` sur
+absolu), désactivée par défaut, suit la rétention : rsync sur
 `ssh -o BatchMode=yes`, sous le compte de l'unité, donc avec sa clé ssh et
-son `known_hosts`. Une copie en échec garde la sauvegarde locale, est notée
-et finit en code 1. La rétention ne s'applique pas côté distant : il
-grossit.
+son `known_hosts`. Elle envoie le dossier de la base, filtré sur les noms
+de l'outil pour cette base (`<base>_<horodatage>.zip` et son `.sha256`) :
+une copie manquée ou tronquée à un passage repart au suivant. Un
+transfert interrompu attend dans `.rsync-partial/` et ne prend jamais le nom
+final (`--partial-dir`, `--delay-updates`). Une copie en échec garde la
+sauvegarde locale, est notée et finit en code 1. `--copy-prune` liste
+ensuite la destination (`rsync --list-only`) et applique la même rétention
+aux sauvegardes qui s'y trouvent : celles qu'elle ne garde pas sont
+supprimées, chacune avec son `.sha256`, jamais une encore présente en
+local, au plus `--copy-prune-max` sauvegardes par passage (20), les plus
+anciennes d'abord. L'historique distant est jugé pour lui-même : un serveur
+reconstruit, une nouvelle destination ou des sauvegardes locales
+supprimées à la main ne font jamais supprimer plus que ce que la rétention
+garde. Aucun autre fichier distant n'est supprimé (seuls les noms visés
+sont inclus), et un dossier local vide ou illisible n'envoie rien. Un
+élagage en échec ou arrêté sur la limite est un avertissement : les
+sauvegardes sont copiées. Sans `--copy-prune`, le côté distant grossit.
+
+**Sauvegardes de l'ancien outil.** Ses archives s'appellent
+`<base>_<AAAA-MM-JJ>_<HHMMSS>.zip` ou `.tar.xz` : la rétention, `--status`
+et le choix de la sauvegarde la plus récente les ignorent, et
+`--copy-prune` ne les supprime jamais à distance. En restaurer ou en
+essayer une par `--file` (l'essai d'un fichier qui n'est pas une sauvegarde
+de la base dans son dossier n'est pas noté pour `--status`), puis les supprimer à la main une fois la période
+couverte par les nouvelles sauvegardes :
+
+```bash
+sudo ./script/database/odoo_backup.py --test-restore --db demo_db --file /var/backups/odoo/demo_db/demo_db_2031-03-09_030000.tar.xz
+```
 
 **Profil.** Les réglages durables d'une instance vivent dans son profil
 JSON, groupe `backup` : `dest`, `state_dir` (chemins absolus), `keep_daily`
 (au moins 1), `keep_weekly`, `keep_monthly`, `keep_recent_days` (au moins 2
 à eux tous, le défaut de l'outil comptant pour une valeur que la ligne de
-commande remplace), `copy_to`, `max_age` (au plus 168), `timeout`, `verbose`, et
+commande remplace), `copy_to`, `copy_prune`, `copy_prune_max` (au moins
+1), `max_age` (au plus 168), `max_restore_age`, `timeout`, `verbose`, et
 `db` du groupe partagé `instance`. Le fichier est `--profile FICHIER`,
 sinon `private/production/<service>.json` de ce checkout, le service étant
 `--service` ou l'unité devinée ; pas de fichier, pas de profil. La ligne de
@@ -433,7 +555,16 @@ La sauvegarde planifiée s'installe par
 [doc/PRODUCTION.fr.md](../../doc/PRODUCTION.fr.md). Il lit le même
 profil : son propre groupe `backup_timer` (`on_calendar`,
 `randomized_delay`, `verbose`), plus `dest`, `state_dir`, les réglages
-`keep_*` et `copy_to` de `backup`, et `db` d'`instance`. `--on-calendar`
+`keep_*`, `copy_to`, `copy_prune` et `copy_prune_max` de `backup` (les deux
+derniers écrits avec `--copy-to` seulement), et `db` d'`instance`. Il
+déduit le seuil d'âge de `--status` du calendrier : le plus grand écart
+entre deux des 64 prochaines échéances (`systemd-analyze calendar
+--iterations`), plus le délai aléatoire et 2 h, noté sous
+`expected_max_age_hours` dans l'état de la base ; quand aucun seuil ne se
+déduit (systemd trop ancien pour `--iterations`, sortie illisible), il
+garde 26 h, avec un avertissement, et efface le seuil d'une installation
+précédente. Il finit en
+rappelant de lancer un essai de restauration. `--on-calendar`
 et `--randomized-delay` refusent une valeur mal formée dès l'analyse
 (code 2), qu'elle vienne de la ligne de commande ou du profil ;
 `systemd-analyze calendar` vérifie encore le calendrier à l'installation.

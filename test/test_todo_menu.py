@@ -793,6 +793,7 @@ class TestOpsBackupsMenuNumbering(MenuCoherence, unittest.TestCase):
         "Backup status": "_ops_backup_status",
         "Test restore of the latest backup": "_ops_test_restore",
         "Restore a backup into a new database": "_ops_restore_new_database",
+        "Test restore of a backup file": "_ops_test_restore_file",
     }
 
 

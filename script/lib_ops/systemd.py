@@ -461,3 +461,13 @@ def commande_journal(
     if jusqu_epoque is not None:
         argv += ["--until", f"@{int(jusqu_epoque)}"]
     return argv + ["--show-cursor"]
+
+
+def unites_sauvegarde(base):
+    """(service, minuterie) de la sauvegarde planifiée de `base`, telles
+    que `install_backup_timer.py` les nomme. ValueError sur un nom de
+    base qui ne fait pas un nom d'unité (`nom_unite`)."""
+    return (
+        nom_unite(f"erplibre-backup-{base}.service"),
+        nom_unite(f"erplibre-backup-{base}.timer"),
+    )

@@ -439,8 +439,21 @@ class TestSauvegardes(Base):
             ],
         ),
         (
+            "_ops_test_restore_file",
+            [
+                "/var/backups/odoo/exemple_db/exemple_db_2031-03-09_030000.tar.xz",
+                "",
+            ],
+            "odoo_backup.py",
+            [
+                "--test-restore",
+                "--file",
+                "/var/backups/odoo/exemple_db/exemple_db_2031-03-09_030000.tar.xz",
+            ],
+        ),
+        (
             "_ops_backup_timer_install",
-            [""],
+            ["", "", ""],
             "install_backup_timer.py",
             [],
         ),
@@ -494,7 +507,7 @@ class TestSauvegardes(Base):
         self.assertIn("demo_db", question)
 
     def test_la_minuterie_annonce_le_calendrier_du_profil(self):
-        jeu = self.jouer("_ops_backup_timer_install", [""])
+        jeu = self.jouer("_ops_backup_timer_install", ["", "", ""])
         self.assertIn("*-*-* 02:30:00", jeu.confirm.call_args.args[0])
         self.assertNotIn("03:00", jeu.confirm.call_args.args[0])
 
@@ -503,8 +516,59 @@ class TestSauvegardes(Base):
         defaut = ops_settings.construire_parseurs(("backup_timer",))[
             "backup_timer"
         ].get_default("on_calendar")
-        jeu = self.jouer("_ops_backup_timer_install", [""])
+        jeu = self.jouer("_ops_backup_timer_install", ["", "", ""])
         self.assertIn(str(defaut), jeu.confirm.call_args.args[0])
+
+    def test_minuterie_copie_et_calendrier_tapes(self):
+        """BKP-18-V : `--copy-to` et `--on-calendar` se tapent dans le menu ;
+        vides, l'outil prend ceux du profil."""
+        copie = "sauvegarde@backup.example.org:/srv/autre"
+        jeu = self.jouer(
+            "_ops_backup_timer_install", ["", copie, "*-*-* 09,21:00:00"]
+        )
+        argv = self.reelle(jeu)
+        self.assertEqual(argv[argv.index("--copy-to") + 1], copie)
+        self.assertEqual(
+            argv[argv.index("--on-calendar") + 1], "*-*-* 09,21:00:00"
+        )
+        question = jeu.confirm.call_args.args[0]
+        self.assertIn("*-*-* 09,21:00:00", question)
+        self.assertNotIn("02:30", question)
+        jeu = self.jouer("_ops_backup_timer_install", ["", "", ""])
+        argv = self.reelle(jeu)
+        self.assertNotIn("--copy-to", argv)
+        self.assertNotIn("--on-calendar", argv)
+
+    def test_minuterie_question_de_copie_cite_le_profil(self):
+        def invites():
+            vues = []
+
+            def saisir(question=""):
+                vues.append(question)
+                return ""
+
+            with (
+                mock.patch("builtins.input", side_effect=saisir),
+                mock.patch(
+                    "script.todo.ops_menu.click.confirm", return_value=False
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                nouveau_todo(0)._ops_backup_timer_install()
+            return vues
+
+        attendu = t_("Off-site copy (empty = {value} from the profile): ")
+        self.assertIn(
+            attendu.format(
+                value="sauvegarde@backup.example.org:/srv/hors-site"
+            ),
+            invites(),
+        )
+        os.unlink(chemin_profil())
+        self.assertIn(
+            t_("Off-site copy [user@]host:/path (empty = no off-site copy): "),
+            invites(),
+        )
 
     def test_base_transmise_ou_laissee_au_profil(self):
         jeu = self.jouer("_ops_backup_now", ["demo_db"])
@@ -526,6 +590,11 @@ class TestSauvegardes(Base):
                 jeu = self.jouer(methode, saisies, code=2)
                 self.assertFalse(jeu.confirm.called)
                 self.assertFalse(jeu.terminal.called)
+
+    def test_essai_d_un_fichier_sans_fichier(self):
+        jeu = self.jouer("_ops_test_restore_file", [""])
+        self.assertEqual(jeu.todo.execute.commandes, [])
+        self.assertFalse(jeu.terminal.called)
 
     def test_restauration_sans_fichier_ni_base(self):
         for saisies in ([""], ["x.zip", ""]):
@@ -1159,6 +1228,7 @@ class TestLesMenusSontBranches(Base):
         (["3", "2"], "_ops_backup_status"),
         (["3", "3"], "_ops_test_restore"),
         (["3", "4"], "_ops_restore_new_database"),
+        (["3", "5"], "_ops_test_restore_file"),
         (["4", "1"], "_ops_log_since_last"),
         (["4", "2"], "_ops_log_last_hours"),
         (["4", "3"], "_ops_log_hourly"),

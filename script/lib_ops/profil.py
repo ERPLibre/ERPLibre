@@ -107,7 +107,10 @@ CHAMPS = collections.OrderedDict(
                 "keep_monthly",
                 "keep_recent_days",
                 "copy_to",
+                "copy_prune",
+                "copy_prune_max",
                 "max_age",
+                "max_restore_age",
                 "timeout",
                 "verbose",
             ),
@@ -172,6 +175,8 @@ ALIAS = {
         "keep_monthly": ("backup", "keep_monthly"),
         "keep_recent_days": ("backup", "keep_recent_days"),
         "copy_to": ("backup", "copy_to"),
+        "copy_prune": ("backup", "copy_prune"),
+        "copy_prune_max": ("backup", "copy_prune_max"),
     },
     "mail_retry": {"db": (GROUPE_INSTANCE, "db")},
     "warmup": {"database": (GROUPE_INSTANCE, "db")},
@@ -313,6 +318,9 @@ GARDE_DANGER = re.compile(
 
 ANODINS = {
     (GROUPE_HOTE, "no_guests"): N_("Narrows a read-only measurement"),
+    ("backup", "max_restore_age"): N_(
+        "Sets when --status warns about an old test restore; restores nothing"
+    ),
 }
 
 # Le dépendant (clé) n'est retenu que si sa dépendance (valeur) a une valeur
@@ -399,6 +407,7 @@ CHEMINS = frozenset(
 BORNES = {
     ("backup", "keep_daily"): (1, None),
     ("backup", "max_age"): (None, 168),
+    ("backup", "copy_prune_max"): (1, None),
 }
 
 # La rétention du profil seul (valeurs du profil retenues, défauts de

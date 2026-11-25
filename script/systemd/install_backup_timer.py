@@ -13,8 +13,8 @@ Deux unités par base, dans /etc/systemd/system :
   ne la configure, que le profil nommé par `--profile`. Root n'exécute
   ainsi aucun code que ce compte peut modifier.
 - `erplibre-backup-<base>.timer` la déclenche (`OnCalendar`, par défaut
-  chaque jour à 03:00, `RandomizedDelaySec`, `Persistent=true` : une
-  échéance manquée machine éteinte part au démarrage).
+  CALENDRIER, `RandomizedDelaySec`, `Persistent=true` : une échéance
+  manquée machine éteinte part au démarrage).
 
 Une troisième pièce, `/etc/tmpfiles.d/erplibre-backup-<base>.conf`, crée
 au démarrage le fichier du verrou de la base,
@@ -50,8 +50,19 @@ une directive à l'unité.
 Les options se lisent aussi dans le profil de production de l'instance
 (`lib_ops/profil.py`, groupe `backup_timer`) : `--on-calendar`,
 `--randomized-delay` et `--verbose` dans ce groupe ; `--db` dans
-`instance` ; `--dest`, `--state-dir`, `--keep-*` et `--copy-to` dans
-`backup`, les réglages de l'outil de sauvegarde. La ligne de commande
+`instance` ; `--dest`, `--state-dir`, `--keep-*`, `--copy-to`,
+`--copy-prune` et `--copy-prune-max` dans `backup`, les réglages de l'outil
+de sauvegarde. Les deux derniers ne s'écrivent qu'avec `--copy-to`.
+
+Le seuil d'âge de `odoo_backup --status` suit le calendrier : le plus
+grand écart entre deux des 64 prochaines échéances (`systemd-analyze
+calendar --iterations`), plus le délai aléatoire et deux heures
+(`retention.seuil_age_heures`), noté dans l'état de la base sous
+`expected_max_age_hours`. Un seuil qui ne se déduit pas (systemd trop
+ancien pour `--iterations`, sortie illisible) laisse le seuil par défaut,
+avec un avertissement, et retire de l'état celui d'une installation
+précédente. L'installation se
+termine par le rappel d'un essai de restauration. La ligne de commande
 gagne toujours, `--no-profile` coupe le profil.
 
 `ExecStart` prend l'une de deux formes :
@@ -111,6 +122,7 @@ Bibliothèque standard seulement, sans syntaxe postérieure à Python 3.7.
 from __future__ import annotations
 
 import argparse
+import datetime
 import grp
 import os
 import pwd
@@ -131,6 +143,7 @@ from script.lib_ops import (  # noqa: E402
     lock,
     profil,
     report,
+    retention,
     service,
     systemd,
 )
@@ -265,11 +278,9 @@ def contenu_tmpfiles(base):
 
 
 def noms_unites(base):
-    """(service, minuterie) de la sauvegarde de `base`."""
-    return (
-        systemd.nom_unite(f"erplibre-backup-{base}.service"),
-        systemd.nom_unite(f"erplibre-backup-{base}.timer"),
-    )
+    """(service, minuterie) de la sauvegarde de `base`
+    (`systemd.unites_sauvegarde`, que `odoo_backup --status` lit aussi)."""
+    return systemd.unites_sauvegarde(base)
 
 
 class Systeme(service.SystemeBase):
@@ -395,6 +406,15 @@ OPTIONS_DIRECTES = (
 )
 
 
+# Les réglages de la copie hors site, écrits avec `--copy-to` seulement :
+# sans destination, ils ne veulent rien dire. Même règle que
+# OPTIONS_DIRECTES en mode profil.
+OPTIONS_COPIE = (
+    ("copy_prune", "--copy-prune"),
+    ("copy_prune_max", "--copy-prune-max"),
+)
+
+
 def _valeur_option(args, dest):
     if dest in ("dest", "state_dir"):
         return os.path.abspath(getattr(args, dest))
@@ -435,6 +455,15 @@ def argv_outil(
             argv += [option, _valeur_option(args, dest)]
     if args.copy_to:
         argv += ["--copy-to", args.copy_to]
+        for dest, option in OPTIONS_COPIE:
+            if profil_abs is not None and (
+                application is None or application.origine(dest) != "cli"
+            ):
+                continue
+            if dest == "copy_prune" and args.copy_prune:
+                argv.append(option)
+            elif dest == "copy_prune_max" and args.copy_prune:
+                argv += [option, str(args.copy_prune_max)]
     if profil_abs is not None:
         argv += ["--profile", profil_abs, "--profile-required"]
     elif sans_profil:
@@ -462,6 +491,129 @@ def verifier_calendrier(valeur, systeme, rapport):
         raise service.Refus(
             service.N_("Invalid OnCalendar value: {value}"), value=valeur
         )
+
+
+# Les échéances lues pour mesurer l'écart entre deux sauvegardes : de quoi
+# couvrir une semaine même à plusieurs passages par jour.
+ITERATIONS = 64
+# Une échéance de `systemd-analyze calendar --iterations` : `Next elapse:`,
+# puis `Iter. #N:` ou `Iteration #N:` selon la version de systemd, suivis du
+# jour, de la date et de l'heure en heure locale ; la ligne `(in UTC):` qui
+# suit, absente quand le fuseau est UTC, est ignorée.
+RE_ECHEANCE = re.compile(
+    r"^\s*(?:Next elapse|Iter(?:\.|ation) #\d+):\s+\S+\s+"
+    r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})",
+    re.M,
+)
+# Unités de RandomizedDelaySec, en secondes (systemd.time(7)).
+UNITES_DUREE = {
+    "": 1,
+    "s": 1,
+    "sec": 1,
+    "second": 1,
+    "seconds": 1,
+    "m": 60,
+    "min": 60,
+    "minute": 60,
+    "minutes": 60,
+    "h": 3600,
+    "hr": 3600,
+    "hour": 3600,
+    "hours": 3600,
+    "d": 86400,
+    "day": 86400,
+    "days": 86400,
+    "w": 604800,
+    "week": 604800,
+    "weeks": 604800,
+}
+RE_MORCEAU_DUREE = re.compile(r"([0-9]+) ?([a-z]*)")
+
+
+def echeances(sortie):
+    """Les datetime (heure locale, naïfs) des échéances que liste
+    `systemd-analyze calendar --iterations`."""
+    instants = []
+    for texte in RE_ECHEANCE.findall(sortie or ""):
+        try:
+            instants.append(
+                datetime.datetime.strptime(texte, "%Y-%m-%d %H:%M:%S")
+            )
+        except ValueError:
+            continue
+    return instants
+
+
+def duree_secondes(texte):
+    """Les secondes d'une durée systemd (`30min`, `1h 30min`), ou None pour
+    une unité inconnue."""
+    total = 0
+    for nombre, unite in RE_MORCEAU_DUREE.findall(texte or ""):
+        if unite not in UNITES_DUREE:
+            return None
+        total += int(nombre) * UNITES_DUREE[unite]
+    return total
+
+
+def seuil_du_calendrier(calendrier, delai, systeme):
+    """Le seuil d'âge de `--status`, en heures, déduit des échéances de
+    `calendrier` (`retention.seuil_age_heures`, délai aléatoire compris),
+    ou None quand systemd-analyze n'en liste pas deux (absent, trop ancien
+    pour `--iterations`, ou sortie illisible)."""
+    code, sortie = systeme.lanceur(
+        [
+            "systemd-analyze",
+            "calendar",
+            f"--iterations={ITERATIONS}",
+            "--",
+            calendrier,
+        ],
+        30,
+    )
+    if code != 0:
+        return None
+    return retention.seuil_age_heures(
+        echeances(sortie), duree_secondes(delai) or 0
+    )
+
+
+def noter_seuil(args, plan, heures, systeme, rapport):
+    """Écrit `heures` dans l'état de la base, sous `odoo_backup.CLE_SEUIL`,
+    au compte de l'unité ; None y efface le seuil d'une installation
+    précédente (`--status` reprend AGE_MAX). Un échec n'est qu'un
+    avertissement : `--status` garde alors son seuil par défaut. Après un
+    retrait de la minuterie, la clé reste, et `--status` ne la lit plus tant
+    que la minuterie manque. Rend True si l'état est écrit."""
+    etat_dir = systeme.chemin(os.path.abspath(args.state_dir))
+    cible = odoo_backup.Cible(
+        base=plan.base,
+        utilisateur=plan.utilisateur,
+        etat_dir=etat_dir,
+        dossier_etat=os.path.join(etat_dir, plan.base),
+        root=systeme.euid() == 0,
+    )
+    try:
+        odoo_backup.ecrire_etat(
+            cible, systeme, {odoo_backup.CLE_SEUIL: heures}
+        )
+    except (OSError, KeyError) as err:
+        rapport.attn(
+            t("Cannot record the state in {path}: {error}").format(
+                path=cible.dossier_etat, error=err
+            )
+        )
+        return False
+    return True
+
+
+def _effacer_seuil(args, plan, systeme, rapport):
+    """Efface le seuil noté par une installation précédente quand le
+    calendrier n'en donne pas : `--status` ne garde pas celui d'un autre
+    calendrier. Sans état, rien n'est écrit."""
+    etat_dir = systeme.chemin(os.path.abspath(args.state_dir))
+    chemin = odoo_backup.chemin_etat(etat_dir, plan.base)
+    if os.path.lexists(chemin):
+        noter_seuil(args, plan, None, systeme, rapport)
 
 
 def verifier_acces(plan, checkout, python, systeme, rapport):
@@ -850,6 +1002,17 @@ def preparer(args, plan, systeme, rapport):
                     " back up twice. Remove one of them."
                 ).format(unit=ancienne)
             )
+    seuil = seuil_du_calendrier(
+        args.on_calendar, args.randomized_delay, systeme
+    )
+    if seuil is None:
+        rapport.attn(
+            t(
+                "The age threshold of --status is not derived from {value}"
+                " (systemd-analyze calendar --iterations unavailable or"
+                " unreadable): it stays {hours} h unless --max-age is given."
+            ).format(value=args.on_calendar, hours=odoo_backup.AGE_MAX)
+        )
     textes = [
         contenu_service(
             plan.base, plan.utilisateur, groupe, checkout, argv, lignes
@@ -869,6 +1032,7 @@ def preparer(args, plan, systeme, rapport):
         profil=profil_abs,
         credentials=a_ranger,
         credentials_a_retirer=a_retirer,
+        seuil=seuil,
     )
 
 
@@ -911,6 +1075,12 @@ def simuler(installation, plan, rapport):
         for ligne in texte.splitlines():
             rapport.texte("      " + ligne)
     _simuler_retraits(installation.credentials_a_retirer, rapport)
+    if installation.seuil is not None:
+        rapport.sim(
+            t("state.json: {key} = {hours}").format(
+                key=odoo_backup.CLE_SEUIL, hours=installation.seuil
+            )
+        )
     rapport.sim(
         service.joindre(
             ["systemd-tmpfiles", "--create", "--", installation.tmpfiles]
@@ -1020,10 +1190,35 @@ def installer(args, plan, systeme, rapport):
             timer=unite_minuterie, calendar=args.on_calendar
         )
     )
+    code = CODE_OK
+    if installation.seuil is None:
+        _effacer_seuil(args, plan, systeme, rapport)
+    elif noter_seuil(args, plan, installation.seuil, systeme, rapport):
+        rapport.ok(
+            t(
+                "--status fails when the last backup is older than"
+                " {hours} h (derived from the schedule)."
+            ).format(hours=installation.seuil)
+        )
     rapport.detail(f"systemctl list-timers {unite_minuterie}")
     rapport.detail(f"systemctl start {unite_service}")
     rapport.detail(f"journalctl -u {unite_service}")
-    return CODE_OK
+    rapport.detail(
+        t(
+            "Run a test restore once the first backup is written: {command}"
+        ).format(
+            command=service.joindre(
+                [
+                    "sudo",
+                    os.path.join("script", "database", "odoo_backup.py"),
+                    "--test-restore",
+                    "--db",
+                    plan.base,
+                ]
+            )
+        )
+    )
+    return code
 
 
 def _ranger_credentials(installation, systeme, rapport, crees):
@@ -1273,6 +1468,24 @@ def construire_parseur():
         ),
     )
     parser.add_argument(
+        "--copy-prune",
+        action="store_true",
+        help=t(
+            "With --copy-to: also apply the retention to the backups at the"
+            " destination, except those kept locally; only this tool's names"
+            " for this database."
+        ),
+    )
+    parser.add_argument(
+        "--copy-prune-max",
+        type=types_.entier,
+        default=odoo_backup.SUPPRESSIONS_COPIE_MAX,
+        help=t(
+            "--copy-prune deletes at most this many backups per run;"
+            " default: {value}."
+        ).format(value=odoo_backup.SUPPRESSIONS_COPIE_MAX),
+    )
+    parser.add_argument(
         "--on-calendar",
         type=type_calendrier,
         default=CALENDRIER,
@@ -1324,6 +1537,8 @@ def valider(parser, args):
     fois, un secret de l'outil lancé. Les types de `--on-calendar` et
     `--randomized-delay` refusent déjà une forme invalide, et le reste se
     vérifie à l'installation."""
+    if args.copy_prune_max < 1:
+        parser.error(t("--copy-prune-max must be at least 1."))
     vus = set()
     connus = secrets_outil()
     for nom, _chemin in args.credential or ():

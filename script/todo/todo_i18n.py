@@ -26888,10 +26888,6 @@ TRANSLATIONS = {
         "fr": "Restaurer --file dans la nouvelle base --into.",
         "en": "Restore --file into the new database --into.",
     },
-    "Backup file (.zip) to restore.": {
-        "fr": "Fichier de sauvegarde (.zip) à restaurer.",
-        "en": "Backup file (.zip) to restore.",
-    },
     "New database for --restore; must not exist.": {
         "fr": "Nouvelle base pour --restore ; ne doit pas exister.",
         "en": "New database for --restore; must not exist.",
@@ -27104,10 +27100,6 @@ TRANSLATIONS = {
         "fr": "Garder toutes les sauvegardes des N derniers jours ; par défaut : {value}.",
         "en": "Keep every backup of the last N days; default: {value}.",
     },
-    "--status fails when the last success is older than this many hours; default: {value}.": {
-        "fr": "--status échoue quand le dernier succès date de plus de ce nombre d'heures ; par défaut : {value}.",
-        "en": "--status fails when the last success is older than this many hours; default: {value}.",
-    },
     "Maximum seconds for pg_dump; default: {value}.": {
         "fr": "Secondes au plus pour pg_dump ; par défaut : {value}.",
         "en": "Maximum seconds for pg_dump; default: {value}.",
@@ -27195,10 +27187,6 @@ TRANSLATIONS = {
     "{database}: the recorded file is missing on disk.": {
         "fr": "{database} : le fichier noté manque sur le disque.",
         "en": "{database}: the recorded file is missing on disk.",
-    },
-    "{path} is not a readable zip: {error}": {
-        "fr": "{path} n'est pas un zip lisible : {error}",
-        "en": "{path} is not a readable zip: {error}",
     },
     "Backups in {path}: unknown (requires sudo).": {
         "fr": "Sauvegardes dans {path} : inconnues (sudo requis).",
@@ -27343,10 +27331,6 @@ TRANSLATIONS = {
     "Cancelled: no database given.": {
         "fr": "Annulé : aucune base donnée.",
         "en": "Cancelled: no database given.",
-    },
-    "Backup file to restore (.zip): ": {
-        "fr": "Fichier de sauvegarde à restaurer (.zip) : ",
-        "en": "Backup file to restore (.zip): ",
     },
     "New database name (must not exist): ": {
         "fr": "Nom de la nouvelle base (ne doit pas exister) : ",
@@ -30807,6 +30791,389 @@ TRANSLATIONS = {
     "The code of the update stays: it matches the database the update left. The code of before: {source}": {
         "fr": "Le code de la mise à jour reste : il correspond à la base que la mise à jour a laissée. Le code d'avant : {source}",
         "en": "The code of the update stays: it matches the database the update left. The code of before: {source}",
+    },
+    "Backups kept": {
+        "fr": "Sauvegardes gardées",
+        "en": "Backups kept",
+    },
+    (
+        "{database}: {count} active cron(s) of an Odoo backup module"
+        " (auto_backup, auto_database_backup) also back up from Odoo: two"
+        " schedules fill the disk and load the server. Keep one."
+    ): {
+        "fr": (
+            "{database} : {count} tâche(s) planifiée(s) active(s) d'un"
+            " module de sauvegarde d'Odoo (auto_backup,"
+            " auto_database_backup) sauvegardent aussi depuis Odoo : deux"
+            " calendriers remplissent le disque et chargent le serveur. N'en"
+            " garder qu'un."
+        ),
+        "en": (
+            "{database}: {count} active cron(s) of an Odoo backup module"
+            " (auto_backup, auto_database_backup) also back up from Odoo:"
+            " two schedules fill the disk and load the server. Keep one."
+        ),
+    },
+    "Date": {
+        "fr": "Date",
+        "en": "Date",
+    },
+    "Backup file to restore: .zip, or .tar.xz of the older backup tool.": {
+        "fr": (
+            "Fichier de sauvegarde à restaurer : .zip, ou .tar.xz de"
+            " l'ancien outil de sauvegarde."
+        ),
+        "en": (
+            "Backup file to restore: .zip, or .tar.xz of the older backup"
+            " tool."
+        ),
+    },
+    (
+        "With --copy-to: also apply the retention to the backups at the"
+        " destination, except those kept locally; only this tool's names for"
+        " this database."
+    ): {
+        "fr": (
+            "Avec --copy-to : appliquer aussi la rétention aux sauvegardes de"
+            " la destination, sauf celles gardées en local ; seuls les noms"
+            " de cet outil pour cette base."
+        ),
+        "en": (
+            "With --copy-to: also apply the retention to the backups at the"
+            " destination, except those kept locally; only this tool's names"
+            " for this database."
+        ),
+    },
+    "--copy-prune-max must be at least 1.": {
+        "fr": "--copy-prune-max doit valoir au moins 1.",
+        "en": "--copy-prune-max must be at least 1.",
+    },
+    (
+        "Off-site copy skipped: no backup of {database} in {path}; nothing"
+        " is deleted at the destination."
+    ): {
+        "fr": (
+            "Copie hors site sautée : aucune sauvegarde de {database} dans"
+            " {path} ; rien n'est supprimé à la destination."
+        ),
+        "en": (
+            "Off-site copy skipped: no backup of {database} in {path};"
+            " nothing is deleted at the destination."
+        ),
+    },
+    "{count} in {path} ({size})": {
+        "fr": "{count} dans {path} ({size})",
+        "en": "{count} in {path} ({size})",
+    },
+    "Off-site copy skipped: {error}": {
+        "fr": "Copie hors site sautée : {error}",
+        "en": "Off-site copy skipped: {error}",
+    },
+    (
+        "Off-site pruning stopped at --copy-prune-max {count}: the backups"
+        " are copied, some old ones remain at the destination. Check it,"
+        " then raise the limit."
+    ): {
+        "fr": (
+            "Élagage hors site arrêté à --copy-prune-max {count} : les"
+            " sauvegardes sont copiées, des anciennes restent à la"
+            " destination. La vérifier, puis relever la limite."
+        ),
+        "en": (
+            "Off-site pruning stopped at --copy-prune-max {count}: the"
+            " backups are copied, some old ones remain at the destination."
+            " Check it, then raise the limit."
+        ),
+    },
+    "{database}: scheduled backup unknown: {error}": {
+        "fr": "{database} : sauvegarde planifiée inconnue : {error}",
+        "en": "{database}: scheduled backup unknown: {error}",
+    },
+    "{database}: no scheduled backup ({timer} is not installed).": {
+        "fr": (
+            "{database} : aucune sauvegarde planifiée ({timer} n'est pas"
+            " installée)."
+        ),
+        "en": "{database}: no scheduled backup ({timer} is not installed).",
+    },
+    "{database}: {timer} is {state}, not active.": {
+        "fr": "{database} : {timer} est {state}, pas active.",
+        "en": "{database}: {timer} is {state}, not active.",
+    },
+    (
+        "{database}: {path} in the ExecStart of {unit} does not exist: every"
+        " scheduled backup fails. Reinstall the timer."
+    ): {
+        "fr": (
+            "{database} : {path}, dans l'ExecStart de {unit}, n'existe pas :"
+            " chaque sauvegarde planifiée échoue. Réinstaller la minuterie."
+        ),
+        "en": (
+            "{database}: {path} in the ExecStart of {unit} does not exist:"
+            " every scheduled backup fails. Reinstall the timer."
+        ),
+    },
+    (
+        "{database}: no off-site copy (--copy-to) in {unit}: a backup kept"
+        " on this server is lost with it."
+    ): {
+        "fr": (
+            "{database} : aucune copie hors site (--copy-to) dans {unit} :"
+            " une sauvegarde gardée sur ce serveur se perd avec lui."
+        ),
+        "en": (
+            "{database}: no off-site copy (--copy-to) in {unit}: a backup"
+            " kept on this server is lost with it."
+        ),
+    },
+    (
+        "{database}: no test restore recorded: an untested backup may not"
+        " restore. Run: {command}"
+    ): {
+        "fr": (
+            "{database} : aucun essai de restauration noté : une sauvegarde"
+            " jamais essayée peut ne pas se restaurer. Lancer : {command}"
+        ),
+        "en": (
+            "{database}: no test restore recorded: an untested backup may"
+            " not restore. Run: {command}"
+        ),
+    },
+    (
+        "{database}: the last test restore failed ({date}): {message}. Run"
+        " it again after fixing: {command}"
+    ): {
+        "fr": (
+            "{database} : le dernier essai de restauration a échoué ({date})"
+            " : {message}. Le relancer après correction : {command}"
+        ),
+        "en": (
+            "{database}: the last test restore failed ({date}): {message}."
+            " Run it again after fixing: {command}"
+        ),
+    },
+    (
+        "{database}: last test restore {days:.0f} day(s) old, more than"
+        " {limit}. Run: {command}"
+    ): {
+        "fr": (
+            "{database} : dernier essai de restauration vieux de {days:.0f}"
+            " jour(s), plus de {limit}. Lancer : {command}"
+        ),
+        "en": (
+            "{database}: last test restore {days:.0f} day(s) old, more than"
+            " {limit}. Run: {command}"
+        ),
+    },
+    "{database}: last test restore passed ({date}).": {
+        "fr": "{database} : dernier essai de restauration réussi ({date}).",
+        "en": "{database}: last test restore passed ({date}).",
+    },
+    (
+        "{count} garbage-collection marker(s) under checklist/ are not"
+        " attachments."
+    ): {
+        "fr": (
+            "{count} marqueur(s) du ramasse-miettes sous checklist/ ne sont"
+            " pas des pièces jointes."
+        ),
+        "en": (
+            "{count} garbage-collection marker(s) under checklist/ are not"
+            " attachments."
+        ),
+    },
+    (
+        "--copy-prune deletes at most this many backups per run; default:"
+        " {value}."
+    ): {
+        "fr": (
+            "--copy-prune supprime au plus ce nombre de sauvegardes par"
+            " passage ; par défaut : {value}."
+        ),
+        "en": (
+            "--copy-prune deletes at most this many backups per run; default:"
+            " {value}."
+        ),
+    },
+    (
+        "--status fails when the last success is older than this many hours;"
+        " default: the threshold derived from the timer schedule, else"
+        " {value}."
+    ): {
+        "fr": (
+            "--status échoue quand le dernier succès date de plus de ce"
+            " nombre d'heures ; par défaut : le seuil déduit du calendrier de la"
+            " minuterie, sinon {value}."
+        ),
+        "en": (
+            "--status fails when the last success is older than this many"
+            " hours; default: the threshold derived from the timer schedule,"
+            " else {value}."
+        ),
+    },
+    (
+        "--status warns when the last test restore is older than this many"
+        " days; default: {value}."
+    ): {
+        "fr": (
+            "--status avertit quand le dernier essai de restauration date de"
+            " plus de ce nombre de jours ; par défaut : {value}."
+        ),
+        "en": (
+            "--status warns when the last test restore is older than this"
+            " many days; default: {value}."
+        ),
+    },
+    "auto_backup crons not checked: {error}": {
+        "fr": "Tâches planifiées auto_backup non vérifiées : {error}",
+        "en": "auto_backup crons not checked: {error}",
+    },
+    "{path} is not a readable zip or tar.xz: {error}": {
+        "fr": "{path} n'est pas un zip ni un tar.xz lisible : {error}",
+        "en": "{path} is not a readable zip or tar.xz: {error}",
+    },
+    "Run a test restore once the first backup is written: {command}": {
+        "fr": (
+            "Lancer un essai de restauration une fois la première sauvegarde"
+            " écrite : {command}"
+        ),
+        "en": "Run a test restore once the first backup is written: {command}",
+    },
+    (
+        "The age threshold of --status is not derived from {value}"
+        " (systemd-analyze calendar --iterations unavailable or unreadable):"
+        " it stays {hours} h unless --max-age is given."
+    ): {
+        "fr": (
+            "Le seuil d'âge de --status n'est pas déduit de {value}"
+            " (systemd-analyze calendar --iterations indisponible ou"
+            " illisible) : il reste de {hours} h sauf --max-age."
+        ),
+        "en": (
+            "The age threshold of --status is not derived from {value}"
+            " (systemd-analyze calendar --iterations unavailable or"
+            " unreadable): it stays {hours} h unless --max-age is given."
+        ),
+    },
+    "state.json: {key} = {hours}": {
+        "fr": "state.json : {key} = {hours}",
+        "en": "state.json: {key} = {hours}",
+    },
+    (
+        "--status fails when the last backup is older than {hours} h"
+        " (derived from the schedule)."
+    ): {
+        "fr": (
+            "--status échoue quand la dernière sauvegarde a plus de {hours}"
+            " h (déduit du calendrier)."
+        ),
+        "en": (
+            "--status fails when the last backup is older than {hours} h"
+            " (derived from the schedule)."
+        ),
+    },
+    (
+        "Sets when --status warns about an old test restore; restores"
+        " nothing"
+    ): {
+        "fr": (
+            "Règle quand --status signale un vieil essai de restauration ;"
+            " ne restaure rien"
+        ),
+        "en": (
+            "Sets when --status warns about an old test restore; restores"
+            " nothing"
+        ),
+    },
+    "Off-site copy (empty = {value} from the profile): ": {
+        "fr": "Copie hors site (vide = {value} du profil) : ",
+        "en": "Off-site copy (empty = {value} from the profile): ",
+    },
+    "Off-site copy [user@]host:/path (empty = no off-site copy): ": {
+        "fr": (
+            "Copie hors site [compte@]hôte:/chemin (vide = aucune copie hors"
+            " site) : "
+        ),
+        "en": "Off-site copy [user@]host:/path (empty = no off-site copy): ",
+    },
+    "Backup file to restore (.zip, or .tar.xz of the older tool): ": {
+        "fr": (
+            "Fichier de sauvegarde à restaurer (.zip, ou .tar.xz de l'ancien"
+            " outil) : "
+        ),
+        "en": "Backup file to restore (.zip, or .tar.xz of the older tool): ",
+    },
+    "Test restore of a backup file - .zip, or .tar.xz of the older tool": {
+        "fr": (
+            "Restauration d'essai d'un fichier de sauvegarde - .zip, ou"
+            " .tar.xz de l'ancien outil"
+        ),
+        "en": (
+            "Test restore of a backup file - .zip, or .tar.xz of the older"
+            " tool"
+        ),
+    },
+    "When to back up, OnCalendar (empty = {value}): ": {
+        "fr": "Quand sauvegarder, OnCalendar (vide = {value}) : ",
+        "en": "When to back up, OnCalendar (empty = {value}): ",
+    },
+    (
+        "{database}: {path} in the ExecStart of {unit} not checked: {error}"
+    ): {
+        "fr": (
+            "{database} : {path} de l'ExecStart de {unit} non vérifié :"
+            " {error}"
+        ),
+        "en": (
+            "{database}: {path} in the ExecStart of {unit} not checked:"
+            " {error}"
+        ),
+    },
+    (
+        "{path} is not a backup of {database} in {folder}: --status does not"
+        " count this test restore."
+    ): {
+        "fr": (
+            "{path} n'est pas une sauvegarde de {database} dans {folder} :"
+            " --status ne compte pas cet essai de restauration."
+        ),
+        "en": (
+            "{path} is not a backup of {database} in {folder}: --status does"
+            " not count this test restore."
+        ),
+    },
+    (
+        "Off-site pruning failed (rsync code {code}): {error}. The backups"
+        " are copied."
+    ): {
+        "fr": (
+            "Élagage hors site en échec (code rsync {code}) : {error}. Les"
+            " sauvegardes sont copiées."
+        ),
+        "en": (
+            "Off-site pruning failed (rsync code {code}): {error}. The"
+            " backups are copied."
+        ),
+    },
+    "Retention at the destination: {deleted} backup(s) deleted.": {
+        "fr": (
+            "Rétention à la destination : {deleted} sauvegarde(s)"
+            " supprimée(s)."
+        ),
+        "en": "Retention at the destination: {deleted} backup(s) deleted.",
+    },
+    (
+        "then delete there the backups this retention does not keep, except"
+        " those kept locally, at most {count} per run"
+    ): {
+        "fr": (
+            "puis y supprimer les sauvegardes que cette rétention ne garde"
+            " pas, sauf celles gardées en local, au plus {count} par passage"
+        ),
+        "en": (
+            "then delete there the backups this retention does not keep,"
+            " except those kept locally, at most {count} per run"
+        ),
     },
 }
 

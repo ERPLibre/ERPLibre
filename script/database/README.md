@@ -23,7 +23,7 @@ one `/web/database/manager` restores as is. It also reports their age,
 test-restores them into a temporary database, and restores one into a new
 database. It needs neither the Odoo venv nor `list_db`. In `make todo`:
 `TODO › Execute › Production › Backups` (now, status, test restore,
-restore into a new database) and `TODO › Execute › Production › systemd
+restore into a new database, test restore of a file) and `TODO › Execute › Production › systemd
 timers` for the scheduled backup.
 
 ```bash
@@ -80,10 +80,27 @@ deleted; a gap in backups never deletes everything.
 
 **State.** Each database has `<state-dir>/<db>/state.json` (default
 `/var/lib/erplibre-backup`): last success (time, file, size, sha256), last
-failure, last copy. It is readable by everyone, so `--status` needs no
-sudo. `--status` fails (code 1) when a database has no success, or one
-older than `--max-age` hours (26); it warns about a failure newer than the
-last success, a recorded file missing on disk, and a failed copy.
+failure, last copy, last test restore, the active crons of the
+`auto_backup` module seen by the last backup, and the age threshold the
+timer installer derived from the schedule. It is readable by everyone, so
+`--status` needs no sudo, and `--status` runs no PostgreSQL command.
+
+**Status.** `--status` fails (code 1) when a database has no success, or
+one older than `--max-age` hours; without `--max-age`, the threshold
+derived from the schedule while the timer is installed, else 26. It also
+fails when the last test restore failed, or when the program in the
+`ExecStart` of the backup service no longer exists (a moved checkout makes
+every run fail); a path the account running `--status` cannot examine
+(a closed home folder) is only a detail. It warns about a failure newer than the last success, a
+recorded file missing on disk, a failed copy, a timer missing or not
+active, a service without `--copy-to` (a backup kept on the server is lost
+with it), active crons of `auto_backup` or `auto_database_backup` that
+have a backup configuration (a second backup from Odoo, on the same disk;
+a cron without one backs up nothing), and a test restore missing or older than `--max-restore-age`
+days (7). It shows the number and total size of the backups (their folder
+belongs to the unit's account: under sudo) and every date with its UTC
+offset, since backup names use local time. The timer is read with
+`systemctl show`, which needs no root.
 
 **Test restore.** `--test-restore` restores the newest backup (or
 `--file`) into a temporary database `<db>_restoretest_<stamp>` (cut to
@@ -92,6 +109,13 @@ tables, `ir_module_module`, the `base` module and the installed modules
 against the manifest, extracts the filestore as the unit's account into a
 temporary folder, then always drops what it created; a temporary database
 it cannot drop ends with code 1. The source database is never touched.
+The garbage-collection markers of Odoo 18 (`filestore/checklist/`) are not
+counted as attachments when the number of files the database references is
+compared with the backup. Except with `--dry-run`, the outcome (time,
+success, file, last error) is recorded as `last_restore_test`, which
+`--status` judges, when the file is a backup of the database, under the
+tool's name, in its folder. The temporary folder is the database's backup folder,
+or Odoo's filestore folder when no backup was taken yet.
 
 **Room in PostgreSQL.** A test restore or a restore creates a full copy on
 the same PostgreSQL server: a full volume would stop the production
@@ -105,7 +129,11 @@ or `db_host` is another host, the tool refuses, unless `--force-space`.
 **Restore.** `--restore --file F --into NEW` only restores into a database
 that does not exist yet, and a filestore folder
 `<data_dir>/filestore/NEW` that does not exist either. Archive paths that
-would leave the extraction folder are refused. The filestore is written as
+would leave the extraction folder are refused. `--file` also takes a
+`.tar.xz` of the older backup tool (`dump.sql`, `manifest.json` and
+`filestore/` at its root, the zip's content), recognised by its first
+bytes: a link, a special file or a duplicate name in it refuses the
+archive. The tool never writes one. The filestore is written as
 the unit's account. A failure after `createdb` drops the new database and
 its partial filestore. Before starting Odoo on
 the copy, neutralize it (`odoo-bin neutralize`, from Odoo 16); its
@@ -129,16 +157,43 @@ Database › Restore from backup (.zip)` asks the same questions for a zip
 placed in `image_db/`.
 
 **Off-site copy.** `--copy-to [user@]host:/path` (or an absolute path),
-disabled by default: `rsync -a --partial` over `ssh -o BatchMode=yes`, as
-the unit's account, so its ssh key and `known_hosts` are used. A failed
-copy keeps the local backup, is recorded, and ends with code 1. Retention
-does not apply on the remote side: it keeps growing.
+disabled by default, runs after the retention: rsync over
+`ssh -o BatchMode=yes`, as the unit's account, so its ssh key and
+`known_hosts` are used. It sends the database's folder, filtered to the
+tool's names for this database (`<db>_<stamp>.zip` and its `.sha256`), so
+a copy missed or cut short at one run is sent again at the next. An
+interrupted transfer waits in `.rsync-partial/` and never takes the final
+name (`--partial-dir`, `--delay-updates`). A failed copy keeps the local
+backup, is recorded, and ends with code 1. `--copy-prune` then lists the
+destination (`rsync --list-only`) and applies the same retention to the
+backups found there: those it does not keep are deleted, each with its
+`.sha256`, never one still present locally, at most `--copy-prune-max`
+backups per run (20), the oldest first. The remote history is judged by
+itself: a rebuilt server, a new destination or local backups deleted by
+hand never make it delete more than the retention keeps. No other remote
+file is deleted (only the targeted names are included), and a local folder
+that is empty or unreadable sends nothing. A failed pruning or one that
+stops at the limit is a warning: the backups are copied. Without
+`--copy-prune`, the remote side keeps growing.
+
+**Backups of the older tool.** Its archives are named
+`<db>_<YYYY-MM-DD>_<HHMMSS>.zip` or `.tar.xz`: retention, `--status` and the
+choice of the newest backup ignore them, and `--copy-prune` never deletes
+them remotely. Restore or test one with `--file` (a test of a file that is
+not a backup of the database in its folder is not recorded for
+`--status`), then delete them by hand
+once the new backups cover the period:
+
+```bash
+sudo ./script/database/odoo_backup.py --test-restore --db demo_db --file /var/backups/odoo/demo_db/demo_db_2031-03-09_030000.tar.xz
+```
 
 **Profile.** The lasting settings of an instance live in its JSON profile,
 group `backup`: `dest`, `state_dir` (absolute paths), `keep_daily` (at
 least 1), `keep_weekly`, `keep_monthly`, `keep_recent_days` (together at
 least 2, counting the tool's default for a value the command line
-replaces), `copy_to`, `max_age` (at most 168), `timeout`, `verbose`, and
+replaces), `copy_to`, `copy_prune`, `copy_prune_max` (at least 1),
+`max_age` (at most 168), `max_restore_age`, `timeout`, `verbose`, and
 `db` from the shared group `instance`. The file is `--profile FILE`, else
 `private/production/<service>.json` of this checkout, the service being
 `--service` or the guessed unit; no file means no profile. The command
@@ -177,8 +232,16 @@ a large database, restore it on the server with `--restore`.
 The scheduled backup is installed by `script/systemd/install_backup_timer.py`,
 see [doc/PRODUCTION.md](../../doc/PRODUCTION.md). It reads the same
 profile: its own group `backup_timer` (`on_calendar`, `randomized_delay`,
-`verbose`), plus `dest`, `state_dir`, the `keep_*` settings and `copy_to`
-from `backup`, and `db` from `instance`. `--on-calendar` and
+`verbose`), plus `dest`, `state_dir`, the `keep_*` settings, `copy_to`,
+`copy_prune` and `copy_prune_max` from `backup` (the last two written with
+`--copy-to` only), and `db` from `instance`. It derives the age threshold
+of `--status` from the schedule: the largest gap between two of the next
+64 runs (`systemd-analyze calendar --iterations`), plus the randomized
+delay and 2 h, recorded as `expected_max_age_hours` in the database's
+state; when no threshold can be derived (a systemd too old for
+`--iterations`, an unreadable output), it keeps 26 h, with a warning, and
+clears the threshold of an earlier installation.
+It ends by reminding to run a test restore once. `--on-calendar` and
 `--randomized-delay` refuse a malformed value at parsing (code 2), from
 the command line or the profile; `systemd-analyze calendar` still checks
 the calendar at installation. The command line always wins, and the same

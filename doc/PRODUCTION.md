@@ -204,15 +204,30 @@ backups:
 ```bash
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --dry-run
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups --copy-prune
+sudo ./script/database/odoo_backup.py --test-restore --db DATABASE --file /var/backups/odoo/DATABASE/DATABASE_2031-03-09_030000.tar.xz
 systemctl list-timers 'erplibre-backup-*'
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
 ```
 
-`--copy-to` adds an off-site copy (rsync over ssh with the account's key;
-the remote side has no retention and grows). Monitor `--status`: it exits
-with code 1 when the last success is older than `--max-age` hours (26).
-All of it is also in `make todo`: `TODO › Execute › Production › Backups`
-and `› systemd timers`. Details,
+`--copy-to` adds an off-site copy, after the retention: rsync over ssh
+with the account's key, which also sends again a copy missed or cut short
+before, and never leaves a partial file under a final name. Without
+`--copy-prune` the remote side has no retention and grows; with it, the
+same retention applies to the backups listed at the destination, never to
+one still present locally, at most `--copy-prune-max` per run, and nothing
+else: a rebuilt server or a new destination does not empty the remote
+history. Monitor `--status`: it exits with code 1 when the last success is
+older than `--max-age` (or the profile's `max_age`) when given, else the
+threshold derived from the schedule while the timer is installed, else
+26 h, or when the last test restore failed; it warns about a missing or
+stopped timer, a backup service without `--copy-to`, active `auto_backup`
+crons that have a backup configuration, and a test restore older than 7
+days. Archives of the older backup tool (`.zip` or `.tar.xz`, named
+`DATABASE_YYYY-MM-DD_HHMMSS`) are not pruned nor seen by `--status`: test
+or restore them with `--file`, then delete them by hand. All of it is also
+in `make todo`: `TODO › Execute › Production › Backups` and `› systemd
+timers`, which asks for the off-site copy and the calendar. Details,
 retention rules and exit codes:
 [script/database/README.md](../script/database/README.md).
 
@@ -264,7 +279,8 @@ TODO › Execute › Production
 ── Operate ──
 [2] Update              update, simulate only, restart (with PostgreSQL),
                         apps list, zip archive, git rollback
-[3] Backups             now, status, test restore, restore into a new database
+[3] Backups             now, status, test restore, restore into a new database,
+                        test restore of a file (.zip or older .tar.xz)
 [4] Journal and mail    Odoo errors (since the last check, last hours, per hour),
                         failed outgoing mail (list, retry)
 [5] Health and warm-up  this instance, public URLs, deep warm-up

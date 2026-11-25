@@ -2000,6 +2000,41 @@ class TestRetention(unittest.TestCase):
         self.assertIsNone(retention.plus_recente(["x.zip"], "demo"))
 
 
+class TestSeuilEtMotifs(unittest.TestCase):
+    """Le seuil d'âge déduit d'un calendrier et les filtres de la copie."""
+
+    def test_seuil_du_plus_grand_ecart(self):
+        instants = [j("2031-03-10 23:00"), j("2031-03-10 09:00")]
+        instants.append(j("2031-03-11 09:00"))
+        # Écarts de 14 h puis de 10 h, triés ici : 14 h + 2 h de marge.
+        self.assertEqual(retention.seuil_age_heures(instants), 16)
+        self.assertEqual(retention.seuil_age_heures(instants, 1800), 17)
+        self.assertEqual(retention.seuil_age_heures(instants, 0, 0), 14)
+
+    def test_seuil_sans_ecart(self):
+        self.assertIsNone(retention.seuil_age_heures([]))
+        self.assertIsNone(retention.seuil_age_heures([j("2031-03-10 03:00")]))
+
+    def test_motifs_des_seuls_noms_de_l_outil(self):
+        import fnmatch
+
+        zip_, sha = retention.motifs_rsync("demo")
+        self.assertTrue(zip_.startswith("/demo_"))
+        self.assertEqual(sha, zip_ + ".sha256")
+        valide = nom("2031-03-10 03:00")
+        for texte, attendu in (
+            (valide, True),
+            (valide + ".sha256", False),
+            (valide + ".partial", False),
+            ("demo_bar_2031-03-10_03h00m00s.zip", False),
+            ("demo_2031-03-10_030000.zip", False),
+            ("notes.zip", False),
+        ):
+            with self.subTest(nom=texte):
+                self.assertEqual(fnmatch.fnmatchcase(texte, zip_[1:]), attendu)
+        self.assertTrue(fnmatch.fnmatchcase(valide + ".sha256", sha[1:]))
+
+
 class TestPostgres(unittest.TestCase):
     CONFIG = {
         "db_host": "192.0.2.10",

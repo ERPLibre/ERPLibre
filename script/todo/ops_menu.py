@@ -313,6 +313,12 @@ class OpsMenuMixin:
                     " confirm, then run with sudo"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Test restore of a backup file - .zip, or .tar.xz of the"
+                    " older tool"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -328,6 +334,8 @@ class OpsMenuMixin:
                 self._ops_test_restore()
             elif status == "4":
                 self._ops_restore_new_database()
+            elif status == "5":
+                self._ops_test_restore_file()
             else:
                 print(t("Command not found !"))
 
@@ -992,8 +1000,30 @@ class OpsMenuMixin:
             ),
         )
 
+    def _ops_test_restore_file(self):
+        """L'essai de restauration d'un fichier tapé : une archive gardée
+        ailleurs, ou un `.tar.xz` de l'ancien outil que la rétention ne voit
+        pas. Son issue est notée dans l'état de la base, comme pour la
+        dernière sauvegarde."""
+        fichier = input(
+            t("Backup file to restore (.zip, or .tar.xz of the older tool): ")
+        ).strip()
+        if not fichier:
+            print(t("Cancelled: no file given."))
+            return
+        self._ops_lancer(
+            "backup",
+            ["--test-restore", "--file", fichier] + self._ops_base("backup"),
+            t(
+                "Run this test restore? A temporary database is created,"
+                " then dropped."
+            ),
+        )
+
     def _ops_restore_new_database(self):
-        fichier = input(t("Backup file to restore (.zip): ")).strip()
+        fichier = input(
+            t("Backup file to restore (.zip, or .tar.xz of the older tool): ")
+        ).strip()
         if not fichier:
             print(t("Cancelled: no file given."))
             return
@@ -1035,14 +1065,37 @@ class OpsMenuMixin:
                     )
 
     def _ops_backup_timer_install(self):
-        """Installe ou met à jour la sauvegarde planifiée ; la question
-        annonce le calendrier réel (profil ou défaut de l'outil)."""
+        """Installe ou met à jour la sauvegarde planifiée. La copie hors site
+        et le calendrier se tapent ici ; vides, l'outil prend ceux du
+        profil, sinon ses défauts (aucune copie). La question annonce le
+        calendrier réel ; l'installeur valide les deux valeurs dans la
+        simulation."""
+        args = self._ops_base("backup_timer")
+        copie = self._ops_valeur("backup", "copy_to")
+        if copie:
+            question = t("Off-site copy (empty = {value} from the profile): ")
+            question = question.format(value=affichable(copie))
+        else:
+            question = t(
+                "Off-site copy [user@]host:/path (empty = no off-site copy): "
+            )
+        tapee = input(question).strip()
+        if tapee:
+            args += ["--copy-to", tapee]
         calendrier = self._ops_valeur(
             "backup_timer", "on_calendar"
         ) or self._ops_defaut("backup_timer", "on_calendar")
+        tape = input(
+            t("When to back up, OnCalendar (empty = {value}): ").format(
+                value=affichable(calendrier)
+            )
+        ).strip()
+        if tape:
+            args += ["--on-calendar", tape]
+            calendrier = tape
         self._ops_lancer(
             "backup_timer",
-            self._ops_base("backup_timer"),
+            args,
             t("Install or update the scheduled backup ({calendar})?").format(
                 calendar=affichable(calendrier)
             ),

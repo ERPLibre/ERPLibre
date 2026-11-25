@@ -385,26 +385,56 @@ n'a pas écrit, et `--uninstall` garde les sauvegardes :
 ```bash
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --dry-run
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups --copy-prune
+sudo ./script/database/odoo_backup.py --test-restore --db DATABASE --file /var/backups/odoo/DATABASE/DATABASE_2031-03-09_030000.tar.xz
 systemctl list-timers 'erplibre-backup-*'
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
 ```
 
 <!-- [en] -->
-`--copy-to` adds an off-site copy (rsync over ssh with the account's key;
-the remote side has no retention and grows). Monitor `--status`: it exits
-with code 1 when the last success is older than `--max-age` hours (26).
-All of it is also in `make todo`: `TODO › Execute › Production › Backups`
-and `› systemd timers`. Details,
+`--copy-to` adds an off-site copy, after the retention: rsync over ssh
+with the account's key, which also sends again a copy missed or cut short
+before, and never leaves a partial file under a final name. Without
+`--copy-prune` the remote side has no retention and grows; with it, the
+same retention applies to the backups listed at the destination, never to
+one still present locally, at most `--copy-prune-max` per run, and nothing
+else: a rebuilt server or a new destination does not empty the remote
+history. Monitor `--status`: it exits with code 1 when the last success is
+older than `--max-age` (or the profile's `max_age`) when given, else the
+threshold derived from the schedule while the timer is installed, else
+26 h, or when the last test restore failed; it warns about a missing or
+stopped timer, a backup service without `--copy-to`, active `auto_backup`
+crons that have a backup configuration, and a test restore older than 7
+days. Archives of the older backup tool (`.zip` or `.tar.xz`, named
+`DATABASE_YYYY-MM-DD_HHMMSS`) are not pruned nor seen by `--status`: test
+or restore them with `--file`, then delete them by hand. All of it is also
+in `make todo`: `TODO › Execute › Production › Backups` and `› systemd
+timers`, which asks for the off-site copy and the calendar. Details,
 retention rules and exit codes:
 [script/database/README.md](../script/database/README.md).
 
 <!-- [fr] -->
-`--copy-to` ajoute une copie hors site (rsync sur ssh avec la clé du
-compte ; le côté distant n'a pas de rétention et grossit). Surveiller
-`--status` : il sort en code 1 quand le dernier succès date de plus de
-`--max-age` heures (26). Tout cela est aussi dans `make todo` :
-`TODO › Exécuter › Production › Sauvegardes` et `› Minuteries systemd`.
-Détails, règles de rétention et codes de sortie :
+`--copy-to` ajoute une copie hors site, après la rétention : rsync sur ssh
+avec la clé du compte, qui renvoie aussi une copie manquée ou tronquée
+avant, et ne laisse jamais un fichier partiel sous un nom final. Sans
+`--copy-prune`, le côté distant n'a pas de rétention et grossit ; avec, la
+même rétention s'applique aux sauvegardes listées à la destination, jamais
+à une encore présente en local, au plus `--copy-prune-max` par passage, et
+rien d'autre : un serveur reconstruit ou une nouvelle destination ne vide
+pas l'historique distant. Surveiller `--status` : il sort en code 1 quand
+le dernier succès date de plus que `--max-age` (ou le `max_age` du profil)
+s'il est donné, sinon le seuil déduit du calendrier tant que la minuterie
+est installée, sinon 26 h, ou quand le dernier essai de restauration a
+échoué ; il signale une minuterie absente ou arrêtée, un service de
+sauvegarde sans `--copy-to`, des tâches `auto_backup` actives qui ont une
+configuration de sauvegarde, et un essai de restauration de plus de 7
+jours. Les archives de l'ancien
+outil de sauvegarde (`.zip` ou `.tar.xz`, nommées
+`BASE_AAAA-MM-JJ_HHMMSS`) ne sont ni élaguées ni vues par `--status` : les
+essayer ou les restaurer par `--file`, puis les supprimer à la main. Tout
+cela est aussi dans `make todo` : `TODO › Exécuter › Production ›
+Sauvegardes` et `› Minuteries systemd`, qui demande la copie hors site et
+le calendrier. Détails, règles de rétention et codes de sortie :
 [script/database/README.fr.md](../script/database/README.fr.md).
 
 <!-- [en] -->
@@ -456,7 +486,8 @@ TODO › Execute › Production
 ── Operate ──
 [2] Update              update, simulate only, restart (with PostgreSQL),
                         apps list, zip archive, git rollback
-[3] Backups             now, status, test restore, restore into a new database
+[3] Backups             now, status, test restore, restore into a new database,
+                        test restore of a file (.zip or older .tar.xz)
 [4] Journal and mail    Odoo errors (since the last check, last hours, per hour),
                         failed outgoing mail (list, retry)
 [5] Health and warm-up  this instance, public URLs, deep warm-up
@@ -520,7 +551,8 @@ TODO › Exécuter › Production
                             PostgreSQL), liste des applications, archive zip,
                             retour git
 [3] Sauvegardes             maintenant, état, restauration d'essai,
-                            restauration dans une nouvelle base
+                            restauration dans une nouvelle base,
+                            essai d'un fichier (.zip ou ancien .tar.xz)
 [4] Journal et courriels    erreurs d'Odoo (depuis la dernière lecture,
                             dernières heures, par heure), courriels en échec
                             (liste, renvoi)

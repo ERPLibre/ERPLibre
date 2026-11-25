@@ -38,6 +38,11 @@ import re
 # Le format d'horodatage du nom, pour strftime et strptime.
 FORMAT = "%Y-%m-%d_%Hh%Mm%Ss"
 RE_HORODATAGE = r"\d{4}-\d{2}-\d{2}_\d{2}h\d{2}m\d{2}s"
+# Le même horodatage en motif de filtre rsync (`[0-9]` par chiffre).
+GLOB_HORODATAGE = (
+    "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
+    "_[0-9][0-9]h[0-9][0-9]m[0-9][0-9]s"
+)
 EXTENSION = ".zip"
 SUFFIXE_SHA = ".sha256"
 SUFFIXE_PARTIEL = ".partial"
@@ -58,6 +63,15 @@ def _motif(base, suffixe=""):
         + re.escape(EXTENSION + suffixe)
         + "$"
     )
+
+
+def motifs_rsync(base):
+    """Les motifs de filtre rsync, ancrés au dossier transféré, des
+    sauvegardes de `base` et de leurs empreintes : rien d'autre, ni
+    fichier provisoire ni archive d'une autre base. Les noms de base admis
+    (`postgres.RE_BASE`) ne portent aucun caractère spécial de motif."""
+    nom = f"/{base}_{GLOB_HORODATAGE}{EXTENSION}"
+    return [nom, nom + SUFFIXE_SHA]
 
 
 def date_de(nom, base):
@@ -148,3 +162,27 @@ def a_supprimer(
         limite = jour - datetime.timedelta(days=recents_jours - 1)
         gardes |= {nom for moment, nom in liste if moment.date() >= limite}
     return {nom for _moment, nom in liste if nom not in gardes}
+
+
+# Marge ajoutée au plus grand écart entre deux sauvegardes planifiées : la
+# durée d'une sauvegarde et le démarrage différé d'une minuterie
+# `Persistent=true` y tiennent.
+MARGE_SEUIL_HEURES = 2
+
+
+def seuil_age_heures(instants, delai_aleatoire_s=0, marge=MARGE_SEUIL_HEURES):
+    """Le seuil d'âge, en heures entières, au-delà duquel la dernière
+    sauvegarde réussie est en retard sur le calendrier : le plus grand
+    écart entre deux `instants` consécutifs (datetime, triés ici), plus le
+    délai aléatoire de la minuterie, plus `marge`, arrondi à l'heure
+    supérieure. None quand moins de deux instants sont donnés : un écart
+    ne se mesure pas."""
+    tries = sorted(instants)
+    if len(tries) < 2:
+        return None
+    ecart = max(
+        (suivant - courant).total_seconds()
+        for courant, suivant in zip(tries, tries[1:])
+    )
+    secondes = ecart + max(0, delai_aleatoire_s or 0) + marge * 3600
+    return int(-(-secondes // 3600))

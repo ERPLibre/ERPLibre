@@ -86,6 +86,39 @@ REQUETE_CONTROLE = (
     " WHERE store_fname IS NOT NULL))"
 )
 
+# Les tâches planifiées actives des modules qui sauvegardent depuis Odoo,
+# comptées par modèle sous `auto_backup_crons` ({modèle: nombre}) :
+# `db.backup` (auto_backup) et `db.backup.configure` (auto_database_backup).
+# `ir.cron` hérite de `ir.actions.server` par `ir_actions_server_id` de la
+# 12.0 à la 18.0 ; sans module, aucun modèle ne répond et la clé est nulle.
+REQUETE_AUTO_BACKUP = (
+    "SELECT json_build_object('auto_backup_crons', (SELECT"
+    " json_object_agg(s.model, s.n) FROM (SELECT m.model, count(*) AS n"
+    " FROM ir_cron c JOIN ir_act_server a ON a.id = c.ir_actions_server_id"
+    " JOIN ir_model m ON m.id = a.model_id"
+    " WHERE c.active AND m.model IN ('db.backup', 'db.backup.configure')"
+    " GROUP BY m.model) s))"
+)
+
+# Les configurations qui donnent du travail à ces tâches, sous la clé
+# `configured`, par modèle de REQUETE_AUTO_BACKUP : une tâche active sans
+# configuration ne sauvegarde rien (auto_backup installe la sienne active,
+# et elle parcourt les enregistrements `db.backup`). auto_database_backup
+# ne lance que ses configurations actives ; `row_to_json` lit `active` sans
+# échouer là où la colonne manque, et l'y tient pour vraie. Chaque requête
+# ne se lance que si son modèle existe, donc sa table aussi.
+REQUETES_CONFIG_AUTO_BACKUP = {
+    "db.backup": (
+        "SELECT json_build_object('configured',"
+        " (SELECT count(*) FROM db_backup))"
+    ),
+    "db.backup.configure": (
+        "SELECT json_build_object('configured', (SELECT count(*)"
+        " FROM db_backup_configure t"
+        " WHERE COALESCE((row_to_json(t)->>'active')::boolean, true)))"
+    ),
+}
+
 # Les modules installés de la base et ceux marqués `to upgrade`, sous les
 # clés `modules` et `to_upgrade` de REQUETE_FAITS : la mise à jour les lit
 # quand elle ne sauvegarde pas. `-u` met à jour les uns et les autres.

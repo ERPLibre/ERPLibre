@@ -38,6 +38,22 @@ from script.systemd import install_backup_timer as ibt  # noqa: E402
 
 PROFILS = None
 
+# La sortie de `systemd-analyze calendar --iterations` pour une sauvegarde
+# quotidienne à 03:00, dans un fuseau à heure d'été (la ligne `(in UTC)`
+# suit chaque échéance).
+ECHEANCES_QUOTIDIENNES = """  Original form: *-*-* 03:00:00
+Normalized form: *-*-* 03:00:00
+    Next elapse: Tue 2031-03-11 03:00:00 EDT
+       (in UTC): Tue 2031-03-11 07:00:00 UTC
+       From now: 23h left
+       Iter. #2: Wed 2031-03-12 03:00:00 EDT
+       (in UTC): Wed 2031-03-12 07:00:00 UTC
+       From now: 1 day 23h left
+       Iter. #3: Thu 2031-03-13 03:00:00 EDT
+       (in UTC): Thu 2031-03-13 07:00:00 UTC
+       From now: 2 days 23h left
+"""
+
 
 def de_profil(option, valeur):
     """La ligne qui montre une valeur venue du profil, dans la langue
@@ -82,6 +98,8 @@ class FauxSysteme(ibt.Systeme):
         self.appels = []
         self.euid_valeur = 0
         self.calendrier_code = 0
+        # `systemd-analyze calendar --iterations` : (code, sortie).
+        self.iterations = (0, ECHEANCES_QUOTIDIENNES)
         self.chowns = []
         self.non_inscriptibles = set()
         # Code de `systemctl <verbe>` ; 0 sinon.
@@ -127,6 +145,8 @@ class FauxSysteme(ibt.Systeme):
         if argv[:2] == ["systemd-creds", "--version"]:
             return self.creds_code, ""
         if argv[:2] == ["systemd-analyze", "calendar"]:
+            if any(a.startswith("--iterations=") for a in argv):
+                return self.iterations
             return self.calendrier_code, ""
         if argv[0] == "systemd-tmpfiles":
             return self.tmpfiles_code, "" if not self.tmpfiles_code else "err"
@@ -150,6 +170,12 @@ class FauxSysteme(ibt.Systeme):
 
     def euid(self):
         return self.euid_valeur
+
+    def uid(self, utilisateur):
+        return os.getuid()
+
+    def fchown(self, fd, utilisateur):
+        self.chowns.append((os.readlink(f"/proc/self/fd/{fd}"), utilisateur))
 
     def utilisateur_courant(self):
         return "root"
@@ -282,7 +308,13 @@ class TestInstallation(Base):
             "systemctl enable --now erplibre-backup-demo_db.timer"
         )
         self.assertLess(recharge, active)
-        donnes = [c for c, u in self.systeme.chowns if u == "demo"]
+        # Les dossiers ; l'état, écrit par fichier temporaire puis renommé,
+        # et son propriétaire sont vérifiés par TestSeuilDuCalendrier.
+        donnes = [
+            c
+            for c, u in self.systeme.chowns
+            if u == "demo" and not os.path.basename(c).startswith(".state.")
+        ]
         self.assertEqual(
             sorted(donnes),
             sorted(
@@ -1477,6 +1509,179 @@ class TestCitation(unittest.TestCase):
         self.assertEqual(ibt.citer(""), '""')
         with self.assertRaises(ValueError):
             ibt.citer("a\nb")
+
+
+COPIE = "sauvegarde@backup.example.org:/srv/hors-site"
+
+
+class TestCopieHorsSite(Base):
+    """`--copy-prune` et `--copy-prune-max` suivent `--copy-to`."""
+
+    execstart = TestUniteComplete.execstart
+
+    def test_ecrits_avec_copy_to(self):
+        code = self.lancer(
+            "--copy-to", COPIE, "--copy-prune", "--copy-prune-max", "5"
+        )
+        self.assertEqual(code, ibt.CODE_OK, self.erreurs)
+        self.assertIn(
+            f"--copy-to {COPIE} --copy-prune --copy-prune-max 5",
+            self.execstart(),
+        )
+
+    def test_sans_elagage_rien_n_est_ecrit(self):
+        self.assertEqual(self.lancer("--copy-to", COPIE), ibt.CODE_OK)
+        self.assertNotIn("--copy-prune", self.execstart())
+
+    def test_sans_copy_to_rien_n_est_ecrit(self):
+        self.assertEqual(self.lancer("--copy-prune"), ibt.CODE_OK)
+        self.assertNotIn("--copy-prune", self.execstart())
+
+    def test_borne_nulle_refusee(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                ibt.analyser(["--copy-prune-max", "0", "--dry-run"])
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestCopieHorsSiteModeProfil(BaseProfil):
+    def setUp(self):
+        super().setUp()
+        outil_qui_lit_le_profil(self.systeme.wd)
+
+    def test_elagage_du_profil_relu_par_l_outil(self):
+        self.poser(backup={"copy_to": COPIE, "copy_prune": True})
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        ligne = self.execstart()
+        self.assertIn(f"--copy-to {COPIE}", ligne)
+        self.assertNotIn("--copy-prune", ligne)
+        self.assertIn("--profile-required", ligne)
+
+    def test_elagage_tape_ecrit(self):
+        self.poser(backup={"copy_to": COPIE})
+        self.assertEqual(self.lancer("--copy-prune"), ibt.CODE_OK)
+        self.assertIn("--copy-prune", self.execstart())
+
+
+class TestSeuilDuCalendrier(Base):
+    """BKP-04 : le seuil d'âge de `--status` suit le calendrier."""
+
+    def lire_etat(self):
+        chemin = os.path.join(
+            self.racine, "srv", "etat", "demo_db", "state.json"
+        )
+        with open(chemin) as f:
+            return json.load(f), os.stat(chemin).st_mode & 0o777
+
+    def test_quotidien_ecrit_dans_l_etat(self):
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        donnees, mode = self.lire_etat()
+        # 24 h d'écart, 30 min de délai aléatoire, 2 h de marge : 26,5.
+        self.assertEqual(donnees["expected_max_age_hours"], 27)
+        self.assertEqual(donnees["db"], "demo_db")
+        self.assertEqual(mode, 0o644)
+        # Sous root, l'état est donné au compte de l'unité.
+        self.assertIn(
+            "demo",
+            [
+                u
+                for c, u in self.systeme.chowns
+                if os.path.basename(c).startswith(".state.")
+            ],
+        )
+        self.assertTrue(
+            self.a_appele(
+                "systemd-analyze calendar --iterations=64 -- *-*-* 03:00:00"
+            )
+        )
+
+    def test_plusieurs_par_jour(self):
+        self.systeme.iterations = (
+            0,
+            "    Next elapse: Mon 2031-03-10 09:00:00 UTC\n"
+            "       Iter. #2: Mon 2031-03-10 16:00:00 UTC\n"
+            "       Iter. #3: Mon 2031-03-10 23:00:00 UTC\n"
+            "       Iter. #4: Tue 2031-03-11 09:00:00 UTC\n",
+        )
+        code = self.lancer(
+            "--on-calendar",
+            "*-*-* 09,16,23:00:00",
+            "--randomized-delay",
+            "1h 30min",
+        )
+        self.assertEqual(code, ibt.CODE_OK, self.erreurs)
+        # 10 h d'écart (23:00 → 09:00), 1 h 30 de délai, 2 h de marge.
+        self.assertEqual(self.lire_etat()[0]["expected_max_age_hours"], 14)
+
+    def test_libelle_iteration_des_systemd_recents(self):
+        self.systeme.iterations = (
+            0,
+            ECHEANCES_QUOTIDIENNES.replace("Iter. #", "Iteration #"),
+        )
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertEqual(self.lire_etat()[0]["expected_max_age_hours"], 27)
+
+    def test_seuil_non_deduit_efface_l_ancien(self):
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertEqual(self.lire_etat()[0]["expected_max_age_hours"], 27)
+        self.systeme.iterations = (0, "    Next elapse: never\n")
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertIn("[ATTN]", self.sortie)
+        donnees = self.lire_etat()[0]
+        self.assertIsNone(donnees["expected_max_age_hours"])
+        self.assertEqual(donnees["db"], "demo_db")
+
+    def test_systemd_trop_ancien(self):
+        self.systeme.iterations = (1, "Unknown option --iterations")
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("--iterations", self.sortie)
+        chemin = os.path.join(
+            self.racine, "srv", "etat", "demo_db", "state.json"
+        )
+        self.assertFalse(os.path.exists(chemin))
+
+    def test_simulation_montre_sans_ecrire(self):
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK)
+        self.assertIn(
+            ibt.t("state.json: {key} = {hours}").format(
+                key="expected_max_age_hours", hours=27
+            ),
+            self.sortie,
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.racine, "srv")))
+
+    def test_rappel_de_l_essai_de_restauration(self):
+        self.assertEqual(self.lancer(), ibt.CODE_OK)
+        self.assertIn("--test-restore --db demo_db", self.sortie)
+
+
+class TestEcheances(unittest.TestCase):
+    def test_lignes_locales_sans_utc(self):
+        instants = ibt.echeances(ECHEANCES_QUOTIDIENNES)
+        self.assertEqual(len(instants), 3)
+        self.assertEqual(instants[0].hour, 3)
+
+    def test_libelle_iteration(self):
+        sortie = ECHEANCES_QUOTIDIENNES.replace("Iter. #", "Iteration #")
+        self.assertEqual(
+            ibt.echeances(sortie), ibt.echeances(ECHEANCES_QUOTIDIENNES)
+        )
+
+    def test_duree(self):
+        self.assertEqual(ibt.duree_secondes("30min"), 1800)
+        self.assertEqual(ibt.duree_secondes("1h 30min"), 5400)
+        self.assertEqual(ibt.duree_secondes("45"), 45)
+        self.assertIsNone(ibt.duree_secondes("3 lunes"))
+
+    def test_noms_d_unites_partages(self):
+        self.assertEqual(
+            ibt.noms_unites("demo_db"),
+            (
+                "erplibre-backup-demo_db.service",
+                "erplibre-backup-demo_db.timer",
+            ),
+        )
 
 
 if __name__ == "__main__":

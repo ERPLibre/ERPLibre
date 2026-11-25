@@ -29,6 +29,7 @@ import io
 import json
 import os
 import re
+import shutil
 import signal
 import sys
 import tempfile
@@ -124,6 +125,24 @@ class FauxSysteme(ob.Systeme):
         self.createdb_code = 0
         self.dropdb_code = 0
         self.rsync_code = 0
+        # Crons actifs des modules de sauvegarde d'Odoo : un nombre (ceux de
+        # `db.backup`) ou {modèle: nombre} ; None : la requête échoue.
+        self.auto_backup = 0
+        # Configurations de chaque modèle ({modèle: nombre}), 1 par défaut.
+        self.auto_backup_config = {}
+        # Propriétés d'autres unités pour `systemctl show` ; None : systemctl
+        # en échec.
+        self.unites = {}
+        # Le contenu du dossier source à chaque copie rsync.
+        self.source_copie = []
+        # Le dossier distant de la base : les noms que la copie y dépose,
+        # que `--list-only` liste et que l'élagage retire.
+        self.distants = []
+        # Les noms visés par chaque élagage, et les codes de la liste et de
+        # l'élagage.
+        self.elagages = []
+        self.liste_code = 0
+        self.elagage_code = 0
         self.libre = 10**12
         self.espace_erreur = None
         self.chowns = []
@@ -147,6 +166,11 @@ class FauxSysteme(ob.Systeme):
         self.appels.append(("systemctl", list(argv)))
         if argv[:2] == ["systemctl", "show"]:
             noms = [argv[i + 1] for i, a in enumerate(argv) if a == "-p"]
+            if argv[-1] in self.unites:
+                props = self.unites[argv[-1]]
+                if props is None:
+                    return 1, "Failed to connect to bus"
+                return 0, "".join(f"{n}={props.get(n, '')}\n" for n in noms)
             if argv[-1] != "erplibre_demo.service":
                 return 0, "LoadState=not-found\n"
             return 0, "".join(
@@ -209,6 +233,23 @@ class FauxSysteme(ob.Systeme):
             sql = nu[-1]
             if sql == postgres.REQUETE_FAITS:
                 return 0, json.dumps(self.faits) + "\n", ""
+            if sql == postgres.REQUETE_AUTO_BACKUP:
+                if self.auto_backup is None:
+                    return 1, "", "relation ir_cron missing"
+                crons = self.auto_backup
+                if isinstance(crons, int):
+                    crons = {"db.backup": crons} if crons else None
+                donnees = {"auto_backup_crons": crons}
+                return 0, json.dumps(donnees) + "\n", ""
+            for (
+                modele,
+                requete,
+            ) in postgres.REQUETES_CONFIG_AUTO_BACKUP.items():
+                if sql == requete:
+                    donnees = {
+                        "configured": self.auto_backup_config.get(modele, 1)
+                    }
+                    return 0, json.dumps(donnees) + "\n", ""
             if sql == postgres.REQUETE_BASES:
                 return 0, "\n".join(sorted(self.bases)) + "\n", ""
             if sql == postgres.REQUETE_CONTROLE:
@@ -233,10 +274,38 @@ class FauxSysteme(ob.Systeme):
             self.bases.discard(nu[-1])
             return 0, "", ""
         if nom == "rsync":
-            if self.rsync_code:
-                return self.rsync_code, "", "rsync: connection unexpectedly"
-            return 0, "", ""
+            return self._rsync(argv, nu)
         return 1, "", "commande inattendue"
+
+    def _rsync(self, argv, nu):
+        if "--list-only" in argv:
+            if self.liste_code:
+                return self.liste_code, "", "rsync: connection unexpectedly"
+            lignes = ["drwxr-xr-x          4,096 2031/03/10 03:00:00 ."]
+            lignes += [
+                f"-rw-r--r--          1,234 2031/03/10 03:00:00 {n}"
+                for n in sorted(self.distants)
+            ]
+            return 0, "\n".join(lignes) + "\n", ""
+        if "--existing" in argv:
+            vises = [
+                a[len("--include=/") :]
+                for a in argv
+                if a.startswith("--include=/")
+            ]
+            self.elagages.append(vises)
+            if self.elagage_code:
+                return self.elagage_code, "", "rsync: connection unexpectedly"
+            self.distants = [n for n in self.distants if n not in vises]
+            return 0, "", ""
+        source = sorted(os.listdir(nu[-2]))
+        self.source_copie.append(source)
+        if self.rsync_code:
+            return self.rsync_code, "", "rsync: connection unexpectedly"
+        noms = set(self.distants)
+        noms |= {n for n in source if n.startswith("demo_db_")}
+        self.distants = sorted(noms)
+        return 0, "", ""
 
     def flux(self, argv, env, recevoir, delai):
         nom, _nu = outil(argv)
@@ -267,6 +336,14 @@ class FauxSysteme(ob.Systeme):
 
 
 class Base(unittest.TestCase):
+    def assertMinuteriesSeulement(self, appels):
+        """Sous `--status`, rien n'est détecté ni lancé hors de la lecture
+        des minuteries."""
+        self.assertTrue(appels)
+        self.assertEqual(
+            [a for a in appels if not lecture_de_minuterie(a)], []
+        )
+
     def setUp(self):
         d = tempfile.TemporaryDirectory()
         self.addCleanup(d.cleanup)
@@ -347,6 +424,17 @@ class Base(unittest.TestCase):
             somme = hashlib.sha256(open(chemin, "rb").read()).hexdigest()
             ecrire(chemin + ".sha256", f"{somme}  {nom}\n")
         return chemin
+
+
+def lecture_de_minuterie(appel):
+    """True si `appel` est un `systemctl show` d'une unité de sauvegarde
+    planifiée : la seule commande que `--status` lance."""
+    nom, argv = appel
+    return (
+        nom == "systemctl"
+        and argv[:2] == ["systemctl", "show"]
+        and argv[-1].startswith("erplibre-backup-")
+    )
 
 
 class TestSauvegarde(Base):
@@ -671,7 +759,7 @@ class TestCopie(Base):
         self.assertEqual(
             self.lancer("--copy-to", COPIE), ob.CODE_OK, self.sortie
         )
-        chemin = os.path.join(self.dossier, self.zips()[0])
+        motif = "/demo_db_" + retention.GLOB_HORODATAGE + ".zip"
         self.assertEqual(
             self.systeme.vu["rsync"][0]["argv"],
             [
@@ -681,11 +769,14 @@ class TestCopie(Base):
                 "--",
                 "rsync",
                 "-a",
-                "--partial",
+                "--partial-dir=.rsync-partial",
+                "--delay-updates",
+                "--include=" + motif,
+                "--include=" + motif + ".sha256",
+                "--exclude=*",
                 "-e",
                 "ssh -o BatchMode=yes -o ConnectTimeout=20",
-                chemin,
-                chemin + ".sha256",
+                self.dossier + "/",
                 "backup@backup.example.org:/srv/backups/demo_db/",
             ],
         )
@@ -727,6 +818,267 @@ class TestCopie(Base):
     def test_c4_sans_copie_pas_de_rsync(self):
         self.assertEqual(self.lancer(), ob.CODE_OK)
         self.assertNotIn("rsync", self.outils())
+
+
+class TestCopieApresRetention(Base):
+    """BKP-01, BKP-17-V : copie après la rétention, rattrapage, élagage."""
+
+    GARDE_UNE = (
+        "--keep-daily",
+        "1",
+        "--keep-weekly",
+        "0",
+        "--keep-monthly",
+        "0",
+        "--keep-recent-days",
+        "0",
+    )
+
+    def test_apres_la_retention_tout_le_dossier(self):
+        ancien = self.fabriquer(datetime.datetime(2030, 1, 1, 3))
+        code = self.lancer("--copy-to", COPIE, *self.GARDE_UNE)
+        self.assertEqual(code, ob.CODE_OK, self.sortie)
+        ordre = self.outils()
+        self.assertGreater(ordre.index("rsync"), ordre.index("pg_dump"))
+        # La rétention a déjà retiré l'ancienne : rsync ne la voit plus.
+        (source,) = self.systeme.source_copie
+        self.assertNotIn(os.path.basename(ancien), source)
+        self.assertEqual(len([n for n in source if n.endswith(".zip")]), 1)
+
+    def test_rattrape_une_copie_manquee(self):
+        """Le dossier entier part : une archive dont la copie a échoué à
+        un passage est renvoyée au suivant."""
+        manquee = self.fabriquer(datetime.datetime(2031, 3, 9, 3))
+        self.assertEqual(self.lancer("--copy-to", COPIE), ob.CODE_OK)
+        (source,) = self.systeme.source_copie
+        self.assertIn(os.path.basename(manquee), source)
+        argv = self.systeme.vu["rsync"][0]["argv"]
+        self.assertEqual(argv[-2], self.dossier + "/")
+        self.assertNotIn("--partial", argv)
+        self.assertNotIn("--delete", argv)
+
+    GARDE_DEUX = (
+        "--keep-daily",
+        "2",
+        "--keep-weekly",
+        "0",
+        "--keep-monthly",
+        "0",
+        "--keep-recent-days",
+        "0",
+    )
+
+    @staticmethod
+    def nom(*moment):
+        return retention.nom_sauvegarde("demo_db", datetime.datetime(*moment))
+
+    def poser_distants(self, *noms):
+        self.systeme.distants = sorted(
+            [n for n in noms] + [n + ".sha256" for n in noms] + ["notes.txt"]
+        )
+
+    def elaguer(self, *options):
+        return self.lancer("--copy-to", COPIE, "--copy-prune", *options)
+
+    def test_elagage_suit_la_retention_distante(self):
+        """La rétention juge les archives listées à la destination : deux
+        jours gardés, les deux plus anciennes partent, chacune avec son
+        empreinte, dans un rsync qui ne supprime qu'elles."""
+        fev = [self.nom(2031, 2, j, 3) for j in (1, 2, 3)]
+        self.poser_distants(*fev)
+        code = self.elaguer(*self.GARDE_DEUX)
+        self.assertEqual(code, ob.CODE_OK, self.sortie)
+        self.assertEqual(
+            self.systeme.elagages,
+            [[fev[0], fev[0] + ".sha256", fev[1], fev[1] + ".sha256"]],
+        )
+        copie, liste, elagage = [a["argv"] for a in self.systeme.vu["rsync"]]
+        self.assertNotIn("--delete", copie)
+        self.assertIn("--list-only", liste)
+        for drapeau in ("--delete", "--existing", "--ignore-existing"):
+            self.assertIn(drapeau, elagage)
+        self.assertIn("--max-delete=4", elagage)
+        self.assertNotIn("--delete-excluded", elagage)
+        self.assertLess(
+            elagage.index("--include=/" + fev[0]), elagage.index("--exclude=*")
+        )
+        self.assertIn(fev[2], self.systeme.distants)
+        self.assertIn("notes.txt", self.systeme.distants)
+        self.assertTrue(self.etat_base()["last_copy"]["ok"])
+
+    def test_dossier_local_reconstruit_ne_vide_pas_la_destination(self):
+        """Une seule archive locale, trois anciennes à la destination que
+        la rétention par défaut garde : rien n'est supprimé."""
+        fev = [self.nom(2031, 2, j, 3) for j in (1, 2, 3)]
+        self.poser_distants(*fev)
+        self.assertEqual(self.elaguer(), ob.CODE_OK, self.sortie)
+        self.assertEqual(self.systeme.elagages, [])
+        for nom in fev:
+            self.assertIn(nom, self.systeme.distants)
+        self.assertTrue(self.etat_base()["last_copy"]["ok"])
+
+    def test_archive_locale_jamais_supprimee_a_distance(self):
+        """Une archive plus récente du même jour, venue d'ailleurs, ferait
+        retirer la locale par la rétention distante : elle reste."""
+        locale = os.path.basename(
+            self.fabriquer(datetime.datetime(2031, 3, 9, 2))
+        )
+        self.poser_distants(self.nom(2031, 3, 9, 5))
+        self.assertEqual(self.elaguer(*self.GARDE_DEUX), ob.CODE_OK)
+        self.assertEqual(self.systeme.elagages, [])
+        self.assertIn(locale, self.systeme.distants)
+
+    def test_borne_atteinte_est_un_avertissement(self):
+        anciens = [self.nom(2031, 1, j, 3) for j in range(1, 6)]
+        self.poser_distants(*anciens)
+        code = self.elaguer(*self.GARDE_UNE, "--copy-prune-max", "2")
+        self.assertEqual(code, ob.CODE_OK, self.sortie)
+        (vises,) = self.systeme.elagages
+        self.assertEqual(
+            vises,
+            [
+                anciens[0],
+                anciens[0] + ".sha256",
+                anciens[1],
+                anciens[1] + ".sha256",
+            ],
+        )
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("--copy-prune-max", self.sortie)
+        self.assertFalse(self.etat_base()["last_copy"]["ok"])
+
+    def test_liste_ou_elagage_en_echec_est_un_avertissement(self):
+        self.poser_distants(self.nom(2031, 1, 1, 3))
+        for attribut in ("liste_code", "elagage_code"):
+            with self.subTest(attribut=attribut):
+                setattr(self.systeme, attribut, 12)
+                self.systeme.horloge += 3600
+                code = self.elaguer(*self.GARDE_UNE)
+                setattr(self.systeme, attribut, 0)
+                self.assertEqual(code, ob.CODE_OK, self.sortie)
+                self.assertIn("[ATTN]", self.sortie)
+                etat = self.etat_base()["last_copy"]
+                self.assertFalse(etat["ok"])
+                self.assertIn("12", etat["message"])
+
+    def test_code_25_sans_elagage_reste_un_echec(self):
+        self.systeme.rsync_code = 25
+        self.assertEqual(self.lancer("--copy-to", COPIE), ob.CODE_ECHEC)
+
+    def test_nom_hors_outil_refuse_a_l_elagage(self):
+        with self.assertRaises(ValueError):
+            ob.argv_elagage_copie(self.cible(), COPIE, ["notes.zip"])
+
+    def test_noms_listes(self):
+        sortie = (
+            "drwxr-xr-x          4,096 2031/03/10 03:00:00 .\n"
+            "-rw-r--r--          1,234 2031/03/10 03:00:00 a.zip\n"
+            "lrwxrwxrwx              5 2031/03/10 03:00:00 l -> a.zip\n"
+        )
+        self.assertEqual(ob.noms_listes(sortie), ["a.zip"])
+
+    def cible(self):
+        return ob.Cible(
+            base="demo_db",
+            dossier=self.dossier,
+            etat_dir=self.etat,
+            dossier_etat=os.path.join(self.etat, "demo_db"),
+            home=os.path.join(self.bac, "home_demo"),
+        )
+
+    def test_dossier_local_vide_n_elague_rien(self):
+        os.makedirs(self.dossier)
+        os.makedirs(os.path.join(self.etat, "demo_db"))
+        ecrire(os.path.join(self.dossier, "notes.zip"))
+        rapport = report.Rapport(
+            flux=io.StringIO(), erreurs=io.StringIO(), couleur=False
+        )
+        self.assertFalse(
+            ob.copier(self.cible(), self.systeme, rapport, COPIE, True)
+        )
+        self.assertNotIn("rsync", self.outils())
+        self.assertFalse(self.etat_base()["last_copy"]["ok"])
+
+    def test_dossier_local_illisible_n_elague_rien(self):
+        os.makedirs(os.path.join(self.etat, "demo_db"))
+        rapport = report.Rapport(
+            flux=io.StringIO(), erreurs=io.StringIO(), couleur=False
+        )
+        # Le dossier de la base n'existe pas : listdir lève.
+        self.assertFalse(
+            ob.copier(self.cible(), self.systeme, rapport, COPIE, True)
+        )
+        self.assertNotIn("rsync", self.outils())
+
+    def test_simulation_montre_la_commande(self):
+        code = self.lancer("--copy-to", COPIE, "--copy-prune", "--dry-run")
+        self.assertEqual(code, ob.CODE_OK, self.sortie)
+        self.assertIn("--partial-dir=.rsync-partial", self.sortie)
+        self.assertIn("rsync --list-only", self.sortie)
+        self.assertIn(
+            ob.t(
+                "then delete there the backups this retention does not keep,"
+                " except those kept locally, at most {count} per run"
+            ).format(count=20),
+            self.sortie,
+        )
+        self.assertNotIn("--delete", self.sortie)
+        self.assertNotIn("rsync", self.outils())
+
+    def test_borne_nulle_refusee(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                ob.analyser(["--copy-prune-max", "0"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_nom_de_base_invalide(self):
+        cible = self.cible()
+        cible.base = "demo;id"
+        with self.assertRaises(ValueError):
+            ob.argv_copie(cible, COPIE)
+
+
+class TestAutoBackup(Base):
+    """Les crons `auto_backup` actifs : signalés et notés pour --status."""
+
+    def test_signale_et_note(self):
+        self.systeme.auto_backup = 2
+        self.assertEqual(self.lancer(), ob.CODE_OK, self.sortie)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("auto_backup", self.sortie)
+        self.assertEqual(self.etat_base()["auto_backup_crons"]["count"], 2)
+
+    def test_aucun_cron(self):
+        self.assertEqual(self.lancer(), ob.CODE_OK)
+        self.assertNotIn("auto_backup", self.sortie)
+        self.assertEqual(self.etat_base()["auto_backup_crons"]["count"], 0)
+
+    def test_cron_sans_configuration_ne_compte_pas(self):
+        """auto_backup installe sa tâche active : sans enregistrement
+        `db.backup`, elle ne sauvegarde rien."""
+        self.systeme.auto_backup = 1
+        self.systeme.auto_backup_config = {"db.backup": 0}
+        self.assertEqual(self.lancer(), ob.CODE_OK)
+        self.assertNotIn("[ATTN]", self.sortie)
+        self.assertEqual(self.etat_base()["auto_backup_crons"]["count"], 0)
+
+    def test_auto_database_backup(self):
+        self.systeme.auto_backup = {"db.backup.configure": 3, "db.backup": 1}
+        self.systeme.auto_backup_config = {"db.backup": 0}
+        self.assertEqual(self.lancer(), ob.CODE_OK)
+        self.assertIn(ob._message_auto_backup("demo_db", 3), self.sortie)
+        self.assertEqual(self.etat_base()["auto_backup_crons"]["count"], 3)
+
+    def test_requete_en_echec_ne_note_rien(self):
+        self.systeme.auto_backup = None
+        self.assertEqual(self.lancer(), ob.CODE_OK)
+        self.assertNotIn("auto_backup_crons", self.etat_base())
+
+    def test_simulation_signale_sans_noter(self):
+        self.systeme.auto_backup = 1
+        self.assertEqual(self.lancer("--dry-run"), ob.CODE_OK)
+        self.assertIn("auto_backup", self.sortie)
+        self.assertFalse(os.path.exists(os.path.join(self.etat, "demo_db")))
 
 
 class TestEtat(Base):
@@ -820,6 +1172,210 @@ class TestEtat(Base):
         with mock.patch.object(ob.os, "listdir", side_effect=PermissionError):
             self.assertEqual(self.statut(), ob.CODE_REFUS)
         self.assertIn("sudo", self.erreurs)
+
+
+MINUTERIE = "erplibre-backup-demo_db.timer"
+SERVICE_SAUVEGARDE = "erplibre-backup-demo_db.service"
+
+
+class TestEtatComplet(TestEtat):
+    """BKP-02, 03, 04, 05, 14 et les crons auto_backup sous --status."""
+
+    def setUp(self):
+        super().setUp()
+        self.fichier = self.fabriquer(datetime.datetime(2031, 3, 10, 2))
+        self.precedent = self.fabriquer(datetime.datetime(2031, 3, 9, 2))
+        self.etat_demo = {
+            "last_success": {"time": HORLOGE - 3600, "file": self.fichier},
+            "last_restore_test": {
+                "time": HORLOGE - 86400,
+                "ok": True,
+                "file": self.fichier,
+            },
+        }
+
+    def poser_minuterie(self, execstart_argv=None, active="active"):
+        argv = execstart_argv
+        if argv is None:
+            argv = [
+                os.path.join(self.wd, "run.sh"),
+                os.path.join(self.wd, "config.conf"),
+                "--copy-to",
+                COPIE,
+            ]
+        self.systeme.unites[MINUTERIE] = {
+            "LoadState": "loaded",
+            "ActiveState": active,
+        }
+        self.systeme.unites[SERVICE_SAUVEGARDE] = {
+            "ExecStart": "{ path=x ; argv[]=" + " ".join(argv) + " ; }"
+        }
+
+    def test_archives_comptees(self):
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.poser_minuterie()
+        self.assertEqual(self.statut(), ob.CODE_OK, self.sortie)
+        self.assertIn(ob.t("Backups kept"), self.sortie)
+        # La taille des seuls zips, empreintes exclues.
+        octets = sum(
+            os.path.getsize(p) for p in (self.fichier, self.precedent)
+        )
+        self.assertIn(
+            ob.t("{count} in {path} ({size})").format(
+                count=2, path=self.dossier, size=ob.humain(octets)
+            ),
+            self.sortie,
+        )
+        self.assertNotIn("[ATTN]", self.sortie)
+
+    def test_dossier_des_archives_illisible(self):
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.poser_minuterie()
+        reel = os.listdir
+
+        def lister(chemin):
+            if chemin == self.dossier:
+                raise PermissionError(13, "refusé")
+            return reel(chemin)
+
+        with mock.patch.object(ob.os, "listdir", side_effect=lister):
+            self.assertEqual(self.statut(), ob.CODE_OK)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("sudo", self.sortie)
+
+    def test_minuterie_absente(self):
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.assertEqual(self.statut(), ob.CODE_OK)
+        self.assertIn(
+            ob.t(
+                "{database}: no scheduled backup ({timer} is not installed)."
+            ).format(database="demo_db", timer=MINUTERIE),
+            self.sortie,
+        )
+
+    def test_minuterie_inactive_et_sans_copie(self):
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.poser_minuterie(
+            [os.path.join(self.wd, "run.sh")], active="inactive"
+        )
+        self.assertEqual(self.statut(), ob.CODE_OK)
+        self.assertIn(
+            ob.t("{database}: {timer} is {state}, not active.").format(
+                database="demo_db", timer=MINUTERIE, state="inactive"
+            ),
+            self.sortie,
+        )
+        self.assertIn("--copy-to", self.sortie)
+
+    def test_programme_disparu(self):
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.poser_minuterie(["/srv/ancien/python", "outil.py", "--copy-to"])
+        self.assertEqual(self.statut(), ob.CODE_ECHEC)
+        self.assertIn("/srv/ancien/python", self.sortie)
+
+    def test_programme_hors_de_portee_du_compte(self):
+        """Un ExecStart sous un dossier personnel fermé (EACCES) n'est pas
+        « disparu » : --status sans sudo ne le juge pas."""
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.poser_minuterie()
+        reel = os.stat
+
+        def examiner(chemin, *a, **k):
+            if chemin == os.path.join(self.wd, "run.sh"):
+                raise PermissionError(13, "refusé")
+            return reel(chemin, *a, **k)
+
+        with mock.patch.object(ob.os, "stat", side_effect=examiner):
+            self.assertEqual(self.statut(), ob.CODE_OK, self.sortie)
+        self.assertNotIn("[FAIL]", self.sortie)
+        self.assertIn(os.path.join(self.wd, "run.sh"), self.sortie)
+
+    def test_systemctl_muet(self):
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.systeme.unites[MINUTERIE] = None
+        self.assertEqual(self.statut(), ob.CODE_OK)
+        self.assertNotIn("[FAIL]", self.sortie)
+
+    def test_seuil_du_calendrier_tant_que_la_minuterie_existe(self):
+        donnees = dict(self.etat_demo)
+        donnees["last_success"] = {
+            "time": HORLOGE - 10 * 3600,
+            "file": self.fichier,
+        }
+        donnees[ob.CLE_SEUIL] = 9
+        self.ecrire_etat("demo_db", donnees)
+        self.poser_minuterie()
+        self.assertEqual(self.statut(), ob.CODE_ECHEC, self.sortie)
+        # --max-age l'emporte.
+        self.assertEqual(self.statut("--max-age", "12"), ob.CODE_OK)
+        # Minuterie retirée : le seuil noté ne vaut plus, 26 h par défaut.
+        self.systeme.unites.clear()
+        self.assertEqual(self.statut(), ob.CODE_OK, self.sortie)
+
+    def test_essai_de_restauration(self):
+        self.poser_minuterie()
+        cas = (
+            ({"time": HORLOGE - 86400, "ok": True}, ob.CODE_OK, False),
+            ({"time": HORLOGE - 9 * 86400, "ok": True}, ob.CODE_OK, True),
+            (None, ob.CODE_OK, True),
+            (
+                {"time": HORLOGE - 3600, "ok": False, "message": "boum"},
+                ob.CODE_ECHEC,
+                False,
+            ),
+        )
+        for essai, code, attn in cas:
+            with self.subTest(essai=essai):
+                donnees = dict(self.etat_demo)
+                donnees.pop("last_restore_test")
+                if essai is not None:
+                    donnees["last_restore_test"] = essai
+                self.ecrire_etat("demo_db", donnees)
+                self.assertEqual(self.statut(), code, self.sortie)
+                self.assertEqual("[ATTN]" in self.sortie, attn, self.sortie)
+                self.assertEqual(
+                    "--test-restore --db demo_db" in self.sortie,
+                    code != ob.CODE_OK or attn,
+                )
+        self.assertIn("boum", self.sortie)
+
+    def test_age_max_de_l_essai(self):
+        """`--max-restore-age` déplace l'avertissement d'un essai réussi
+        mais ancien, sans jamais faire échouer --status."""
+        self.poser_minuterie()
+        donnees = dict(self.etat_demo)
+        donnees["last_restore_test"] = {
+            "time": HORLOGE - 9 * 86400,
+            "ok": True,
+        }
+        self.ecrire_etat("demo_db", donnees)
+        self.assertEqual(self.statut(), ob.CODE_OK, self.sortie)
+        self.assertIn("--test-restore --db demo_db", self.sortie)
+        self.assertEqual(self.statut("--max-restore-age", "10"), ob.CODE_OK)
+        self.assertNotIn("[ATTN]", self.sortie)
+        self.assertNotIn("--test-restore --db demo_db", self.sortie)
+        self.assertEqual(self.statut("--max-restore-age", "8"), ob.CODE_OK)
+        self.assertIn("[ATTN]", self.sortie)
+
+    def test_fuseau_affiche(self):
+        self.ecrire_etat("demo_db", self.etat_demo)
+        self.poser_minuterie()
+        self.statut()
+        self.assertIn(ob.horodatage(HORLOGE - 3600), self.sortie)
+        self.assertRegex(ob.horodatage(HORLOGE), r" [+-]\d{4}")
+
+    def test_crons_auto_backup_notes(self):
+        donnees = dict(self.etat_demo)
+        donnees["auto_backup_crons"] = {"time": HORLOGE, "count": 1}
+        self.ecrire_etat("demo_db", donnees)
+        self.poser_minuterie()
+        self.assertEqual(self.statut(), ob.CODE_OK)
+        self.assertIn("auto_backup", self.sortie)
+        self.assertIn("[ATTN]", self.sortie)
+
+    def test_en_tete_de_la_sauvegarde_porte_le_fuseau(self):
+        self.lancer("--dry-run")
+        self.assertIn(ob.horodatage(HORLOGE), self.sortie)
 
 
 class TestRestaurationEssai(Base):
@@ -942,6 +1498,229 @@ class TestRestaurationEssai(Base):
 
     def test_aucune_sauvegarde(self):
         self.assertEqual(self.essai(), ob.CODE_ECHEC)
+        self.assertNotIn("createdb", self.outils())
+
+
+class TestEssaiNote(Base):
+    """BKP-02 : l'issue de --test-restore dans l'état, jamais en
+    simulation ; M08 : les marqueurs checklist/ ne sont pas des pièces
+    jointes."""
+
+    def setUp(self):
+        super().setUp()
+        os.makedirs(os.path.join(self.etat, "demo_db"))
+
+    def test_reussite_notee(self):
+        chemin = self.fabriquer(datetime.datetime(2031, 3, 9, 3))
+        self.systeme.controle["stored_files"] = 2
+        self.assertEqual(self.lancer("--test-restore"), ob.CODE_OK)
+        essai = self.etat_base()["last_restore_test"]
+        self.assertEqual(
+            essai,
+            {"time": int(HORLOGE), "ok": True, "file": chemin, "message": ""},
+        )
+
+    def test_echec_note_avec_son_message(self):
+        self.fabriquer(datetime.datetime(2031, 3, 9, 3))
+        self.systeme.controle["tables"] = 0
+        self.assertEqual(self.lancer("--test-restore"), ob.CODE_ECHEC)
+        essai = self.etat_base()["last_restore_test"]
+        self.assertFalse(essai["ok"])
+        self.assertEqual(
+            essai["message"], ob.t("The restored database has no table.")
+        )
+
+    def test_fichier_hors_de_la_chaine_non_note(self):
+        """Un essai sur un fichier qui n'est pas une sauvegarde de la base
+        dans son dossier ne compte pas pour --status."""
+        chemin = self.fabriquer(datetime.datetime(2031, 3, 9, 3))
+        ailleurs = os.path.join(self.bac, "rangees")
+        os.makedirs(ailleurs)
+        copie = os.path.join(ailleurs, os.path.basename(chemin))
+        shutil.copy(chemin, copie)
+        renomme = os.path.join(self.dossier, "demo_db_ancienne.zip")
+        shutil.copy(chemin, renomme)
+        for fichier in (copie, renomme):
+            with self.subTest(fichier=fichier):
+                code = self.lancer("--test-restore", "--file", fichier)
+                self.assertEqual(code, ob.CODE_OK, self.sortie)
+                self.assertFalse(
+                    os.path.exists(
+                        os.path.join(self.etat, "demo_db", "state.json")
+                    )
+                )
+                self.assertIn(
+                    ob.t(
+                        "{path} is not a backup of {database} in {folder}:"
+                        " --status does not count this test restore."
+                    ).format(
+                        path=fichier, database="demo_db", folder=self.dossier
+                    ),
+                    self.sortie,
+                )
+        self.assertEqual(self.lancer("--test-restore", "--file", chemin), 0)
+        self.assertEqual(self.etat_base()["last_restore_test"]["file"], chemin)
+
+    def test_simulation_ne_note_rien(self):
+        self.fabriquer(datetime.datetime(2031, 3, 9, 3))
+        self.assertEqual(self.lancer("--test-restore", "--dry-run"), 0)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.etat, "demo_db", "state.json"))
+        )
+
+    def test_marqueurs_et_piece_manquante(self):
+        """Deux pièces référencées, une seule dans l'archive, plus deux
+        marqueurs : le manque se voit malgré les marqueurs."""
+        self.fabriquer(
+            datetime.datetime(2031, 3, 9, 3),
+            membres=[
+                ("filestore/ab/f0", "a"),
+                ("filestore/checklist/ab/f0", ""),
+                ("filestore/checklist/ab/f1", ""),
+            ],
+        )
+        self.systeme.controle["stored_files"] = 2
+        self.assertEqual(self.lancer("--test-restore"), ob.CODE_OK)
+        self.assertIn(
+            ob.t(
+                "The database references {expected} stored files, the"
+                " backup holds {count}."
+            ).format(expected=2, count=1),
+            self.sortie,
+        )
+
+    def test_marqueurs_seuls_sans_manque(self):
+        self.fabriquer(
+            datetime.datetime(2031, 3, 9, 3),
+            membres=[
+                ("filestore/ab/f0", "a"),
+                ("filestore/ab/f1", "b"),
+                ("filestore/checklist/ab/f1", ""),
+            ],
+        )
+        self.systeme.controle["stored_files"] = 2
+        self.assertEqual(self.lancer("--test-restore"), ob.CODE_OK)
+        self.assertNotIn("[ATTN]", self.sortie)
+        self.assertTrue(ob.est_marqueur_gc("filestore/checklist/ab/f1"))
+        self.assertFalse(ob.est_marqueur_gc("filestore/ab/checklist"))
+
+
+def fabriquer_tar_xz(chemin, membres, liens=(), sidecar=True):
+    """Un `.tar.xz` comme l'outil antérieur : dump.sql, manifest.json et
+    filestore/ à la racine, dossiers compris ; `liens` ajoute des liens
+    symboliques (nom, cible)."""
+    import tarfile
+
+    manifeste = {
+        "odoo_dump": "1",
+        "db_name": "demo_db",
+        "major_version": "18.0",
+        "version": "18.0",
+        "modules": FAITS["modules"],
+    }
+    with tarfile.open(chemin, "w:xz") as tar:
+
+        def ajouter(nom, contenu):
+            donnees = contenu.encode() if isinstance(contenu, str) else contenu
+            info = tarfile.TarInfo(nom)
+            info.size = len(donnees)
+            tar.addfile(info, io.BytesIO(donnees))
+
+        ajouter("dump.sql", DUMP)
+        ajouter("manifest.json", json.dumps(manifeste))
+        for dossier in ("filestore", "filestore/ab"):
+            info = tarfile.TarInfo(dossier)
+            info.type = tarfile.DIRTYPE
+            tar.addfile(info)
+        for nom, contenu in membres:
+            ajouter(nom, contenu)
+        for nom, cible in liens:
+            info = tarfile.TarInfo(nom)
+            info.type = tarfile.SYMTYPE
+            info.linkname = cible
+            tar.addfile(info)
+    if sidecar:
+        somme = hashlib.sha256(open(chemin, "rb").read()).hexdigest()
+        ecrire(chemin + ".sha256", f"{somme}  {os.path.basename(chemin)}\n")
+    return chemin
+
+
+class TestAncienTarXz(Base):
+    """D12 : un .tar.xz de l'outil antérieur se restaure par --file, avec
+    les mêmes contrôles que le zip."""
+
+    def setUp(self):
+        super().setUp()
+        self.ancien = os.path.join(
+            self.bac, "anciennes", "demo_db_2031-03-09_030000.tar.xz"
+        )
+        os.makedirs(os.path.dirname(self.ancien))
+
+    def test_essai(self):
+        fabriquer_tar_xz(
+            self.ancien, [("filestore/ab/f0", "a"), ("filestore/ab/f1", "b")]
+        )
+        self.systeme.controle["stored_files"] = 2
+        code = self.lancer("--test-restore", "--file", self.ancien)
+        self.assertEqual(code, ob.CODE_OK, self.sortie + self.erreurs)
+        self.assertEqual(self.systeme.vu["charger"]["contenu"], DUMP)
+        self.assertIn(ob.t("Checksum verified."), self.sortie)
+        self.assertNotIn("[ATTN]", self.sortie)
+
+    def test_restauration_dans_une_nouvelle_base(self):
+        fabriquer_tar_xz(self.ancien, [("./filestore/ab/f0", "a")])
+        code = self.lancer(
+            "--restore", "--file", self.ancien, "--into", "copie_db"
+        )
+        self.assertEqual(code, ob.CODE_OK, self.sortie + self.erreurs)
+        fs = os.path.join(self.data, "filestore", "copie_db")
+        self.assertEqual(open(os.path.join(fs, "ab", "f0")).read(), "a")
+        self.assertIn("copie_db", self.systeme.bases)
+
+    def test_base_existante_refusee(self):
+        fabriquer_tar_xz(self.ancien, [("filestore/ab/f0", "a")])
+        code = self.lancer(
+            "--restore", "--file", self.ancien, "--into", "demo_db"
+        )
+        self.assertEqual(code, ob.CODE_REFUS)
+        self.assertNotIn("createdb", self.outils())
+
+    def test_chemins_et_liens_refuses(self):
+        cas = (
+            ([("../../etc/x", "x")], ()),
+            ([("/abs", "x")], ()),
+            ([("filestore/ab/f0", "a")], [("filestore/ab/l", "/etc/passwd")]),
+            ([("filestore/ab/f0", "a"), ("filestore/ab/f0", "b")], ()),
+        )
+        for membres, liens in cas:
+            with self.subTest(membres=membres, liens=liens):
+                if os.path.exists(self.ancien):
+                    os.remove(self.ancien)
+                fabriquer_tar_xz(self.ancien, membres, liens)
+                code = self.lancer(
+                    "--restore", "--file", self.ancien, "--into", "copie_db"
+                )
+                self.assertEqual(code, ob.CODE_REFUS, self.sortie)
+                self.assertNotIn("createdb", self.outils())
+        self.assertEqual(
+            os.listdir(os.path.join(self.data, "filestore")), ["demo_db"]
+        )
+
+    def test_empreinte_fausse(self):
+        fabriquer_tar_xz(self.ancien, [("filestore/ab/f0", "a")])
+        ecrire(self.ancien + ".sha256", "0" * 64 + "  x\n")
+        code = self.lancer("--test-restore", "--file", self.ancien)
+        self.assertEqual(code, ob.CODE_ECHEC)
+        self.assertNotIn("createdb", self.outils())
+
+    def test_tronque(self):
+        fabriquer_tar_xz(
+            self.ancien, [("filestore/ab/f0", "a" * 5000)], sidecar=False
+        )
+        with open(self.ancien, "r+b") as f:
+            f.truncate(os.path.getsize(self.ancien) // 2)
+        code = self.lancer("--test-restore", "--file", self.ancien)
+        self.assertEqual(code, ob.CODE_ECHEC, self.sortie)
         self.assertNotIn("createdb", self.outils())
 
 
@@ -1798,7 +2577,7 @@ class TestProfil(Base):
         self.assertIn("autre_db", self.sortie)
         self.assertIn("--max-age 100", self.sortie)
         self.assertIn("[ATTN]", self.sortie)
-        self.assertEqual(self.systeme.appels, [])
+        self.assertMinuteriesSeulement(self.systeme.appels)
 
     def test_status_avec_profile_explicite(self):
         chemin = self.profil({"backup": {"state_dir": self.etat}})
@@ -1817,7 +2596,7 @@ class TestProfil(Base):
             ["--status", "--profile", chemin], self.systeme, rapport
         )
         self.assertEqual(code, ob.CODE_OK)
-        self.assertEqual(self.systeme.appels, [])
+        self.assertMinuteriesSeulement(self.systeme.appels)
 
     def test_profile_explicite_pose_le_service(self):
         ailleurs = os.path.join(self.bac, "ailleurs")

@@ -205,16 +205,33 @@ n'a pas écrit, et `--uninstall` garde les sauvegardes :
 ```bash
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --dry-run
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups
+sudo ./script/systemd/install_backup_timer.py --db DATABASE --copy-to backup@backup.example.org:/srv/backups --copy-prune
+sudo ./script/database/odoo_backup.py --test-restore --db DATABASE --file /var/backups/odoo/DATABASE/DATABASE_2031-03-09_030000.tar.xz
 systemctl list-timers 'erplibre-backup-*'
 sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
 ```
 
-`--copy-to` ajoute une copie hors site (rsync sur ssh avec la clé du
-compte ; le côté distant n'a pas de rétention et grossit). Surveiller
-`--status` : il sort en code 1 quand le dernier succès date de plus de
-`--max-age` heures (26). Tout cela est aussi dans `make todo` :
-`TODO › Exécuter › Production › Sauvegardes` et `› Minuteries systemd`.
-Détails, règles de rétention et codes de sortie :
+`--copy-to` ajoute une copie hors site, après la rétention : rsync sur ssh
+avec la clé du compte, qui renvoie aussi une copie manquée ou tronquée
+avant, et ne laisse jamais un fichier partiel sous un nom final. Sans
+`--copy-prune`, le côté distant n'a pas de rétention et grossit ; avec, la
+même rétention s'applique aux sauvegardes listées à la destination, jamais
+à une encore présente en local, au plus `--copy-prune-max` par passage, et
+rien d'autre : un serveur reconstruit ou une nouvelle destination ne vide
+pas l'historique distant. Surveiller `--status` : il sort en code 1 quand
+le dernier succès date de plus que `--max-age` (ou le `max_age` du profil)
+s'il est donné, sinon le seuil déduit du calendrier tant que la minuterie
+est installée, sinon 26 h, ou quand le dernier essai de restauration a
+échoué ; il signale une minuterie absente ou arrêtée, un service de
+sauvegarde sans `--copy-to`, des tâches `auto_backup` actives qui ont une
+configuration de sauvegarde, et un essai de restauration de plus de 7
+jours. Les archives de l'ancien
+outil de sauvegarde (`.zip` ou `.tar.xz`, nommées
+`BASE_AAAA-MM-JJ_HHMMSS`) ne sont ni élaguées ni vues par `--status` : les
+essayer ou les restaurer par `--file`, puis les supprimer à la main. Tout
+cela est aussi dans `make todo` : `TODO › Exécuter › Production ›
+Sauvegardes` et `› Minuteries systemd`, qui demande la copie hors site et
+le calendrier. Détails, règles de rétention et codes de sortie :
 [script/database/README.fr.md](../script/database/README.fr.md).
 
 ### Réglages par instance (profil)
@@ -269,7 +286,8 @@ TODO › Exécuter › Production
                             PostgreSQL), liste des applications, archive zip,
                             retour git
 [3] Sauvegardes             maintenant, état, restauration d'essai,
-                            restauration dans une nouvelle base
+                            restauration dans une nouvelle base,
+                            essai d'un fichier (.zip ou ancien .tar.xz)
 [4] Journal et courriels    erreurs d'Odoo (depuis la dernière lecture,
                             dernières heures, par heure), courriels en échec
                             (liste, renvoi)
