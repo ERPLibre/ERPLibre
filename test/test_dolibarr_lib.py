@@ -188,145 +188,74 @@ class TestInstallLabel(unittest.TestCase):
 
 
 class TestInstanceName(unittest.TestCase):
-    # Le nom devient nom de base, de pool php-fpm, d'unité systemd, de
-    # répertoire et de compte système « dolibarr_<nom> », que useradd borne
-    # à 32 caractères : tout ce qui casse l'un de ces usages est refusé.
-    ACCEPTES = ("dolibarr", "doli_2", "ab", "a" * 23)
-    REFUSES = (
-        "",
-        "a",  # trop court pour se distinguer
-        "a" * 24,  # « dolibarr_ » + 24 = 33 : refusé par useradd
-        "Dolibarr",  # majuscule
-        "2dolibarr",  # commence par un chiffre
-        "doli-barr",  # tiret : invalide en nom de base MariaDB sans quotes
-        "doli barr",
-        "../etc",
-        "doli.barr",
-    )
+    """La validation vient de script/erp_common/instances, liée à Dolibarr."""
 
-    def test_accepted_names(self):
-        for name in self.ACCEPTES:
+    def test_the_dolibarr_account_bounds_the_name_to_23(self):
+        # « dolibarr_ » + 23 = 32, la borne de useradd ; un 24e refusé.
+        self.assertTrue(lib_dolibarr.valid_instance_name("a" * 23))
+        self.assertFalse(lib_dolibarr.valid_instance_name("a" * 24))
+
+    def test_names_are_checked_by_the_shared_rule(self):
+        from script.erp_common import instances
+
+        for name in ("dolibarr", "doli_2", "", "Dolibarr", "doli-barr"):
             with self.subTest(name=name):
-                self.assertTrue(lib_dolibarr.valid_instance_name(name))
-
-    def test_refused_names(self):
-        for name in self.REFUSES:
-            with self.subTest(name=name):
-                self.assertFalse(lib_dolibarr.valid_instance_name(name))
-
-
-class TestLogin(unittest.TestCase):
-    # L'identifiant part dans argv et dans la base de Dolibarr : ni espace
-    # ni métacaractère, et pas d'option déguisée en tête (« -x »).
-    ACCEPTES = ("admin", "jean.dupont", "ops@example.org", "a", "x_1-2")
-    REFUSES = ("", " admin", "adm in", "-x", "x;id", "a" * 51, "é")
-
-    def test_accepted(self):
-        for login in self.ACCEPTES:
-            with self.subTest(login=login):
-                self.assertTrue(lib_dolibarr.valid_login(login))
-
-    def test_refused(self):
-        for login in self.REFUSES:
-            with self.subTest(login=login):
-                self.assertFalse(lib_dolibarr.valid_login(login))
-
-
-class TestParsePort(unittest.TestCase):
-    CAS = (
-        ("", 8080, 8080),  # vide : le défaut
-        ("  9000 ", 8080, 9000),
-        ("1024", 8080, 1024),
-        ("65535", 8080, 65535),
-        ("1023", 8080, None),  # privilégié : un utilisateur ne l'ouvre pas
-        ("65536", 8080, None),
-        ("80a", 8080, None),
-        ("-1", 8080, None),
-    )
-
-    def test_cases(self):
-        for texte, defaut, attendu in self.CAS:
-            with self.subTest(texte=texte):
                 self.assertEqual(
-                    lib_dolibarr.parse_port(texte, defaut), attendu
+                    lib_dolibarr.valid_instance_name(name),
+                    instances.valid_instance_name("dolibarr", name),
                 )
 
 
+class TestSharedHelpers(unittest.TestCase):
+    def test_the_input_and_support_helpers_are_the_shared_ones(self):
+        from script.erp_common import instances, support
+
+        for module, noms in (
+            (instances, ("free_port", "parse_port", "valid_login")),
+            (
+                support,
+                (
+                    "LINUX_FAMILIES",
+                    "NO_DESKTOP",
+                    "NO_ENGINE",
+                    "NO_HOMEBREW",
+                    "NO_NATIVE",
+                    "NO_SYSTEMD",
+                    "container_support",
+                ),
+            ),
+        ):
+            for nom in noms:
+                with self.subTest(nom=nom):
+                    self.assertIs(
+                        getattr(lib_dolibarr, nom), getattr(module, nom)
+                    )
+        self.assertIs(lib_dolibarr.RegistryError, instances.RegistryError)
+
+
 class TestNativeSupport(unittest.TestCase):
-    # (système, famille, nixos, systemd, mode) -> (proposé, raison)
-    CAS = (
-        (("Linux", "apt-get", False, True, "dev"), (True, "")),
-        (("Linux", "zypper", False, True, "prod"), (True, "")),
-        (("Linux", "dnf", False, False, "dev"), (True, "")),
-        (
-            ("Linux", "pacman", False, False, "prod"),
-            (False, "native production needs systemd"),
-        ),
-        (
-            ("Linux", None, False, True, "dev"),
-            (False, "unsupported system for a native install"),
-        ),
-        (
-            ("Linux", None, True, True, "dev"),
+    def test_nixos_is_refused_with_the_dolibarr_declaration(self):
+        self.assertEqual(
+            lib_dolibarr.native_support("Linux", None, True, True, "dev"),
             (
                 False,
                 "on NixOS, declare services.dolibarr in conf/nixos/erplibre.nix",
             ),
-        ),
-        (("Darwin", "brew", False, False, "dev"), (True, "")),
-        (
-            ("Darwin", "brew", False, False, "prod"),
-            (False, "native production needs systemd"),
-        ),
-        (
+        )
+
+    def test_other_systems_follow_the_shared_rule(self):
+        from script.erp_common import support
+
+        for args in (
+            ("Linux", "apt-get", False, True, "dev"),
+            ("Linux", "pacman", False, False, "prod"),
             ("Darwin", None, False, False, "dev"),
-            (False, "a native install on macOS needs Homebrew"),
-        ),
-        (
             ("Windows", None, False, False, "dev"),
-            (False, "unsupported system for a native install"),
-        ),
-    )
-
-    def test_matrix(self):
-        for args, attendu in self.CAS:
-            with self.subTest(args=args):
-                self.assertEqual(lib_dolibarr.native_support(*args), attendu)
-
-
-class TestContainerSupport(unittest.TestCase):
-    # (système, famille, moteur utilisable) -> (proposé, raison)
-    CAS = (
-        # Un moteur qui répond suffit, où que l'on soit.
-        (("Darwin", None, True), (True, "")),
-        # Sans moteur : proposé là où install_container.sh sait l'installer.
-        (("Linux", "apt-get", False), (True, "")),
-        (("Linux", "pacman", False), (True, "")),
-        (
-            ("Linux", None, False),
-            (False, "no container engine, and none can be installed here"),
-        ),
-        (
-            ("Darwin", "brew", False),
-            (
-                False,
-                "install Docker Desktop first",
-            ),
-        ),
-        (
-            ("Windows", None, False),
-            (
-                False,
-                "install Docker Desktop first",
-            ),
-        ),
-    )
-
-    def test_matrix(self):
-        for args, attendu in self.CAS:
+        ):
             with self.subTest(args=args):
                 self.assertEqual(
-                    lib_dolibarr.container_support(*args), attendu
+                    lib_dolibarr.native_support(*args),
+                    support.native_support(*args, lib_dolibarr.NIXOS_DECLARE),
                 )
 
 
@@ -472,23 +401,9 @@ class TestInstallArgv(unittest.TestCase):
             )
 
 
-class TestFreePort(unittest.TestCase):
-    def test_first_free_port_from_the_start(self):
-        occupes = {8080, 8081}
-        self.assertEqual(
-            lib_dolibarr.free_port(8080, lambda p: p not in occupes), 8082
-        )
-
-    def test_the_start_itself_when_free(self):
-        self.assertEqual(lib_dolibarr.free_port(8080, lambda p: True), 8080)
-
-    def test_none_when_every_port_is_taken(self):
-        self.assertIsNone(
-            lib_dolibarr.free_port(8080, lambda p: False, limit=5)
-        )
-
-
 class TestRegistry(unittest.TestCase):
+    """Le registre vient de script/erp_common/instances, sous dolibarr/."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -500,19 +415,20 @@ class TestRegistry(unittest.TestCase):
         with open(chemin, "w", encoding="utf-8") as f:
             f.write(contenu)
 
-    def test_no_registry_means_no_instance(self):
-        self.assertEqual(lib_dolibarr.load_registry(self.root), {})
+    def test_the_registry_is_private_dolibarr_instances_json(self):
+        self.assertEqual(
+            lib_dolibarr.REGISTRY,
+            os.path.join("private", "dolibarr", "instances.json"),
+        )
 
-    def test_instances_are_keyed_by_name(self):
+    def test_instances_are_read_from_the_dolibarr_registry(self):
         self._ecrire(json.dumps({"instances": {"dolibarr": {"mode": "dev"}}}))
         self.assertEqual(
             lib_dolibarr.load_registry(self.root),
             {"dolibarr": {"mode": "dev"}},
         )
 
-    def test_an_unreadable_registry_is_an_error_not_an_empty_one(self):
-        # Le lire vide ferait croire qu'aucune instance n'existe, et laisserait
-        # installer par-dessus une instance vivante.
+    def test_an_unreadable_registry_raises_the_shared_error(self):
         self._ecrire("{ pas du json")
         with self.assertRaises(lib_dolibarr.RegistryError):
             lib_dolibarr.load_registry(self.root)

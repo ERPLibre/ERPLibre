@@ -20,6 +20,27 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
+from script.erp_common import instances as common_instances
+from script.erp_common import support as common_support
+from script.erp_common.instances import (  # noqa: F401
+    RegistryError,
+    free_port,
+    parse_port,
+    valid_login,
+)
+from script.erp_common.support import (  # noqa: F401
+    LINUX_FAMILIES,
+    NO_DESKTOP,
+    NO_ENGINE,
+    NO_HOMEBREW,
+    NO_NATIVE,
+    NO_SYSTEMD,
+    container_support,
+)
+
+# Nom d'ERP que les fonctions de script/erp_common reçoivent d'ici.
+ERP = "dolibarr"
+
 PIN_JSON = os.path.join("conf", "supported_version_dolibarr.json")
 PIN_MANIFEST = os.path.join("manifest", "git_manifest_dolibarr.xml")
 
@@ -37,13 +58,6 @@ PIN_KEYS = (
 )
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
-
-# Nom de base MariaDB/PostgreSQL, de pool php-fpm, d'unité systemd, de
-# répertoire et de compte système « dolibarr_<nom> » à la fois : minuscules,
-# chiffres et _, une lettre en tête, 2 à 23 caractères, soit 32 préfixe
-# compris : la borne portable. useradd refuse un 33e caractère jusqu'à
-# shadow 4.13 ; les versions suivantes acceptent jusqu'à 255.
-_INSTANCE = re.compile(r"^[a-z][a-z0-9_]{1,22}$")
 
 
 class PinError(Exception):
@@ -111,96 +125,30 @@ def install_label(key, pin, installed):
 
 
 def valid_instance_name(name):
-    """Vrai si `name` peut nommer une base, un pool, une unité et un dossier."""
-    return bool(_INSTANCE.match(name or ""))
+    """Vrai si `name` peut nommer une base, un pool, une unité et un dossier.
 
-
-# Identifiant de l'administrateur : il part dans argv et dans la base de
-# Dolibarr. ASCII, un premier caractère alphanumérique (pas d'option déguisée
-# comme « -x »), 50 caractères au plus.
-_LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,49}$")
-
-
-def valid_login(login):
-    """Vrai si `login` peut servir d'identifiant d'administrateur."""
-    return bool(_LOGIN.match(login or ""))
-
-
-def parse_port(text, default):
-    """Port saisi (vide = `default`), ou None s'il est invalide.
-
-    Sous 1024, un port est privilégié : le compte de l'utilisateur ne
-    l'ouvre pas, et la production passe de toute façon par nginx.
+    Le compte système « dolibarr_<nom> » borne le nom à 23 caractères.
     """
-    text = (text or "").strip()
-    if not text:
-        return default
-    if not text.isdigit():
-        return None
-    port = int(text)
-    if 1024 <= port <= 65535:
-        return port
-    return None
+    return common_instances.valid_instance_name(ERP, name)
 
 
-# Familles dont script/todo/todo_install.py monte la commande de paquets, et
-# que script/install/install_container.sh sait aussi servir.
-LINUX_FAMILIES = ("apt-get", "dnf", "pacman", "zypper")
-
-# Les raisons rendues sont des CLÉS i18n (texte anglais), des fragments que
-# l'appelant traduit par t() et place dans « Native is not offered here: %s »
-# ou « Docker / Podman is not offered here: %s ».
-NO_SYSTEMD = "native production needs systemd"
-NO_NATIVE = "unsupported system for a native install"
+# Clé i18n de la raison rendue sous NixOS, où Dolibarr se DÉCLARE
+# (services.dolibarr) au lieu de s'installer par script.
 NIXOS_DECLARE = (
     "on NixOS, declare services.dolibarr in conf/nixos/erplibre.nix"
 )
-NO_HOMEBREW = "a native install on macOS needs Homebrew"
-NO_ENGINE = "no container engine, and none can be installed here"
-NO_DESKTOP = "install Docker Desktop first"
 
 
 def native_support(system, family, is_nixos, has_systemd, mode):
     """(True, "") si l'installation native est proposée, sinon (False, raison).
 
-    `system` est platform.system() ; `family` la famille de paquets (celle de
-    todo_install.family(), ou « brew » sous macOS quand Homebrew est là).
-    NixOS se DÉCLARE (services.dolibarr) au lieu de s'installer par script.
-    La production native exige systemd : pool php-fpm, vhost et minuterie
-    cron en dépendent, et macOS n'en a pas.
+    common_support.native_support avec la raison NixOS de Dolibarr. La
+    production native exige systemd : pool php-fpm, vhost et minuterie cron
+    en dépendent.
     """
-    if system == "Darwin":
-        if family != "brew":
-            return False, NO_HOMEBREW
-        if mode == "prod":
-            return False, NO_SYSTEMD
-        return True, ""
-    if system != "Linux":
-        return False, NO_NATIVE
-    if is_nixos:
-        return False, NIXOS_DECLARE
-    if family not in LINUX_FAMILIES:
-        return False, NO_NATIVE
-    if mode == "prod" and not has_systemd:
-        return False, NO_SYSTEMD
-    return True, ""
-
-
-def container_support(system, family, engine_usable):
-    """(True, "") si la voie conteneur est proposée, sinon (False, raison).
-
-    Un moteur qui répond (Docker ou Podman, jugé par container_runtime)
-    suffit partout. Sans lui, la voie reste proposée là où
-    install_container.sh sait installer un moteur : une famille Linux
-    connue. Docker Desktop, lui, ne s'installe pas par script.
-    """
-    if engine_usable:
-        return True, ""
-    if system == "Linux":
-        if family in LINUX_FAMILIES:
-            return True, ""
-        return False, NO_ENGINE
-    return False, NO_DESKTOP
+    return common_support.native_support(
+        system, family, is_nixos, has_systemd, mode, NIXOS_DECLARE
+    )
 
 
 # L'interpréteur des scripts d'outillage, relatif à la racine du dépôt : le
@@ -256,40 +204,13 @@ def install_argv(choice):
     return argv, env
 
 
-def free_port(start, is_free, limit=100):
-    """Premier port >= `start` que `is_free(port)` déclare libre, ou None."""
-    for port in range(start, start + limit):
-        if is_free(port):
-            return port
-    return None
-
-
-# Registre des instances : chemins, hôtes et URL d'une production sont des
-# données de client, d'où private/, seul endroit du dépôt permis pour elles.
-# Il décrit une machine : private/.gitignore l'exclut du dépôt versionné.
-REGISTRY = os.path.join("private", "dolibarr", "instances.json")
-
-
-class RegistryError(Exception):
-    """Le registre existe mais ne se lit pas."""
+# Registre des instances, relatif à la racine : private/dolibarr/.
+REGISTRY = common_instances.registry_path(ERP)
 
 
 def load_registry(root):
     """Instances connues, {nom: fiche}. {} s'il n'y a pas de registre.
 
-    Un registre illisible LÈVE : le rendre vide ferait croire qu'aucune
-    instance n'existe, et laisserait installer par-dessus une instance
-    vivante.
+    Un registre illisible lève RegistryError (common_instances.load_registry).
     """
-    path = os.path.join(root, REGISTRY)
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as e:
-        raise RegistryError(f"{REGISTRY}: {e}") from e
-    instances = data.get("instances") if isinstance(data, dict) else None
-    if not isinstance(instances, dict):
-        raise RegistryError(f"{REGISTRY}: no 'instances' object")
-    return instances
+    return common_instances.load_registry(ERP, root)
