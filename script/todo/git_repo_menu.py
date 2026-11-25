@@ -45,6 +45,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git import (  # noqa: E402
+    forgejo_client,
     git_freeze_diff,
     git_freeze_manifest,
     manifest_freeze,
@@ -62,6 +63,9 @@ RACINE = new_path
 REPO_BIN = ".venv.erplibre/bin/repo"
 PYTHON_ERPLIBRE = "./.venv.erplibre/bin/python"
 FREEZE_SCRIPT = "script/git/git_freeze_manifest.py"
+# Le groupe du coffre KeePass où se rangent les jetons des forges Forgejo,
+# une entrée par hôte.
+GROUPE_FORGE = "ERPLibre Forgejo"
 # Le manifeste que git-repo lit, produit par la fusion des fichiers de
 # `manifest/`. Ses « revision » disent ce que le checkout suit réellement.
 MANIFESTE_LOCAL = os.path.join(
@@ -1371,6 +1375,7 @@ class GitRepoMenuMixin:
         if choix == "n":
             nom, exclus = self._git_repo_nouveau_remote(projets)
             if not nom:
+                print(f"↩️  {t('Cancelled: nothing was pushed.')}")
                 return 0
         elif choix.isdigit() and 1 <= int(choix) <= len(noms):
             nom = noms[int(choix) - 1]
@@ -1484,7 +1489,224 @@ class GitRepoMenuMixin:
                     f"   ⚠  {p['affiche']}: {etat} {en_place or ''}".rstrip()
                 )
         print("   " + ", ".join(f"{n} {e}" for e, n in sorted(etats.items())))
+        retenus = [(p, u) for p, u in poses if p["chemin"] not in exclus]
+        if retenus and not self._git_repo_preparer_forge(base, retenus):
+            return None, ()
         return nom, exclus
+
+    # ── Forge Forgejo ────────────────────────────────────────────────
+
+    def _git_forge_titre(self, hote):
+        return f"Forgejo token {hote}"
+
+    def _git_forge_jeton_du_coffre(self, hote):
+        """Le jeton de la forge `hote` (« hôte[:port] ») rangé dans le
+        coffre KeePass, ou "" sans coffre ou sans entrée."""
+        coffre = getattr(self, "_git_coffre", None)
+        kp = coffre() if coffre else None
+        if not kp:
+            return ""
+        entree = kp.find_entries_by_title(
+            self._git_forge_titre(hote), first=True
+        )
+        return getattr(entree, "password", "") or ""
+
+    def _git_forge_ranger_jeton(self, hote, jeton):
+        """Range le jeton de `hote` dans le coffre, entrée créée ou
+        remplacée, groupe GROUPE_FORGE. Rend False sans coffre configuré."""
+        coffre = getattr(self, "_git_coffre", None)
+        kp = coffre() if coffre else None
+        if not kp:
+            return False
+        titre = self._git_forge_titre(hote)
+        entree = kp.find_entries_by_title(titre, first=True)
+        if entree is None:
+            groupe = next(
+                (g for g in kp.root_group.subgroups if g.name == GROUPE_FORGE),
+                None,
+            ) or kp.add_group(kp.root_group, GROUPE_FORGE)
+            kp.add_entry(groupe, titre, "", jeton)
+        else:
+            entree.password = jeton
+        kp.save()
+        return True
+
+    def _git_forge_client(self, base):
+        """Le client Forgejo de la forge de `base`, vérifié, ou None.
+
+        L'URL web se déduit d'une base http(s) ; une base SSH la fait
+        demander. Une URL http:// hors de cette machine demande
+        confirmation, non par défaut : le jeton y passerait en clair. Le
+        jeton vient de EL_FORGEJO_TOKEN ou du coffre (une entrée par forge,
+        hôte et port), sinon il se saisit sans écho. La forge doit répondre
+        à « version » puis reconnaître le jeton ; un jeton refusé (401 ou
+        403) peut se ressaisir, et le jeton saisi peut être rangé dans le
+        coffre, en remplaçant l'entrée périmée.
+        """
+        import getpass
+
+        web = forgejo_client.base_web(base)
+        if not web:
+            web = forgejo_client.base_web(
+                click.prompt(
+                    f"💬 {t('Web URL of the forge (https://…)')}"
+                ).strip()
+            )
+            if not web:
+                print(f"⚠  {t('Not a forge URL.')}")
+                return None
+        if web.startswith("http://") and not forgejo_client.est_locale(web):
+            if not click.confirm(
+                f"💬 {t('Plain HTTP: send the token in clear to')}"
+                f" {forgejo_client.cle_forge(web)}?",
+                default=False,
+            ):
+                return None
+        forge = forgejo_client.cle_forge(web)
+        jeton, source = forgejo_client.jeton(
+            forge, coffre=self._git_forge_jeton_du_coffre
+        )
+        print(f"   {t('Forge:')} {web}")
+        while True:
+            if not jeton:
+                print(
+                    f"   {t('A Forgejo access token is needed, with the write:organization, write:repository and write:user scopes.')}"
+                )
+                jeton = getpass.getpass(
+                    t("Paste the token (hidden, Enter to cancel): ")
+                ).strip()
+                if not jeton:
+                    return None
+                source = "saisi"
+            try:
+                client = forgejo_client.ClientForgejo(web, jeton_api=jeton)
+                version = client.version()
+                compte = client.identite()
+                break
+            except forgejo_client.ErreurForgejo as exc:
+                print(f"❌ Forgejo : {exc}")
+                refuse = (
+                    exc.statut in (401, 403)
+                    or exc.statut is None
+                    and ("token" in str(exc))
+                )
+                if not refuse or not click.confirm(
+                    f"💬 {t('The token was refused')} ({source})."
+                    f" {t('Type another one?')}",
+                    default=True,
+                ):
+                    return None
+                jeton = ""
+        print(f"   Forgejo {version} · {compte}")
+        if source == "saisi" and click.confirm(
+            f"💬 {t('Store the token in the ERPLibre KeePass vault?')}",
+            default=True,
+        ):
+            if self._git_forge_ranger_jeton(forge, jeton):
+                print(f"   ✓ {GROUPE_FORGE} › {self._git_forge_titre(forge)}")
+            else:
+                print(
+                    f"   ⚠  {t('No KeePass vault configured (kdbx.path): the token stays for this session only.')}"
+                )
+        return client
+
+    def _git_repo_preparer_forge(self, base, poses):
+        """Prépare la forge avant le push. Rend False pour tout arrêter.
+
+        Le push-to-create de Forgejo ne crée jamais le propriétaire d'un
+        dépôt. Chaque propriétaire est lu (`plan_proprietaires`) : une
+        organisation absente se crée, privée, après confirmation ; le
+        compte du jeton reçoit ses dépôts sur lui-même ; un autre compte est
+        signalé et ses projets laissés hors des créations. Les dépôts se
+        créent par l'API seulement sur demande, non par défaut : une forge
+        réglée en push-to-create les crée au premier push. Une forge
+        injoignable, un jeton refusé ou une lecture refusée laissent
+        choisir de pousser quand même, non par défaut.
+        """
+        if not click.confirm(
+            f"💬 {t('Check the forge through its API and create the missing organisations?')}",
+            default=True,
+        ):
+            return True
+        client = self._git_forge_client(base)
+        pousser_quand_meme = (
+            f"💬 {t('Push anyway, without preparing the forge?')}"
+        )
+        if client is None:
+            return click.confirm(pousser_quand_meme, default=False)
+        natures = forgejo_client.plan_proprietaires(
+            client,
+            forgejo_client.organisations_requises(
+                p["proprietaire"] for p, _ in poses
+            ),
+        )
+        erreurs = {n: v for n, v in natures.items() if v.startswith("erreur")}
+        for nom, nature in natures.items():
+            if nature in ("utilisateur", "compte") or nom in erreurs:
+                libelle = {
+                    "utilisateur": t("another user account: left as is"),
+                    "compte": t("the account of the token"),
+                }.get(nature, nature)
+                print(f"   ▸ {nom}: {libelle}")
+        if erreurs:
+            return click.confirm(pousser_quand_meme, default=False)
+        absentes = [n for n, v in natures.items() if v == "absent"]
+        print(
+            f"   {len(natures)} {t('organisations,')} {len(absentes)}"
+            f" {t('to create:')} {', '.join(absentes) or '—'}"
+        )
+        if absentes and click.confirm(
+            f"💬 {t('Create the missing organisations, private?')}",
+            default=True,
+        ):
+            for nom, (etat, message) in forgejo_client.assurer_organisations(
+                client, absentes
+            ).items():
+                print(
+                    f"   {'✅' if etat != 'erreur' else '⚠ '} {nom}: {etat} {message}".rstrip()
+                )
+        a_creer = [
+            (p, u)
+            for p, u in poses
+            if natures.get(
+                next(
+                    (
+                        n
+                        for n in natures
+                        if n.lower() == p["proprietaire"].lower()
+                    ),
+                    "",
+                )
+            )
+            in ("organisation", "compte", "absent")
+        ]
+        if a_creer and click.confirm(
+            f"💬 {t('Create the missing repositories through the API? Needed when the forge does not create them on push.')}",
+            default=False,
+        ):
+
+            def assurer(pu):
+                p = pu[0]
+                try:
+                    return (
+                        client.assurer_depot(p["proprietaire"], p["nom"])[0],
+                        "",
+                    )
+                except forgejo_client.ErreurForgejo as exc:
+                    return "erreur", str(exc)
+
+            compte = {}
+            for (p, _), (etat, message) in zip(
+                a_creer, push_remote._en_parallele(assurer, a_creer, 4)
+            ):
+                compte[etat] = compte.get(etat, 0) + 1
+                if etat == "erreur":
+                    print(f"   ⚠  {p['affiche']}: {message}")
+            print(
+                "   "
+                + ", ".join(f"{n} {e}" for e, n in sorted(compte.items()))
+            )
+        return True
 
     def _git_repo_comparer(self):
         """Compare deux gels, puis ouvre l'historique d'un projet sur demande.

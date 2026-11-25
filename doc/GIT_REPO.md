@@ -546,6 +546,26 @@ and `UNSHALLOW=1` requests: many servers refuse a truncated history. `DRY_RUN=1`
 When the freeze offers to push the branches it cannot write, it pushes them the same way, in parallel, and can target
 another remote of the clones; the freeze still writes a branch only when the manifest remote carries it.
 
+#### Prepare a Forgejo forge
+
+A new remote set from a forge URL offers, before pushing, to check the forge through its API (Forgejo, `/api/v1`)
+and to create the missing organisations, private: push-to-create never creates the owner of a repository, so each
+organisation must exist before the first push. Names are compared without case, as Forgejo does, and a name Forgejo
+refuses (letters, digits, `-`, `_`, `.`, 40 characters at most) is reported, not sent. The repositories are created
+through the API only on request, private and empty: a forge set for push-to-create creates them on the first push.
+Anything that already exists is reused, never changed. An owner that is the account of the token gets its
+repositories on that account; another user account is reported and left out.
+
+The API lives at the web URL of the forge, asked for when the remote is an SSH URL. The access token, with the
+`write:organization`, `write:repository` and `write:user` scopes, comes from `EL_FORGEJO_TOKEN`, then from the
+ERPLibre KeePass vault, one entry per forge (host and port) in the `ERPLibre Forgejo` group; otherwise it is typed
+without echo and may be stored there. A refused token can be typed again, and the new one replaces the stored
+entry. It travels only in the `Authorization` header, never in a URL nor in `env_var.sh`, which the repository
+tracks, and an error message that would carry it masks it. The client ignores `~/.netrc`, which would otherwise
+replace the token with a password, and follows no redirect, which would turn a creation into a read. Plain HTTP to
+another host than this machine asks for confirmation, No by default. Without a menu, `make forge_prepare URL=<web
+URL>` does the same (`CREATE_REPOS=1`, `DRY_RUN=1`), and refuses plain HTTP unless `--allow-http`.
+
 #### Install or reconfigure on the commits
 
 ```bash

@@ -1513,7 +1513,8 @@ class TestGitRepoPushToRemote(unittest.TestCase):
     def test_a_new_remote_is_set_from_the_forge_url(self):
         self.lancer(
             ["n", "forge", "ssh://git@forge.example.invalid:2222", "manifest"],
-            [True, True],
+            # Ajouter le remote, ne pas préparer la forge, pousser.
+            [True, False, True],
         )
         self.assertEqual(len(self.poses), 1)
         chemin, nom, url = self.poses[0]
@@ -1536,6 +1537,18 @@ class TestGitRepoPushToRemote(unittest.TestCase):
         )
         self.assertEqual(self.poussees, [])
 
+    def test_a_forge_that_cannot_be_prepared_stops_unless_pushing_anyway(self):
+        """Forge non préparée (client None) : « pousser quand même » non
+        par défaut, et rien ne part sur un non."""
+        with self.mock.patch.object(
+            type(self.obj), "_git_forge_client", return_value=None
+        ):
+            self.lancer(
+                ["n", "forge", "https://forge.example.invalid", "manifest"],
+                [True, True, False],
+            )
+        self.assertEqual(self.poussees, [])
+
     def test_a_manifest_remote_name_is_refused(self):
         code, confirm = self.lancer(["n", "Orig"], [])
         self.assertEqual(code, 0)
@@ -1554,6 +1567,281 @@ class TestGitRepoPushToRemote(unittest.TestCase):
         self.lancer(["1", "manifest"], [True, True])
         self.assertEqual(len(self.approfondis), 1)
         self.assertTrue(self.approfondis[0].endswith("odooX.0/a"))
+
+
+class TestGitRepoPrepareForge(unittest.TestCase):
+    """La préparation d'une forge Forgejo avant le push : organisations
+    absentes créées privées après confirmation, dépôts créés par l'API
+    seulement sur demande. Le client est remplacé par un faux."""
+
+    class FauxClient:
+        def __init__(self, existantes, refus=()):
+            self.existantes = set(existantes)
+            self.refus = set(refus)
+            self.creees = []
+            self.depots = []
+
+        def organisation(self, nom):
+            return {"username": nom} if nom in self.existantes else None
+
+        def nature_proprietaire(self, nom):
+            if nom == "moi":
+                return "compte"
+            if nom == "lui":
+                return "utilisateur"
+            return "organisation" if nom in self.existantes else "absent"
+
+        def assurer_organisation(self, nom, visibilite="private"):
+            from script.git import forgejo_client
+
+            if nom in self.refus:
+                raise forgejo_client.ErreurForgejo("403 forbidden", 403)
+            self.creees.append((nom, visibilite))
+            return "creee", {}
+
+        def assurer_depot(self, proprietaire, nom, prive=True):
+            self.depots.append((proprietaire, nom, prive))
+            return "cree", {}
+
+    POSES = [
+        ({"proprietaire": "OCA", "nom": "a.git", "affiche": "a"}, "u1"),
+        (
+            {"proprietaire": "TechnoLibre", "nom": "b.git", "affiche": "b"},
+            "u2",
+        ),
+        (
+            {"proprietaire": "technolibre", "nom": "c.git", "affiche": "c"},
+            "u3",
+        ),
+    ]
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        self.obj = Menu()
+
+    def preparer(self, client, confirms):
+        with self.mock.patch.object(
+            type(self.obj), "_git_forge_client", return_value=client
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            return self.obj._git_repo_preparer_forge(
+                "https://f.invalid", self.POSES
+            )
+
+    def test_missing_organisations_are_created_private_once_per_name(self):
+        client = self.FauxClient({"OCA"})
+        self.assertTrue(self.preparer(client, [True, True, False]))
+        self.assertEqual(client.creees, [("TechnoLibre", "private")])
+        self.assertEqual(client.depots, [])
+
+    def test_repositories_only_on_request(self):
+        client = self.FauxClient({"OCA", "TechnoLibre"})
+        self.assertTrue(self.preparer(client, [True, True]))
+        self.assertEqual(
+            [d[:2] for d in client.depots],
+            [
+                ("OCA", "a.git"),
+                ("TechnoLibre", "b.git"),
+                ("technolibre", "c.git"),
+            ],
+        )
+        self.assertTrue(all(d[2] for d in client.depots))
+
+    def test_declining_the_organisations_creates_none(self):
+        client = self.FauxClient(set())
+        self.preparer(client, [True, False, False])
+        self.assertEqual(client.creees, [])
+
+    def test_a_refused_creation_does_not_stop_the_push(self):
+        client = self.FauxClient(set(), refus={"OCA"})
+        self.assertTrue(self.preparer(client, [True, True, False]))
+        self.assertEqual(client.creees, [("TechnoLibre", "private")])
+
+    def test_the_token_account_and_other_users(self):
+        """Le compte du jeton n'est pas une organisation à créer ; un autre
+        compte est laissé hors des créations de dépôts."""
+        poses = self.POSES + [
+            ({"proprietaire": "moi", "nom": "m.git", "affiche": "m"}, "u4"),
+            ({"proprietaire": "lui", "nom": "l.git", "affiche": "l"}, "u5"),
+        ]
+        client = self.FauxClient({"OCA", "TechnoLibre"})
+        with self.mock.patch.object(
+            type(self.obj), "_git_forge_client", return_value=client
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=[True, True]
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            self.assertTrue(
+                self.obj._git_repo_preparer_forge("https://f.invalid", poses)
+            )
+        self.assertEqual(client.creees, [])
+        self.assertIn(("moi", "m.git", True), client.depots)
+        self.assertNotIn("lui", [d[0] for d in client.depots])
+
+    def test_a_failed_owner_lookup_offers_to_push_anyway(self):
+        fc = self.menu.forgejo_client
+        client = self.FauxClient(set())
+
+        def refuse(nom):
+            raise fc.ErreurForgejo(f"GET /orgs/{nom} : 403", 403)
+
+        client.nature_proprietaire = refuse
+        self.assertFalse(self.preparer(client, [True, False]))
+        self.assertTrue(self.preparer(client, [True, True]))
+        self.assertEqual(client.creees, [])
+
+    def test_skipping_the_check_touches_nothing(self):
+        with self.mock.patch.object(
+            type(self.obj), "_git_forge_client"
+        ) as fabrique, self.mock.patch.object(
+            self.menu.click, "confirm", return_value=False
+        ):
+            self.assertTrue(
+                self.obj._git_repo_preparer_forge(
+                    "https://f.invalid", self.POSES
+                )
+            )
+        fabrique.assert_not_called()
+
+
+class TestGitForgeToken(unittest.TestCase):
+    """Le jeton d'une forge : une entrée du coffre par hôte, jamais
+    affiché ; un jeton refusé ne donne pas de client."""
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        self.obj = Menu()
+
+    def test_the_vault_entry_is_per_host(self):
+        class Entree:
+            password = "jeton-h1"
+
+        class Coffre:
+            def __init__(self):
+                self.titres = []
+
+            def find_entries_by_title(self, titre, first=True):
+                self.titres.append(titre)
+                return Entree() if titre.endswith("h1.invalid") else None
+
+        coffre = Coffre()
+        self.obj._git_coffre = lambda: coffre
+        self.assertEqual(
+            self.obj._git_forge_jeton_du_coffre("h1.invalid"), "jeton-h1"
+        )
+        self.assertEqual(self.obj._git_forge_jeton_du_coffre("h2.invalid"), "")
+        self.assertNotEqual(coffre.titres[0], coffre.titres[1])
+
+    def test_without_vault(self):
+        self.assertEqual(self.obj._git_forge_jeton_du_coffre("h.invalid"), "")
+        self.assertFalse(self.obj._git_forge_ranger_jeton("h.invalid", "x"))
+
+    def test_a_refused_token_gives_no_client(self):
+        fc = self.menu.forgejo_client
+
+        class Refuse:
+            def __init__(self, *a, **kw):
+                pass
+
+            def version(self):
+                return "1.0"
+
+            def identite(self):
+                raise fc.ErreurForgejo("GET /user : 401", 401)
+
+        with self.mock.patch.dict(
+            "os.environ", {"EL_FORGEJO_TOKEN": "faux"}
+        ), self.mock.patch.object(
+            fc, "ClientForgejo", Refuse
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", return_value=False
+        ) as confirm, self.mock.patch(
+            "builtins.print"
+        ) as imprime:
+            self.assertIsNone(self.obj._git_forge_client("https://f.invalid"))
+        sortie = " ".join(str(a) for c in imprime.mock_calls for a in c.args)
+        self.assertNotIn("faux", sortie)
+        # Un jeton refusé propose d'en saisir un autre ; non : pas de client.
+        confirm.assert_called_once()
+
+    def test_a_refused_token_can_be_typed_again_and_stored(self):
+        fc = self.menu.forgejo_client
+        tentatives = []
+
+        class Client:
+            def __init__(self, web, jeton_api=None):
+                tentatives.append(jeton_api)
+                self.jeton = jeton_api
+
+            def version(self):
+                return "1.0"
+
+            def identite(self):
+                if self.jeton != "bon":
+                    raise fc.ErreurForgejo("GET /user : 401", 401)
+                return "moi"
+
+        ranges = []
+        self.obj._git_forge_ranger_jeton = (
+            lambda forge, j: ranges.append((forge, j)) or True
+        )
+        with self.mock.patch.dict(
+            "os.environ", {"EL_FORGEJO_TOKEN": "perime"}
+        ), self.mock.patch.object(
+            fc, "ClientForgejo", Client
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=[True, True]
+        ), self.mock.patch(
+            "getpass.getpass", return_value="bon"
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            client = self.obj._git_forge_client("https://f.invalid:3000")
+        self.assertIsNotNone(client)
+        self.assertEqual(tentatives, ["perime", "bon"])
+        self.assertEqual(ranges, [("f.invalid:3000", "bon")])
+
+    def test_plain_http_to_another_host_needs_consent(self):
+        with self.mock.patch.object(
+            self.menu.click, "confirm", return_value=False
+        ) as confirm, self.mock.patch.object(
+            self.menu.forgejo_client, "ClientForgejo"
+        ) as fabrique, self.mock.patch(
+            "builtins.print"
+        ):
+            self.assertIsNone(self.obj._git_forge_client("http://f.invalid"))
+        self.assertIs(confirm.call_args.kwargs["default"], False)
+        fabrique.assert_not_called()
+
+    def test_an_ssh_base_asks_for_the_web_url(self):
+        with self.mock.patch.object(
+            self.menu.click, "prompt", return_value="pas une url"
+        ), self.mock.patch("builtins.print"):
+            self.assertIsNone(
+                self.obj._git_forge_client("ssh://git@f.invalid:2222")
+            )
 
 
 class TestGitRepoFreezeEntries(unittest.TestCase):

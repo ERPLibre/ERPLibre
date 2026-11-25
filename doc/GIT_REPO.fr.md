@@ -561,6 +561,26 @@ refspecs et ne pousse rien.
 Quand le gel propose de pousser les branches qu'il ne peut écrire, il les pousse de la même façon, en parallèle, et
 peut viser un autre remote des clones ; le gel n'écrit toujours une branche que si le remote du manifeste la porte.
 
+#### Préparer une forge Forgejo
+
+Un remote neuf posé à partir de l'URL d'une forge propose, avant le push, de vérifier la forge par son API (Forgejo,
+`/api/v1`) et de créer les organisations manquantes, privées : le push-to-create ne crée jamais le propriétaire d'un
+dépôt, chaque organisation doit donc exister avant le premier push. Les noms se comparent sans égard à la casse, comme
+le fait Forgejo, et un nom que Forgejo refuse (lettres, chiffres, `-`, `_`, `.`, 40 caractères au plus) est signalé,
+pas envoyé. Les dépôts se créent par l'API seulement sur demande, privés et vides : une forge réglée en push-to-create
+les crée au premier push. Ce qui existe déjà est repris, jamais modifié. Un propriétaire qui est le compte du jeton
+reçoit ses dépôts sur ce compte ; un autre compte utilisateur est signalé et laissé de côté.
+
+L'API se trouve à l'URL web de la forge, demandée quand le remote est une URL SSH. Le jeton d'accès, avec les portées
+`write:organization`, `write:repository` et `write:user`, vient de `EL_FORGEJO_TOKEN`, puis du coffre KeePass
+d'ERPLibre, une entrée par forge (hôte et port) dans le groupe `ERPLibre Forgejo` ; sinon il se saisit sans écho et
+peut y être rangé. Un jeton refusé peut se ressaisir, et le nouveau remplace l'entrée rangée. Il ne circule que dans
+l'en-tête `Authorization`, jamais dans une URL ni dans `env_var.sh`, que le dépôt suit, et un message d'erreur qui le
+porterait le masque. Le client ignore `~/.netrc`, qui remplacerait sinon le jeton par un mot de passe, et ne suit
+aucune redirection, qui changerait une création en lecture. HTTP en clair vers un autre hôte que cette machine demande
+confirmation, Non par défaut. Sans menu, `make forge_prepare URL=<URL web>` fait de même (`CREATE_REPOS=1`,
+`DRY_RUN=1`), et refuse HTTP en clair sauf avec `--allow-http`.
+
 #### Installer ou reconfigurer sur les commits
 
 ```bash

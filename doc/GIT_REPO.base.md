@@ -999,6 +999,26 @@ and `UNSHALLOW=1` requests: many servers refuse a truncated history. `DRY_RUN=1`
 When the freeze offers to push the branches it cannot write, it pushes them the same way, in parallel, and can target
 another remote of the clones; the freeze still writes a branch only when the manifest remote carries it.
 
+#### Prepare a Forgejo forge
+
+A new remote set from a forge URL offers, before pushing, to check the forge through its API (Forgejo, `/api/v1`)
+and to create the missing organisations, private: push-to-create never creates the owner of a repository, so each
+organisation must exist before the first push. Names are compared without case, as Forgejo does, and a name Forgejo
+refuses (letters, digits, `-`, `_`, `.`, 40 characters at most) is reported, not sent. The repositories are created
+through the API only on request, private and empty: a forge set for push-to-create creates them on the first push.
+Anything that already exists is reused, never changed. An owner that is the account of the token gets its
+repositories on that account; another user account is reported and left out.
+
+The API lives at the web URL of the forge, asked for when the remote is an SSH URL. The access token, with the
+`write:organization`, `write:repository` and `write:user` scopes, comes from `EL_FORGEJO_TOKEN`, then from the
+ERPLibre KeePass vault, one entry per forge (host and port) in the `ERPLibre Forgejo` group; otherwise it is typed
+without echo and may be stored there. A refused token can be typed again, and the new one replaces the stored
+entry. It travels only in the `Authorization` header, never in a URL nor in `env_var.sh`, which the repository
+tracks, and an error message that would carry it masks it. The client ignores `~/.netrc`, which would otherwise
+replace the token with a password, and follows no redirect, which would turn a creation into a read. Plain HTTP to
+another host than this machine asks for confirmation, No by default. Without a menu, `make forge_prepare URL=<web
+URL>` does the same (`CREATE_REPOS=1`, `DRY_RUN=1`), and refuses plain HTTP unless `--allow-http`.
+
 #### Install or reconfigure on the commits
 
 <!-- [fr] -->
@@ -1074,6 +1094,26 @@ refspecs et ne pousse rien.
 
 Quand le gel propose de pousser les branches qu'il ne peut écrire, il les pousse de la même façon, en parallèle, et
 peut viser un autre remote des clones ; le gel n'écrit toujours une branche que si le remote du manifeste la porte.
+
+#### Préparer une forge Forgejo
+
+Un remote neuf posé à partir de l'URL d'une forge propose, avant le push, de vérifier la forge par son API (Forgejo,
+`/api/v1`) et de créer les organisations manquantes, privées : le push-to-create ne crée jamais le propriétaire d'un
+dépôt, chaque organisation doit donc exister avant le premier push. Les noms se comparent sans égard à la casse, comme
+le fait Forgejo, et un nom que Forgejo refuse (lettres, chiffres, `-`, `_`, `.`, 40 caractères au plus) est signalé,
+pas envoyé. Les dépôts se créent par l'API seulement sur demande, privés et vides : une forge réglée en push-to-create
+les crée au premier push. Ce qui existe déjà est repris, jamais modifié. Un propriétaire qui est le compte du jeton
+reçoit ses dépôts sur ce compte ; un autre compte utilisateur est signalé et laissé de côté.
+
+L'API se trouve à l'URL web de la forge, demandée quand le remote est une URL SSH. Le jeton d'accès, avec les portées
+`write:organization`, `write:repository` et `write:user`, vient de `EL_FORGEJO_TOKEN`, puis du coffre KeePass
+d'ERPLibre, une entrée par forge (hôte et port) dans le groupe `ERPLibre Forgejo` ; sinon il se saisit sans écho et
+peut y être rangé. Un jeton refusé peut se ressaisir, et le nouveau remplace l'entrée rangée. Il ne circule que dans
+l'en-tête `Authorization`, jamais dans une URL ni dans `env_var.sh`, que le dépôt suit, et un message d'erreur qui le
+porterait le masque. Le client ignore `~/.netrc`, qui remplacerait sinon le jeton par un mot de passe, et ne suit
+aucune redirection, qui changerait une création en lecture. HTTP en clair vers un autre hôte que cette machine demande
+confirmation, Non par défaut. Sans menu, `make forge_prepare URL=<URL web>` fait de même (`CREATE_REPOS=1`,
+`DRY_RUN=1`), et refuse HTTP en clair sauf avec `--allow-http`.
 
 #### Installer ou reconfigurer sur les commits
 

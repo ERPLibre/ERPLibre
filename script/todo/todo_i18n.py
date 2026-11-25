@@ -23978,6 +23978,70 @@ TRANSLATIONS = {
         "fr": "Le gel n'écrit une branche que si le remote du manifeste la porte.",
         "en": "The freeze writes a branch only when the manifest remote carries it.",
     },
+    "Web URL of the forge (https://…)": {
+        "fr": "URL web de la forge (https://…)",
+        "en": "Web URL of the forge (https://…)",
+    },
+    "A Forgejo access token is needed, with the write:organization, write:repository and write:user scopes.": {
+        "fr": "Il faut un jeton d'accès Forgejo, avec les portées write:organization, write:repository et write:user.",
+        "en": "A Forgejo access token is needed, with the write:organization, write:repository and write:user scopes.",
+    },
+    "Store the token in the ERPLibre KeePass vault?": {
+        "fr": "Ranger le jeton dans le coffre KeePass d'ERPLibre ?",
+        "en": "Store the token in the ERPLibre KeePass vault?",
+    },
+    "No KeePass vault configured (kdbx.path): the token stays for this session only.": {
+        "fr": "Aucun coffre KeePass configuré (kdbx.path) : le jeton ne vaut que pour cette session.",
+        "en": "No KeePass vault configured (kdbx.path): the token stays for this session only.",
+    },
+    "Check the forge through its API and create the missing organisations?": {
+        "fr": "Vérifier la forge par son API et créer les organisations manquantes ?",
+        "en": "Check the forge through its API and create the missing organisations?",
+    },
+    "Push anyway, without preparing the forge?": {
+        "fr": "Pousser quand même, sans préparer la forge ?",
+        "en": "Push anyway, without preparing the forge?",
+    },
+    "organisations,": {
+        "fr": "organisations,",
+        "en": "organisations,",
+    },
+    "Create the missing organisations, private?": {
+        "fr": "Créer les organisations manquantes, privées ?",
+        "en": "Create the missing organisations, private?",
+    },
+    "Create the missing repositories through the API? Needed when the forge does not create them on push.": {
+        "fr": "Créer les dépôts manquants par l'API ? Nécessaire quand la forge ne les crée pas au push.",
+        "en": "Create the missing repositories through the API? Needed when the forge does not create them on push.",
+    },
+    "to create:": {
+        "fr": "à créer :",
+        "en": "to create:",
+    },
+    "Plain HTTP: send the token in clear to": {
+        "fr": "HTTP en clair : envoyer le jeton sans chiffrement à",
+        "en": "Plain HTTP: send the token in clear to",
+    },
+    "Forge:": {
+        "fr": "Forge :",
+        "en": "Forge:",
+    },
+    "The token was refused": {
+        "fr": "Le jeton a été refusé",
+        "en": "The token was refused",
+    },
+    "Type another one?": {
+        "fr": "En saisir un autre ?",
+        "en": "Type another one?",
+    },
+    "another user account: left as is": {
+        "fr": "un autre compte utilisateur : laissé tel quel",
+        "en": "another user account: left as is",
+    },
+    "the account of the token": {
+        "fr": "le compte du jeton",
+        "en": "the account of the token",
+    },
     "Also freeze the branch each clone is on (revision)?": {
         "fr": "Geler aussi la branche de chaque clone (revision) ?",
         "en": "Also freeze the branch each clone is on (revision)?",

@@ -306,6 +306,13 @@ repo_freeze:
 repo_push_remote:
 	./.venv.erplibre/bin/python ./script/git/push_remote.py --remote $(REMOTE) $(if $(URL),--url $(URL),) $(if $(MODE),--mode $(MODE),) $(if $(filter 1,$(UNSHALLOW)),--unshallow,) $(if $(filter 1,$(DRY_RUN)),--dry-run,)
 
+# prepare a Forgejo forge (URL=<web URL>, token in EL_FORGEJO_TOKEN) for the
+# repos of the active Odoo version: create each missing organisation, private
+# (CREATE_REPOS=1: also each missing repository; DRY_RUN=1)
+.PHONY: forge_prepare
+forge_prepare:
+	./.venv.erplibre/bin/python ./script/git/forgejo_client.py --url $(URL) $(if $(filter 1,$(CREATE_REPOS)),--create-repos,) $(if $(filter 1,$(DRY_RUN)),--dry-run,)
+
 # remove freeze-revision from manifest/ and private/manifest/, repos follow
 # their branch again
 .PHONY: repo_unfreeze
