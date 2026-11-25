@@ -19,12 +19,7 @@ private/.
 """
 
 import argparse
-import datetime
-import json
 import os
-import re
-import shlex
-import subprocess
 import sys
 
 new_path = os.path.normpath(
@@ -33,10 +28,17 @@ new_path = os.path.normpath(
 if new_path not in sys.path:
     sys.path.append(new_path)
 
+from script.erp_common import detect as common_detect  # noqa: E402
+from script.erp_common.detect import (  # noqa: E402,F401
+    DEFAULT_DEPTH,
+    remote_argv,
+)
+
 ROOT = new_path
 PROBE = os.path.join(os.path.dirname(__file__), "detect_probe.sh")
-INVENTORY = os.path.join("private", "dolibarr", "inventory")
-DEFAULT_DEPTH = 7
+INVENTORY = common_detect.inventory_dir("dolibarr")
+# Première ligne de la sortie de detect_probe.sh : « DOLIBARR\t<statut> ».
+HEADER = "DOLIBARR"
 
 _INSTALL_FIELDS = (
     "path",
@@ -48,27 +50,8 @@ _INSTALL_FIELDS = (
     "url",
     "data_root",
 )
-_CONTAINER_FIELDS = ("engine", "name", "image", "state")
 
-# Ce que ssh écrit quand il n'atteint pas la sonde, par cause.
-_SSH_FAILURES = (
-    ("hostkey", ("Host key verification failed",)),
-    ("auth", ("Permission denied (",)),
-    (
-        "net",
-        (
-            "Could not resolve hostname",
-            "Connection timed out",
-            "Connection refused",
-            "No route to host",
-            "Network is unreachable",
-            "timeout",
-        ),
-    ),
-)
-
-# Un nom d'hôte ou d'alias, tel qu'il devient un nom de fichier.
-_SAFE = re.compile(r"[^A-Za-z0-9._-]")
+_STATE_LABELS = common_detect.STATE_LABELS
 
 
 def t(key):
@@ -81,98 +64,26 @@ def t(key):
 
 
 def parse_probe(text):
-    """{status, installs, containers} de la sortie de la sonde, ou None.
-
-    Ce qui précède l'en-tête (bannière de l'hôte) est ignoré.
-    """
-    lines = (text or "").splitlines()
-    for i, line in enumerate(lines):
-        if line.startswith("DOLIBARR\t"):
-            break
-    else:
-        return None
-    report = {"status": line.split("\t", 1)[1].strip()}
-    report["installs"], report["containers"] = [], []
-    for line in lines[i + 1 :]:
-        kind, _tab, rest = line.partition("\t")
-        if kind == "INSTALL":
-            fields = _INSTALL_FIELDS
-            target = report["installs"]
-        elif kind == "CONTAINER":
-            fields = _CONTAINER_FIELDS
-            target = report["containers"]
-        else:
-            continue
-        values = rest.split("\t")
-        values += [""] * (len(fields) - len(values))
-        target.append(dict(zip(fields, values)))
-    return report
+    """{status, installs, containers} de la sortie de detect_probe.sh, ou
+    None ; voir erp_common.detect.parse_probe."""
+    return common_detect.parse_probe(HEADER, _INSTALL_FIELDS, text)
 
 
 def classify(code, output):
-    """ok, auth, hostkey, net ou error : pourquoi un hôte a (ou n'a pas)
-    répondu."""
-    if parse_probe(output) is not None:
-        return "ok"
-    for kind, marks in _SSH_FAILURES:
-        if any(mark in (output or "") for mark in marks):
-            return kind
-    return "error"
-
-
-def remote_argv(host, roots, depth=DEFAULT_DEPTH):
-    """ssh qui lance la sonde reçue sur stdin, sans terminal ni question."""
-    from script.proxmox import proxmox_deploy
-
-    remote = " ".join(
-        ["sh", "-s", "--", str(depth)] + [shlex.quote(r) for r in roots]
-    )
-    return proxmox_deploy.ssh_argv(host, remote)
+    """ok, auth, hostkey, net ou error ; voir erp_common.detect.classify."""
+    return common_detect.classify(HEADER, code, output)
 
 
 def run_probe(argv, timeout=300):
-    """(code, sortie) de la sonde envoyée sur stdin à `argv`."""
-    from script.proxmox import proxmox_deploy
-
-    with open(PROBE, encoding="utf-8") as f:
-        script = f.read()
-    try:
-        r = subprocess.run(
-            argv, input=script, capture_output=True, text=True, timeout=timeout
-        )
-    except subprocess.TimeoutExpired:
-        return 255, "timeout"
-    except OSError as e:
-        return 255, str(e)
-    return r.returncode, proxmox_deploy.strip_ssh_noise(
-        (r.stdout or "") + (r.stderr or "")
-    )
+    """(code, sortie) de detect_probe.sh envoyée sur stdin à `argv`."""
+    return common_detect.run_probe(PROBE, argv, timeout)
 
 
 def save(root, host, state, report, now=None):
-    """Écrit le rapport de `host` en 0600 sous private/ ; rend son chemin."""
-    directory = os.path.join(root, INVENTORY)
-    os.makedirs(directory, mode=0o700, exist_ok=True)
-    path = os.path.join(directory, _SAFE.sub("_", host) + ".json")
-    data = {
-        "host": host,
-        "state": state,
-        "date": (now or datetime.datetime.now()).isoformat(timespec="seconds"),
-        "report": report,
-    }
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(json.dumps(data, indent=4, sort_keys=True) + "\n")
-    return path
+    """Écrit le rapport de `host` en 0600 sous private/dolibarr/inventory/ ;
+    rend son chemin."""
+    return common_detect.save("dolibarr", root, host, state, report, now)
 
-
-_STATE_LABELS = {
-    "ok": "reached",
-    "auth": "key refused: check the SSH key of this host",
-    "hostkey": "unknown or changed host key: connect once by hand",
-    "net": "unreachable",
-    "error": "the probe did not answer",
-}
 
 _STATUS_LABELS = {
     "yes": "Dolibarr found",

@@ -9,15 +9,16 @@ démarré, envoyé, interrogé. Ce qui se garde :
   Debian, php-fpm ailleurs ; nginx dans /usr/sbin ou /usr/bin) ;
 - un port déjà pris refuse le démarrage au lieu de laisser nginx échouer
   plus loin ;
-- l'état dit la vérité en trois valeurs : lancée, arrêtée, ou à moitié
-  (un démon mort, l'autre vivant) — jamais un « arrêtée » pour « illisible » ;
+- l'état se lit dans les pid de PHP-FPM et de nginx ; un état inconnu
+  refuse le démarrage ;
 - la page de connexion confirme la version servie (« Login @ 24.0.1 »).
+Le port libre et le schéma d'état à quatre valeurs (lancée, arrêtée, à
+moitié, inconnue) se vérifient dans test_erp_common_process.
 """
 
 import contextlib
 import io
 import json
-import socket
 import sys
 import tempfile
 import unittest
@@ -81,33 +82,6 @@ class TestTitre(unittest.TestCase):
     def test_no_title_no_version(self):
         self.assertIsNone(run_mod.served_version("<title>Dolibarr</title>"))
         self.assertIsNone(run_mod.served_version(""))
-
-
-class TestPortLibre(unittest.TestCase):
-    """De vraies sockets sur 127.0.0.1, un port éphémère."""
-
-    def test_a_listening_port_is_taken(self):
-        with socket.socket() as serveur:
-            serveur.bind(("127.0.0.1", 0))
-            serveur.listen()
-            self.assertFalse(run_mod.port_is_free(serveur.getsockname()[1]))
-
-    def test_time_wait_left_by_a_closed_connection_does_not_take_it(self):
-        # Un status vient d'interroger le site, puis il s'arrête : ses
-        # connexions restent en TIME_WAIT. nginx, Apache et le relais de
-        # ports de Podman ouvrent tous leur écoute en SO_REUSEADDR, et ces
-        # TIME_WAIT-là laissent écouter de nouveau.
-        serveur = socket.socket()
-        serveur.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        serveur.bind(("127.0.0.1", 0))
-        serveur.listen()
-        port = serveur.getsockname()[1]
-        client = socket.create_connection(("127.0.0.1", port))
-        conn, _adresse = serveur.accept()
-        conn.close()  # le serveur ferme d'abord : TIME_WAIT de son côté
-        client.close()
-        serveur.close()
-        self.assertTrue(run_mod.port_is_free(port))
 
 
 class Systeme:
@@ -288,21 +262,6 @@ class TestStopStatus(Banc):
         code, sortie = self.lancer("status", "--instance", "erp")
         self.assertEqual(code, 0)
         self.assertIn(run_mod.t(run_mod.STATE_LABELS["stopped"]), sortie)
-
-    def test_half_running_is_not_reported_as_running(self):
-        self.lancer("start", "--instance", "erp")
-        fpm_pid = int((self.run_dir / "php-fpm.pid").read_text())
-        self.sys.vivants.discard(fpm_pid)
-        _code, sortie = self.lancer("status", "--instance", "erp")
-        self.assertIn(run_mod.t(run_mod.STATE_LABELS["half running"]), sortie)
-
-    def test_an_unreadable_pid_file_is_unknown_not_stopped(self):
-        # Un fichier pid présent mais illisible ne prouve rien : le dire
-        # « arrêtée » ferait relancer par-dessus un démon peut-être vivant.
-        (self.run_dir / "php-fpm.pid").write_text("pas un pid\n")
-        _code, sortie = self.lancer("status", "--instance", "erp")
-        self.assertIn(run_mod.t(run_mod.STATE_LABELS["unknown"]), sortie)
-        self.assertNotIn(run_mod.t(run_mod.STATE_LABELS["stopped"]), sortie)
 
     def test_fpm_reads_the_instance_ini_dir_only_when_it_has_one(self):
         # Xdebug de debug.py : un .ini propre à l'instance, ajouté au

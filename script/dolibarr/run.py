@@ -24,11 +24,9 @@ import argparse
 import os
 import re
 import signal
-import socket
 import subprocess
 import sys
 import time
-import urllib.request
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -37,6 +35,15 @@ if new_path not in sys.path:
     sys.path.append(new_path)
 
 from script.dolibarr import lib_dolibarr, packages  # noqa: E402
+from script.erp_common import process  # noqa: E402
+from script.erp_common.process import (  # noqa: E402,F401
+    STATE_LABELS,
+    UNREADABLE,
+    System,
+    port_is_free,
+    read_pid,
+    tail_file,
+)
 
 ROOT = new_path
 
@@ -75,91 +82,6 @@ def served_version(html):
     return m.group(1) if m else None
 
 
-def port_is_free(port):
-    """Vrai si un serveur peut écouter sur 127.0.0.1:`port` maintenant.
-
-    SO_REUSEADDR, comme nginx et Apache : les connexions qu'un status vient
-    d'ouvrir restent en TIME_WAIT sur le port après l'arrêt, et un bind
-    sans l'option le croirait pris. Un autre serveur en écoute le prend
-    toujours.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            s.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
-
-
-class System:
-    """Processus, ports et HTTP réels ; les tests en passent un factice."""
-
-    def spawn(self, argv, log, env=None):
-        with open(log, "ab") as out:
-            proc = subprocess.Popen(
-                argv,
-                env=dict(os.environ, **env) if env else None,
-                stdin=subprocess.DEVNULL,
-                stdout=out,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-        return proc.pid
-
-    def call(self, argv):
-        r = subprocess.run(argv, capture_output=True, text=True)
-        return r.returncode, (r.stdout or "") + (r.stderr or "")
-
-    def alive(self, pid):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
-
-    def kill(self, pid, sig):
-        try:
-            os.kill(pid, sig)
-        except ProcessLookupError:
-            pass
-
-    def port_free(self, port):
-        return port_is_free(port)
-
-    def http_get(self, url):
-        try:
-            with urllib.request.urlopen(url, timeout=10) as r:
-                return r.read(65536).decode("utf-8", "replace")
-        except OSError:
-            return ""
-
-    def engine(self, moteur):
-        """La fiche du moteur, relue : sudo et socket peuvent avoir changé."""
-        from script.todo import container_runtime
-
-        return container_runtime.etat(moteur)
-
-
-# Un fichier pid présent mais illisible : ni vivant ni mort, inconnu.
-UNREADABLE = -1
-
-
-def read_pid(path):
-    """Le pid du fichier, None s'il n'existe pas, UNREADABLE s'il ne se lit
-    pas : une absence dit « arrêté », un fichier abîmé ne dit rien."""
-    try:
-        with open(path, encoding="utf-8", errors="strict") as f:
-            text = f.read().strip()
-    except FileNotFoundError:
-        return None
-    except (OSError, UnicodeDecodeError):
-        return UNREADABLE
-    return int(text) if text.isdigit() else UNREADABLE
-
-
 class Instance:
     """Chemins d'une instance de développement, tirés du registre."""
 
@@ -182,35 +104,15 @@ class Instance:
 
 def daemons(inst, system):
     """(PHP-FPM, nginx) : pid vivant, None, ou UNREADABLE."""
-    out = []
-    for path in (inst.fpm_pid, inst.nginx_pid):
-        pid = read_pid(path)
-        if pid == UNREADABLE:
-            out.append(UNREADABLE)
-        else:
-            out.append(pid if pid and system.alive(pid) else None)
-    return tuple(out)
-
-
-# État interne -> libellé affiché (clé i18n). Des libellés propres aux
-# instances : « running » et « stopped » existent déjà, accordés aux VM.
-STATE_LABELS = {
-    "running": "serving",
-    "stopped": "instance not running",
-    "half running": "half running: one daemon is down",
-    "unknown": "unknown: a pid file is unreadable",
-}
+    return tuple(
+        process.live_pid(path, system)
+        for path in (inst.fpm_pid, inst.nginx_pid)
+    )
 
 
 def state(inst, system):
-    fpm, nginx = daemons(inst, system)
-    if UNREADABLE in (fpm, nginx):
-        return "unknown"
-    if fpm and nginx:
-        return "running"
-    if fpm or nginx:
-        return "half running"
-    return "stopped"
+    """running, stopped, half running ou unknown, selon PHP-FPM et nginx."""
+    return process.state(daemons(inst, system))
 
 
 def fpm_env(inst):
@@ -382,14 +284,6 @@ def cmd_status(instances, system):
             line += f" — {inst.url}, Dolibarr {version or '?'}"
         print(line)
     return 0
-
-
-def tail_file(path, lines):
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read().splitlines()[-lines:]
-    except OSError:
-        return None
 
 
 def cmd_logs(inst, lines):

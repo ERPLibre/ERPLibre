@@ -12,6 +12,8 @@ Ce qui se garde :
   des échecs ;
 - le code de production se juge contre l'archive du commit épinglé ;
 - un seul échec suffit pour que le code de sortie le dise.
+La vérification de l'épinglage et l'affichage des résultats se vérifient
+dans test_erp_common_report.
 """
 
 import contextlib
@@ -129,13 +131,6 @@ class TestDeveloppement(Banc):
         r = self.verifier("erp", self.entree)
         self.assertEqual(r["code"].level, "warn")
         self.assertIn(AUTRE[:7], r["code"].detail)
-
-    def test_an_instance_behind_the_pin_is_a_warning(self):
-        # Après une montée revenue en arrière, rien d'autre ne le dirait.
-        self.pin["commit"] = AUTRE
-        r = self.verifier("erp", self.entree)
-        self.assertEqual(r["pin"].level, "warn")
-        self.assertIn(AUTRE[:7], r["pin"].detail)
 
     def test_a_site_that_does_not_answer_fails(self):
         self.sys.pages = {}
@@ -365,13 +360,6 @@ class TestConteneurs(Banc):
             {"served": "ok", "pin": "ok", "containers": "ok"},
         )
 
-    def test_a_container_on_another_image_than_the_pin_is_a_warning(self):
-        self.entree["image"] = "docker.io/dolibarr/dolibarr:23.0.4"
-        self.pin["docker_image"] = "docker.io/dolibarr/dolibarr:24.0.0"
-        self.assertEqual(
-            self.verifier("ctr", self.entree)["pin"].level, "warn"
-        )
-
     def test_a_stopped_container_is_a_warning(self):
         self.sys.commandes[
             (
@@ -438,12 +426,6 @@ class TestCommande(Banc):
         )
         self.assertEqual(code, 1)
         self.assertIn("no answer", sortie)
-
-    def test_warnings_alone_are_success(self):
-        code, _s = self.lancer(
-            "--all", resultats=[doctor.Result("code", "warn", "1 file")]
-        )
-        self.assertEqual(code, 0)
 
     def test_an_unknown_instance_exits_2(self):
         code, _s = self.lancer("--instance", "nope")

@@ -18,7 +18,6 @@ Conteneurs : version servie et les trois conteneurs en marche.
 """
 
 import argparse
-import collections
 import grp
 import os
 import subprocess
@@ -32,14 +31,18 @@ if new_path not in sys.path:
 
 from script.dolibarr import integrity, lib_dolibarr  # noqa: E402
 from script.dolibarr.run import served_version  # noqa: E402
+from script.erp_common import report  # noqa: E402
+from script.erp_common.report import (  # noqa: E402,F401
+    MARKS,
+    Result,
+    check_pin,
+)
 
 ROOT = new_path
 
-Result = collections.namedtuple("Result", "key level detail")
-
 LABELS = {
     "served": "Served version",
-    "pin": "Pin",
+    **report.LABELS,
     "code": "Code",
     "conf": "conf.php",
     "lock": "Install lock",
@@ -48,7 +51,6 @@ LABELS = {
     "php": "PHP",
     "containers": "Instance containers",
 }
-MARKS = {"ok": "✓", "warn": "!", "fail": "✗"}
 PHP_VERSION = ["php", "-r", 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;']
 # Au-delà, la liste d'écarts se résume : elle se lit, elle ne s'épluche pas.
 SHOWN = 5
@@ -114,22 +116,6 @@ def check_served(entry, system):
             t("%s served, %s expected") % (version, entry.get("version")),
         )
     return Result("served", "ok", f"Dolibarr {version} — {entry['url']}")
-
-
-def check_pin(entry, pin):
-    """L'instance est-elle au commit (à l'image) épinglé ? Après une montée
-    revenue en arrière, rien d'autre ne dit qu'elle est en retard."""
-    if entry.get("runtime") == "container":
-        have, want = entry.get("image", ""), pin.get("docker_image", "")
-        shown = (have.rsplit("/", 1)[-1][:40], want.rsplit("/", 1)[-1][:40])
-    else:
-        have, want = entry.get("commit", ""), pin.get("commit", "")
-        shown = (have[:7] or "?", want[:7])
-    if have != want:
-        return Result(
-            "pin", "warn", t("at %s, pinned at %s: upgrade it") % shown
-        )
-    return Result("pin", "ok", shown[1])
 
 
 def check_dev_code(entry, system):
@@ -312,9 +298,11 @@ def check_instance(name, entry, pin, system, root):
     results = [
         check_served(entry, system),
         check_pin(entry, pin),
-        check_prod_code(entry, pin, root)
-        if prod
-        else check_dev_code(entry, system),
+        (
+            check_prod_code(entry, pin, root)
+            if prod
+            else check_dev_code(entry, system)
+        ),
         check_conf(entry),
         check_lock(entry),
     ]
@@ -357,9 +345,8 @@ def main(argv=None, root=None, system=None):
     failed = False
     for name in names:
         print(f"== {name}")
-        for r in check_instance(name, known[name], pin, system, root):
-            print(f"  {MARKS[r.level]} {t(LABELS[r.key])}: {r.detail}")
-            failed = failed or r.level == "fail"
+        results = check_instance(name, known[name], pin, system, root)
+        failed = report.show(results, LABELS) or failed
     return 1 if failed else 0
 
 

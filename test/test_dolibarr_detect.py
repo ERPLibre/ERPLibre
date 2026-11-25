@@ -11,8 +11,9 @@ qui se garde :
   filefunc.inc.php pour les versions d'avant ;
 - de conf.php, seules des clés nommées sortent : jamais le mot de passe ;
 - « rien trouvé » et « rien trouvé mais des dossiers illisibles » sont deux
-  réponses différentes, comme un refus d'authentification et un réseau
-  injoignable.
+  réponses différentes.
+Le classement d'un hôte (authentification, réseau), la lecture de la sortie
+et le nom du rapport se vérifient dans test_erp_common_detect.
 """
 
 import subprocess
@@ -182,42 +183,6 @@ class TestReponses(Sonde):
         )
 
 
-class TestSsh(unittest.TestCase):
-    def test_each_failure_keeps_its_kind(self):
-        cas = (
-            (0, "DOLIBARR\tno\n", "ok"),
-            (255, "user@h: Permission denied (publickey).", "auth"),
-            (255, "ssh: Could not resolve hostname h: Name or service", "net"),
-            (
-                255,
-                "ssh: connect to host h port 22: Connection timed out",
-                "net",
-            ),
-            (255, "ssh: connect to host h port 22: Connection refused", "net"),
-            (255, "Host key verification failed.", "hostkey"),
-            (0, "sh: 1: syntax error", "error"),
-        )
-        for code, sortie, attendu in cas:
-            with self.subTest(sortie=sortie):
-                self.assertEqual(detect.classify(code, sortie), attendu)
-
-    def test_the_probe_goes_by_stdin_in_one_round_trip(self):
-        argv = detect.remote_argv({"target": "hote-a"}, ["/var/www"])
-        self.assertEqual(argv[0], "ssh")
-        self.assertIn("BatchMode=yes", argv)
-        self.assertEqual(argv[-2], "hote-a")
-        self.assertEqual(argv[-1], "sh -s -- 7 /var/www")
-
-
-class TestParse(unittest.TestCase):
-    def test_noise_before_the_header_is_ignored(self):
-        texte = "Welcome to a host\nDOLIBARR_HOST=x\nDOLIBARR\tno\n"
-        self.assertEqual(detect.parse_probe(texte)["status"], "no")
-
-    def test_no_header_is_no_report(self):
-        self.assertIsNone(detect.parse_probe("bash: sh: not found\n"))
-
-
 class TestCommande(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -272,14 +237,6 @@ class TestCommande(unittest.TestCase):
         self.reponses = {"local": (0, "DOLIBARR\tno\n")}
         code, _sortie = self.lancer("--local")
         self.assertEqual(code, 0)
-
-    def test_a_host_name_cannot_leave_the_inventory(self):
-        self.reponses = {"../../x": (0, "DOLIBARR\tno\n")}
-        self.lancer("--ssh", "../../x")
-        fichiers = list(
-            (self.racine / "private" / "dolibarr" / "inventory").iterdir()
-        )
-        self.assertEqual([f.name for f in fichiers], [".._.._x.json"])
 
     def test_the_inventory_of_the_checkout_is_ignored_by_git(self):
         # Un rapport porte le nom d'un hôte et ce qu'il héberge.
