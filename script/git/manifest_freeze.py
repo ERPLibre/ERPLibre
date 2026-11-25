@@ -68,6 +68,21 @@ _PROJECT = re.compile(r"<project\b[^>]*>", re.S)
 _ATTRS = re.compile(r'([\w:.-]+)="([^"]*)"')
 
 
+# Le suffixe d'une copie datée que la mise à jour des forks crée,
+# « <branche>_maj_<AAAAMMJJ> » ; répété quand une copie datée a elle-même
+# servi de branche.
+_DATEE = re.compile(r"(?:_maj_\d{8})+$")
+
+
+def base_branch(revision):
+    """La branche d'un fork sous sa copie datée : `revision` sans ses
+    suffixes « _maj_<AAAAMMJJ> ». Une branche non datée, un commit ou None
+    se rendent tels quels."""
+    if not revision or is_sha(revision):
+        return revision
+    return _DATEE.sub("", revision) or revision
+
+
 def is_sha(value):
     """Vrai si `value` est un commit complet, et non une branche ou un tag."""
     return bool(value) and bool(_SHA.match(value))

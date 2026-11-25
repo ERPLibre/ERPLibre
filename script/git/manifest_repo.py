@@ -52,8 +52,12 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
-from script.git import github_fork, manifest_fork  # noqa: E402
-from script.git import manifest_freeze, repo_upgrade  # noqa: E402
+from script.git import (  # noqa: E402
+    github_fork,
+    manifest_fork,
+    manifest_freeze,
+    repo_upgrade,
+)
 
 MANIFESTE = re.compile(r"git_manifest_odoo(\d+\.\d+)\.xml$")
 DELAI_GIT = 120
@@ -868,13 +872,16 @@ def _fusionnees(chemin, bases, *args):
     return noms
 
 
-def branches_du_clone(chemin, forks):
+def branches_du_clone(chemin, forks, gardees=()):
     """({branche locale}, {remote: {branche}}) du clone, hors branches
-    protégées et branche courante ; les remotes sont ceux de `forks`."""
+    protégées, branche courante et `gardees` ; les remotes sont ceux de
+    `forks`."""
     _code, courante = git(chemin, "branch", "--show-current")
 
     def garder(nom):
-        return nom != courante and not PROTEGEES.match(nom)
+        return (
+            nom != courante and nom not in gardees and not PROTEGEES.match(nom)
+        )
 
     _code, sortie = git(chemin, "branch", "--format=%(refname:short)")
     locales = {b for b in sortie.split() if garder(b)}
@@ -896,13 +903,13 @@ def branches_du_clone(chemin, forks):
     return locales, distantes
 
 
-def branches_a_nettoyer(chemin, bases, forks, fusion_github=None):
+def branches_a_nettoyer(chemin, bases, forks, fusion_github=None, gardees=()):
     """Les branches à proposer au nettoyage : {"locales": {nom: motif},
     "distantes": {remote: {nom: motif}}}. Le motif vaut « fusion » quand
     la branche est contenue dans une des `bases`, ou celui que rend
     `fusion_github(nom)` (une PR fusionnée par squash, que git ne voit
     pas) ; une branche sans motif n'est pas proposée."""
-    locales, distantes = branches_du_clone(chemin, forks)
+    locales, distantes = branches_du_clone(chemin, forks, gardees)
     fusion_locale = _fusionnees(chemin, bases)
     fusion_distante = _fusionnees(chemin, bases, "-r")
     motifs = {}
@@ -1009,7 +1016,16 @@ def plan_nettoyage(chemin, projet, remotes, client=None, fetch=False):
     return (
         bases,
         forks,
-        branches_a_nettoyer(chemin, bases, forks, fusion_github),
+        # La branche que le manifeste suit n'est jamais proposée : une
+        # copie datée qu'un gel des branches y a écrite n'a pas le nom
+        # protégé d'une branche de version.
+        branches_a_nettoyer(
+            chemin,
+            bases,
+            forks,
+            fusion_github,
+            gardees=tuple(filter(None, [branche_du_projet(projet)])),
+        ),
     )
 
 

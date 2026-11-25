@@ -659,6 +659,23 @@ class TestHistoriqueDesGels(_Checkout):
             ["alpha+c/alpha", "beta+c/beta"],
         )
 
+    def test_branche_seule_non_committee(self):
+        """Un gel des branches réécrit « revision » sous un commit gelé
+        inchangé : c'est un gel non committé."""
+        chemin = os.path.join(
+            self.racine, "manifest", "git_manifest_odooX.0.xml"
+        )
+        with open(chemin) as fh:
+            texte = fh.read()
+        self.fichier(
+            chemin,
+            texte.replace(
+                'name="beta" path="c/beta" revision="18.0"',
+                'name="beta" path="c/beta" revision="18.0_maj_20990101"',
+            ),
+        )
+        self.assertEqual(fd.uncommitted_freeze(self.racine), ["beta+c/beta"])
+
 
 class TestRapport(_Checkout):
     def test_gel_precedent_vers_dernier(self):

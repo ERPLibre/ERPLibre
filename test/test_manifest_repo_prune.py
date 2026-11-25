@@ -94,6 +94,15 @@ class TestLePlan(Clone):
             },
         )
 
+    def test_a_kept_branch_is_never_proposed(self):
+        """La branche que le manifeste suit, une copie datée qu'un gel des
+        branches y a écrite, n'a pas le nom protégé d'une branche de
+        version : elle reste hors du plan."""
+        plan = mr.branches_a_nettoyer(
+            self.c, ["OCA/18.0"], ["perso"], gardees=("fait",)
+        )
+        self.assertEqual(plan, {"locales": {}, "distantes": {}})
+
     def test_github_adds_the_squash_merged_branch_once_per_name(self):
         appels = []
 

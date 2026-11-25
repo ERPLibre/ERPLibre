@@ -356,7 +356,13 @@ def etat_forks(
             {
                 "chemin": projet.get("path"),
                 "nom": projet.get("name"),
-                "revision": projet.get("revision"),
+                # La branche du fork, même quand un gel des branches a
+                # écrit sa copie datée dans le manifeste : une passe crée
+                # « <branche>_maj_<jour> » et publie sur <branche>, jamais
+                # sur une copie datée.
+                "revision": manifest_freeze.base_branch(
+                    projet.get("revision")
+                ),
                 "remote": projet.get("remote"),
                 "clone_depth": projet.get("clone-depth"),
                 "gel": projet.get(manifest_freeze.FREEZE_ATTR),
