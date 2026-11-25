@@ -638,8 +638,10 @@ class TestGetConfig(unittest.TestCase):
         self.assertIsNone(gel.get_config([]).source)
 
 
-class TestDefaultInputPaths(unittest.TestCase):
-    """L'ordre des fichiers sources, lu dans un checkout factice."""
+class _CheckoutFactice(unittest.TestCase):
+    """Un checkout ERPLibre factice : conf/, manifest/, la version X.0
+    active, et de quoi y écrire des manifestes puis lancer le gel. Aucun
+    test ici : les classes qui en héritent portent les leurs."""
 
     def setUp(self):
         self.dossier = tempfile.mkdtemp()
@@ -675,6 +677,65 @@ class TestDefaultInputPaths(unittest.TestCase):
     def csv(self, chemin, fichiers):
         with open(chemin, "w") as fh:
             fh.write("filepath\n" + "".join(f"{f}\n" for f in fichiers))
+
+    PROJET = (
+        '  <project name="{n}.git" path="odooX.0/addons/{n}"'
+        ' revision="X.0"{gel}/>\n'
+    )
+
+    def ecrire(self, fichier, *projets):
+        """Écrit `manifest/<fichier>` ; `projets` : (nom, sha ou None)."""
+        lignes = "".join(
+            self.PROJET.format(
+                n=nom, gel=f' {mf.FREEZE_ATTR}="{sha}"' if sha else ""
+            )
+            for nom, sha in projets
+        )
+        with open(os.path.join("manifest", fichier), "w") as fh:
+            fh.write(f"<manifest>\n{lignes}</manifest>\n")
+
+    def chemin_prive(self, version):
+        return os.path.join(
+            gel.PRIVATE_MANIFEST_DIR,
+            gel.PRIVATE_MANIFEST.format(version=version),
+        )
+
+    def ecrire_prive(self, version, *projets):
+        """Écrit le manifeste privé de `version` comme `ecrire` ; rend son
+        chemin relatif à la racine."""
+        chemin = self.chemin_prive(version)
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        self.ecrire(os.path.relpath(chemin, "manifest"), *projets)
+        return chemin
+
+    def lire(self, fichier):
+        with open(os.path.join("manifest", fichier)) as fh:
+            return fh.read()
+
+    def geler(self, *argv):
+        """Lance le gel dans le checkout factice. Rend (code, sortie)."""
+        plan = gel.plan_freeze
+
+        def plan_factice(definitions, **kw):
+            # `inspect` est lié à la définition de plan_freeze : patcher
+            # inspect_clone ne l'atteint pas.
+            return plan(
+                definitions,
+                inspect=lambda path, _amont=None: (SHA_A, None, False),
+                **kw,
+            )
+
+        with patch.object(gel, "new_path", self.dossier), patch.object(
+            gel, "plan_freeze", side_effect=plan_factice
+        ), patch("builtins.print") as imprime:
+            code = gel.main(list(argv))
+        return code, "\n".join(
+            " ".join(map(str, a.args)) for a in imprime.mock_calls
+        )
+
+
+class TestDefaultInputPaths(_CheckoutFactice):
+    """L'ordre des fichiers sources, lu dans un checkout factice."""
 
     def test_doublons_gardes_a_leur_premiere_place(self):
         attendu = [
@@ -737,61 +798,6 @@ class TestDefaultInputPaths(unittest.TestCase):
         self.assertEqual(gel.freeze_sources(), publics + [prive])
         self.assertIn(prive, gel.honored_sources())
         self.assertNotIn(self.chemin_prive("Y.0"), gel.honored_sources())
-
-    PROJET = (
-        '  <project name="{n}.git" path="odooX.0/addons/{n}"'
-        ' revision="X.0"{gel}/>\n'
-    )
-
-    def ecrire(self, fichier, *projets):
-        """Écrit `manifest/<fichier>` ; `projets` : (nom, sha ou None)."""
-        lignes = "".join(
-            self.PROJET.format(
-                n=nom, gel=f' {mf.FREEZE_ATTR}="{sha}"' if sha else ""
-            )
-            for nom, sha in projets
-        )
-        with open(os.path.join("manifest", fichier), "w") as fh:
-            fh.write(f"<manifest>\n{lignes}</manifest>\n")
-
-    def chemin_prive(self, version):
-        return os.path.join(
-            gel.PRIVATE_MANIFEST_DIR,
-            gel.PRIVATE_MANIFEST.format(version=version),
-        )
-
-    def ecrire_prive(self, version, *projets):
-        """Écrit le manifeste privé de `version` comme `ecrire` ; rend son
-        chemin relatif à la racine."""
-        chemin = self.chemin_prive(version)
-        os.makedirs(os.path.dirname(chemin), exist_ok=True)
-        self.ecrire(os.path.relpath(chemin, "manifest"), *projets)
-        return chemin
-
-    def lire(self, fichier):
-        with open(os.path.join("manifest", fichier)) as fh:
-            return fh.read()
-
-    def geler(self, *argv):
-        """Lance le gel dans le checkout factice. Rend (code, sortie)."""
-        plan = gel.plan_freeze
-
-        def plan_factice(definitions, **kw):
-            # `inspect` est lié à la définition de plan_freeze : patcher
-            # inspect_clone ne l'atteint pas.
-            return plan(
-                definitions,
-                inspect=lambda path, _amont=None: (SHA_A, None, False),
-                **kw,
-            )
-
-        with patch.object(gel, "new_path", self.dossier), patch.object(
-            gel, "plan_freeze", side_effect=plan_factice
-        ), patch("builtins.print") as imprime:
-            code = gel.main(list(argv))
-        return code, "\n".join(
-            " ".join(map(str, a.args)) for a in imprime.mock_calls
-        )
 
     def test_le_gel_n_ecrit_que_la_version_active(self):
         self.ecrire("git_manifest_odooX.0.xml", ("un", None))
@@ -969,7 +975,9 @@ class TestDefaultInputPaths(unittest.TestCase):
                     sortie,
                     "--freeze",
                 ]
-                with patch("sys.argv", argv), patch("builtins.print") as imprime:
+                with patch("sys.argv", argv), patch(
+                    "builtins.print"
+                ) as imprime:
                     fusion.main()
                 texte = " ".join(
                     " ".join(map(str, a.args)) for a in imprime.mock_calls
@@ -997,7 +1005,9 @@ class TestDefaultInputPaths(unittest.TestCase):
         ]
         with patch("sys.argv", argv), patch("builtins.print") as imprime:
             code = fusion.main()
-        texte = " ".join(" ".join(map(str, a.args)) for a in imprime.mock_calls)
+        texte = " ".join(
+            " ".join(map(str, a.args)) for a in imprime.mock_calls
+        )
         self.assertEqual(code, 1)
         self.assertFalse(os.path.exists(sortie))
         self.assertIn("--strict refuses a branch", texte)
@@ -1207,6 +1217,397 @@ class TestInspectClone(unittest.TestCase):
         self.assertEqual(
             gel.inspect_clone(neuf), (None, "not a git clone", False)
         )
+
+
+class TestBaseBranch(unittest.TestCase):
+    def test_copie_datee_rend_sa_base(self):
+        self.assertEqual(mf.base_branch("X.0_maj_20990101"), "X.0")
+        self.assertEqual(mf.base_branch("X.0_dev_maj_20990101"), "X.0_dev")
+
+    def test_suffixes_repetes(self):
+        self.assertEqual(
+            mf.base_branch("X.0_maj_20990101_maj_20990202"), "X.0"
+        )
+
+    def test_le_reste_se_rend_tel_quel(self):
+        for valeur in (None, "", "X.0", "X.0_maj", "X.0_maj_123", SHA_A):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(mf.base_branch(valeur), valeur)
+
+
+class TestRewriteBranche(unittest.TestCase):
+    """« revision » reçoit la branche que le gel écrit avec son commit."""
+
+    def test_bloc_la_branche_remplace_la_revision_en_place(self):
+        neuf, cles = mf.rewrite(
+            BLOC, freeze={CLE_ALPHA: SHA_A}, revisions={CLE_ALPHA: "X_dev_maj"}
+        )
+        self.assertEqual(cles, [CLE_ALPHA])
+        self.assertIn(
+            '    revision="X_dev_maj"\n'
+            f'    freeze-revision="{SHA_A}"\n'
+            '    groups="g"\n',
+            neuf,
+        )
+        # L'autre projet et le reste du fichier ne bougent pas.
+        self.assertIn(
+            '<project name="beta.git" path="odooX/addons/R_beta"'
+            ' revision="X"/>',
+            neuf,
+        )
+
+    def test_balise_d_une_ligne(self):
+        neuf, _ = mf.rewrite(
+            BLOC, freeze={CLE_BETA: SHA_B}, revisions={CLE_BETA: "X_maj"}
+        )
+        self.assertIn(
+            '<project name="beta.git" path="odooX/addons/R_beta"'
+            f' revision="X_maj" freeze-revision="{SHA_B}"/>',
+            neuf,
+        )
+
+    def test_le_nom_revision_n_est_pas_pris_dans_freeze_revision(self):
+        """« freeze-revision » et « fork-upstream-freeze-revision » se
+        terminent par « revision » : seul l'attribut nu change."""
+        texte = (
+            '<manifest><project name="alpha.git" path="odooX/addons/R_alpha"'
+            f' revision="X" freeze-revision="{SHA_B}"'
+            f' fork-upstream="X" fork-upstream-freeze-revision="{SHA_C}"/>'
+            "</manifest>\n"
+        )
+        neuf, _ = mf.rewrite(
+            texte, freeze={CLE_ALPHA: SHA_B}, revisions={CLE_ALPHA: "X_maj"}
+        )
+        self.assertEqual(
+            neuf, texte.replace('revision="X"', 'revision="X_maj"')
+        )
+
+    def test_balise_sans_revision_la_recoit_apres_le_chemin(self):
+        texte = (
+            "<manifest>\n"
+            "  <project\n"
+            '    name="alpha.git"\n'
+            '    path="odooX/addons/R_alpha"\n'
+            '    remote="R"\n'
+            "  />\n"
+            "</manifest>\n"
+        )
+        neuf, _ = mf.rewrite(
+            texte, freeze={CLE_ALPHA: SHA_A}, revisions={CLE_ALPHA: "X_maj"}
+        )
+        self.assertIn(
+            '    path="odooX/addons/R_alpha"\n'
+            '    revision="X_maj"\n'
+            f'    freeze-revision="{SHA_A}"\n'
+            '    remote="R"\n',
+            neuf,
+        )
+
+    def test_le_degel_garde_la_branche(self):
+        neuf, _ = mf.rewrite(
+            BLOC, freeze={CLE_ALPHA: SHA_A}, revisions={CLE_ALPHA: "X_dev_maj"}
+        )
+        degele, _ = mf.rewrite(neuf, unfreeze=True)
+        self.assertEqual(degele, BLOC.replace('"X_dev"', '"X_dev_maj"'))
+
+    def test_meme_branche_et_meme_commit_ne_changent_rien(self):
+        neuf, _ = mf.rewrite(
+            BLOC, freeze={CLE_ALPHA: SHA_A}, revisions={CLE_ALPHA: "X_dev_maj"}
+        )
+        encore, cles = mf.rewrite(
+            neuf, freeze={CLE_ALPHA: SHA_A}, revisions={CLE_ALPHA: "X_dev_maj"}
+        )
+        self.assertEqual((encore, cles), (neuf, []))
+
+
+class TestPlanBranches(unittest.TestCase):
+    """Le plan des branches, avec un état de clone injecté."""
+
+    ETATS = {
+        "odooX/addons/R_alpha": ("X_dev_maj", None),
+        "odooX/addons/R_beta": ("X_maj", gel.BRANCHE_ABSENTE),
+        "odooX/addons/R_gamma": (None, None),
+    }
+
+    def definitions(self):
+        defs = {}
+        for nom, attrs in (
+            ("alpha", {"remote": "R", "revision": "X_dev"}),
+            ("beta", {}),
+            ("gamma", {"remote": "R", "revision": "X"}),
+        ):
+            path = f"odooX/addons/R_{nom}"
+            defs[mf.project_key(f"{nom}.git", path)] = [
+                ("m/un.xml", dict(attrs, name=f"{nom}.git", path=path))
+            ]
+        path = "odooX/addons/R_double"
+        defs[mf.project_key("double.git", path)] = [
+            ("m/un.xml", {"name": "double.git", "path": path}),
+            ("m/deux.xml", {"name": "double.git", "path": path}),
+        ]
+        return defs
+
+    def plan(self, **kw):
+        self.appels = []
+
+        def inspect(path, remote, revision):
+            self.appels.append((path, remote, revision))
+            return self.ETATS[path]
+
+        return gel.plan_branches(
+            self.definitions(),
+            {"remote": "D", "revision": "X_defaut"},
+            inspect=inspect,
+            workers=2,
+            **kw,
+        )
+
+    def test_branche_retenue_et_branche_ecartee(self):
+        branches, ecartees = self.plan()
+        self.assertEqual(branches, {CLE_ALPHA: "X_dev_maj"})
+        self.assertEqual(
+            ecartees,
+            [
+                {
+                    "cle": CLE_BETA,
+                    "chemin": "odooX/addons/R_beta",
+                    "remote": "D",
+                    "branche": "X_maj",
+                    "revision": "X_defaut",
+                    "motif": gel.BRANCHE_ABSENTE,
+                }
+            ],
+        )
+
+    def test_le_default_complete_remote_et_revision(self):
+        self.plan()
+        self.assertIn(("odooX/addons/R_beta", "D", "X_defaut"), self.appels)
+        self.assertIn(("odooX/addons/R_alpha", "R", "X_dev"), self.appels)
+
+    def test_un_projet_en_double_n_est_pas_inspecte(self):
+        self.plan()
+        self.assertNotIn("odooX/addons/R_double", [a[0] for a in self.appels])
+
+    def test_hors_des_fichiers_ecrits_un_projet_est_ignore(self):
+        branches, ecartees = self.plan(ecrits=["m/autre.xml"])
+        self.assertEqual((branches, ecartees, self.appels), ({}, [], []))
+
+
+class TestInspectBranch(unittest.TestCase):
+    """La branche d'un vrai clone face à sa copie distante."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, True)
+        plafond = patch.dict(
+            os.environ, {"GIT_CEILING_DIRECTORIES": self.dossier}
+        )
+        plafond.start()
+        self.addCleanup(plafond.stop)
+        self.nu = os.path.join(self.dossier, "distant.git")
+        self.clone = os.path.join(self.dossier, "clone")
+        _git(self.dossier, "init", "-q", "--bare", self.nu)
+        _git(self.dossier, "init", "-q", self.clone)
+        _git(self.clone, "remote", "add", "origin", self.nu)
+        self.fichier = os.path.join(self.clone, "a.txt")
+        self.commit("un")
+        _git(self.clone, "push", "-q", "origin", "HEAD:principale")
+        _git(self.clone, "fetch", "-q", "origin")
+
+    def commit(self, contenu):
+        with open(self.fichier, "w") as fh:
+            fh.write(contenu)
+        _git(self.clone, "add", "a.txt")
+        _git(self.clone, "commit", "-q", "-m", contenu)
+
+    def inspecter(self, revision="principale", remote="origin"):
+        return gel.inspect_branch(self.clone, remote, revision)
+
+    def test_tete_detachee_ne_change_rien(self):
+        _git(self.clone, "checkout", "-q", "--detach")
+        self.assertEqual(self.inspecter("autre"), (None, None))
+
+    def test_branche_du_manifeste_ne_change_rien(self):
+        self.assertEqual(self.inspecter(), (None, None))
+
+    def test_nouvelle_branche_absente_du_distant(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        self.assertEqual(
+            self.inspecter(), ("principale_maj_1", gel.BRANCHE_ABSENTE)
+        )
+
+    def test_branche_publiee_est_retenue(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        self.commit("deux")
+        code, err = gel.publier_branche(
+            self.clone, "origin", "principale_maj_1"
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.inspecter(), ("principale_maj_1", None))
+
+    def test_branche_en_avance_sur_sa_copie_distante(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        gel.publier_branche(self.clone, "origin", "principale_maj_1")
+        self.commit("deux")
+        self.assertEqual(
+            self.inspecter(), ("principale_maj_1", gel.BRANCHE_EN_AVANCE)
+        )
+        self.assertEqual(
+            gel.publier_branche(self.clone, "origin", "principale_maj_1")[0],
+            0,
+        )
+        self.assertEqual(self.inspecter(), ("principale_maj_1", None))
+
+    def test_branche_divergente_n_est_pas_poussee_de_force(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        self.commit("deux")
+        gel.publier_branche(self.clone, "origin", "principale_maj_1")
+        _git(self.clone, "reset", "-q", "--hard", "HEAD~1")
+        self.commit("trois")
+        self.assertEqual(
+            self.inspecter(),
+            ("principale_maj_1", "branch diverged from the remote"),
+        )
+        code, _ = gel.publier_branche(self.clone, "origin", "principale_maj_1")
+        self.assertNotEqual(code, 0)
+
+    def test_revision_commit_ne_devient_pas_une_branche(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        self.assertEqual(
+            self.inspecter(SHA_A)[1], "revision pinned to a commit"
+        )
+
+    def test_sans_remote(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        self.assertEqual(self.inspecter(remote=None)[1], "no remote")
+
+    def test_etiquette_homonyme_ne_rend_pas_heads(self):
+        """« symbolic-ref --short » rendrait « heads/<branche> » quand une
+        étiquette porte le même nom."""
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        _git(self.clone, "tag", "principale_maj_1")
+        self.assertEqual(
+            self.inspecter(), ("principale_maj_1", gel.BRANCHE_ABSENTE)
+        )
+        _git(self.clone, "checkout", "-q", "principale")
+        _git(self.clone, "tag", "principale")
+        self.assertEqual(self.inspecter(), (None, None))
+
+    def test_revision_datee_revient_a_sa_base_apres_publication(self):
+        """La publication pousse la copie datée sur la branche du fork et
+        détache le clone : la révision datée revient à sa base."""
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_20990101")
+        self.commit("deux")
+        _git(self.clone, "push", "-q", "origin", "HEAD:principale")
+        _git(self.clone, "checkout", "-q", "--detach")
+        self.assertEqual(
+            self.inspecter("principale_maj_20990101"), ("principale", None)
+        )
+
+    def test_revision_datee_sur_sa_copie_revient_aussi(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_20990101")
+        self.commit("deux")
+        _git(self.clone, "push", "-q", "origin", "HEAD:principale")
+        self.assertEqual(
+            self.inspecter("principale_maj_20990101"), ("principale", None)
+        )
+
+    def test_revision_datee_reste_tant_que_la_base_n_a_pas_le_commit(self):
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_20990101")
+        self.commit("deux")
+        gel.publier_branche(self.clone, "origin", "principale_maj_20990101")
+        self.assertEqual(
+            self.inspecter("principale_maj_20990101"), (None, None)
+        )
+
+    def test_sous_dossier_d_un_depot_n_est_pas_un_clone(self):
+        """Un dossier non cloné sous un autre dépôt ne rend pas la branche
+        de ce dépôt parent."""
+        _git(self.clone, "checkout", "-q", "-b", "principale_maj_1")
+        sous = os.path.join(self.clone, "sous")
+        os.mkdir(sous)
+        self.assertEqual(gel.inspect_branch(sous, "origin", "x"), (None, None))
+        self.assertEqual(
+            gel.inspect_branch(os.path.join(self.dossier, "absent"), "o", "x"),
+            (None, None),
+        )
+
+
+class TestMainBranches(_CheckoutFactice):
+    """Le gel avec `--branches` dans un checkout factice."""
+
+    def geler_branches(self, etat, *argv):
+        """Lance le gel ; `etat` est ce que l'inspection de branche rend."""
+        plan_b = gel.plan_branches
+
+        def plan_factice(definitions, defaut=None, **kw):
+            return plan_b(definitions, defaut, inspect=lambda *_a: etat, **kw)
+
+        with patch.object(gel, "plan_branches", side_effect=plan_factice):
+            return self.geler(*argv)
+
+    def test_la_branche_s_ecrit_avec_le_commit(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        code, sortie = self.geler_branches(("X.0_maj_1", None), "--branches")
+        self.assertEqual(code, 0)
+        texte = self.lire("git_manifest_odooX.0.xml")
+        self.assertIn(
+            f'revision="X.0_maj_1" {mf.FREEZE_ATTR}="{SHA_A}"', texte
+        )
+        self.assertIn("X.0 → X.0_maj_1", sortie)
+
+    def test_sans_l_option_la_branche_reste(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        self.geler_branches(("X.0_maj_1", None))
+        self.assertIn('revision="X.0"', self.lire("git_manifest_odooX.0.xml"))
+
+    def test_branche_absente_listee_et_non_ecrite(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        code, sortie = self.geler_branches(
+            ("X.0_maj_1", gel.BRANCHE_ABSENTE), "--branches"
+        )
+        self.assertEqual(code, 0)
+        self.assertIn('revision="X.0"', self.lire("git_manifest_odooX.0.xml"))
+        self.assertIn("push it to", sortie)
+        self.assertIn("or fetch it", sortie)
+
+    def test_passe_a_sec_n_ecrit_rien(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        avant = self.lire("git_manifest_odooX.0.xml")
+        self.geler_branches(("X.0_maj_1", None), "--branches", "--dry-run")
+        self.assertEqual(self.lire("git_manifest_odooX.0.xml"), avant)
+
+    def test_sans_l_option_une_revision_datee_revient_a_sa_base(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        chemin = os.path.join("manifest", "git_manifest_odooX.0.xml")
+        with open(chemin) as fh:
+            texte = fh.read()
+        with open(chemin, "w") as fh:
+            fh.write(texte.replace('revision="X.0"', 'revision="X.0_maj_1"'))
+        # La règle ne lit que la forme du nom : « _maj_1 » n'est pas daté.
+        code, _ = self.geler_branches(("X.0", None))
+        self.assertIn(
+            'revision="X.0_maj_1"', self.lire("git_manifest_odooX.0.xml")
+        )
+        with open(chemin, "w") as fh:
+            fh.write(
+                texte.replace('revision="X.0"', 'revision="X.0_maj_20990101"')
+            )
+        code, sortie = self.geler_branches(("X.0", None))
+        self.assertEqual(code, 0)
+        self.assertIn('revision="X.0"', self.lire("git_manifest_odooX.0.xml"))
+        self.assertIn("X.0_maj_20990101 → X.0", sortie)
+
+    def test_passe_a_sec_dit_ce_qui_s_ecrirait(self):
+        self.ecrire("git_manifest_odooX.0.xml", ("un", None))
+        _, sortie = self.geler_branches(
+            ("X.0_maj_1", None), "--branches", "--dry-run"
+        )
+        self.assertIn("1 would be written", sortie)
+
+    def test_get_config_branches(self):
+        self.assertTrue(gel.get_config(["--branches"]).branches)
+        self.assertFalse(gel.get_config([]).branches)
 
 
 if __name__ == "__main__":

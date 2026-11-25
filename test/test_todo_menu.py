@@ -1474,14 +1474,21 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
                 self.menu.gel_des_sources(dossier, odoo_version="Y.0"), (0, 0)
             )
 
-    def _geler(self, confirme, amont=False, **kw):
-        """Lance le gel. `amont` répond à la question de la base amont,
-        posée avant la passe à sec ; `confirme`, à celle de l'écriture."""
-        reponses = [confirme] if kw.get("unfreeze") else [amont, confirme]
+    def _geler(self, confirme, amont=False, branches=False, **kw):
+        """Lance le gel. `amont` et `branches` répondent aux questions de la
+        base amont et des branches, posées avant la passe à sec ;
+        `confirme`, à celle de l'écriture. La publication des branches est
+        remplacée : ses tests sont à part."""
+        reponses = (
+            [confirme] if kw.get("unfreeze") else [amont, branches, confirme]
+        )
         with self.mock.patch.object(
             self.menu.click, "confirm", side_effect=reponses
-        ) as confirm:
+        ) as confirm, self.mock.patch.object(
+            type(self.obj), "_git_repo_publier_branches", return_value=0
+        ) as publier:
             code = self.obj._git_repo_geler(**kw)
+        self.publier_branches = publier
         return code, confirm
 
     def test_freeze_runs_the_dry_run_and_stops_without_consent(self):
@@ -1489,7 +1496,7 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(len(self.cmds), 1)
         self.assertIn("git_freeze_manifest.py --dry-run", self.cmds[0])
-        self.assertEqual(confirm.call_count, 2)
+        self.assertEqual(confirm.call_count, 3)
 
     def test_freeze_writes_after_consent(self):
         code, _ = self._geler(True)
@@ -1506,6 +1513,96 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         self._geler(True, amont=True)
         self.assertIn("--upstream --dry-run", self.cmds[0])
         self.assertTrue(self.cmds[1].endswith("--upstream"))
+
+    def test_branches_are_off_by_default(self):
+        _code, confirm = self._geler(True)
+        self.assertIs(confirm.call_args_list[1].kwargs["default"], False)
+        self.assertNotIn("--branches", " ".join(self.cmds))
+        self.publier_branches.assert_not_called()
+
+    def test_branches_pass_their_flag_to_both_runs_after_publishing(self):
+        self._geler(True, branches=True)
+        self.assertIn("--branches --dry-run", self.cmds[0])
+        self.assertTrue(self.cmds[1].endswith("--branches"))
+        self.publier_branches.assert_called_once()
+
+    def test_unfreeze_asks_nothing_about_the_branches(self):
+        self._geler(True, unfreeze=True)
+        self.assertNotIn("--branches", " ".join(self.cmds))
+        self.publier_branches.assert_not_called()
+
+    def _publier_branches(self, choix, confirms=(), codes=None):
+        """Lance la publication des branches sur deux branches factices.
+        Rend (nombre poussé, appels de push)."""
+        gfm = self.menu.git_freeze_manifest
+        lst = [
+            {
+                "chemin": "odooX.0/a",
+                "remote": "R",
+                "branche": "X_maj_1",
+                "motif": gfm.BRANCHE_ABSENTE,
+            },
+            {
+                "chemin": "odooX.0/b",
+                "remote": "R",
+                "branche": "X_maj_1",
+                "motif": gfm.BRANCHE_EN_AVANCE,
+            },
+        ]
+        codes = list(codes or [(0, ""), (0, "")])
+        with self.mock.patch.object(
+            gfm, "branches_a_publier", return_value=lst
+        ), self.mock.patch.object(
+            gfm, "publier_branche", side_effect=codes
+        ) as push, self.mock.patch.object(
+            self.menu.click, "prompt", return_value=choix
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ):
+            n = self.obj._git_repo_publier_branches()
+        return n, push
+
+    def test_publishing_branches_defaults_to_none(self):
+        n, push = self._publier_branches("none")
+        self.assertEqual(n, 0)
+        push.assert_not_called()
+
+    def test_publishing_all_branches_pushes_each_once(self):
+        n, push = self._publier_branches("all")
+        self.assertEqual(n, 2)
+        self.assertEqual(push.call_count, 2)
+        chemin, remote, branche = push.call_args_list[0].args
+        self.assertTrue(chemin.endswith("odooX.0/a"))
+        self.assertEqual((remote, branche), ("R", "X_maj_1"))
+
+    def test_publishing_each_branch_asks_one_by_one(self):
+        n, push = self._publier_branches("each", confirms=[False, True])
+        self.assertEqual(n, 1)
+        push.assert_called_once()
+        self.assertTrue(push.call_args.args[0].endswith("odooX.0/b"))
+
+    def test_a_refused_push_is_not_counted(self):
+        with self.mock.patch("builtins.print") as imprime:
+            n, _ = self._publier_branches(
+                "all", codes=[(1, "rejected"), (0, "")]
+            )
+        self.assertEqual(n, 1)
+        sortie = " ".join(str(a) for c in imprime.mock_calls for a in c.args)
+        self.assertIn(
+            self.menu.t(
+                "If the remote already has this branch, fetch it,"
+                " then freeze again."
+            ),
+            sortie,
+        )
+
+    def test_nothing_to_publish_asks_nothing(self):
+        gfm = self.menu.git_freeze_manifest
+        with self.mock.patch.object(
+            gfm, "branches_a_publier", return_value=[]
+        ), self.mock.patch.object(self.menu.click, "prompt") as prompt:
+            self.assertEqual(self.obj._git_repo_publier_branches(), 0)
+        prompt.assert_not_called()
 
     def test_unfreeze_asks_nothing_about_the_upstream_base(self):
         _code, confirm = self._geler(True, unfreeze=True)
@@ -1529,13 +1626,14 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
         self.assertTrue(self.cmds[1].endswith("--unfreeze"))
 
     def test_a_failed_dry_run_asks_nothing(self):
-        """Seule la question de la base amont, qui précède la passe à sec,
-        a été posée : l'écriture n'est pas proposée."""
+        """Seules les questions de la base amont et des branches, qui
+        précèdent la passe à sec, ont été posées : l'écriture n'est pas
+        proposée."""
         self.status = [1]
         code, confirm = self._geler(True)
         self.assertEqual(code, 1)
         self.assertEqual(len(self.cmds), 1)
-        confirm.assert_called_once()
+        self.assertEqual(confirm.call_count, 2)
         self.status = [1]
         code, confirm = self._geler(True, unfreeze=True)
         self.assertEqual(code, 1)

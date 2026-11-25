@@ -24,6 +24,15 @@ base existante ne survit que si le commit gelé n'a pas changé. Le fetch de
 l'amont range des objets dans le clone et approfondit un clone superficiel ;
 il ne déplace ni branche ni référence, et ne touche pas l'arbre de travail.
 
+Avec `--branches`, un clone extrait sur une branche autre que la
+« revision » de son projet donne aussi cette branche à « revision » : la
+reconfiguration suivra la branche, le gel épinglant son commit. Seule une
+branche que le remote du projet porte, et qui contient le commit gelé,
+s'écrit ; les autres sont listées, avec ce qui manque, et leur projet garde
+sa branche. Une tête détachée ne change rien. `branches_a_publier` et
+`publier_branche` servent à pousser d'abord une branche absente du distant
+ou en avance sur lui, jamais de force : le gel lui-même ne pousse rien.
+
 Le gel ne change l'état d'aucun clone : il écrit des fichiers à committer. Il prend
 effet à la reconfiguration suivante, lancée avec `--freeze`
 (`make repo_configure_all FREEZE=1`) ; sans cet argument, la reconfiguration
@@ -91,6 +100,16 @@ def get_config(argv=None):
             " merge base of each frozen fork with its declared upstream"
             " branch. Fetches every upstream over the network, and deepens a"
             f" shallow clone up to {PROFONDEUR_MAX} commits."
+        ),
+    )
+    parser.add_argument(
+        "--branches",
+        action="store_true",
+        help=(
+            "Also write in revision the branch each clone is on, when it"
+            " differs from the manifest. Only a branch that the project's"
+            " remote carries and that contains the frozen commit is"
+            " written; the others are listed. Pushes nothing."
         ),
     )
     parser.add_argument(
@@ -167,6 +186,191 @@ def inspect_clone(path, amont=None):
         return sha, "commit on no remote branch", False
     _, sale = _git(path, "status", "--porcelain", "--untracked-files=no")
     return sha, None, bool(sale)
+
+
+# Les motifs d'`inspect_branch` qu'un push sans force règle : aucune
+# branche de suivi ne la montre au distant, ou la copie distante est en
+# retard. La lecture étant locale, une branche que le distant porte sans
+# que le clone l'ait jamais récupérée tombe aussi dans le premier.
+BRANCHE_ABSENTE = "branch not on the remote (no tracking branch)"
+BRANCHE_EN_AVANCE = "branch ahead of the remote"
+A_PUBLIER = (BRANCHE_ABSENTE, BRANCHE_EN_AVANCE)
+
+
+def _contient(path, ref, commit="HEAD"):
+    """Vrai si la référence `ref` existe et contient `commit`."""
+    code, _ = _git(path, "rev-parse", "--verify", "--quiet", ref)
+    if code:
+        return False
+    code, _ = _git(path, "merge-base", "--is-ancestor", commit, ref)
+    return code == 0
+
+
+def inspect_branch(path, remote, revision):
+    """La branche d'un clone à écrire dans « revision » : (branche, motif).
+
+    Une `revision` datée (« <base>_maj_<AAAAMMJJ> ») revient d'abord à sa
+    base : (base, None) quand `refs/remotes/<remote>/<base>` contient HEAD
+    et que le clone est détaché ou sur une copie datée de cette base. C'est
+    l'état qu'une publication laisse : la copie datée poussée sur la
+    branche du fork, le clone détaché sur ce commit.
+
+    Sinon, (None, None) quand rien ne change : tête détachée, ou branche
+    égale à `revision`. Sinon la branche extraite, et un motif None quand la
+    branche de suivi `refs/remotes/<remote>/<branche>` contient HEAD : le
+    remote du projet, d'où git-repo récupère, porte alors la branche et le
+    commit gelé. Les motifs : `BRANCHE_ABSENTE`, `BRANCHE_EN_AVANCE` (HEAD
+    descend de la copie distante), « branch diverged from the remote »,
+    « revision pinned to a commit » (une révision commit ne se remplace pas
+    par une branche) et « no remote ». La lecture reste locale : la branche
+    de suivi vaut ce que le dernier fetch ou push en a appris.
+
+    Comme pour `inspect_clone`, le chemin doit être la RACINE de son dépôt :
+    un dossier non cloné sous le checkout ERPLibre rendrait sinon la branche
+    d'ERPLibre. Un chemin qui n'en est pas une rend (None, None).
+    """
+    if not path or not os.path.isdir(path):
+        return None, None
+    code, racine = _git(path, "rev-parse", "--show-toplevel")
+    if code or os.path.realpath(racine) != os.path.realpath(path):
+        return None, None
+    # Le nom complet, et non « --short » : une étiquette homonyme ferait
+    # rendre « heads/<branche> ».
+    code, ref = _git(path, "symbolic-ref", "--quiet", "HEAD")
+    branche = (
+        ref[len("refs/heads/") :]
+        if not code and ref.startswith("refs/heads/")
+        else None
+    )
+    base = manifest_freeze.base_branch(revision)
+    if (
+        base != revision
+        and remote
+        and (branche is None or manifest_freeze.base_branch(branche) == base)
+        and _contient(path, f"refs/remotes/{remote}/{base}")
+    ):
+        return base, None
+    if not branche or branche == revision:
+        return None, None
+    if manifest_freeze.is_sha(revision):
+        return branche, "revision pinned to a commit"
+    if not remote:
+        return branche, "no remote"
+    suivi = f"refs/remotes/{remote}/{branche}"
+    code, _ = _git(path, "rev-parse", "--verify", "--quiet", suivi)
+    if code:
+        return branche, BRANCHE_ABSENTE
+    if _contient(path, suivi):
+        return branche, None
+    code, _ = _git(path, "merge-base", "--is-ancestor", suivi, "HEAD")
+    if code == 0:
+        return branche, BRANCHE_EN_AVANCE
+    return branche, "branch diverged from the remote"
+
+
+def read_default(sources):
+    """{« remote », « revision »} du `<default>` de la fusion.
+
+    Comme dans la fusion, le dernier fichier qui en porte un l'emporte ;
+    un projet sans « remote » ni « revision » prend les siens. Un fichier
+    vide ou illisible n'apporte pas de `<default>`.
+    """
+    defaut = {"remote": None, "revision": None}
+    for fichier in sources:
+        try:
+            e = ET.parse(fichier).getroot().find("default")
+        except (ET.ParseError, OSError):
+            continue
+        if e is not None:
+            for attr in defaut:
+                defaut[attr] = e.get(attr) or defaut[attr]
+    return defaut
+
+
+def plan_branches(
+    definitions, defaut=None, inspect=inspect_branch, workers=8, ecrits=None
+):
+    """Calcule les branches à écrire. Rend ({clé: branche}, écartées).
+
+    `écartées` est une liste de dicts « cle », « chemin », « remote »,
+    « branche », « revision » (celle du manifeste) et « motif » : une
+    branche que `inspect` ne retient pas. `ecrits` borne les fichiers comme
+    dans `plan_freeze`, et un projet défini dans plusieurs fichiers est
+    ignoré, `plan_freeze` le refusant déjà. `defaut` vient de
+    `read_default`.
+    """
+    defaut = defaut or {}
+    candidats = {}
+    for cle, defs in definitions.items():
+        if ecrits is not None and not any(f in ecrits for f, _ in defs):
+            continue
+        if len(defs) != 1:
+            continue
+        attrs = defs[0][1]
+        candidats[cle] = (
+            attrs.get("path"),
+            attrs.get("remote") or defaut.get("remote"),
+            attrs.get("revision") or defaut.get("revision"),
+        )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        etats = dict(
+            zip(
+                candidats,
+                pool.map(lambda c: inspect(*candidats[c]), candidats),
+            )
+        )
+    branches = {}
+    ecartees = []
+    for cle, (chemin, remote, revision) in candidats.items():
+        branche, motif = etats[cle]
+        if not branche:
+            continue
+        if motif:
+            ecartees.append(
+                {
+                    "cle": cle,
+                    "chemin": chemin,
+                    "remote": remote,
+                    "branche": branche,
+                    "revision": revision,
+                    "motif": motif,
+                }
+            )
+            continue
+        branches[cle] = branche
+    return branches, ecartees
+
+
+def branches_a_publier(odoo_version=None):
+    """Les branches qu'un push sans force rendrait gelables.
+
+    Les écartées de `plan_branches` dont le motif est dans `A_PUBLIER`,
+    pour les fichiers que le gel écrit, triées par chemin. Les chemins sont
+    relatifs à la racine du dépôt, où le répertoire courant doit se
+    trouver.
+    """
+    portee = freeze_sources(odoo_version)
+    lus = list(dict.fromkeys(default_sources() + portee))
+    _, ecartees = plan_branches(
+        read_sources(lus), read_default(lus), ecrits=portee
+    )
+    return sorted(
+        (e for e in ecartees if e["motif"] in A_PUBLIER),
+        key=lambda e: e["chemin"],
+    )
+
+
+def publier_branche(path, remote, branche):
+    """Pousse la branche locale `branche` sur la branche homonyme du remote.
+
+    Jamais de force : git refuse quand le distant porte des commits que la
+    branche locale n'a pas. Passe par `repo_upgrade.git`, comme la
+    publication des forks : délai borné, aucune invite d'identifiants, et
+    une erreur rendue plutôt que levée. Rend (code, message d'erreur).
+    """
+    ref = f"refs/heads/{branche}"
+    _out, err, code = repo_upgrade.git(["push", remote, f"{ref}:{ref}"], path)
+    return code, err.strip()
 
 
 def read_sources(sources):
@@ -555,14 +759,19 @@ def plan_upstream(
     remotes,
     calculer=base_amont,
     workers=PARALLELE_AMONT,
+    revisions=None,
 ):
     """Calcule la base amont des forks gelés. Rend ({clé: base}, constats).
 
     `par_fichier` est le plan de `plan_freeze`. `constats` associe chaque
     fork gelé au constat de `calculer`, complété de son « chemin » et de
     son « sha » gelé ; un projet qui n'est pas un fork n'y figure pas. Les
-    forks s'interrogent en parallèle, `workers` à la fois.
+    forks s'interrogent en parallèle, `workers` à la fois. `revisions`
+    associe une clé à la branche que le gel écrit : un clone superficiel
+    s'approfondit le long de celle-là, qui contient le commit gelé, plutôt
+    que de l'ancienne.
     """
+    revisions = revisions or {}
     forks = {}
     for geles in par_fichier.values():
         for cle, sha in geles.items():
@@ -573,7 +782,7 @@ def plan_upstream(
 
     def interroger(cle):
         attrs, sha, amont = forks[cle]
-        ref = manifest_freeze.manifest_branch(
+        ref = revisions.get(cle) or manifest_freeze.manifest_branch(
             attrs.get("revision"),
             attrs.get("upstream"),
             attrs.get("dest-branch"),
@@ -620,15 +829,48 @@ def print_upstream(constats):
             print(f"  - {cle}: {motif}")
 
 
+def print_branches(definitions, revisions, ecartees, dry_run=False):
+    """Affiche chaque branche écrite, ancienne → nouvelle, puis les
+    écartées avec leur motif ; celles qu'un push règle disent comment.
+    `dry_run` annonce ce qui s'écrirait plutôt que ce qui s'est écrit."""
+    for cle in sorted(revisions, key=lambda c: definitions[c][0][1]["path"]):
+        attrs = definitions[cle][0][1]
+        ancienne = attrs.get("revision") or "(default)"
+        print(f"  {attrs['path']}: {ancienne} → {revisions[cle]}")
+    ecrit = "would be written" if dry_run else "written"
+    print(
+        f"Branches: {len(revisions)} {ecrit}, {len(ecartees)} left on their"
+        " manifest branch."
+    )
+    if ecartees:
+        print(f"WARNING: branch not written: {len(ecartees)}")
+        for e in sorted(ecartees, key=lambda e: e["chemin"]):
+            ligne = f"  - {e['chemin']}: {e['branche']}: {e['motif']}"
+            if e["motif"] in A_PUBLIER:
+                ligne += (
+                    f"; push it to {e['remote']} (or fetch it if the remote"
+                    " already has it), then freeze again"
+                )
+            print(ligne)
+
+
 def write_sources(
-    par_fichier, unfreeze=False, dry_run=False, sources=(), upstream=None
+    par_fichier,
+    unfreeze=False,
+    dry_run=False,
+    sources=(),
+    upstream=None,
+    revisions=None,
 ):
     """Réécrit les fichiers. Rend {fichier: clés changées}.
 
-    `upstream` associe une clé à sa base amont, comme `rewrite` l'entend.
+    `upstream` associe une clé à sa base amont, `revisions` à la branche à
+    poser dans « revision », comme `rewrite` l'entend ; seule une clé gelée
+    dans le fichier les reçoit.
     """
     fichiers = list(sources) if unfreeze else list(par_fichier)
     upstream = upstream or {}
+    revisions = revisions or {}
     changes = {}
     for fichier in fichiers:
         with open(fichier) as fh:
@@ -639,6 +881,7 @@ def write_sources(
             freeze=geles,
             unfreeze=unfreeze,
             upstream={c: b for c, b in upstream.items() if c in geles},
+            revisions={c: b for c, b in revisions.items() if c in geles},
         )
         if not cles:
             continue
@@ -695,13 +938,34 @@ def main(argv=None):
     print(f"Freeze sources: {', '.join(ecrits)}")
     definitions = read_sources(lus)
     par_fichier, refus, sales = plan_freeze(definitions, ecrits=ecrits)
+    defaut = read_default(lus)
+    branches, ecartees = plan_branches(definitions, defaut, ecrits=ecrits)
+    if not config.branches:
+        # Sans --branches, seule une révision datée revient à sa base :
+        # elle n'existe que par un gel des branches, que la publication de
+        # la copie datée sur la branche du fork a rendu caduc.
+        branches = {
+            c: b
+            for c, b in branches.items()
+            if b
+            == manifest_freeze.base_branch(
+                definitions[c][0][1].get("revision") or defaut.get("revision")
+            )
+        }
+        ecartees = []
+    # Une branche ne s'écrit qu'à côté de son commit gelé.
+    geles_cles = {c for g in par_fichier.values() for c in g}
+    revisions = {c: b for c, b in branches.items() if c in geles_cles}
     bases, constats = {}, None
     if config.upstream:
         bases, constats = plan_upstream(
-            definitions, par_fichier, read_remotes(lus)
+            definitions, par_fichier, read_remotes(lus), revisions=revisions
         )
     changes = write_sources(
-        par_fichier, dry_run=config.dry_run, upstream=bases
+        par_fichier,
+        dry_run=config.dry_run,
+        upstream=bases,
+        revisions=revisions,
     )
 
     geles = sum(len(c) for c in par_fichier.values())
@@ -714,6 +978,8 @@ def main(argv=None):
     )
     if constats is not None:
         print_upstream(constats)
+    if config.branches or revisions:
+        print_branches(definitions, revisions, ecartees, config.dry_run)
     non_clones = [c for c, m in refus if m == "not cloned"]
     autres = [(c, m) for c, m in refus if m != "not cloned"]
     if non_clones:

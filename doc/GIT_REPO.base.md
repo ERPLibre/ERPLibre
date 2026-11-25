@@ -960,6 +960,26 @@ removes both attributes. Like `freeze-revision`, it never reaches git-repo: the 
 the files the freeze does not write. The header of TODO › Execute › Git repository › Repo counts the forks with an upstream
 base, read from the files without network.
 
+#### Freeze the branches
+
+`--branches`, or `make repo_freeze BRANCHES=1`, also writes in `revision` the branch each clone is on, when it differs
+from the manifest: a clone left by the fork upgrade on its dated branch `<branch>_maj_<YYYYMMDD>` makes the
+reconfiguration follow that branch, while `freeze-revision` pins its commit. A detached HEAD changes nothing, and a
+`revision` that is already a commit is never replaced by a branch.
+
+Only a branch that the project's remote carries, its tracking branch containing the frozen commit, is written; the
+others are listed, and their project keeps its branch: `branch not on the remote`, `branch ahead of the remote`,
+`branch diverged from the remote`. The script pushes nothing. In TODO, the freeze asks after the upstream base whether
+to freeze the branches too, No by default; before the dry run, it lists the branches missing from their remote or
+ahead of it and offers to push them, all, one by one or none, none by default. Each push puts the local branch on the
+branch of the same name, never forced: a diverged branch stays listed. `make repo_unfreeze` keeps `revision`.
+
+A dated `revision` returns to its base branch, with or without `--branches`, once the remote's base branch contains the
+frozen commit: that is the state the publication of a pass leaves, the dated branch pushed onto the fork's branch and
+the clone detached on it. The fork upgrade always works on the base branch: a pass names `<branch>_maj_<YYYYMMDD>` and
+publishes onto `<branch>`, never onto a dated branch, and the cleanup of merged branches never offers the branch the
+manifest follows.
+
 #### Install or reconfigure on the commits
 
 <!-- [fr] -->
@@ -993,6 +1013,27 @@ retire, et un gel sans `--upstream` ne la garde que tant que le commit ne change
 deux attributs. Comme `freeze-revision`, elle n'atteint jamais git-repo : la fusion la consomme, et la retire des
 fichiers que le gel n'écrit pas. L'en-tête de TODO › Exécution › Répertoire git › Repo compte les forks qui ont une base amont, lue
 dans les fichiers sans réseau.
+
+#### Geler les branches
+
+`--branches`, ou `make repo_freeze BRANCHES=1`, écrit aussi dans `revision` la branche de chaque clone, quand elle
+diffère de celle du manifeste : un clone que la mise à jour des forks laisse sur sa branche datée
+`<branche>_maj_<AAAAMMJJ>` fait suivre cette branche à la reconfiguration, tandis que `freeze-revision` épingle son
+commit. Une tête détachée ne change rien, et une `revision` qui est déjà un commit n'est jamais remplacée par une
+branche.
+
+Seule une branche que le remote du projet porte, sa branche de suivi contenant le commit gelé, s'écrit ; les autres
+sont listées, et leur projet garde sa branche : `branch not on the remote`, `branch ahead of the remote`,
+`branch diverged from the remote`. Le script ne pousse rien. Dans TODO, le gel demande après la base amont s'il gèle
+aussi les branches, Non par défaut ; avant la passe à sec, il liste les branches absentes de leur remote ou en avance
+sur lui et propose de les pousser, toutes, une à une ou aucune, aucune par défaut. Chaque push porte la branche locale
+sur la branche homonyme, jamais de force : une branche divergente reste listée. `make repo_unfreeze` garde `revision`.
+
+Une `revision` datée revient à sa branche de base, avec ou sans `--branches`, dès que la branche de base du remote
+contient le commit gelé : c'est l'état que laisse la publication d'une passe, la copie datée poussée sur la branche du
+fork et le clone détaché dessus. La mise à jour des forks travaille toujours sur la branche de base : une passe nomme
+`<branche>_maj_<AAAAMMJJ>` et publie sur `<branche>`, jamais sur une copie datée, et le nettoyage des branches
+fusionnées ne propose jamais la branche que suit le manifeste.
 
 #### Installer ou reconfigurer sur les commits
 

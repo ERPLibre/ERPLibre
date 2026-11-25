@@ -292,9 +292,11 @@ repo_pull_dry_run:
 # private/manifest/git_manifest_private_odoo<V>.xml) as freeze-revision
 # (UPSTREAM=1: also fork-upstream-freeze-revision, the upstream commit each
 # frozen fork is based on; fetches every declared upstream over the network)
+# (BRANCHES=1: also write as revision the branch each clone is on, when its
+# remote carries it with the frozen commit; pushes nothing)
 .PHONY: repo_freeze
 repo_freeze:
-	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py $(if $(filter 1,$(UPSTREAM)),--upstream,)
+	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py $(if $(filter 1,$(UPSTREAM)),--upstream,) $(if $(filter 1,$(BRANCHES)),--branches,)
 
 # remove freeze-revision from manifest/ and private/manifest/, repos follow
 # their branch again
