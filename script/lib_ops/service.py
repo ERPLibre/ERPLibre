@@ -11,12 +11,13 @@ commande lancée sous le compte de l'unité, ou y exécuter une fonction
 dossier.
 
 Les fonctions `detecter_*` remplissent un objet `plan` quelconque, par
-attributs (`unite`, `utilisateur`, `wd`, `execstart`, `config_path`,
-`base`…), et lèvent `Refus` sur ce qui manque. Ce module ne traduit rien :
-`Refus` porte le MODÈLE anglais du message et ses valeurs, et l'outil qui
-l'attrape le traduit par sa propre fonction `t()` (`message(t)`). Les
-modèles sont marqués par `N_()`, qui ne fait rien à l'exécution et permet
-à un test de vérifier qu'ils ont tous une traduction.
+attributs (`unite`, `namespace`, `utilisateur`, `wd`, `execstart`,
+`config_path`, `base`…), et lèvent `Refus` sur ce qui manque. Ce module
+ne traduit rien : `Refus` porte le MODÈLE anglais du message et ses
+valeurs, et l'outil qui l'attrape le traduit par sa propre fonction `t()`
+(`message(t)`). Les modèles sont marqués par `N_()`, qui ne fait rien à
+l'exécution et permet à un test de vérifier qu'ils ont tous une
+traduction.
 
 `SystemeBase` regroupe les effets de bord communs ; un test en dérive une
 classe qui les remplace, et aucune commande réelle n'est lancée.
@@ -361,9 +362,34 @@ def detecter_unite(explicite, systeme, racine, plan):
     return props
 
 
+def detecter_namespace(plan, props, strict=True):
+    """Le LogNamespace= de l'unité dans `plan.namespace`, "" sans
+    namespace : le journal de l'unité se lit alors avec `journalctl
+    --namespace=`. Un nom que journalctl ne recevrait pas tel quel lève
+    `Refus` avec `strict` ; sans, il est écarté : `plan.namespace` reste
+    vide et `plan.namespace_ecarte` le garde pour l'affichage.
+    `plan.namespace_ecarte` vaut "" dans tous les autres cas."""
+    nom = (props.get("LogNamespace") or "").strip()
+    plan.namespace = nom
+    plan.namespace_ecarte = ""
+    if nom and not systemd.namespace_valide(nom):
+        if strict:
+            raise Refus(
+                N_("The service {unit} has an invalid LogNamespace: {name}"),
+                unit=plan.unite,
+                name=nom,
+            )
+        plan.namespace = ""
+        plan.namespace_ecarte = nom
+
+
 def detecter_compte_et_dossier(explicite, systeme, plan, props):
-    """Compte (`utilisateur`, `courant`, `home`), ExecStart, Environment et
-    dossier de travail (`wd`) dans `plan`."""
+    """Compte (`utilisateur`, `courant`, `home`), namespace du journal
+    (`namespace`, voir `detecter_namespace`), ExecStart, Environment et
+    dossier de travail (`wd`) dans `plan`. Le namespace ne sert qu'à lire
+    le journal : un nom invalide est écarté sans refus, et la détection
+    de l'unité aboutit quand même."""
+    detecter_namespace(plan, props, strict=False)
     plan.courant = systeme.utilisateur_courant()
     plan.utilisateur = explicite or props["User"] or plan.courant
     plan.home = systeme.home(plan.utilisateur)

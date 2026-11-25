@@ -42,26 +42,36 @@ redémarrage ; jamais par `run.sh`. Les trois règles ci-dessus ne valent
 que pour le mode par défaut : le mode profond parle (un bilan), et refuse
 une option inconnue (code 2).
 
-1. La première réponse est attendue comme dans le mode par défaut, puis
-   `/web/login?db=BASE` ouvre une session épinglée à la base — le cookie
-   sert à toutes les requêtes suivantes.
+1. La première réponse est attendue comme dans le mode par défaut. Les
+   requêtes partent ensuite par `--repeat` VOIES : chacune a son client,
+   donc ses cookies, et ouvre sa propre session par `/web/login?db=BASE`,
+   épinglée à la base. Deux requêtes d'une même session ne partent jamais
+   en même temps : Odoo 16+ tire le jeton d'un visiteur anonyme de l'IP,
+   de l'User-Agent et du sid, et des requêtes simultanées d'un même sid
+   feraient un upsert concurrent de la même ligne `website_visitor`,
+   journalisé en ERROR.
 2. Les pages : /web/login, /, puis au plus `--max-pages` pages de
    `/sitemap.xml` (un index est descendu d'un cran). Le sitemap porte le
    domaine public : seul le chemin de chaque `<loc>` est gardé, et la
-   requête part vers la cible. Chaque page est demandée `--repeat` fois
-   à la fois, pour atteindre plusieurs workers : certains caches sont
-   propres à chacun.
+   requête part vers la cible.
 3. Les paquets d'assets que ces pages citent (`/web/assets/…`, et les
-   paquets `/web/content/…assets_…` des versions anciennes) : chacun est
-   demandé une première fois seul — cette requête construit le paquet —,
-   puis `--repeat` − 1 fois à la fois. Les corps sont lus et jetés.
+   paquets `/web/content/…assets_…` des versions anciennes). Les corps
+   sont lus et jetés.
+   Une page ou un paquet est demandé d'abord une fois seul, par la
+   première voie — ce premier rendu compile les gabarits ou construit le
+   paquet sans concurrence —, puis une fois par chacune des `--repeat` − 1
+   autres voies, toutes à la fois, pour atteindre plusieurs workers :
+   certains caches sont propres à chacun. Ce qui échoue à la première
+   requête n'est pas redemandé.
 4. Avec `--login` et `--api-key-file` seulement : `common.login` par
    /jsonrpc, la clé d'API comme mot de passe — Odoo n'accepte une clé que
    hors d'une connexion interactive, donc jamais par
    /web/session/authenticate. Puis, par `execute_kw`, des méthodes de
    lecture seules, d'une liste fermée vérifiée dans le code :
    `res.users.context_get`, `ir.ui.menu.load_menus`, et pour chaque
-   modèle de `--models`, `get_views` (16+) ou `load_views` (15 et avant).
+   modèle de `--models`, `get_views` (16+) ou `load_views` (15 et avant),
+   chaque appel une fois par voie, toutes à la fois. Chaque appel porte
+   l'uid et la clé : aucune voie n'ouvre de session authentifiée.
    La clé est lue dans un fichier, sans suivre de lien ; elle ne paraît
    ni sur la ligne de commande, ni dans la sortie. Elle ne part qu'en
    https, ou en http vers la boucle locale : une cible http:// sur un
@@ -276,6 +286,18 @@ def url(hote, port, database=None):
     return base
 
 
+def ouvrir_sans_proxy(cible, timeout):
+    """`urlopen` sans le proxy de l'environnement : `http_proxy` et
+    `HTTP_PROXY` sont ignorés, `no_proxy` vide ou non. La cible est
+    l'instance elle-même ; passée par un proxy, une réponse du proxy
+    (502, 403) se lirait comme celle d'Odoo, et un proxy injoignable
+    comme un Odoo muet. Même règle que `Client` et que health_check."""
+    import urllib.request
+
+    ouvreur = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return ouvreur.open(cible, timeout=timeout)
+
+
 def sonder(
     cible,
     delai_total=DELAI_TOTAL,
@@ -288,15 +310,16 @@ def sonder(
 
     N'importe quel code HTTP est une réussite : 303, 404 ou 500 prouvent
     tous que le serveur a répondu, donc que le registre est chargé. Seul
-    le refus de connexion fait recommencer.
+    le refus de connexion fait recommencer. La requête part directement
+    vers la cible, jamais par le proxy de l'environnement
+    (`ouvrir_sans_proxy`).
     """
     import urllib.error
-    import urllib.request
 
     fin = horloge() + delai_total
     while horloge() < fin:
         try:
-            with urllib.request.urlopen(cible, timeout=requete):
+            with ouvrir_sans_proxy(cible, requete):
                 return True
         except urllib.error.HTTPError:
             # Le serveur a répondu, et c'est tout ce qu'on demandait.
@@ -373,11 +396,13 @@ def _pire(codes):
 
 
 class Client:
-    """Un ouvreur partagé par les fils : cookies gardés (la session reste
-    sur la base choisie par `?db=`), proxy de l'environnement ignoré,
-    redirections suivies sur le même hôte seulement — une redirection vers
-    un autre hôte est rendue telle quelle (3xx). Le certificat d'une cible
-    https est vérifié : la clé d'API y passe."""
+    """Un ouvreur et sa session — une voie du mode profond : cookies
+    gardés (la session reste sur la base choisie par `?db=`), proxy de
+    l'environnement ignoré, redirections suivies sur le même hôte
+    seulement — une redirection vers un autre hôte est rendue telle quelle
+    (3xx). Le certificat d'une cible https est vérifié : la clé d'API y
+    passe. Un client ne sert qu'une requête à la fois : des requêtes
+    simultanées vont chacune par sa voie."""
 
     def __init__(self, base_url, delai=DELAI_REQUETE_PROFOND):
         import http.cookiejar
@@ -439,16 +464,41 @@ def _vider(reponse, garder):
     return b"".join(morceaux).decode("utf-8", "replace") if garder else ""
 
 
-def en_parallele(fonction, fois):
-    """`fonction()` lancée `fois` fois à la fois, dans autant de fils ;
-    rend la liste des résultats."""
-    if fois <= 1:
-        return [fonction()]
+def sur_les_voies(fonction, voies):
+    """`fonction(voie)` pour chaque voie, toutes à la fois, une par fil ;
+    rend les résultats dans l'ordre des voies. Une seule voie : un appel
+    direct, sans fil."""
+    if len(voies) <= 1:
+        return [fonction(voie) for voie in voies]
     from concurrent.futures import ThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=fois) as pool:
-        futurs = [pool.submit(fonction) for _ in range(fois)]
+    with ThreadPoolExecutor(max_workers=len(voies)) as pool:
+        futurs = [pool.submit(fonction, voie) for voie in voies]
         return [futur.result() for futur in futurs]
+
+
+def ouvrir_voies(base_url, delai, premiere, nombre):
+    """`nombre` voies de plus, chacune un `Client` qui ouvre sa session par
+    `premiere` (`/web/login?db=BASE`), toutes à la fois : (voies, codes
+    des ouvertures). Une ouverture sans réponse laisse la voie sans
+    session ; Odoo en crée une à sa première requête."""
+    voies = [Client(base_url, delai) for _ in range(max(0, nombre))]
+    codes = sur_les_voies(lambda voie: voie.obtenir(premiere)[0], voies)
+    return voies, codes
+
+
+def charger(voies, chemin, garder=False):
+    """`chemin` demandé d'abord seul par la première voie, puis une fois
+    par chacune des autres, toutes à la fois : (codes, corps de la
+    première réponse, gardé si `garder`). La première requête fait seule
+    le travail partagé (gabarits compilés, paquet d'assets construit) ;
+    une première requête sans réponse ou en 5xx n'est pas répétée."""
+    code, corps = voies[0].obtenir(chemin, garder)
+    codes = [code]
+    if len(voies) > 1 and 0 < code < 500:
+        reponses = sur_les_voies(lambda voie: voie.obtenir(chemin), voies[1:])
+        codes += [c for c, _corps in reponses]
+    return codes, corps
 
 
 def chemin_local(loc):
@@ -610,10 +660,14 @@ def vues_a_charger(version):
     return methode, vues + [[False, "kanban"]]
 
 
-def prechauffer_vues(client, base, login, cle, modeles, repeat, bilan):
-    """La partie authentifiée : version, `common.login`, puis les appels
-    de lecture, chacun `repeat` fois à la fois. Un refus de connexion est
-    un échec ; la clé n'entre dans aucun message."""
+def prechauffer_vues(voies, base, login, cle, modeles, bilan):
+    """La partie authentifiée : version et `common.login` par la première
+    voie, puis les appels de lecture, chacun une fois par voie, toutes à
+    la fois. Un appel `execute_kw` porte l'uid et la clé : les voies
+    gardent leur session anonyme, aucune n'en ouvre d'authentifiée. Un
+    refus de connexion est un échec ; la clé n'entre dans aucun
+    message."""
+    client = voies[0]
 
     def propre(message):
         return str(message).replace(cle, "***")
@@ -631,13 +685,14 @@ def prechauffer_vues(client, base, login, cle, modeles, repeat, bilan):
         bilan.echecs.append(("common.login", propre(erreur or "refused")))
         return
     bilan.connexion = "ok"
-    import functools
 
     def lecture(modele, methode, args, kwargs):
-        appel = functools.partial(
-            executer_lecture, client, base, uid, cle, modele, methode, args
+        reponses = sur_les_voies(
+            lambda voie: executer_lecture(
+                voie, base, uid, cle, modele, methode, args, kwargs
+            ),
+            voies,
         )
-        reponses = en_parallele(lambda: appel(kwargs), repeat)
         bilan.rpc += 1
         erreurs = [e for _r, e in reponses if e]
         if erreurs:
@@ -664,8 +719,9 @@ def prechauffer_profond(
 ):
     """Le préchauffage profond de l'instance servie à `base_url` (sans
     chemin) : rend un Bilan, ne lève pas pour un échec HTTP. La première
-    réponse doit déjà être venue (`sonder`)."""
-    import functools
+    réponse doit déjà être venue (`sonder`). `repeat` voies, chacune sa
+    session (voir l'en-tête du module) ; la première ouvre la sienne
+    seule, avant toute autre requête."""
     import urllib.parse
 
     bilan = Bilan()
@@ -675,33 +731,34 @@ def prechauffer_profond(
     if base:
         premiere += "?db=" + urllib.parse.quote(base)
     code, corps = client.obtenir(premiere, garder=True)
-    bilan.noter(premiere, code)
     corps_pages = [corps]
     chemins = ["/web/login", "/"]
     for chemin in pages_du_sitemap(client, max_pages):
         if chemin not in chemins:
             chemins.append(chemin)
+    # Une première ouverture sans réponse ou en 5xx n'est pas répétée par
+    # les autres voies : la première voie poursuit seule.
+    autres, codes = [], []
+    if 0 < code < 500:
+        autres, codes = ouvrir_voies(base_url, delai, premiere, repeat - 1)
+    bilan.noter(premiere, _pire([code] + codes))
+    voies = [client] + autres
     for chemin in chemins:
-        reponses = en_parallele(
-            functools.partial(client.obtenir, chemin, True), repeat
-        )
+        codes, texte = charger(voies, chemin, garder=True)
         bilan.pages += 1
-        bilan.noter(chemin, _pire([c for c, _corps in reponses]))
-        corps_pages.extend(texte for _c, texte in reponses[:1])
+        bilan.noter(chemin, _pire(codes))
+        corps_pages.append(texte)
     assets = []
     for texte in corps_pages:
         for chemin in assets_de(texte):
             if chemin not in assets:
                 assets.append(chemin)
     for chemin in assets:
-        obtenir = functools.partial(client.obtenir, chemin)
-        codes = [obtenir()[0]]
-        if repeat > 1:
-            codes += [c for c, _t in en_parallele(obtenir, repeat - 1)]
+        codes, _corps = charger(voies, chemin)
         bilan.assets += 1
         bilan.noter(chemin, _pire(codes))
     if login and cle:
-        prechauffer_vues(client, base, login, cle, modeles, repeat, bilan)
+        prechauffer_vues(voies, base, login, cle, modeles, bilan)
     bilan.duree = horloge() - debut
     return bilan
 

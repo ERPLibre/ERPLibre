@@ -20,6 +20,7 @@ import os
 import sys
 import tempfile
 import time
+import types
 import unittest
 import zipfile
 from unittest import mock
@@ -182,6 +183,28 @@ class TestLectureUnite(unittest.TestCase):
         )
         self.assertIn("@1700000000", lanceur.appels[0])
         self.assertIn("cat", lanceur.appels[0])
+        self.assertFalse(
+            [a for a in lanceur.appels[0] if a.startswith("--namespace")]
+        )
+
+    def test_journal_depuis_d_un_namespace(self):
+        lanceur = FauxLanceur(defaut=(0, "ligne\n"))
+        systemd.journal_depuis("a.service", 1700000000, lanceur, "ns_essai")
+        argv = list(lanceur.appels[0])
+        self.assertEqual(
+            argv[:4], ["journalctl", "--namespace=ns_essai", "-u", "a.service"]
+        )
+
+    def test_namespace(self):
+        self.assertIn("LogNamespace", systemd.PROPRIETES)
+        for nom in ("ns", "odoo-1.prod_ns", "a:b", "ns\\x2dessai", "odoo@ns"):
+            self.assertTrue(systemd.namespace_valide(nom), nom)
+        for nom in ("", ".", "..", "a/b", "-x x", "a b", "a\nb", "é"):
+            self.assertFalse(systemd.namespace_valide(nom), nom)
+        self.assertEqual(systemd.option_namespace(""), [])
+        self.assertEqual(systemd.option_namespace("ns"), ["--namespace=ns"])
+        with self.assertRaises(ValueError):
+            systemd.option_namespace("a/b")
 
 
 class TestDevinerUnite(unittest.TestCase):
@@ -766,6 +789,15 @@ class TestCommandeJournal(unittest.TestCase):
         self.assertNotIn("--since", argv)
         self.assertNotIn("-q", argv)
 
+    def test_namespace(self):
+        argv = systemd.commande_journal("u.service", 1000, namespace="ns")
+        self.assertEqual(
+            argv[:4], ["journalctl", "--namespace=ns", "-u", "u.service"]
+        )
+        self.assertEqual(argv[-1], "--show-cursor")
+        with self.assertRaises(ValueError):
+            systemd.commande_journal("u.service", namespace="a b")
+
 
 class TestJournalGroupes(unittest.TestCase):
     def test_j5_regroupement(self):
@@ -1043,8 +1075,8 @@ class TestDiagnosticCourriel(unittest.TestCase):
         (
             "SMTPDataError",
             "(452, b'4.4.5 Maximum number of messages per session exceeded')",
-            "rate_limit",
-            False,
+            "session_limit",
+            True,
         ),
         (
             "SMTPDataError",
@@ -1061,8 +1093,8 @@ class TestDiagnosticCourriel(unittest.TestCase):
         (
             "SMTPSenderRefused",
             "(503, b'5.5.1 Multiple MAIL commands not allowed', 'a@example.org')",
-            "cascade_503",
-            False,
+            "session_limit",
+            True,
         ),
         (
             "SMTPAuthenticationError",
@@ -1157,7 +1189,7 @@ class TestDiagnosticCourriel(unittest.TestCase):
         for raison in (anglais, francais, francais.replace("\n", " ")):
             with self.subTest(raison=raison):
                 self.assertEqual(
-                    mail_diagnostic.classer_echec(raison).id, "rate_limit"
+                    mail_diagnostic.classer_echec(raison).id, "session_limit"
                 )
                 cause = mail_diagnostic.cause_courte(raison)
                 self.assertTrue(cause.startswith("SMTPDataError: (452, "))
@@ -1188,12 +1220,54 @@ class TestDiagnosticCourriel(unittest.TestCase):
         )
         texte = "SMTPDataError: (452, b'4.4.5 Too many messages')"
         self.assertEqual(
-            mail_diagnostic.classer_echec(texte, "mail_smtp").id, "rate_limit"
+            mail_diagnostic.classer_echec(texte, "mail_smtp").id,
+            "session_limit",
         )
         self.assertEqual(
-            mail_diagnostic.classer_echec(texte, None).id, "rate_limit"
+            mail_diagnostic.classer_echec(texte, None).id, "session_limit"
         )
         self.assertIsNone(mail_diagnostic.classer_echec("", None))
+
+    def test_d6_limite_de_session(self):
+        """452 4.4.5 ou « messages per session », et le « 503 Multiple
+        MAIL » qui les suit : une classe à part, permanente, dont le
+        conseil est de relever la limite du serveur — jamais de baisser
+        mail.session.batch.size. Un 452 sans 4.4.5 ni session, un plafond
+        quotidien, restent une limite de débit passagère."""
+        for raison in (
+            "SMTPDataError: (452, b'4.4.5 Too many messages per session')",
+            "SMTPSenderRefused: (452, b'4.4.5 Maximum number of messages"
+            " per session exceeded', 'a@example.org')",
+            "SMTPDataError: (451, b'Too many recipients per connection')",
+            "SMTPSenderRefused: (503, b'5.5.1 Error: nested MAIL command',"
+            " 'a@example.org')",
+            "SMTPSenderRefused: (503, b'5.5.1 Multiple MAIL commands not"
+            " allowed', 'a@example.org')",
+        ):
+            with self.subTest(raison=raison):
+                classe = mail_diagnostic.classer_echec(raison)
+                self.assertEqual(
+                    (classe.id, classe.permanent), ("session_limit", True)
+                )
+        for raison in (
+            "SMTPDataError: (421, b'4.7.0 Try again later')",
+            "SMTPRecipientsRefused: {'a@example.org': (452, b'4.5.3 Too"
+            " many recipients')}",
+            "SMTPDataError: (550, b'5.4.5 Daily user sending quota exceeded')",
+        ):
+            with self.subTest(raison=raison):
+                classe = mail_diagnostic.classer_echec(raison)
+                self.assertEqual(
+                    (classe.id, classe.permanent), ("rate_limit", False)
+                )
+        conseil = mail_diagnostic.reglage("session_limit")
+        self.assertIn("sum of their recipients", conseil)
+        self.assertIn("largest recipient group", conseil)
+        self.assertIn("one mail's group alone exceeds it", conseil)
+        self.assertNotIn("try 10", conseil)
+        self.assertNotIn(
+            "mail.session.batch.size", mail_diagnostic.reglage("rate_limit")
+        )
 
     def test_d5_reglage_selon_la_version(self):
         r14 = mail_diagnostic.reglage("sender", 14)
@@ -1215,13 +1289,16 @@ class TestDiagnosticCourriel(unittest.TestCase):
     def test_classe_dans_le_journal(self):
         texte = "".join(
             courriel(exc, detail, mid=7404 + rang)
-            for rang, (exc, detail, _a, _p) in enumerate(self.CAS[:2])
+            for rang, (exc, detail, _a, _p) in enumerate(
+                (self.CAS[0], self.CAS[3])
+            )
         )
         analyse = journal.analyser(recs(texte))
+        # Le 452 et le « 503 Multiple MAIL » qui le suit : une seule cause.
         (groupe,) = analyse.groupes_courriels()
         self.assertEqual(
             (groupe.classe.id, groupe.nombre, sorted(groupe.ids)),
-            ("rate_limit", 2, [7404, 7405]),
+            ("session_limit", 2, [7404, 7405]),
         )
         # Chaque échec reste aussi une trace à revoir, comptée une fois ;
         # les deux réponses du serveur diffèrent, d'où deux groupes.
@@ -1671,6 +1748,33 @@ class TestRefus(unittest.TestCase):
         self.assertEqual(
             service.Refus("déjà formé {x}").message(str), "déjà formé {x}"
         )
+
+    def test_namespace_de_l_unite(self):
+        """LogNamespace= passe au plan, vide sans namespace ou avec un
+        systemd qui ne connaît pas la propriété ; un nom que journalctl ne
+        recevrait pas tel quel refuse."""
+        for props, attendu in (
+            ({"LogNamespace": " ns_essai\n"}, "ns_essai"),
+            ({"LogNamespace": ""}, ""),
+            ({}, ""),
+        ):
+            with self.subTest(props=props):
+                plan = types.SimpleNamespace(unite="a.service")
+                service.detecter_namespace(plan, props)
+                self.assertEqual(plan.namespace, attendu)
+        plan = types.SimpleNamespace(unite="a.service")
+        with self.assertRaises(service.Refus) as ctx:
+            service.detecter_namespace(plan, {"LogNamespace": "a/b"})
+        self.assertIn("a/b", str(ctx.exception))
+
+    def test_namespace_ecarte_sans_refus(self):
+        """Hors `strict`, un nom invalide est écarté sans refus : le plan
+        garde un namespace vide et le nom écarté."""
+        plan = types.SimpleNamespace(unite="a.service")
+        service.detecter_namespace(plan, {"LogNamespace": "a/b"}, False)
+        self.assertEqual((plan.namespace, plan.namespace_ecarte), ("", "a/b"))
+        service.detecter_namespace(plan, {"LogNamespace": "ns"}, False)
+        self.assertEqual((plan.namespace, plan.namespace_ecarte), ("ns", ""))
 
 
 class TestRapport(unittest.TestCase):

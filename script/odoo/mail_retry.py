@@ -26,10 +26,17 @@ Le déroulé
    (`j***@example.org`, nom affiché réduit à son initiale ; `--details`
    montre tout) et sa cause classée par `lib_ops.mail_diagnostic`,
    passagère ou PERMANENTE. Puis les totaux par sujet, par cause et par
-   jour, et deux avertissements : une cause permanente échouera de
-   nouveau au renvoi tant que le réglage nommé n'est pas corrigé ; plus de
-   10 courriels avec `mail.session.batch.size` absent ou au-dessus de 20
-   risquent la limite de messages par connexion du serveur.
+   jour, et les avertissements : une cause permanente échouera de
+   nouveau au renvoi tant que le réglage nommé n'est pas corrigé ; un
+   refus par la limite de messages par session du serveur SMTP donne le
+   plus grand groupe de destinataires de ces courriels et la valeur de
+   `mail.session.batch.size` : une session porte jusqu'à autant de
+   courriels (1000 sans le paramètre), un message par destinataire de
+   chacun, et le serveur compte la somme ; un renvoi avant de baisser le
+   lot ou de relever la limite échoue de nouveau et peut doubler l'envoi
+   aux premiers destinataires. Plus de 10 courriels avec
+   `mail.session.batch.size` absent ou au-dessus de 20 risquent la même
+   limite.
 4. Sélection : `--resend all | oldest N | ids 1,2,3`, avec `--yes` hors
    terminal ; sur un terminal sans `--resend`, un menu ([a] tous,
    [o] les plus anciens, [i] des ids, [n] aucun — le défaut). `--list`
@@ -105,6 +112,9 @@ DELAI_SHELL = 300
 SEUIL_LOT = 10
 LOT_SUR = 20
 TOP = 10
+# Longueur à laquelle `requete_liste` coupe les destinataires : une liste
+# qui l'atteint en compte au moins autant qu'elle en montre.
+LONGUEUR_DESTINATAIRES = 300
 
 DEBUT_JSON = "MAIL_RETRY_JSON_BEGIN"
 FIN_JSON = "MAIL_RETRY_JSON_END"
@@ -160,7 +170,8 @@ def requete_liste(jours):
         " (SELECT string_agg(p.email, ', ')"
         " FROM mail_mail_res_partner_rel r"
         " JOIN res_partner p ON p.id = r.res_partner_id"
-        " WHERE r.mail_mail_id = m.id), ''), 300) AS recipients,"
+        f" WHERE r.mail_mail_id = m.id), ''), {LONGUEUR_DESTINATAIRES})"
+        " AS recipients,"
         " left(COALESCE(m.failure_reason, ''), 1000) AS reason,"
         " to_jsonb(m)->>'failure_type' AS failure_type"
         " FROM mail_mail m"
@@ -232,6 +243,14 @@ class Echec:
 
     def jour(self):
         return datetime.datetime.fromtimestamp(self.date).strftime("%Y-%m-%d")
+
+    def nombre_destinataires(self):
+        """(nombre, au_moins) : les adresses lues dans les destinataires,
+        et vrai quand la liste atteint la coupe de la requête — il y en a
+        alors au moins autant. Une adresse coupée en son milieu compte
+        encore si son « @ » reste."""
+        nombre = len(RE_ADRESSE.findall(self.destinataires))
+        return nombre, len(self.destinataires) >= LONGUEUR_DESTINATAIRES
 
     def heure(self):
         return datetime.datetime.fromtimestamp(self.date).strftime(
@@ -428,6 +447,11 @@ def afficher_liste(rapport, args, echecs, donnees, version):
                 )
             )
     lot = donnees.get("batch_size")
+    limites = [
+        e for e in echecs if e.classe and e.classe.id == "session_limit"
+    ]
+    if limites:
+        avertir_limite_de_session(rapport, limites, lot)
     if len(echecs) > SEUIL_LOT and not _lot_sur(lot):
         rapport.attn(
             t(
@@ -436,6 +460,47 @@ def afficher_liste(rapport, args, echecs, donnees, version):
                 " of the resend; set it to 10 or 20 first."
             ).format(count=len(echecs), value=lot if lot else t("unset"))
         )
+
+
+def avertir_limite_de_session(rapport, limites, lot):
+    """L'avertissement des refus par la limite de messages par session :
+    leur plus grand groupe de destinataires (« au moins N » dès qu'une
+    liste a été coupée par la requête, car elle en cache peut-être plus
+    que le plus long groupe entier) et la valeur `lot` de
+    `mail.session.batch.size`. Odoo ouvre une session par lot de ce
+    nombre de courriels (1000 sans le paramètre) et y envoie un message
+    par destinataire de chacun : le serveur compte la somme des groupes
+    du lot. Baisser le lot suffit quand le lot multiplié par le plus
+    grand groupe passe sous la limite ; un groupe qui la dépasse seul
+    exige de relever la limite. Un renvoi avant l'un ou l'autre rouvre
+    une session qui refuse de nouveau au même rang : les premiers
+    destinataires, déjà servis, reçoivent le courriel une seconde fois."""
+    comptes = [e.nombre_destinataires() for e in limites]
+    nombre = max(n for n, _coupe in comptes)
+    au_moins = any(coupe for _n, coupe in comptes)
+    if au_moins:
+        groupe = t("at least {count}").format(count=nombre)
+    elif nombre:
+        groupe = str(nombre)
+    else:
+        groupe = t("unknown")
+    rapport.attn(
+        t(
+            "{count} mail(s) refused by the per-session message limit of the"
+            " SMTP server; largest recipient group: {recipients};"
+            " mail.session.batch.size: {value}. One session carries up to"
+            " that many mails (1000 when unset) and one message per"
+            " recipient of each: the server counts the sum. Before any"
+            " resend, lower mail.session.batch.size so that it times the"
+            " largest group stays under the limit, or raise the server limit"
+            " when one mail's group alone exceeds it: a resend before that"
+            " fails again and may deliver twice to the first recipients."
+        ).format(
+            count=len(limites),
+            recipients=groupe,
+            value=lot if lot else t("unset"),
+        )
+    )
 
 
 def _lot_sur(valeur):

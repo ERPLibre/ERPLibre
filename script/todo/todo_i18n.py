@@ -27430,9 +27430,13 @@ TRANSLATIONS = {
         "en": "systemd-tmpfiles failed (code {code}): {output}. The lock file is missing until the next boot.",
     },
     # Production - journal Odoo et courriels en échec (log_check, mail_retry)
-    "System parameter mail.session.batch.size: lower than the provider's per-connection limit (try 10); also the provider's hourly and daily sending cap.": {
-        "fr": "Paramètre système mail.session.batch.size : plus petit que la limite par connexion du fournisseur (essayer 10) ; voir aussi le plafond d'envoi horaire et quotidien du fournisseur.",
-        "en": "System parameter mail.session.batch.size: lower than the provider's per-connection limit (try 10); also the provider's hourly and daily sending cap.",
+    "The SMTP server's limit of messages per session. Odoo sends one message per recipient, and one session carries up to mail.session.batch.size mails (1000 when unset): the server counts the sum of their recipients. Lower mail.session.batch.size so that it times the largest recipient group stays under the limit; raise the server limit when one mail's group alone exceeds it. Then resend.": {
+        "fr": "La limite de messages par session du serveur SMTP. Odoo envoie un message par destinataire, et une session porte jusqu'à mail.session.batch.size courriels (1000 sans le paramètre) : le serveur compte la somme de leurs destinataires. Baisser mail.session.batch.size pour que, multiplié par le plus grand groupe de destinataires, il reste sous la limite ; relever la limite du serveur quand le groupe d'un seul courriel la dépasse. Puis renvoyer.",
+        "en": "The SMTP server's limit of messages per session. Odoo sends one message per recipient, and one session carries up to mail.session.batch.size mails (1000 when unset): the server counts the sum of their recipients. Lower mail.session.batch.size so that it times the largest recipient group stays under the limit; raise the server limit when one mail's group alone exceeds it. Then resend.",
+    },
+    "The provider's hourly and daily sending cap and its connection limit: resend once the cap has reset.": {
+        "fr": "Le plafond d'envoi horaire et quotidien du fournisseur et sa limite de connexions : renvoyer une fois le plafond remis à zéro.",
+        "en": "The provider's hourly and daily sending cap and its connection limit: resend once the cap has reset.",
     },
     "System parameters mail.default.from and mail.catchall.domain: the From address must be one the SMTP account may send as.": {
         "fr": "Paramètres système mail.default.from et mail.catchall.domain : l'adresse « De » doit être une adresse au nom de laquelle le compte SMTP peut envoyer.",
@@ -27482,13 +27486,13 @@ TRANSLATIONS = {
         "fr": "erreur TLS ou de certificat",
         "en": "TLS or certificate error",
     },
-    "sending rate or per-session limit (421/450/451/452)": {
-        "fr": "limite de débit ou de messages par connexion (421/450/451/452)",
-        "en": "sending rate or per-session limit (421/450/451/452)",
+    "per-session message limit of the SMTP server (452, then 503)": {
+        "fr": "limite de messages par session du serveur SMTP (452, puis 503)",
+        "en": "per-session message limit of the SMTP server (452, then 503)",
     },
-    "'Multiple MAIL' after an earlier failure (503)": {
-        "fr": "« Multiple MAIL » après un échec précédent (503)",
-        "en": "'Multiple MAIL' after an earlier failure (503)",
+    "sending rate limit (421/450/451/452)": {
+        "fr": "limite de débit d'envoi (421/450/451/452)",
+        "en": "sending rate limit (421/450/451/452)",
     },
     "authentication refused (535)": {
         "fr": "authentification refusée (535)",
@@ -28675,6 +28679,47 @@ TRANSLATIONS = {
     "The audit could not run (code 2): see the message above.": {
         "fr": "L'audit n'a pas pu se faire (code 2) : voir le message ci-dessus.",
         "en": "The audit could not run (code 2): see the message above.",
+    },
+    # Production - namespace du journal, limite SMTP par session (log_check, update_module, mail_retry)
+    "The service {unit} has an invalid LogNamespace: {name}": {
+        "fr": "Le service {unit} a un LogNamespace invalide : {name}",
+        "en": "The service {unit} has an invalid LogNamespace: {name}",
+    },
+    "Journal namespace": {
+        "fr": "Namespace du journal",
+        "en": "Journal namespace",
+    },
+    "The journal namespace changed: the saved position is not used.": {
+        "fr": "Le namespace du journal a changé : la position retenue ne sert pas.",
+        "en": "The journal namespace changed: the saved position is not used.",
+    },
+    "systemd journal namespace to read; default: LogNamespace= of the unit.": {
+        "fr": "Namespace du journal systemd à lire ; par défaut : LogNamespace= de l'unité.",
+        "en": "systemd journal namespace to read; default: LogNamespace= of the unit.",
+    },
+    "--namespace cannot be combined with --file.": {
+        "fr": "--namespace ne se combine pas avec --file.",
+        "en": "--namespace cannot be combined with --file.",
+    },
+    "invalid journal namespace: {name}": {
+        "fr": "namespace de journal invalide : {name}",
+        "en": "invalid journal namespace: {name}",
+    },
+    "at least {count}": {
+        "fr": "au moins {count}",
+        "en": "at least {count}",
+    },
+    "unknown": {
+        "fr": "inconnu",
+        "en": "unknown",
+    },
+    "{count} mail(s) refused by the per-session message limit of the SMTP server; largest recipient group: {recipients}; mail.session.batch.size: {value}. One session carries up to that many mails (1000 when unset) and one message per recipient of each: the server counts the sum. Before any resend, lower mail.session.batch.size so that it times the largest group stays under the limit, or raise the server limit when one mail's group alone exceeds it: a resend before that fails again and may deliver twice to the first recipients.": {
+        "fr": "{count} courriel(s) refusé(s) par la limite de messages par session du serveur SMTP ; plus grand groupe de destinataires : {recipients} ; mail.session.batch.size : {value}. Une session porte jusqu'à autant de courriels (1000 sans le paramètre) et un message par destinataire de chacun : le serveur en compte la somme. Avant tout renvoi, baisser mail.session.batch.size pour que, multiplié par le plus grand groupe, il reste sous la limite, ou relever la limite du serveur quand le groupe d'un seul courriel la dépasse : un renvoi fait avant échoue de nouveau et peut envoyer deux fois aux premiers destinataires.",
+        "en": "{count} mail(s) refused by the per-session message limit of the SMTP server; largest recipient group: {recipients}; mail.session.batch.size: {value}. One session carries up to that many mails (1000 when unset) and one message per recipient of each: the server counts the sum. Before any resend, lower mail.session.batch.size so that it times the largest group stays under the limit, or raise the server limit when one mail's group alone exceeds it: a resend before that fails again and may deliver twice to the first recipients.",
+    },
+    "{name} (invalid name: the default journal is read)": {
+        "fr": "{name} (nom invalide : le journal par défaut est lu)",
+        "en": "{name} (invalid name: the default journal is read)",
     },
 }
 

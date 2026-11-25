@@ -90,6 +90,7 @@ class FauxSysteme(lc.Systeme):
         self.tue = False
         self.unites = [(UNITE, True)]
         self.options_execstart = ""
+        self.namespace = ""
 
     def maintenant(self):
         return HORLOGE
@@ -109,6 +110,7 @@ class FauxSysteme(lc.Systeme):
                 f" {self.wd}/run.sh{self.options_execstart} ;"
                 " ignore_errors=no }\n"
                 "Environment=\n"
+                f"LogNamespace={self.namespace}\n"
             )
         return 1, "commande inattendue"
 
@@ -223,30 +225,41 @@ class TestRapport(Base):
             "SMTPAuthenticationError",
             "(535, b'5.7.8 Username and Password not accepted')",
         )
+        lignes += courriel(
+            7601, "SMTPDataError", "(421, b'4.7.0 Try again later')"
+        )
         self.journal(lignes)
         self.assertEqual(self.lancer(), lc.CODE_A_REVOIR)
+        # Le 452 et les « 503 Multiple MAIL » qui le suivent : une cause.
         self.assertIn(
-            "[12x] " + lc.t(lc.mail_diagnostic.PAR_ID["rate_limit"].libelle),
+            "[16x] "
+            + lc.t(lc.mail_diagnostic.PAR_ID["session_limit"].libelle),
             self.sortie,
         )
         self.assertIn(lc.t("PERMANENT"), self.sortie)
         self.assertIn(lc.t("transient"), self.sortie)
-        self.assertIn("+2", self.sortie)
+        self.assertIn("+6", self.sortie)
         self.assertIn("mail_retry.py", self.sortie)
-        self.assertIn("mail.session.batch.size", self.sortie)
+        self.assertIn(
+            lc.t(lc.mail_diagnostic.reglage("session_limit")), self.sortie
+        )
         _code, donnees = self.json()
         par_classe = {m["class"]: m for m in donnees["mail"]}
         self.assertEqual(
             {c: m["count"] for c, m in par_classe.items()},
-            {"rate_limit": 12, "cascade_503": 4, "sender": 1, "auth": 1},
+            {"session_limit": 16, "rate_limit": 1, "sender": 1, "auth": 1},
         )
-        ids = par_classe["rate_limit"]["mail_ids"]
+        ids = par_classe["session_limit"]["mail_ids"]
         self.assertEqual(ids, sorted(ids))
         self.assertTrue(par_classe["auth"]["permanent"])
+        self.assertTrue(par_classe["session_limit"]["permanent"])
         self.assertFalse(par_classe["rate_limit"]["permanent"])
+        self.assertIn(
+            "largest recipient group", par_classe["session_limit"]["setting"]
+        )
         # Chaque échec reste une trace : compté une fois à revoir.
-        self.assertEqual(donnees["to_review"], 18)
-        self.assertEqual(sum(g["count"] for g in donnees["tracebacks"]), 18)
+        self.assertEqual(donnees["to_review"], 19)
+        self.assertEqual(sum(g["count"] for g in donnees["tracebacks"]), 19)
 
     def test_c12_ignore(self):
         bruit = entete("ERROR", "boom", "odoo.addons.web.controllers.main")
@@ -629,6 +642,170 @@ class TestConfigurationIllisible(Base):
         self.assertEqual(donnees["source"]["kind"], "file")
         self.assertEqual(donnees["source"]["path"], journal_odoo)
         self.assertEqual(self.journalctl(), [])
+
+
+class TestNamespace(Base):
+    """LogNamespace= : le journal d'un namespace se lit par
+    `--namespace=`, et sa position ne se mêle jamais à une autre."""
+
+    NS = "ns_essai"
+
+    def etat_du_namespace(self, namespace=NS):
+        return os.path.join(self.etat, f"{UNITE}+{namespace}.json")
+
+    def test_le_namespace_de_l_unite_est_lu(self):
+        self.systeme.namespace = self.NS
+        self.journal(TRACE)
+        code, donnees = self.json("--since-last")
+        self.assertEqual(code, lc.CODE_A_REVOIR)
+        (argv,) = self.journalctl()
+        self.assertEqual(
+            argv[:3], ["journalctl", f"--namespace={self.NS}", "-u"]
+        )
+        self.assertEqual(donnees["source"]["namespace"], self.NS)
+        self.assertEqual(os.listdir(self.etat), [f"{UNITE}+{self.NS}.json"])
+        with open(self.etat_du_namespace()) as f:
+            etat = json.load(f)
+        self.assertEqual(
+            (etat["namespace"], etat["cursor"]), (self.NS, CURSEUR)
+        )
+        self.journal([INFO])
+        self.lancer()
+        self.assertIn(lc.t("Journal namespace"), self.sortie)
+        self.assertIn(self.NS, self.sortie)
+
+    def test_sans_namespace_rien_ne_change(self):
+        self.journal([INFO])
+        self.lancer("--since-last")
+        (argv,) = self.journalctl()
+        self.assertFalse([a for a in argv if a.startswith("--namespace")])
+        with open(self.fichier_etat()) as f:
+            self.assertEqual(json.load(f)["namespace"], "")
+
+    def test_l_option_remplace_le_namespace_de_l_unite(self):
+        self.systeme.namespace = self.NS
+        self.journal([INFO])
+        self.lancer("--namespace", "autre_ns")
+        self.assertIn("--namespace=autre_ns", self.journalctl()[-1])
+        self.assertNotIn(f"--namespace={self.NS}", self.journalctl()[-1])
+
+    def test_option_invalide_ou_avec_file(self):
+        for options in (
+            ("--namespace", "../x"),
+            ("--namespace", "-x"),
+            ("--namespace", ".."),
+            ("--namespace", "ns", "--file", "odoo.log"),
+        ):
+            with self.subTest(options=options):
+                with self.assertRaises(SystemExit) as fin:
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        lc.analyser(list(options))
+                self.assertEqual(fin.exception.code, 2)
+
+    def test_namespace_invalide_de_l_unite_refuse(self):
+        self.systeme.namespace = "a/b"
+        self.journal([INFO])
+        self.assertEqual(self.lancer(), lc.CODE_REFUS)
+        self.assertIn("a/b", self.erreurs)
+        self.assertEqual(self.journalctl(), [])
+
+    def test_option_contourne_un_namespace_invalide_de_l_unite(self):
+        """`--namespace` lit le journal nommé même quand le LogNamespace=
+        de l'unité est invalide : la configuration est lue comme d'habitude
+        et aucune note de configuration illisible ne paraît."""
+        self.systeme.namespace = "a/b"
+        self.journal([INFO])
+        code, donnees = self.json("--namespace", self.NS)
+        self.assertEqual(code, lc.CODE_RIEN, self.erreurs)
+        self.assertIn(f"--namespace={self.NS}", self.journalctl()[-1])
+        self.assertEqual(donnees["source"]["namespace"], self.NS)
+        self.lancer("--namespace", self.NS)
+        self.assertNotIn(
+            lc.t(
+                "Odoo configuration not read ({error}): the journal is read."
+            ).split("(")[0],
+            self.sortie,
+        )
+
+    def test_un_etat_sans_namespace_garde_son_curseur(self):
+        """Un état écrit avant que le namespace y figure ({unit, cursor,
+        updated}) vaut pour le journal par défaut : son curseur est repris
+        et aucune note de changement de namespace ne paraît."""
+        os.makedirs(self.etat)
+        with open(self.fichier_etat(), "w") as f:
+            json.dump(
+                {
+                    "unit": UNITE,
+                    "cursor": CURSEUR,
+                    "updated": int(HORLOGE - 3600),
+                },
+                f,
+            )
+        self.journal([INFO], curseur="s=suivant")
+        self.lancer("--since-last")
+        argv = self.journalctl()[-1]
+        self.assertEqual(argv[argv.index("--after-cursor") + 1], CURSEUR)
+        self.assertNotIn(
+            lc.t(
+                "The journal namespace changed: the saved position is"
+                " not used."
+            ),
+            self.sortie,
+        )
+
+    def test_un_changement_de_namespace_repart_de_zero(self):
+        """Le curseur du journal par défaut ne sert jamais à lire celui
+        du namespace : un autre fichier d'état, une première lecture, et
+        l'ancien état intact."""
+        self.journal([INFO])
+        self.lancer("--since-last")
+        with open(self.fichier_etat()) as f:
+            avant = json.load(f)
+        self.systeme.namespace = self.NS
+        self.journal([INFO], curseur="s=ns")
+        self.lancer("--since-last")
+        argv = self.journalctl()[-1]
+        self.assertNotIn("--after-cursor", argv)
+        self.assertEqual(
+            argv[argv.index("--since") + 1], f"@{int(HORLOGE - 24 * 3600)}"
+        )
+        self.assertIn(lc.t("First run: last 24 h."), self.sortie)
+        with open(self.fichier_etat()) as f:
+            self.assertEqual(json.load(f), avant)
+        with open(self.etat_du_namespace()) as f:
+            self.assertEqual(json.load(f)["cursor"], "s=ns")
+
+    def test_un_curseur_d_un_autre_namespace_est_ecarte(self):
+        os.makedirs(self.etat)
+        moment = int(HORLOGE - 3 * 3600)
+        with open(self.etat_du_namespace(), "w") as f:
+            json.dump(
+                {
+                    "unit": UNITE,
+                    "namespace": "autre_ns",
+                    "cursor": CURSEUR,
+                    "updated": moment,
+                },
+                f,
+            )
+        self.systeme.namespace = self.NS
+        self.journal([INFO], curseur="s=ns")
+        self.lancer("--since-last")
+        argv = self.journalctl()[-1]
+        self.assertNotIn("--after-cursor", argv)
+        self.assertEqual(argv[argv.index("--since") + 1], f"@{moment}")
+        self.assertIn(
+            lc.t(
+                "The journal namespace changed: the saved position is"
+                " not used."
+            ),
+            self.sortie,
+        )
+        with open(self.etat_du_namespace()) as f:
+            etat = json.load(f)
+        self.assertEqual(
+            (etat["namespace"], etat["cursor"]), (self.NS, "s=ns")
+        )
 
 
 class TestEtatAbime(Base):

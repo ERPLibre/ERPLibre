@@ -41,11 +41,38 @@ R452_FR = (
     " 'None'.\nSMTPDataError: (452, b'4.4.5 Maximum number of messages per"
     " session exceeded')"
 )
+R421 = (
+    "Mail Delivery Failed\nMail delivery failed via SMTP server 'None'.\n"
+    "SMTPDataError: (421, b'4.7.0 Try again later')"
+)
+R503 = (
+    "Mail Delivery Failed\nMail delivery failed via SMTP server 'None'.\n"
+    "SMTPSenderRefused: (503, b'5.5.1 Multiple MAIL commands not allowed',"
+    " 'admin@example.org')"
+)
 R550 = (
     "Mail Delivery Failed\nMail delivery failed via SMTP server 'None'.\n"
     "SMTPDataError: (550, b'You are not allowed to send emails as"
     ' "a@example.org" (header From) while using "b@example.org" as'
     " envelope sender')"
+)
+
+
+AVERTISSEMENT_SESSION = (
+    "{count} mail(s) refused by the per-session message limit of the SMTP"
+    " server; largest recipient group: {recipients};"
+    " mail.session.batch.size: {value}. One session carries up to that many"
+    " mails (1000 when unset) and one message per recipient of each: the"
+    " server counts the sum. Before any resend, lower"
+    " mail.session.batch.size so that it times the largest group stays under"
+    " the limit, or raise the server limit when one mail's group alone"
+    " exceeds it: a resend before that fails again and may deliver twice to"
+    " the first recipients."
+)
+AVERTISSEMENT_LOT = (
+    "{count} mails and mail.session.batch.size is {value}: a server limit of"
+    " messages per connection may refuse part of the resend; set it to 10 or"
+    " 20 first."
 )
 
 
@@ -240,7 +267,7 @@ class TestListe(Base):
             )
             return lignes[rang + 1]
 
-        self.assertIn(mr.t("transient"), ligne_de(7404))
+        self.assertIn(mr.t("PERMANENT"), ligne_de(7404))
         self.assertIn(mr.t("PERMANENT"), ligne_de(7171))
         self.assertIn(mr.t("unknown cause"), ligne_de(7500))
         self.assertNotIn(mr.t("transient"), ligne_de(7500))
@@ -259,7 +286,13 @@ class TestListe(Base):
         par_id = {f["id"]: f for f in donnees["failures"]}
         self.assertEqual(par_id[1]["class"], "invalid_address")
         self.assertTrue(par_id[1]["permanent"])
-        self.assertEqual(par_id[2]["class"], "rate_limit")
+        self.assertEqual(par_id[2]["class"], "session_limit")
+        self.assertTrue(par_id[2]["permanent"])
+        self.systeme.donnees["failures"] = [
+            echec(3, 0, "S", "y@example.org", R421, None),
+        ]
+        self.lancer()
+        self.assertIn(mr.t("transient"), self.sortie)
 
     def test_r4_avertissements(self):
         self.lancer()
@@ -267,7 +300,7 @@ class TestListe(Base):
         # Odoo 18 lu dans `base` : le réglage nomme le filtre « De ».
         self.assertIn("from_filter", self.sortie)
         douze = [
-            echec(8000 + i, i, "S", "x@example.org", R452) for i in range(12)
+            echec(8000 + i, i, "S", "x@example.org", R421) for i in range(12)
         ]
         for valeur, attendu in ((None, True), ("10", False), ("500", True)):
             with self.subTest(valeur=valeur):
@@ -278,6 +311,121 @@ class TestListe(Base):
                 self.assertEqual(present, attendu)
                 if valeur == "500":
                     self.assertIn("500", self.sortie)
+
+    def avertissement_de_session(self):
+        marque = mr.t(AVERTISSEMENT_SESSION).split("{count}")[1]
+        marque = marque.split("{recipients}")[0]
+        lignes = [
+            ligne
+            for ligne in self.sortie.splitlines()
+            if "[ATTN]" in ligne and marque in ligne
+        ]
+        return lignes[0] if lignes else ""
+
+    def avertissement_de_lot_present(self):
+        return mr.t(AVERTISSEMENT_LOT).split("{value}")[1] in self.sortie
+
+    def test_r4_limite_de_session_quel_que_soit_le_lot(self):
+        """Un refus par la limite de messages par session avertit avant
+        tout renvoi, même avec un mail.session.batch.size bas et peu de
+        courriels, et nomme la valeur du lot : une session porte un lot
+        de courriels, un message par destinataire de chacun. Le plus
+        grand groupe est donné."""
+        for valeur, montree in (
+            (None, mr.t("unset")),
+            ("5", "5"),
+            ("500", "500"),
+        ):
+            with self.subTest(valeur=valeur):
+                self.systeme.donnees["batch_size"] = valeur
+                self.lancer()
+                self.assertIn(
+                    mr.t(AVERTISSEMENT_SESSION).format(
+                        count=3, recipients=2, value=montree
+                    ),
+                    self.avertissement_de_session(),
+                )
+                self.assertFalse(self.avertissement_de_lot_present())
+
+    def test_r4_limite_de_session_et_lot_trop_grand(self):
+        """Plus de SEUIL_LOT refus par la limite de session avec un lot
+        absent ou trop grand : l'avertissement du lot paraît à côté de
+        celui de la session, car un lot plus petit réduit la somme des
+        destinataires d'une session ; un lot sûr le fait taire."""
+        self.systeme.donnees["failures"] = [
+            echec(8000 + i, i, "S", "x@example.org", R452)
+            for i in range(mr.SEUIL_LOT + 2)
+        ]
+        for valeur, attendu in ((None, True), ("500", True), ("10", False)):
+            with self.subTest(valeur=valeur):
+                self.systeme.donnees["batch_size"] = valeur
+                self.lancer()
+                self.assertIn(
+                    mr.t(AVERTISSEMENT_SESSION).format(
+                        count=mr.SEUIL_LOT + 2,
+                        recipients=1,
+                        value=valeur or mr.t("unset"),
+                    ),
+                    self.avertissement_de_session(),
+                )
+                self.assertEqual(self.avertissement_de_lot_present(), attendu)
+
+    def test_r4_groupe_coupe_par_la_requete(self):
+        """La requête coupe les destinataires à 300 caractères : le groupe
+        se dit alors « au moins N ». Le 503 qui suit le 452 compte avec
+        lui."""
+        adresses = ", ".join(f"dest{i:03d}@example.org" for i in range(40))
+        self.systeme.donnees["failures"] = [
+            echec(1, 0, "Lettre", adresses[:300], R452),
+            echec(2, 1, "Lettre", "a@example.org", R503),
+        ]
+        self.systeme.donnees["batch_size"] = "10"
+        self.lancer()
+        nombre = len(mr.RE_ADRESSE.findall(adresses[:300]))
+        self.assertGreater(nombre, 10)
+        self.assertIn(
+            mr.t(AVERTISSEMENT_SESSION).format(
+                count=2,
+                recipients=mr.t("at least {count}").format(count=nombre),
+                value="10",
+            ),
+            self.avertissement_de_session(),
+        )
+        echecs = [mr.Echec(e) for e in self.systeme.donnees["failures"]]
+        self.assertEqual(echecs[0].nombre_destinataires(), (nombre, True))
+        self.assertEqual(echecs[1].nombre_destinataires(), (1, False))
+        self.assertIn("300", mr.requete_liste(30))
+
+    def test_r4_une_liste_coupee_garde_le_au_moins(self):
+        """Une liste coupée dit « au moins » même quand une liste entière
+        compte plus d'adresses lisibles : la coupée en cache peut-être
+        bien davantage."""
+        longues = ", ".join(
+            f"destinataire.long.{i:03d}@example.org" for i in range(40)
+        )
+        coupee = longues[:300]
+        lues = len(mr.RE_ADRESSE.findall(coupee))
+        entiere = ", ".join(f"d{i}@example.org" for i in range(lues + 1))
+        self.assertLess(len(entiere), 300)
+        self.systeme.donnees["failures"] = [
+            echec(1, 0, "Lettre", coupee, R452),
+            echec(2, 1, "Lettre", entiere, R452),
+        ]
+        self.systeme.donnees["batch_size"] = "10"
+        self.lancer()
+        self.assertIn(
+            mr.t(AVERTISSEMENT_SESSION).format(
+                count=2,
+                recipients=mr.t("at least {count}").format(count=lues + 1),
+                value="10",
+            ),
+            self.avertissement_de_session(),
+        )
+
+    def test_r4_groupe_inconnu(self):
+        self.systeme.donnees["failures"] = [echec(1, 0, "S", "", R452)]
+        self.lancer()
+        self.assertIn(mr.t("unknown"), self.avertissement_de_session())
 
     def json(self, *options):
         code = self.lancer("--json", *options)

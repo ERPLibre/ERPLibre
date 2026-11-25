@@ -18,9 +18,9 @@ server… ») dans la langue de l'utilisateur : elle ne sert jamais de
 repère.
 
 Les classes sont essayées dans l'ordre de `CLASSES` et la première qui
-répond l'emporte : une limite d'envoi (5.4.5) passe avant un refus
-d'expéditeur, un « 503 Multiple MAIL » qui suit un premier échec passe
-avant le refus générique.
+répond l'emporte : la limite de messages par session (452 4.4.5, puis
+« 503 Multiple MAIL ») passe avant une limite d'envoi, une limite d'envoi
+(5.4.5) avant un refus d'expéditeur.
 
 Ce module ne traduit rien. Libellés et réglages sont des modèles anglais
 marqués par `N_()` ; l'outil qui les affiche les traduit par sa fonction
@@ -66,6 +66,25 @@ CLASSES = (
         ),
         N_("TLS or certificate error"),
     ),
+    # Limite de messages par session SMTP. Odoo envoie un message SMTP par
+    # destinataire d'un mail.mail, tous dans la même session : un mail.mail
+    # dont le groupe de destinataires dépasse la limite échoue à lui seul,
+    # et `mail.session.batch.size`, qui compte des mail.mail, ne le coupe
+    # pas. Après ce refus, le serveur garde la transaction ouverte et
+    # refuse chaque commande MAIL suivante de la session (« 503 Multiple
+    # MAIL ») : même cause. Permanente : un renvoi échoue de nouveau tant
+    # que la limite du serveur n'est pas relevée.
+    Classe(
+        "session_limit",
+        True,
+        re.compile(
+            r"\b452\b.{0,12}\b4\.4\.5\b|(?:messages|recipients) per"
+            r" (?:session|connection)|Multiple MAIL commands"
+            r"|SMTPSenderRefused: \(503\b",
+            _I,
+        ),
+        N_("per-session message limit of the SMTP server (452, then 503)"),
+    ),
     # 421, 450 et 451 sont aussi l'écart temporaire d'un serveur qui
     # pratique le greylisting, ou une erreur locale passagère : la cause
     # reste passagère dans tous les cas.
@@ -73,22 +92,12 @@ CLASSES = (
         "rate_limit",
         False,
         re.compile(
-            r"SMTP\w*: \((?:421|450|451|452)\b|Maximum number of messages"
-            r" per session|too many (?:messages|recipients|connections)|rate"
-            r" limit|quota exceeded|sending limit|\b[45]\.4\.5\b|\b4\.7\.0\b"
-            r".{0,80}(?:rate|limit)",
+            r"SMTP\w*: \((?:421|450|451|452)\b|too many (?:messages"
+            r"|recipients|connections)|rate limit|quota exceeded|sending"
+            r" limit|\b[45]\.4\.5\b|\b4\.7\.0\b.{0,80}(?:rate|limit)",
             _I,
         ),
-        N_("sending rate or per-session limit (421/450/451/452)"),
-    ),
-    # Après un premier refus dans la même connexion, le serveur garde la
-    # transaction ouverte et refuse chaque nouvelle commande MAIL : la
-    # cause réelle est l'échec qui précède.
-    Classe(
-        "cascade_503",
-        False,
-        re.compile(r"Multiple MAIL commands|SMTPSenderRefused: \(503\b", _I),
-        N_("'Multiple MAIL' after an earlier failure (503)"),
+        N_("sending rate limit (421/450/451/452)"),
     ),
     Classe(
         "auth",
@@ -230,19 +239,25 @@ def cause_courte(raison):
 # filtre « De » du serveur sortant existe depuis 15, les domaines d'alias
 # (expéditeur par défaut, catchall) remplacent les paramètres système
 # `mail.default.from` et `mail.catchall.domain` depuis 17.
-REGLAGE_LIMITE = N_(
-    "System parameter mail.session.batch.size: lower than the provider's"
-    " per-connection limit (try 10); also the provider's hourly and daily"
-    " sending cap."
-)
 REGLAGES = {
     "tls": N_(
         "Port and encryption of the outgoing mail server (465 with SSL/TLS,"
         " 587 with STARTTLS) and its certificate; or smtp_port and smtp_ssl"
         " in the Odoo configuration file."
     ),
-    "rate_limit": REGLAGE_LIMITE,
-    "cascade_503": REGLAGE_LIMITE,
+    "session_limit": N_(
+        "The SMTP server's limit of messages per session. Odoo sends one"
+        " message per recipient, and one session carries up to"
+        " mail.session.batch.size mails (1000 when unset): the server counts"
+        " the sum of their recipients. Lower mail.session.batch.size so that"
+        " it times the largest recipient group stays under the limit; raise"
+        " the server limit when one mail's group alone exceeds it. Then"
+        " resend."
+    ),
+    "rate_limit": N_(
+        "The provider's hourly and daily sending cap and its connection"
+        " limit: resend once the cap has reset."
+    ),
     "auth": N_(
         "Login and password of the outgoing mail server (Test Connection),"
         " or smtp_user and smtp_password in the Odoo configuration file; an"

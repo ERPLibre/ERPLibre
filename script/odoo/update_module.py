@@ -31,10 +31,11 @@ Le déroulé
    rétention ici : la sauvegarde planifiée s'en charge.
 5. Mise à jour : la ligne de commande de l'unité, privée de sa base
    (`-d`, `--database`), suivie de `-c CONFIG -d BASE -u MODULES
-   --stop-after-init --no-http --workers=0 --max-cron-threads=0` — le
-   `-c` répété garde la mise à jour sur le fichier que la détection et
-   la sauvegarde ont lu —, sous le compte de l'unité (`runuser`), HOME
-   tiré de passwd. Échec si le
+   --stop-after-init --no-http --workers=0 --max-cron-threads=0
+   --limit-memory-hard=0 --log-level=info` — le `-c` répété garde la mise
+   à jour sur le fichier que la détection et la sauvegarde ont lu ; la
+   limite de mémoire du serveur ne la tue pas en cours de route —, sous
+   le compte de l'unité (`runuser`), HOME tiré de passwd. Échec si le
    code est non nul, si le délai est dépassé, ou si un enregistrement
    ERROR ou CRITICAL paraît dans la sortie ou dans ce qui s'est AJOUTÉ au
    `logfile` configuré — Odoo y écrit au lieu de stderr quand il est
@@ -45,7 +46,8 @@ Le déroulé
    `systemctl start`, pour que les erreurs du chargement entrent dans la
    fenêtre lue ensuite ; attente de `active` et du port, une requête HTTP
    qui force le chargement du registre, puis lecture du journal de
-   l'unité et du `logfile` depuis cette époque.
+   l'unité — celui de son LogNamespace= quand elle en a un — et du
+   `logfile` depuis cette époque.
 7. Après une relance vérifiée seulement, verrou relâché et signaux rendus
    — un Ctrl-C n'y interrompt que cette étape : avec `--warmup-deep`, le
    préchauffage profond de `warmup_http.py` (pages publiques et paquets
@@ -183,8 +185,8 @@ class Systeme(odoo_backup.Systeme):
         # rien : le `finally` d'`executer` le remet à False avant la relance.
         self.arme = False
 
-    def journal(self, unite, epoque):
-        return systemd.journal_depuis(unite, epoque, self.lanceur)
+    def journal(self, unite, epoque, namespace=""):
+        return systemd.journal_depuis(unite, epoque, self.lanceur, namespace)
 
     def port_ecoute(self, hote, port):
         try:
@@ -378,6 +380,11 @@ class Plan:
         self.wd = ""
         self.execstart = []
         self.env_unite = {}
+        # LogNamespace= de l'unité : le journal relu après la relance est
+        # celui de ce namespace. `namespace_ecarte` garde un nom que
+        # journalctl ne recevrait pas, alors laissé de côté.
+        self.namespace = ""
+        self.namespace_ecarte = ""
         self.config_path = ""
         self.origine_config = ""
         self.base = ""
@@ -441,11 +448,23 @@ def sans_option_base(argv):
 def commande_mise_a_jour(plan):
     """La ligne de commande de l'unité, suivie de ce qui en fait un `-u`
     sans serveur : les options répétées l'emportent sur celles de l'unité,
-    l'analyseur d'Odoo retenant la dernière. Le `-c` répété remplace celui
-    que run.sh pose de lui-même : la mise à jour lit ainsi le fichier de la
-    détection et de la sauvegarde, `--odoo-conf` compris. La base de
-    l'unité est retirée de sa ligne de commande : la commande ne porte
-    qu'un `-d`, celui de la base détectée."""
+    l'analyseur d'Odoo (optparse, action `store`) retenant la dernière. Le
+    `-c` répété remplace celui que run.sh pose de lui-même : la mise à
+    jour lit ainsi le fichier de la détection et de la sauvegarde,
+    `--odoo-conf` compris. La base de l'unité est retirée de sa ligne de
+    commande : la commande ne porte qu'un `-d`, celui de la base détectée.
+
+    `--limit-memory-hard=0` lève la limite RLIMIT_AS que le serveur
+    threadé pose dès son démarrage, `-u` compris : 2560 Mio par défaut,
+    même quand la configuration ne la nomme pas. Odoo valide la base
+    module par module, et un MemoryError en cours de `-u` laisse une base
+    à moitié migrée. `--log-level=info` garde les lignes INFO, que la
+    configuration ou l'unité abaisserait, dans le journal de la mise à
+    jour ; un `log_handler` de la configuration s'applique encore après
+    lui, logger par logger. Les deux suivent la ligne de l'unité : une
+    valeur qu'elle porterait déjà est remplacée. `--limit-time-*` n'est
+    pas posé : ces limites ne s'appliquent qu'aux workers et aux requêtes
+    HTTP, absents d'un `-u --no-http --workers=0`."""
     argv = sans_option_base(plan.execstart) + [
         "-c",
         plan.config_path,
@@ -457,6 +476,8 @@ def commande_mise_a_jour(plan):
         "--no-http",
         "--workers=0",
         "--max-cron-threads=0",
+        "--limit-memory-hard=0",
+        "--log-level=info",
     ]
     return envelopper(argv, plan)
 
@@ -563,6 +584,15 @@ def afficher_plan(plan, rapport):
         "" if plan.origine_unite == "--service" else " " + t("(detected)")
     )
     rapport.champ(t("Service"), plan.unite + detecte)
+    if plan.namespace:
+        rapport.champ(t("Journal namespace"), plan.namespace)
+    elif plan.namespace_ecarte:
+        rapport.champ(
+            t("Journal namespace"),
+            t("{name} (invalid name: the default journal is read)").format(
+                name=plan.namespace_ecarte
+            ),
+        )
     rapport.champ(t("Account"), plan.utilisateur)
     rapport.champ(t("Directory"), plan.wd)
     rapport.champ(
@@ -847,10 +877,16 @@ def _relancer(plan, systeme, rapport, args):
         code, sortie = systemd.demarrer(plan.unite, lanceur)
         rapport.etape(t("Starting {unit}").format(unit=plan.unite))
         if code != 0:
+            # Le journal de l'unité vit dans son namespace : l'option suit
+            # le nom de l'unité dans la commande conseillée.
             rapport.fail(
                 t(
                     "systemctl start failed (journalctl -u {unit} -n 50)."
-                ).format(unit=plan.unite)
+                ).format(
+                    unit=" ".join(
+                        [plan.unite] + systemd.option_namespace(plan.namespace)
+                    )
+                )
             )
             rapport.extrait(sortie.splitlines(), 5)
             return False
@@ -886,7 +922,7 @@ def _relancer(plan, systeme, rapport, args):
         rapport.ok(t("Service started and answering: {url}").format(url=cible))
 
         rapport.etape(t("Errors in the Odoo log since the start"))
-        texte = systeme.journal(plan.unite, epoque)
+        texte = systeme.journal(plan.unite, epoque, plan.namespace)
         texte += "\n" + odoo_instance.lire_ajout(plan.logfile, debut_logfile)
         analyse = erreurs_du_journal(texte, args)
         if analyse.a_revoir:

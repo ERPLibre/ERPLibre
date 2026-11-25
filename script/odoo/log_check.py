@@ -14,6 +14,11 @@ qui est lu. Sinon, `journalctl -u UNITE -o short-iso --show-cursor`,
 dont la sortie est lue au fil de l'eau, avec un délai total
 (`--timeout`). `--file CHEMIN` lit un fichier donné, sans unité.
 
+Une unité qui pose `LogNamespace=` écrit dans le journal de ce namespace,
+que `journalctl -u` seul ne voit pas : la propriété est lue par `systemctl
+show` et passe à journalctl (`--namespace=NOM`). `--namespace NOM` la
+remplace.
+
 Une configuration que le compte ne peut pas lire laisse `logfile`
 inconnu : un `--logfile` d'ExecStart est lu s'il y en a un, sinon le
 journal, et une lecture du journal qui ne rend aucun enregistrement
@@ -38,9 +43,12 @@ fichier, elles filtrent les enregistrements par leur heure. Seul
 
 L'état
 ------
-`<--state-dir>/<unité>.json` (`/var/lib/erplibre-logcheck` par défaut) :
-`{"unit", "cursor", "updated"}` pour le journal, `{"path", "inode",
-"offset", "updated"}` pour un fichier. Il n'est écrit qu'après une
+`<--state-dir>/<unité>.json` (`/var/lib/erplibre-logcheck` par défaut),
+`<unité>+<namespace>.json` pour le journal d'un namespace :
+`{"unit", "namespace", "cursor", "updated"}` pour le journal, `{"path",
+"inode", "offset", "updated"}` pour un fichier. Un curseur ne vaut que
+dans le journal qui l'a donné : un état dont le namespace diffère de
+celui lu n'en donne pas. Il n'est écrit qu'après une
 lecture complète et réussie : une lecture refusée ne fait jamais perdre
 une fenêtre. L'écriture passe par un fichier temporaire du même dossier
 puis un renommage ; un état qui est un lien symbolique n'est ni lu ni
@@ -232,9 +240,14 @@ def lire_fichier(chemin, depuis, recevoir, garder_fin=True):
 
 
 def nom_etat(source):
-    """Le nom du fichier d'état : l'unité, sinon `file-<nom>-<empreinte>`
-    du chemin lu, qui ne contient que des caractères sûrs."""
+    """Le nom du fichier d'état : l'unité, suivie de `+<namespace>` pour le
+    journal d'un namespace, sinon `file-<nom>-<empreinte>` du chemin lu ;
+    il ne contient que des caractères sûrs. « + » n'entre ni dans un nom
+    d'unité ni dans un namespace : deux sources ne partagent jamais un
+    fichier, et leurs positions ne se mêlent pas."""
     if source.unite:
+        if source.kind == "journal" and source.namespace:
+            return f"{source.unite}+{source.namespace}.json"
         return source.unite + ".json"
     nom = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(source.chemin))
     empreinte = hashlib.sha256(source.chemin.encode("utf-8")).hexdigest()
@@ -304,13 +317,14 @@ def version_odoo(plan, config):
 
 
 def determiner_source(args, systeme):
-    """La source à lire : `kind` (journal ou file), `unite`, `chemin`,
-    `version`, `notes` (lignes à afficher), `config_illisible` (le
-    message du refus de lire la configuration, "" sinon). Refus sur ce
-    qui manque."""
+    """La source à lire : `kind` (journal ou file), `unite`, `namespace`
+    (`--namespace`, sinon LogNamespace= de l'unité), `chemin`, `version`,
+    `notes` (lignes à afficher), `config_illisible` (le message du refus
+    de lire la configuration, "" sinon). Refus sur ce qui manque."""
     source = types.SimpleNamespace(
         kind="journal",
         unite="",
+        namespace="",
         chemin="",
         version=None,
         notes=[],
@@ -324,6 +338,11 @@ def determiner_source(args, systeme):
     plan = types.SimpleNamespace()
     props = service.detecter_unite(args.service, systeme, RACINE, plan)
     source.unite = plan.unite
+    if args.namespace:
+        source.namespace = args.namespace
+    else:
+        service.detecter_namespace(plan, props)
+        source.namespace = plan.namespace
     try:
         service.detecter_compte_et_dossier(None, systeme, plan, props)
         source.meme_compte = plan.utilisateur == plan.courant
@@ -439,13 +458,24 @@ def _entier(valeur):
     return nombre if nombre >= 0 else None
 
 
-def _reprise_du_journal(systeme, fenetre, etat, lecture):
-    """Le curseur où reprendre (`--since-last`), ou None. Sans curseur
-    lisible, `fenetre.depuis` devient l'heure `updated` de l'état, sinon
-    les dernières 24 h (première lecture, notée dans `lecture`)."""
+def _reprise_du_journal(systeme, source, fenetre, etat, lecture):
+    """Le curseur où reprendre (`--since-last`), ou None. Un curseur
+    retenu pour un autre namespace que celui de `source` est écarté : il
+    désigne une position d'un autre journal. Sans curseur lisible,
+    `fenetre.depuis` devient l'heure `updated` de l'état, sinon les
+    dernières 24 h (première lecture, notée dans `lecture`)."""
     if not fenetre.incremental:
         return None
     curseur = etat.get("cursor")
+    if (etat.get("namespace") or "") != source.namespace:
+        if isinstance(curseur, str) and curseur:
+            lecture.notes.append(
+                t(
+                    "The journal namespace changed: the saved position is"
+                    " not used."
+                )
+            )
+        curseur = None
     if isinstance(curseur, str) and curseur:
         return curseur
     depuis = _entier(etat.get("updated"))
@@ -459,9 +489,13 @@ def _reprise_du_journal(systeme, fenetre, etat, lecture):
 
 def lire_le_journal(args, systeme, source, fenetre, etat, analyse):
     lecture = Lecture(analyse)
-    curseur = _reprise_du_journal(systeme, fenetre, etat, lecture)
+    curseur = _reprise_du_journal(systeme, source, fenetre, etat, lecture)
     argv = systemd.commande_journal(
-        source.unite, fenetre.depuis, fenetre.jusqu, curseur
+        source.unite,
+        fenetre.depuis,
+        fenetre.jusqu,
+        curseur,
+        namespace=source.namespace,
     )
     if args.verbose:
         print(f"+ {service.joindre(argv)}", file=sys.stderr, flush=True)
@@ -521,6 +555,7 @@ def lire_le_journal(args, systeme, source, fenetre, etat, analyse):
     if fenetre.incremental:
         lecture.etat = {
             "unit": source.unite,
+            "namespace": source.namespace,
             "cursor": decoupeur.curseur or curseur,
             "updated": int(debut),
         }
@@ -685,6 +720,8 @@ def _entete(rapport, args, source, fenetre, lecture):
     if source.kind == "file" and source.unite:
         origine = f"{source.unite} ({source.chemin})"
     rapport.texte(t("Odoo journal: {source}").format(source=origine))
+    if source.kind == "journal" and source.namespace:
+        rapport.champ(t("Journal namespace"), source.namespace)
     if fenetre.mode == "since-last":
         texte = t("since the last check")
     elif fenetre.mode == "by-hour":
@@ -781,6 +818,14 @@ def jours_de(depuis, jusqu):
 TYPES = service.types_argparse(t)
 
 
+def _type_namespace(valeur):
+    if not systemd.namespace_valide(valeur):
+        raise argparse.ArgumentTypeError(
+            t("invalid journal namespace: {name}").format(name=valeur)
+        )
+    return valeur
+
+
 def _type_regex(valeur):
     try:
         return re.compile(valeur)
@@ -823,6 +868,14 @@ def analyser(argv=None):
     source.add_argument(
         "--file",
         help=t("Odoo log file to read instead of a unit."),
+    )
+    parser.add_argument(
+        "--namespace",
+        type=_type_namespace,
+        help=t(
+            "systemd journal namespace to read; default: LogNamespace= of"
+            " the unit."
+        ),
     )
     fenetre = parser.add_mutually_exclusive_group()
     fenetre.add_argument(
@@ -913,6 +966,8 @@ def analyser(argv=None):
     args = parser.parse_args(argv)
     if args.until and not args.since:
         parser.error(t("--until requires --since."))
+    if args.namespace and args.file:
+        parser.error(t("--namespace cannot be combined with --file."))
     return args
 
 
@@ -957,6 +1012,7 @@ def executer(args, systeme, flux):
             source={
                 "kind": source.kind,
                 "unit": source.unite,
+                "namespace": source.namespace,
                 "path": source.chemin,
                 "notes": source.notes + lecture.notes,
             },

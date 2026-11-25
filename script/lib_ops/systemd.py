@@ -29,6 +29,9 @@ RE_NOM_UNITE = re.compile(r"[A-Za-z0-9@_.:-]+")
 # Odoo installent.
 RE_CANDIDATE = re.compile(r"(erplibre|odoo)[A-Za-z0-9@_.:-]*\.service")
 
+# LogNamespace (systemd 245+) range le journal de l'unité dans un journal
+# à part, que `journalctl -u` seul ne lit pas ; un systemd plus ancien ne
+# connaît pas la propriété et `lire_proprietes` la rend vide.
 PROPRIETES = (
     "LoadState",
     "ActiveState",
@@ -36,7 +39,15 @@ PROPRIETES = (
     "WorkingDirectory",
     "ExecStart",
     "Environment",
+    "LogNamespace",
 )
+
+# Nom de namespace admis : les caractères qu'un nom d'instance d'unité
+# admet pour systemd (`unit_instance_is_valid`), « @ » et la barre
+# oblique inverse des noms échappés compris, puisque le namespace devient
+# l'instance de `systemd-journald@.service`. Le nom part dans un seul
+# argument, sans shell : aucun ne s'y interprète.
+RE_NAMESPACE = re.compile(r"[A-Za-z0-9@_.:\\-]+")
 
 # Les ActiveState d'une unité dont plus aucun processus ne tourne.
 ETATS_ARRETES = ("inactive", "failed")
@@ -270,16 +281,39 @@ def demarrer(unite, lanceur=lancer, timeout=300):
     return lanceur(["systemctl", "start", "--", unite], timeout)
 
 
-def journal_depuis(unite, epoque, lanceur=lancer):
+def namespace_valide(nom):
+    """True si `nom` peut passer à `journalctl --namespace=` : non vide,
+    dans `RE_NAMESPACE`, et ni « . » ni « .. »."""
+    return (
+        bool(nom)
+        and RE_NAMESPACE.fullmatch(nom) is not None
+        and nom not in (".", "..")
+    )
+
+
+def option_namespace(namespace):
+    """`["--namespace=NOM"]` pour un namespace, [] sans namespace. Le nom
+    et l'option forment un seul argument : un nom ne se lit jamais comme
+    une option de journalctl. ValueError sur un nom invalide."""
+    if not namespace:
+        return []
+    if not namespace_valide(namespace):
+        raise ValueError(namespace)
+    return [f"--namespace={namespace}"]
+
+
+def journal_depuis(unite, epoque, lanceur=lancer, namespace=""):
     """Les lignes du journal de l'unité depuis `epoque` (secondes Unix).
 
     `-o cat` rend le message brut, tel qu'Odoo l'a écrit, ce qui permet de
-    lui appliquer le même filtre qu'à un fichier de journal. Rend "" si
-    journalctl ne répond pas.
+    lui appliquer le même filtre qu'à un fichier de journal. `namespace`
+    (LogNamespace= de l'unité) fait lire le journal de ce namespace. Rend
+    "" si journalctl ne répond pas.
     """
     code, sortie = lanceur(
         [
             "journalctl",
+            *option_namespace(namespace),
             "-u",
             unite,
             "--since",
@@ -299,6 +333,7 @@ def commande_journal(
     jusqu_epoque=None,
     curseur=None,
     sortie="short-iso",
+    namespace="",
 ):
     """La commande journalctl d'une lecture du journal de l'unité.
 
@@ -309,9 +344,12 @@ def commande_journal(
     ignoré : un enregistrement n'est jamais lu deux fois. Les bornes sont
     des secondes Unix (`@E`), sans dépendre du fuseau ni de la langue.
     Sans `-q` : l'avertissement d'un compte qui ne voit pas le journal du
-    système doit rester sur stderr.
+    système doit rester sur stderr. `namespace` (LogNamespace= de
+    l'unité) fait lire le journal de ce namespace ; un curseur ne vaut
+    que dans le journal qui l'a donné.
     """
-    argv = ["journalctl", "-u", unite, "-o", sortie, "--no-pager"]
+    argv = ["journalctl", *option_namespace(namespace)]
+    argv += ["-u", unite, "-o", sortie, "--no-pager"]
     if curseur:
         argv += ["--after-cursor", curseur]
     elif depuis_epoque is not None:

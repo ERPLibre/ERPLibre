@@ -192,9 +192,6 @@ class TestWhenItStops(unittest.TestCase):
     """N'importe quelle réponse suffit ; seul le refus fait recommencer."""
 
     def _sonder(self, reponses, delai=10.0):
-        import urllib.error
-        import urllib.request
-
         essais = []
         temps = [0.0]
 
@@ -207,9 +204,7 @@ class TestWhenItStops(unittest.TestCase):
                 raise resultat
             return io.BytesIO(b"")
 
-        vrai = urllib.request.urlopen
-        urllib.request.urlopen = faux_urlopen
-        try:
+        with mock.patch.object(warmup, "ouvrir_sans_proxy", faux_urlopen):
             venu = warmup.sonder(
                 "http://x",
                 delai_total=delai,
@@ -217,8 +212,6 @@ class TestWhenItStops(unittest.TestCase):
                 horloge=lambda: temps[0],
                 dormir=lambda s: temps.__setitem__(0, temps[0] + 1),
             )
-        finally:
-            urllib.request.urlopen = vrai
         return venu, essais
 
     def test_a_first_answer_ends_it(self):
@@ -247,6 +240,27 @@ class TestWhenItStops(unittest.TestCase):
 
     def test_the_default_deadline_is_two_minutes(self):
         self.assertEqual(warmup.DELAI_TOTAL, 120.0)
+
+    def test_the_environment_proxy_is_ignored(self):
+        """Un proxy injoignable dans l'environnement, sans no_proxy : la
+        sonde atteint quand même le serveur local, directement. Passée
+        par le proxy, elle n'aurait aucune réponse ; et la sonde de
+        chaque worker suit la même règle."""
+        variables = {
+            "http_proxy": "http://192.0.2.1:9",
+            "HTTP_PROXY": "http://192.0.2.1:9",
+            "no_proxy": "",
+            "NO_PROXY": "",
+        }
+        with FauxOdoo({"/web/login": (303, {"Location": "/odoo"}, "")}) as s:
+            cible = s.url + "/web/login?db=base1"
+            with mock.patch.dict(os.environ, variables):
+                venu = warmup.sonder(cible, delai_total=3, requete=2)
+                reponses = warmup.sonder_tous(cible, 2, delai_total=3)
+            chemins = s.chemins()
+        self.assertTrue(venu)
+        self.assertEqual(reponses, 2)
+        self.assertIn("/web/login?db=base1", chemins)
 
 
 class TestItNeverGetsInTheWay(unittest.TestCase):
@@ -460,10 +474,19 @@ SITEMAP = (
 
 
 def routes_publiques():
+    """Les routes d'un site public. `/web/login?db=base1` ouvre chaque fois
+    une NOUVELLE session (`session_id=s1`, `s2`…), comme Odoo quand la base
+    demandée n'est pas celle de la session."""
+    sessions = []
+    verrou = threading.Lock()
+
     def connexion(requete):
         entetes = {}
         if "db=base1" in requete.chemin:
-            entetes["Set-Cookie"] = "session_id=s1; Path=/"
+            with verrou:
+                sessions.append(1)
+                rang = len(sessions)
+            entetes["Set-Cookie"] = f"session_id=s{rang}; Path=/"
         return 200, entetes, PAGE_LOGIN
 
     return {
@@ -492,6 +515,7 @@ class TestDeepPublicPart(unittest.TestCase):
     def test_pages_sitemap_and_assets(self):
         bilan = self.prechauffer(repeat=2)
         self.assertEqual(self.chemins[0], "/web/login?db=base1")
+        self.assertEqual(self.chemins.count("/web/login?db=base1"), 2)
         self.assertEqual(self.chemins.count("/page-a"), 2)
         self.assertEqual(self.chemins.count("/web/login"), 2)
         self.assertNotIn("/logo.png", self.chemins)
@@ -576,10 +600,10 @@ class TestDeepPublicPart(unittest.TestCase):
         self.assertIn(ASSET_ANCIEN, self.chemins)
 
     def test_repeats_run_at_the_same_time(self):
-        """`--repeat` vise plusieurs workers : les requêtes d'une page, et
-        les répétitions d'un asset après sa construction, arrivent
-        ensemble. Une barrière qui casse au bout de 2 s rend 500 : servies
-        l'une après l'autre, elles échoueraient toutes."""
+        """`--repeat` vise plusieurs workers : les répétitions d'une page
+        et d'un asset, après leur premier rendu seul, arrivent ensemble.
+        Une barrière qui casse au bout de 2 s rend 500 : servies l'une
+        après l'autre, elles échoueraient toutes."""
         repeat = 3
 
         def barriere(nombre):
@@ -594,26 +618,33 @@ class TestDeepPublicPart(unittest.TestCase):
 
             return route
 
-        construits = []
-        repetitions = barriere(repeat - 1)
-
-        def asset(requete):
-            with verrou:
-                premier = not construits
-                construits.append(requete.chemin)
-            if premier:
-                return 200, {}, "js"
-            return repetitions(requete)
-
         verrou = threading.Lock()
+
+        def premier_seul(suite):
+            servis = []
+
+            def route(requete):
+                with verrou:
+                    premier = not servis
+                    servis.append(requete.chemin)
+                if premier:
+                    return 200, {}, "<html></html>"
+                return suite(requete)
+
+            route.servis = servis
+            return route
+
+        page = premier_seul(barriere(repeat - 1))
+        asset = premier_seul(barriere(repeat - 1))
         routes = routes_publiques()
-        routes["/page-a"] = barriere(repeat)
+        routes["/page-a"] = page
         routes["/page-b"] = (200, {}, "b")
         routes[ASSET_JS] = asset
         bilan = self.prechauffer(routes=routes, repeat=repeat)
         self.assertEqual(bilan.echecs, [])
         self.assertEqual(self.chemins.count("/page-a"), repeat)
-        self.assertEqual(len(construits), repeat)
+        self.assertEqual(len(page.servis), repeat)
+        self.assertEqual(len(asset.servis), repeat)
 
     def test_a_failure_wins_over_an_earlier_success(self):
         self.assertEqual(warmup._pire([200, 500]), 500)
@@ -643,10 +674,127 @@ class TestDeepPublicPart(unittest.TestCase):
         self.assertEqual(bilan.pages, 2)
         self.assertNotIn("/page-a", self.chemins)
 
-    def test_the_session_cookie_is_reused(self):
-        self.prechauffer()
-        for requete in self.requetes[1:]:
-            self.assertIn("session_id=s1", requete.entetes.get("cookie", ""))
+    def session(self, requete):
+        cookie = requete.entetes.get("cookie", "")
+        for morceau in cookie.split(";"):
+            nom, _egal, valeur = morceau.strip().partition("=")
+            if nom == "session_id":
+                return valeur
+        return ""
+
+    def test_each_lane_has_its_own_session_on_the_database(self):
+        """Une session par voie, ouverte par `/web/login?db=base1` : les
+        `repeat` requêtes d'une page portent des sessions distinctes, et
+        chacune vient d'une ouverture sur la base. Odoo upserterait sinon
+        en concurrence la même ligne `website_visitor`."""
+        repeat = 4
+        self.prechauffer(repeat=repeat)
+        ouvertures = [
+            r for r in self.requetes if r.chemin == "/web/login?db=base1"
+        ]
+        self.assertEqual(len(ouvertures), repeat)
+        for ouverture in ouvertures:
+            self.assertEqual(self.session(ouverture), "")
+        servies = {f"s{rang}" for rang in range(1, repeat + 1)}
+        for chemin in ("/web/login", "/", "/page-a", ASSET_JS):
+            with self.subTest(chemin=chemin):
+                sessions = [
+                    self.session(r)
+                    for r in self.requetes
+                    if r.chemin == chemin
+                ]
+                self.assertEqual(len(sessions), repeat)
+                self.assertEqual(set(sessions), servies)
+        for requete in self.requetes:
+            if requete not in ouvertures:
+                self.assertIn(self.session(requete), servies)
+
+    def test_the_first_lane_keeps_its_session(self):
+        """La première voie garde la session de sa première requête : le
+        sitemap et le premier rendu de chaque page la portent."""
+        self.prechauffer(repeat=3)
+        self.assertEqual(self.chemins[0], "/web/login?db=base1")
+        sitemap = [r for r in self.requetes if r.chemin == "/sitemap.xml"]
+        self.assertEqual([self.session(r) for r in sitemap], ["s1"])
+        for chemin in ("/", "/page-a"):
+            premiere = next(r for r in self.requetes if r.chemin == chemin)
+            self.assertEqual(self.session(premiere), "s1")
+
+    def test_each_page_is_loaded_alone_first(self):
+        """Le premier rendu d'une page se fait sans concurrence : les
+        autres voies ne la demandent qu'une fois la première réponse
+        venue."""
+        moments = []
+        verrou = threading.Lock()
+
+        def page(_requete):
+            debut = time.monotonic()
+            with verrou:
+                premier = not moments
+            if premier:
+                time.sleep(0.2)
+            with verrou:
+                moments.append((debut, time.monotonic()))
+            return 200, {}, "<html>a</html>"
+
+        routes = routes_publiques()
+        routes["/page-a"] = page
+        self.prechauffer(routes=routes, repeat=4)
+        self.assertEqual(len(moments), 4)
+        moments.sort()
+        fin_du_premier = moments[0][1]
+        for debut, _fin in moments[1:]:
+            self.assertGreaterEqual(debut, fin_du_premier)
+
+    def test_a_first_failure_is_not_repeated(self):
+        """Une page dont la première requête rend 5xx n'est pas redemandée
+        aux autres voies : l'échec est noté une fois."""
+        bilan = self.prechauffer(repeat=3)
+        self.assertEqual(self.chemins.count("/page-b"), 1)
+        self.assertEqual(bilan.echecs, [("/page-b", 500)])
+        self.assertEqual(self.chemins.count("/page-a"), 3)
+
+    def ouvertures(self, codes):
+        """Une route `/web/login` dont la n-ième ouverture sur la base rend
+        `codes[n]` (200 au-delà) ; la page de connexion sans base rend
+        200."""
+        rangs = []
+        verrou = threading.Lock()
+
+        def connexion(requete):
+            if "db=base1" not in requete.chemin:
+                return 200, {}, PAGE_LOGIN
+            with verrou:
+                rangs.append(1)
+                rang = len(rangs)
+            code = codes[rang - 1] if rang <= len(codes) else 200
+            entetes = {"Set-Cookie": f"session_id=s{rang}; Path=/"}
+            return code, entetes, PAGE_LOGIN if code < 500 else "boom"
+
+        routes = routes_publiques()
+        routes["/web/login"] = connexion
+        return routes
+
+    def test_a_failed_first_opening_opens_no_other_lane(self):
+        """Une première ouverture en 5xx n'ouvre aucune autre voie : la
+        première poursuit seule, et l'échec est noté une fois."""
+        premiere = "/web/login?db=base1"
+        bilan = self.prechauffer(routes=self.ouvertures([500]), repeat=3)
+        self.assertEqual(self.chemins.count(premiere), 1)
+        self.assertEqual(self.chemins.count("/page-a"), 1)
+        self.assertEqual(
+            [e for e in bilan.echecs if e[0] == premiere], [(premiere, 500)]
+        )
+
+    def test_a_failed_extra_opening_is_recorded(self):
+        """L'ouverture en 5xx d'une voie de plus est notée sur le chemin
+        d'ouverture, une fois."""
+        premiere = "/web/login?db=base1"
+        bilan = self.prechauffer(routes=self.ouvertures([200, 500]), repeat=3)
+        self.assertEqual(self.chemins.count(premiere), 3)
+        self.assertEqual(
+            [e for e in bilan.echecs if e[0] == premiere], [(premiere, 500)]
+        )
 
     def test_max_pages(self):
         bilan = self.prechauffer(max_pages=1, repeat=1)
@@ -826,6 +974,33 @@ class TestDeepAuthenticatedPart(unittest.TestCase):
         self.assertEqual(bilan.echecs, [])
         menus = [a for a in rpc.appels if a[1] == "load_menus"]
         self.assertEqual(menus[0][3]["context"], {"lang": "fr_FR"})
+
+    def test_each_repeated_call_goes_through_its_own_lane(self):
+        """Les `repeat` appels d'une lecture partent ensemble, chacun par sa
+        voie : des sessions distinctes, toutes ouvertes sur la base. Aucune
+        voie n'ouvre de session authentifiée : l'uid et la clé suffisent à
+        `execute_kw`."""
+        rpc = FauxRpc()
+        sessions = {}
+
+        def route(requete):
+            params = json.loads(requete.corps)["params"]
+            if params["method"] == "execute_kw":
+                appel = tuple(params["args"][3:5])
+                cookie = requete.entetes.get("cookie", "")
+                with rpc.verrou:
+                    sessions.setdefault(appel, []).append(cookie)
+            return rpc(requete)
+
+        bilan = self.prechauffer(route, repeat=3)
+        self.assertEqual(bilan.echecs, [])
+        self.assertEqual(len(sessions), 3)
+        for appel, cookies in sessions.items():
+            with self.subTest(appel=appel):
+                self.assertEqual(
+                    sorted(cookies),
+                    ["session_id=s1", "session_id=s2", "session_id=s3"],
+                )
 
     def test_login_refused(self):
         bilan = self.prechauffer(FauxRpc(uid=False))

@@ -50,9 +50,12 @@ What it does, in order:
    neither copies off-site nor applies retention: the scheduled backup
    does.
 5. **Update**: the unit's command line followed by `-c CONFIG -d DB -u
-   MODULES --stop-after-init --no-http --workers=0 --max-cron-threads=0`,
-   as the unit's account — the repeated `-c` keeps the update on the file
-   the detection and the backup read (`--odoo-conf` included). It fails
+   MODULES --stop-after-init --no-http --workers=0 --max-cron-threads=0
+   --limit-memory-hard=0 --log-level=info`, as the unit's account — the
+   repeated `-c` keeps the update on the file the detection and the
+   backup read (`--odoo-conf` included). Odoo keeps the last value of an
+   option: the server's memory limit (2560 MiB by default) cannot stop a
+   heavy update half-way, and its log keeps the INFO lines. It fails
    on a non-zero code, on `--timeout`, or on an
    `ERROR`/`CRITICAL` record in its output or in what was appended to the
    configured `logfile`. A record is the header line and its continuation
@@ -98,7 +101,10 @@ back to the temporary directory).
 **Source.** The unit is `--service`, else detected like `update_module.py`.
 When its configuration sets a `logfile`, Odoo writes there and that file is
 read; otherwise `journalctl -u UNIT -o short-iso`, streamed with an overall
-`--timeout`. `--file` reads a given file without a unit. When the account
+`--timeout`. A unit with `LogNamespace=` writes to the journal of that
+namespace, which `journalctl -u` alone does not see: the property is read
+from `systemctl show` and passed as `--namespace=NAME`; `--namespace NAME`
+replaces it. `--file` reads a given file without a unit. When the account
 cannot read the configuration, a `--logfile` on ExecStart is read if there
 is one, otherwise the journal; a journal read that yields no Odoo record then
 refuses (code 2, advising sudo) instead of reporting nothing to review.
@@ -111,7 +117,9 @@ the first run reads the last 24 h. `--last HOURS`, `--since`/`--until`
 matrix) never touch the state. Without a window option: the last 24 h.
 
 **State.** `--state-dir/<unit>.json` (default `/var/lib/erplibre-logcheck`),
-written only after a complete and successful read, through a temporary file
+`<unit>+<namespace>.json` for the journal of a namespace, so that two
+journals never share a cursor; a cursor saved for another namespace is not
+used. It is written only after a complete and successful read, through a temporary file
 and a rename; a state that is a symbolic link is neither read nor replaced.
 When the folder is not writable the report is still printed and says
 "position not saved".
@@ -157,9 +165,17 @@ first, with date, subject, recipients masked by default (`j***@example.org`,
 a display name reduced to its initial; `--details` shows everything) and the
 failure cause, transient or PERMANENT, whose addresses are masked the same
 way, in the text as in `--json`. Then totals by subject, cause and
-day, and two warnings: a PERMANENT cause fails again until the named setting
-is fixed; more than 10 mails with `mail.session.batch.size` unset or above
-20 may hit the server's limit of messages per connection.
+day, and the warnings: a PERMANENT cause fails again until the named setting
+is fixed. A refusal by the SMTP server's per-session message limit (452
+4.4.5, then 503 Multiple MAIL) gives the largest recipient group of those
+mails ("at least N" when a 300-character recipient list is cut) and the
+value of `mail.session.batch.size`: one session carries up to that many
+mails (1000 when unset) and one message per recipient of each, so the server
+counts the sum. Lower `mail.session.batch.size` so that it times the largest
+group stays under the limit, or raise the server limit when one mail's group
+alone exceeds it; a resend before that fails again and may deliver twice to
+the first recipients. More than 10 mails with `mail.session.batch.size`
+unset or above 20 may hit the same limit.
 
 **Resend, through the ORM.** `--resend all | oldest N | ids LIST` with
 `--yes` (without a terminal, nothing is resent without it); on a terminal
@@ -261,16 +277,23 @@ templates do not block `/web/database`. Set `list_db = False`, or deny
 
 Without `--deep`, nothing changes: one line, silent with `--quiet`, always
 exit 0, unknown options passed to Odoo; `--deep` after `--` belongs to Odoo.
-With `--deep`: wait for the first answer (`--timeout`, 120 s), open a
-session on `/web/login?db=BASE`, fetch `/web/login`, `/` and up to
-`--max-pages` (20) HTML pages of `/sitemap.xml` (an index is followed one
-level; only the path of each `<loc>` is kept, the request goes to the
-target), each `--repeat` (4, at most 16) times at once. Then each asset
-bundle those pages reference (`/web/assets/…`, and `/web/content/…assets_…`
-in older versions) once alone — that request builds it — then `--repeat` − 1
-times at once. With `--login` and `--api-key-file`: `common.login` through
-`/jsonrpc` with the API key (Odoo accepts a key only outside an interactive
-login), then `execute_kw` of a closed list of read-only methods:
+With `--deep`: wait for the first answer (`--timeout`, 120 s), then work
+through `--repeat` (4, at most 16) lanes, each with its own cookies and its
+own session opened on `/web/login?db=BASE`: two requests of one session
+never run at once (Odoo 16+ keys an anonymous visitor on the IP, the
+User-Agent and the session, and simultaneous requests of one session would
+upsert the same `website_visitor` row, logged as ERROR). Fetch
+`/web/login`, `/` and up to `--max-pages` (20) HTML pages of
+`/sitemap.xml` (an index is followed one level; only the path of each
+`<loc>` is kept, the request goes to the target), then each asset bundle
+those pages reference (`/web/assets/…`, and `/web/content/…assets_…` in
+older versions). Each page or bundle is fetched once alone by the first
+lane — that first render compiles the templates or builds the bundle —,
+then once by each other lane, at the same time; what fails on the first
+request is not repeated. With `--login` and `--api-key-file`:
+`common.login` through `/jsonrpc` with the API key (Odoo accepts a key only
+outside an interactive login), then `execute_kw` of a closed list of
+read-only methods, each once per lane at the same time:
 `res.users.context_get`, `ir.ui.menu.load_menus` and, for each model of
 `--models` (`res.partner`), `get_views` (16+) or `load_views` (15 and
 before). The key file is read without following a link; a file readable by
@@ -282,7 +305,8 @@ an `http://` URL on another host is refused (code 2). The target is
 ignored: only its path is sent, to the target.
 
 A request fails on no answer or a code ≥ 500, and on a JSON-RPC error; a
-4xx is counted apart as "not public".
+4xx is counted apart as "not public". No request, the default-mode probe
+included, goes through the proxy of the environment (`http_proxy`).
 
 | Code | Meaning |
 |------|---------|

@@ -190,9 +190,10 @@ class FauxSysteme(um.Systeme):
             return 0, ""
         return 1, "commande inattendue"
 
-    def journal(self, unite, epoque):
+    def journal(self, unite, epoque, namespace=""):
         self.appels.append("journalctl")
         self.epoque_journal = epoque
+        self.namespace_journal = namespace
         return self.journal_texte
 
     def euid(self):
@@ -476,9 +477,43 @@ class TestOrdreEtReussite(Base):
                 "--no-http",
                 "--workers=0",
                 "--max-cron-threads=0",
+                "--limit-memory-hard=0",
+                "--log-level=info",
             ],
         )
         self.assertEqual(self.systeme.vu["odoo"]["delai"], 1800)
+
+    def test_limites_de_l_unite_remplacees(self):
+        """Une limite de mémoire ou un niveau de journal que l'unité pose
+        déjà restent devant les nôtres : optparse retient la DERNIÈRE
+        valeur d'une option `store`, la mise à jour n'est donc ni bornée
+        en mémoire ni privée de ses lignes INFO."""
+        import optparse
+
+        self.systeme.proprietes["ExecStart"] = (
+            "{ path=/bin/bash ; argv[]=/bin/bash "
+            + os.path.join(self.wd, "run.sh")
+            + " -d demo_db --limit-memory-hard=2684354560 --log-level warn"
+            + " ; ignore_errors=no }"
+        )
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+        argv = self.systeme.vu["odoo"]["argv"]
+        debut = argv.index("/bin/bash") + 2
+        analyseur = optparse.OptionParser()
+        analyseur.add_option("-c")
+        analyseur.add_option("-d")
+        analyseur.add_option("-u")
+        analyseur.add_option("--stop-after-init", action="store_true")
+        analyseur.add_option("--no-http", action="store_true")
+        analyseur.add_option("--workers", type="int")
+        analyseur.add_option("--max-cron-threads", type="int")
+        analyseur.add_option("--limit-memory-hard", type="int")
+        analyseur.add_option("--log-level")
+        options, reste = analyseur.parse_args(argv[debut:])
+        self.assertEqual(reste, [])
+        self.assertEqual(options.limit_memory_hard, 0)
+        self.assertEqual(options.log_level, "info")
+        self.assertEqual(options.d, "demo_db")
 
     def test_la_commande_de_sauvegarde(self):
         self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
@@ -885,6 +920,51 @@ class TestRedemarrage(Base):
         self.systeme.demarrage_code = 1
         self.assertEqual(self.lancer(), um.CODE_ECHEC)
         self.assertIn("journalctl -u erplibre_demo.service", self.sortie)
+
+    def test_journal_du_namespace_de_l_unite(self):
+        """LogNamespace= : le journal relu après la relance est celui du
+        namespace, et la commande conseillée sur un échec le nomme."""
+        self.systeme.proprietes["LogNamespace"] = "ns_essai"
+        self.systeme.journal_texte = LIGNE_ERREUR + "\n"
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertEqual(self.systeme.namespace_journal, "ns_essai")
+        self.assertIn("Failed to load module", self.sortie)
+        self.assertIn("ns_essai", self.sortie)
+        self.systeme.demarrage_code = 1
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertIn(
+            "journalctl -u erplibre_demo.service --namespace=ns_essai",
+            self.sortie,
+        )
+
+    def test_sans_namespace_le_journal_par_defaut(self):
+        self.lancer()
+        self.assertEqual(self.systeme.namespace_journal, "")
+
+    def test_namespace_invalide_n_arrete_pas_la_mise_a_jour(self):
+        """Un LogNamespace= que journalctl ne recevrait pas est écarté :
+        la mise à jour a lieu, le journal par défaut est relu, et le plan
+        nomme le namespace écarté."""
+        self.systeme.proprietes["LogNamespace"] = "a/b"
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertEqual(self.systeme.namespace_journal, "")
+        self.assertIn(
+            um.t("{name} (invalid name: the default journal is read)").format(
+                name="a/b"
+            ),
+            self.sortie,
+        )
+
+    def test_systemd_qui_lit_le_namespace(self):
+        argv = []
+
+        def lanceur(commande, delai=60):
+            argv.append(list(commande))
+            return 0, ""
+
+        self.systeme.lanceur = lanceur
+        um.Systeme.journal(self.systeme, "u.service", 1000, "ns_essai")
+        self.assertIn("--namespace=ns_essai", argv[0])
 
     def test_actif_mais_n_ecoute_pas(self):
         self.systeme.ecoute_apres_demarrage = False
