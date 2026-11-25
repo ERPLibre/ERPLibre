@@ -807,7 +807,7 @@ class TestGalleryGames(unittest.TestCase):
         popen = mock.Mock()
         vue = types.SimpleNamespace(run=subprocess.run, Popen=popen)
         with mock.patch.object(self.galerie, "subprocess", vue):
-            gestionnaire._launch_game("snake")
+            gestionnaire._launch_game("exemple")
         self.assertEqual([403], codes)
         popen.assert_not_called()
         self.assertIn(b"GAMES=off", gestionnaire.wfile.getvalue())
@@ -1011,31 +1011,79 @@ class TestTodoGamesLauncher(unittest.TestCase):
         self.assertEqual(MESSAGE_SANS_VENV, sortie.strip())
         scan.assert_not_called()
 
-    def test_a_game_is_described_by_its_file_name_key(self):
-        """game_<id>.py prend la description de la clé i18n « game_<id> »,
-        dans la langue de l'utilisateur ; sans clé, la première ligne de
-        sa docstring."""
+    # Des jeux inventés, un par chemin de lecture : GAME_META complet, sans
+    # description_fr, absent, calculé plutôt que littéral, et un fichier
+    # que Python ne sait pas lire. Le premier sort avant GAME_META : le
+    # lire en l'exécutant ne rendrait rien.
+    JEUX_DECRITS = {
+        "game_complet.py": (
+            '"""\nLa docstring du jeu complet.\n"""\n'
+            'raise SystemExit("le menu ne lance pas le jeu")\n'
+            "GAME_META = {\n"
+            '    "name": "Complet",\n'
+            '    "description": "The English one.",\n'
+            '    "description_fr": "La française.",\n'
+            "}\n"
+        ),
+        "game_anglais.py": (
+            '"""\nLa docstring du jeu anglais.\n"""\n'
+            'GAME_META = {"description": "English only."}\n'
+        ),
+        "game_sansmeta.py": '"""\nLa docstring sans GAME_META.\n"""\n',
+        "game_calcule.py": (
+            '"""\nLa docstring du jeu calculé.\n"""\n'
+            'GAME_META = dict(description="Built at run time.")\n'
+        ),
+        "game_illisible.py": '"""\nLa docstring illisible.\n"""\ndef (\n',
+    }
+
+    def descriptions(self, langue):
         with tempfile.TemporaryDirectory() as tmp:
             chemins = []
-            for nom in ("game_2048.py", "game_exemple_sans_cle.py"):
+            for nom, source in sorted(self.JEUX_DECRITS.items()):
                 chemin = os.path.join(tmp, nom)
                 with open(chemin, "w", encoding="utf-8") as f:
-                    f.write('"""\nLa docstring du jeu.\n"""\n')
+                    f.write(source)
                 chemins.append(chemin)
-            for langue in ("en", "fr"):
-                with self.subTest(langue=langue):
-                    todo_i18n._current_lang = langue
-                    todo = todo_mod.TODO.__new__(todo_mod.TODO)
-                    with mock.patch("glob.glob", return_value=chemins):
-                        jeux = todo._scan_streamdeck_games()
-                    attendu = todo_i18n.TRANSLATIONS["game_2048"][langue]
-                    self.assertEqual(
-                        [
-                            f"2048 — {attendu}",
-                            "Exemple Sans Cle — La docstring du jeu.",
-                        ],
-                        [j["description"] for j in jeux],
-                    )
+            todo_i18n._current_lang = langue
+            todo = todo_mod.TODO.__new__(todo_mod.TODO)
+            with mock.patch("glob.glob", return_value=chemins):
+                return [
+                    j["description"] for j in todo._scan_streamdeck_games()
+                ]
+
+    def test_a_game_is_described_by_its_game_meta(self):
+        """description_fr en français, description en anglais, lues dans
+        GAME_META sans lancer le jeu ; sans description_fr, l'anglaise ;
+        sans GAME_META littéral, la première ligne de la docstring."""
+        self.assertEqual(
+            [
+                "Anglais — English only.",
+                "Calcule — La docstring du jeu calculé.",
+                "Complet — La française.",
+                "Illisible — La docstring illisible.",
+                "Sansmeta — La docstring sans GAME_META.",
+            ],
+            self.descriptions("fr"),
+        )
+        self.assertEqual(
+            [
+                "Anglais — English only.",
+                "Calcule — La docstring du jeu calculé.",
+                "Complet — The English one.",
+                "Illisible — La docstring illisible.",
+                "Sansmeta — La docstring sans GAME_META.",
+            ],
+            self.descriptions("en"),
+        )
+
+    def test_no_game_has_a_translation_key(self):
+        """Un jeu se décrit lui-même : ajouter un jeu ne demande aucune clé
+        game_<id> dans les traductions du menu."""
+        self.assertEqual(
+            [],
+            [c for c in todo_i18n.TRANSLATIONS if c.startswith("game_")],
+        )
 
     def test_the_command_hands_the_deck_over_to_the_streamdeck_venv(self):
         todo = todo_mod.TODO.__new__(todo_mod.TODO)

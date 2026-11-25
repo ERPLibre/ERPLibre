@@ -277,7 +277,9 @@ class LesVraisScans(unittest.TestCase):
         with mock.patch.object(galerie.subprocess, "run", side_effect=meta):
             ids = {g["id"] for g in galerie._scan_games()}
         self.assertEqual(self.jeux_du_clone(), sorted(scannes))
-        self.assertIn("snake", ids)
+        self.assertEqual(
+            {Path(p).stem[len("game_") :] for p in self.jeux_du_clone()}, ids
+        )
         self.assertNotIn("tiler", ids)
         self.assertEqual(ROOT, Path(galerie.ERPLIBRE_DIR))
 
