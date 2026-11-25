@@ -87,7 +87,7 @@
     },
 
     "notes.pull": {
-      "description": "Pull todos modified since last sync",
+      "description": "Pull the records linked on this server modified since last sync: tasks (any project) as below, and in the same way crm.lead (name, description, tag_ids, date_deadline), account.move (narration) and mail.activity (summary, note, date_deadline, active on 17+); one pull cursor per model (tasks keep the server's own); nothing linked, no request",
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": {
@@ -97,25 +97,26 @@
           "args": [],
           "kwargs": {
             "domain": [
-              ["project_id", "=", false],
-              ["write_date", ">", "{last_synced_at_iso}"]
+              ["id", "in", ["{note_links.res_id of this server's live task links}"]],
+              ["write_date", ">=", "{pull_cursor or oldest link last_synced_at}"]
             ],
             "fields": [
-              "id", "name", "description", "priority", "active",
-              "state", "tag_ids", "date_deadline",
-              "geo_task_point", "write_date", "attachment_ids"
+              "id", "name", "priority", "active",
+              "tag_ids", "date_deadline", "write_date",
+              "state (Odoo 17+ only)"
             ],
             "limit": 100,
-            "offset": 0,
-            "order": "write_date asc"
+            "offset": "{page * 100} — pages until fewer than 100 rows, at most 50 pages",
+            "order": "write_date asc, id asc",
+            "context": { "active_test": false }
           }
         }
       },
-      "notes": "project_id=False = project_todo personal tasks. geo_task_point requires erplibre_mobile_todo installed."
+      "notes": "Filtered by linked ids, not project_id: a task created in a project, or moved to one on the server, keeps syncing. Tag names are read from project.tags / crm.tag; the note keeps the app's own tag of each name (created when missing), and pushes send the names of its tags, never the app's ids. Each row is merged into its note three ways against the link's base (note_links.params.base, the note's and the record's values at their last exchange): a field changed on the server only is copied into the note (text: the record's paragraphs replace the note's text entries, app lines and the marker skipped), except the date (date_deadline, an activity's included), kept as note_links.params.dateProposal {to} for the user to take into the note's first date entry or refuse (the base's remote date then moves to it, so that day is not proposed again), one changed in the app only waits for the push, one changed on both sides to different values is kept as note_links.params.conflict and the server turns 'conflict'. An activity archived on 17+ turns its link 'done'. A link with no base takes the server's values unless the note waits for that server. geo_task_point requires erplibre_mobile_todo installed."
     },
 
     "notes.poll": {
-      "description": "Lightweight poll — fetch only IDs and write_date to detect changes",
+      "description": "Lightweight poll — fetch only IDs and write_date of the linked tasks to detect changes; no linked task, no request",
       "method": "POST",
       "path": "/web/dataset/call_kw",
       "request": {
@@ -125,7 +126,7 @@
           "args": [],
           "kwargs": {
             "domain": [
-              ["project_id", "=", false],
+              ["id", "in", ["{note_links.res_id of this server's live task links}"]],
               ["write_date", ">", "{last_synced_at_iso}"]
             ],
             "fields": ["id", "write_date"],
@@ -146,21 +147,334 @@
           "args": [
             {
               "name": "{note.title}",
-              "description": "{note.html_description}",
-              "project_id": false,
+              "description": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "project_id": "{outbox.params.projectId} — the project chosen for this server, or false (personal task)",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
-              "state": "done if note.done else 01_in_progress",
+              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only)",
               "tag_ids": [[6, 0, ["{tag_id_1}", "{tag_id_2}"]]],
               "date_deadline": "{first_date_entry_iso or null}",
-              "geo_task_point": "{geojson_multipoint or null}"
+              "geo_task_point": "{geojson_multipoint} — only when the note has positions and fields_get finds the field"
             }
           ],
           "kwargs": {}
         }
       },
-      "response": "integer — Odoo task ID → store as odoo_id in mobile SQLite",
-      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string."
+      "response": "integer — Odoo task ID → stored in mobile SQLite note_links (note, server config id, project.task, id, client_uuid)",
+      "notes": "tag_ids uses Odoo ORM command 6 (replace all) on create; writes send the tags added and removed (see notes.update). The link starts with a base of the values sent. geo_task_point is GeoJSON string. Runs as the note's task.create row of sync_outbox; on a retry (attempts > 1) notes.find_created runs first. With a project, projects.check runs just before. AccessError, ValidationError, UserError or MissingError on create blocks the row as refused (no retry, createSentAt cleared since the server answered) until the user chooses again. A task deleted on the server is recreated only through the picker: choosing its project queues this create. project_id is sent by create only: notes.update never sends it."
+    },
+
+    "projects.list": {
+      "description": "Projects offered for a new task on one server, cached in remote_records_cache (replaced on each read) for offline choices",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.project",
+          "method": "search_read",
+          "args": [],
+          "kwargs": { "domain": [], "fields": ["id", "name"], "order": "name asc", "limit": 500 }
+        }
+      },
+      "response": "active projects the user can read; 500 rows means the list may be cut"
+    },
+
+    "leads.create": {
+      "description": "Push a note as a CRM opportunity (lead.create row of sync_outbox, same marker, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "crm.lead",
+          "method": "create",
+          "args": [
+            {
+              "name": "{note.title}",
+              "description": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "type": "opportunity",
+              "partner_id": "{outbox.params.partnerId} — omitted when none chosen",
+              "expected_revenue": "{outbox.params.expectedRevenue} — omitted when none typed",
+              "tag_ids": [[6, 0, ["{crm.tag ids, found or created by name}"]]],
+              "date_deadline": "{first date entry, local day YYYY-MM-DD} — false when the note has no date",
+              "active": "not note.archived — create only"
+            }
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "integer — crm.lead id → note_links (note, server config id, crm.lead, id, client_uuid)",
+      "notes": "Team and salesperson are the server's defaults. done and pinned are not sent. Before create, a chosen partner is checked with res.partner search_read [('id','=',partnerId)] (active only): none or AccessError blocks the row as partner_missing. Refused create: as notes.create."
+    },
+
+    "leads.update": {
+      "description": "Push changes to a linked opportunity",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "crm.lead",
+          "method": "write",
+          "args": [["{note_links.res_id}"], { "name": "…", "description": "…", "tag_ids": "…", "date_deadline": "… only when the note has a date" }],
+          "kwargs": {}
+        }
+      },
+      "notes": "type, partner_id, expected_revenue and active are never written: they belong to the server once created (writing active would revive an opportunity marked lost). MissingError marks the link deleted; the server leaves the note's queue only when no other kind of the note is live there. Leads are not pulled back yet; a pulled task change queues the note's opportunity on the same server."
+    },
+
+    "invoices.create": {
+      "description": "Draft a note's invoice (invoice.create row of sync_outbox, one per note and server; same marker in narration, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "account.move",
+          "method": "create",
+          "args": [
+            {
+              "move_type": "{outbox.params.moveType} — out_invoice or in_invoice",
+              "partner_id": "{outbox.params.partnerId} — omitted when none (allowed on a draft)",
+              "invoice_date": "{outbox.params.invoiceDate} — omitted: the server's",
+              "ref": "{outbox.params.ref} — omitted when empty",
+              "invoice_line_ids": [[0, 0, { "name": "{line.name}", "quantity": "{line.quantity}", "price_unit": "{line.priceUnit} — omitted when none typed: the server computes the product's", "product_id": "{line.productId} — omitted when none" }]],
+              "narration": "<p><b>{note.title}</b></p> + {note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "{extra field}": "{outbox.params.extra[field]} — each required field the form asked",
+              "{tie field}": "{note's task or opportunity id} — when account.move has a settable many2one to it"
+            }
+          ],
+          "kwargs": { "context": { "default_move_type": "{outbox.params.moveType}" } }
+        }
+      },
+      "response": "integer — account.move id → note_links (kind create)",
+      "notes": "Before create, a chosen partner is checked (partner_missing). The tie (outbox.params.linkKind task|lead) uses the note's live link of that kind on the server; the tie field is a many2one of account.move to its model, not readonly, without depends (capabilities.probe fields). Without one, after the create, a logged note is posted on the invoice and on the task or opportunity, each linking to the other (<a data-oe-model data-oe-id>); a failure there is kept in note_links.params (crossLinked false, crossError), the invoice staying created. An invoice tied to a task or opportunity whose creation is still in the outbox waits for it (not due, not sent, a tap reports it as incomplete; depends_on set when queued after it): the tie is set at creation only. An invoice found again by its marker, or adopted, gets each cross message only when its chatter lacks it (mail.message search_count on the anchor). Refused create: as notes.create, plus builtins.ValueError and TypeError (a malformed extra value). A datetime extra value is sent as YYYY-MM-DD HH:MM:SS in UTC. tags, done, pinned, archived are not mapped."
+    },
+
+    "invoices.update": {
+      "description": "Push changes to a note's linked invoice",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "account.move", "method": "write", "args": [["{note_links.res_id}"], { "narration": "{same as invoices.create}" }], "kwargs": {} } },
+      "notes": "narration only: type, partner, date, reference, lines and extra fields belong to accounting once drafted. MissingError: as notes.update."
+    },
+
+    "invoices.form": {
+      "description": "Required fields a new invoice of one type needs beyond the form's own",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "account.move", "method": "fields_get + default_get", "args": [], "kwargs": { "attributes": ["type", "string", "required", "readonly", "relation", "selection", "depends"], "context": { "default_move_type": "{moveType}" } } }
+      },
+      "response": "fields required, not readonly, with empty depends (not computed or related), absent from default_get and not the form's own (move_type, partner_id, invoice_date, ref, invoice_line_ids, line_ids, narration). char, text, integer, float, monetary, date, datetime, boolean, selection and many2one (name_search on its relation) are asked; other types are listed as unsupported. Kept per server and type in sync_target_prefs (kind invoice.form.{moveType}) for offline."
+    },
+
+    "calendar.read": {
+      "description": "Activities of the activity calendar, per server: the connected user's and those of the users chosen, kept in activities_cache (replaced on each read, local changes still pending kept)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["user_id", "in", ["{uid}", "{chosen user ids}"]], ["date_deadline", ">=", "{today}"], ["date_deadline", "<=", "{today + 90 days}"]],
+            "fields": ["res_model", "res_id", "res_name", "activity_type_id", "summary", "date_deadline", "user_id"],
+            "order": "date_deadline asc, id asc",
+            "limit": 500
+          }
+        }
+      },
+      "notes": "A second read gets the overdue ones ([('date_deadline','<',today)], order date_deadline desc, own limit of 500), so a long backlog never hides what is coming; a read returning its limit flags the calendar as truncated. On Odoo 17+ a third read gets those done since today - 30 days: domain + [('active','=',False),('date_done','>=',…)], context active_test false, fields date_done and write_date; a done one sits on the local day of write_date (16 deletes done activities). uid comes from /web/session/get_session_info (auth user), read once per server and kept in sync_target_prefs (kind calendar.uid) to tell the user's activities apart offline. Chosen users are kept per server in sync_target_prefs (kind calendar.users); the sales team shortcut reads crm.team [('member_ids','in',[uid])] member_ids, then res.users names (none without the CRM: KeyError)."
+    },
+
+    "calendar.done": {
+      "description": "Mark an activity done from the calendar (calendar.done row of sync_outbox, note_id 'calendar')",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "mail.activity", "method": "action_feedback", "args": [["{activityId}"]], "kwargs": { "feedback": false } } },
+      "notes": "Applied to the cache at once (done, pending), sent at once online, else by the next sync. On 17+ the activity's active flag is read first: archived means done already, no second call. MissingError or no row drops it from the cache. A note_links row of kind activity for that id turns 'done'. A newer change of the same kind for the same activity replaces the queued one. AccessError, ValidationError or UserError is final: the operation is dropped, the cached activity back to its state before the change (kept in params.before), with the reason (lastError)."
+    },
+
+    "calendar.reschedule": {
+      "description": "Give an activity a new deadline from the calendar (calendar.reschedule row of sync_outbox, note_id 'calendar')",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": { "params": { "model": "mail.activity", "method": "write", "args": [["{activityId}"], { "date_deadline": "{YYYY-MM-DD}" }], "kwargs": {} } },
+      "notes": "Same queueing as calendar.done. Once written, the deadline goes into the base (remote date) of the note link of that activity, if any: the next pull proposes nothing, and the note keeps its own date. Local reminders (hour, days before, off by default) of the user's open activities are rescheduled after each calendar read and at the app's start, from the cache."
+    },
+
+    "partners.search": {
+      "description": "Client search for a new opportunity",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "res.partner",
+          "method": "name_search",
+          "args": [],
+          "kwargs": { "name": "{text}", "args": [], "operator": "ilike", "limit": 20 }
+        }
+      },
+      "response": "[[id, display_name], …] — kept in remote_records_cache (200 most recent per server) for offline search"
+    },
+
+    "activities.create": {
+      "description": "Schedule one of a note's activities on a chosen record (activity.create row of sync_outbox; a note can have several per server; same marker, retry search in note, and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "create",
+          "args": [
+            {
+              "res_id": "{outbox.params.resId}",
+              "summary": "{note.title}",
+              "note": "{note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+              "activity_type_id": "{outbox.params.typeId} — omitted: the server's default type",
+              "date_deadline": "{outbox.params.deadline} YYYY-MM-DD — none chosen: the device's day, fixed once in params.defaultDeadline",
+              "user_id": "{outbox.params.userId} — omitted: the connected user"
+            }
+          ],
+          "kwargs": { "context": { "default_res_model": "{outbox.params.resModel}" } }
+        }
+      },
+      "response": "integer — mail.activity id → note_links (kind activity, params_json: resModel, resId, resName, typeId, typeName, deadline, userId, userName)",
+      "notes": "res_model_id is resolved by mail.activity.default_get from default_res_model, so ir.model (admin only on 17 and 18) is never read. Before create, the record's model is probed (capabilities.probe, cached a day): missing, or without activity_ids, blocks the row as model_unusable; builtins.AttributeError on create (a model without mail.activity.mixin) blocks it as refused. Then the record (active_test false), the type and the user are each checked with search_read [('id','=',…)]: none, AccessError or KeyError (no such model) blocks the row as record_missing, type_missing or user_missing. A row without resId (chosen offline, no record in the cache) is incomplete and sends nothing. Refused create: as notes.create. The server checks the user's right on the record."
+    },
+
+    "activities.update": {
+      "description": "Push changes to a live activity of the note",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity",
+          "method": "write",
+          "args": [["{note_links.res_id}"], { "summary": "{note.title}", "note": "{note.html_description} + marker" }],
+          "kwargs": {}
+        }
+      },
+      "notes": "The record, type, deadline and user are create only. On Odoo 17+ the activity's active flag is read first (search_read [('id','=',…)], fields active, active_test false): archived (done on the server, its type keeping done activities) turns the link 'done' with no write; no row counts as MissingError. MissingError (the activity was done or cancelled on the server) marks the link deleted without raising; the server leaves the note's queue only when nothing else of the note lives there."
+    },
+
+    "activities.done": {
+      "description": "The note is done: mark its live activities done",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "mail.activity", "method": "action_feedback", "args": [["{note_links.res_id}"]], "kwargs": { "feedback": false } }
+      },
+      "notes": "Replaces activities.update for a done note, after the same active check (an archived activity is not marked done again). The server removes the activity, or archives it when its type keeps done activities; the link turns remote_state 'done' and is never written again, even if the note is undone. An activity created for a note already done is marked done in the same push."
+    },
+
+    "messages.post": {
+      "description": "Post a note in a chosen record's chatter (message.post row of sync_outbox; several per server; same marker, retry search and quiet window as notes.create)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "{outbox.params.resModel}",
+          "method": "message_post",
+          "args": [["{outbox.params.resId}"]],
+          "kwargs": {
+            "body": "<p><b>{note.title}</b></p> + {note.html_description} + <p><small>erplibre-mobile:{outbox.client_uuid}</small></p>",
+            "body_is_html": "true — Odoo 17+ only",
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_note"
+          }
+        }
+      },
+      "response": "integer — mail.message id → note_links (kind message, params_json: resModel, resId, resName, bodyHash)",
+      "notes": "A logged note, the only kind the edit route accepts on 16. Before posting, the model is probed (missing or without message_ids: model_unusable) and the record checked (active_test false): none, AccessError or KeyError blocks as record_missing; builtins.AttributeError blocks as refused. The retry search reads mail.message [('model','=',resModel),('res_id','=',resId),('body','ilike',marker)]. Posting needs write access on most models, read on those whose _mail_post_access is read (account.move)."
+    },
+
+    "messages.update": {
+      "description": "Push a change of the note's text to its posted message",
+      "method": "POST",
+      "path": "/mail/message/update_content",
+      "request": { "params": { "message_id": "{note_links.res_id}", "body": "{same body as messages.post}", "attachment_ids": [] } },
+      "notes": "The web client's edit route (type json, auth public), on Odoo 16, 17 and 18; only the author (or an admin) of a comment without tracking may edit, and 16 only a logged note. Sent only when the body's hash differs from note_links.params.bodyHash. The message is read first through call_kw (mail.message search_read [('id','=',…)], fields body, attachment_ids): a stale session there answers code 100 and is renewed, where the public route would answer NotFound; no row, or an emptied body without attachments (deleted in the chatter), marks the link deleted; its attachment_ids are sent back, since the route replaces the list. A message found again by its marker with the hash it was posted with is linked without an edit."
+    },
+
+    "activity_types.list": {
+      "description": "Activity types offered for a new activity, cached in remote_records_cache (replaced on each read)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "mail.activity.type",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [],
+            "fields": ["id", "name", "res_model", "delay_count", "delay_unit", "delay_from"],
+            "order": "sequence asc, id asc",
+            "limit": 200
+          }
+        }
+      },
+      "response": "active types; a type with res_model is offered only on that model. The default deadline is the note's first date, else today plus delay_count delay_unit, as the server computes it for an activity with no previous one (whatever delay_from)."
+    },
+
+    "records.search": {
+      "description": "Record an activity goes on, or the user it is assigned to: same as partners.search, on the chosen model (res.partner, crm.lead, project.task, project.project, sale.order, account.move, purchase.order, or a technical name typed) or on res.users",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": { "model": "{model}", "method": "name_search", "args": [], "kwargs": { "name": "{text}", "args": [], "operator": "ilike", "limit": 20 } }
+      },
+      "response": "[[id, display_name], …] — kept in remote_records_cache (200 most recent per server and model). The fixed models are probed (capabilities.probe: read right and activity_ids) and greyed where missing."
+    },
+
+    "projects.check": {
+      "description": "Before creating a task in a project: the project still exists, is active (as projects.list offers it) and the user sees it",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.project",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["id", "=", "{outbox.params.projectId}"]],
+            "fields": ["id"],
+            "limit": 1
+          }
+        }
+      },
+      "response": "1 row → create; 0 rows (gone, archived, hidden) or AccessError → the outbox row turns blocked as project_missing, no create sent, sync_target_prefs stops offering that project, and the next tap asks for a project again"
+    },
+
+    "notes.find_created": {
+      "description": "Before retrying a create whose answer may have been lost: find the task an earlier attempt created, by its marker. Runs no earlier than 3 minutes after the last create was sent (stored in params.createSentAt before sending): longer than the 30 s read timeout plus Odoo's default limit_time_real (120 s), so an uncommitted create cannot be missed",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.task",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["description", "ilike", "erplibre-mobile:{outbox.client_uuid}"]],
+            "fields": ["id"],
+            "limit": 5,
+            "order": "id asc",
+            "context": { "active_test": false }
+          }
+        }
+      },
+      "response": "0 rows → create; 1 row → adopt it (notes.update with the current content, then link); several rows (a copy made on the server carries the marker too, archived or not) → the outbox row turns blocked as ambiguous with the ids as candidates, and the app asks the user which task to link"
+    },
+
+    "capabilities.probe": {
+      "description": "What a server allows on a model, cached in server_capabilities; never reads ir.model (not readable by an ordinary internal user on 17 and 18)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "calls": [
+        "{model}.fields_get([], attributes=[type, string, required, readonly, relation, selection]) — an unknown model answers KeyError: exists=false; AccessError: exists, no right; any other error leaves the cache unchanged",
+        "Odoo 18: {model}.has_access([], 'read'|'create'|'write'); refused, or Odoo 16-17: {model}.check_access_rights('read'|'create'|'write', raise_exception=False); neither answering → null (not blocking)",
+        "activity_ids / message_ids among the fields → activities / chatter available"
+      ]
     },
 
     "notes.update": {
@@ -172,22 +486,24 @@
           "model": "project.task",
           "method": "write",
           "args": [
-            ["{note.odoo_id}"],
+            ["{note_links.res_id for this server}"],
             {
               "name": "{note.title}",
-              "description": "{note.html_description}",
+              "description": "{note.html_description} (+ the marker when the link has a client_uuid)",
+              "project_id": "never sent: a task moved to another project on the server stays there",
               "priority": "1 if pinned else 0",
               "active": "not note.archived",
-              "state": "done if note.done else 01_in_progress",
-              "tag_ids": [[6, 0, ["{tag_id_1}"]]],
-              "date_deadline": "{first_date_entry_iso or null}",
-              "geo_task_point": "{geojson_multipoint or null}"
+              "state": "1_done if note.done else 01_in_progress (Odoo 17+ only) — only when done changed in the app",
+              "tag_ids": [[4, "{tag added in the app}"], [3, "{tag removed in the app}"]],
+              "date_deadline": "{first date entry: its local day YYYY-MM-DD on Odoo 16 (Date), its UTC instant YYYY-MM-DD HH:MM:SS on 17+ (Datetime); false for none}",
+              "geo_task_point": "{geojson_multipoint} — only when the note has positions and fields_get finds the field"
             }
           ],
           "kwargs": {}
         }
       },
-      "response": "true on success"
+      "response": "true on success",
+      "notes": "The task is read and merged first (see notes.pull); a conflict stops the push (nothing written; a background push leaves it to the user). Only the fields changed in the app since the base are sent: name (title), description (text: the user's paragraphs; media: the lines the app writes from photos, audio, video, date and position, sent but never read back) and geo_task_point, tag_ids (tags, as commands 4 and 3 so tags others set stay), date_deadline (date), state (done), active (archived), priority (pinned); none changed, no write. The same applies to crm.lead (name, description, tag_ids, date_deadline), account.move (narration for title or text) and mail.activity (summary, note; its deadline is pulled, never written). A record not read back is written in full, so the server says whether it is deleted (MissingError). A link with no base yet is written in full as before, then gets one."
     },
 
     "attachments.list": {
@@ -202,7 +518,7 @@
           "kwargs": {
             "domain": [
               ["res_model", "=", "project.task"],
-              ["res_id", "in", ["{odoo_id_1}", "{odoo_id_2}"]]
+              ["res_id", "in", ["{note_links.res_id_1}", "{note_links.res_id_2}"]]
             ],
             "fields": ["id", "name", "mimetype", "file_size", "create_date", "res_id"]
           }
@@ -217,7 +533,7 @@
       "content_type": "multipart/form-data",
       "request_fields": {
         "model": "project.task",
-        "id": "{note.odoo_id}",
+        "id": "{note_links.res_id for this server}",
         "ufile": "<binary file content>"
       },
       "response_fields": {
@@ -228,33 +544,88 @@
     }
   },
 
+  "attachments": {
+    "create": "ir.attachment create {name (file name), datas (base64), res_model, res_id, mimetype} for each photo, audio or video entry with a file not sent yet to that record, after each create or write of the note's task, opportunity or invoice (on it) and of each of its messages (on the message's record, then /mail/message/update_content with the message's attachment_ids plus the new ones). Activities take none.",
+    "limits": "Options › Odoo sync (localStorage options.sync.attachments): wifiOnly holds files on a mobile network (the server stays pending until a push on Wi-Fi); maxMb, and always 90 MB (base64 must stay under the server's request limit), leave a larger file out. note_links.params.attachments maps entry id → {id, path}: each file goes once per record, a replaced one (another path) again, a removed one stays on the server; a file already sent to the same record by another link of the note is reused. params.attachmentsSkipped notes a file too big, missing or refused (the round goes on), named on the note until sent, as are the files held for Wi-Fi while off it; going onto Wi-Fi from another link syncs the servers with due work, retry delays kept; params.attachmentsInFlight marks a create sent, so an unanswered one is looked for first (ir.attachment search on res_model, res_id, name); params.attachmentsUnlinked keeps ids a message could not take yet. Never fails the push.",
+    "paths": "An entry's file is read through Filesystem: a web view URL (http://localhost/_capacitor_file_/…) as its native file, an absolute path or file:// as is, a relative path (a recording) under Directory.Data."
+  },
+
+  "companies": {
+    "read": "/web/session/get_session_info (auth user): uid and user_companies (current_company, allowed_companies id → {id, name}); kept per server in sync_target_prefs (kind companies), the one last chosen in kind company.",
+    "refresh": "The kept list is read again from the session once per app run, so a company the user lost is no longer sent.",
+    "scope": "For a user of several companies, every call_kw to that server carries context allowed_company_ids = all of them (current first) unless the call names its own, so records of each company are read and written. A creation carries the company chosen in the picker first (outbox params.companyId), the one the record is created in. A user of one company gets no such context."
+  },
+
+  "transport_policy": {
+    "http": "An http:// url is refused before any request (InsecureHttpError) unless the user turned on « Autoriser http (non chiffré) » in Options › Synchronisation Odoo (localStorage options.sync.allowHttp). The same rule refuses opening an application or a note's record in the web view, whose login script types the password. https is always allowed."
+  },
+
   "re_auth_strategy": {
-    "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401",
+    "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401 — never the error message text",
     "steps": [
       "1. Retrieve credentials from SecureStorage key 'odoo_sync_credentials_{app_url}'",
       "2. Call auth.login with retrieved credentials",
-      "3. Store new session cookie in SecureStorage key 'odoo_sync_session_{app_url}'",
+      "3. Store new session cookie in SecureStorage key 'odoo_sync_session_{base64(app_url|username|database)}'",
       "4. Retry original request once",
-      "5. If still failing — set sync_status='error', notify user"
+      "5. If still failing — mark this server 'error' in sync_per_server_status (the note's sync_status is derived), notify user"
     ]
   },
 
   "sync_status_values": {
-    "local": "Note exists only on device — never pushed",
-    "pending": "Modified since last sync — push needed",
-    "synced": "In sync with Odoo — write_date matches",
-    "conflict": "Both mobile and Odoo modified since last sync (v1: Odoo wins)",
-    "error": "Last sync attempt failed — show error to user"
+    "notes": "Per server in sync_per_server_status (synced | pending | error | conflict); the note's sync_status is derived from the entries of live applications: conflict, then error, then pending, then synced; none left → synced if a live link remains, else local.",
+    "local": "Note bound to no live server",
+    "pending": "Some server still has to receive the note (queued offline, edited, or edited during its push); syncAll pushes it",
+    "synced": "Every live server received the latest pushed content",
+    "conflict": "A record of the note changed in the app and on the server, the same field to different values (note_links.params.conflict: per field mine and theirs). Nothing is pushed there and syncAll skips the note until the user keeps, per field, the app's version (sent by the next push) or the server's (copied into the note).",
+    "error": "Last push to some server failed; syncAll retries it",
+    "remote_deleted": "Not a status: a write() answering odoo.exceptions.MissingError marks the note_links row remote_state='deleted'; the server leaves the note's queue only when no other kind of the note is live there (a background push next to a live kind skips the deleted one). The record is recreated only when the user chooses it again in the picker; unchecking it there marks the link 'dismissed': kept as history, never pushed nor asked again"
   },
 
   "sqlite_columns_added": {
     "table": "notes",
     "migration": "2026032901",
     "columns": {
-      "odoo_id": "INTEGER — Odoo project.task id, null if never pushed",
-      "odoo_url": "TEXT — Base URL of the Odoo instance used for sync",
-      "sync_status": "TEXT DEFAULT 'local' — see sync_status_values",
+      "odoo_id": "INTEGER — legacy single binding, no longer written; migration 2026102201 copies it to note_links",
+      "odoo_url": "TEXT — legacy, no longer written",
+      "sync_status": "TEXT DEFAULT 'local' — see sync_status_values; derived from sync_per_server_status",
       "last_synced_at": "TEXT — ISO 8601 datetime of last successful sync"
+    }
+  },
+
+  "sqlite_tables_added": {
+    "migration": "2026102201",
+    "note_links": {
+      "columns": ["id", "note_id", "config_id (url|username|database)", "model", "res_id", "kind", "remote_state (ok|deleted|dismissed|done)", "created_at", "last_synced_at", "client_uuid (migration 2026102202)", "params_json (migration 2026102301)"],
+      "notes": "One row per remote record of a note; an id is only valid for its config id, which includes the database. kind 'create': the note's task or opportunity, one per model and server; kind 'activity': a mail.activity, several per server, its choices in params_json; kind 'message': a mail.message posted in a record's chatter, several per server, its record and bodyHash in params_json; remote_state 'done': an activity the app marked done. Sync config ids, per-server status keys and remembered selections all use url|username|database (migration 2026102201 upgrades the older url|username ids)."
+    },
+    "sync_pull_cursors": {
+      "columns": ["scope (sync config id)", "write_date"],
+      "notes": "Highest task write_date already pulled; next pull starts there (>=). Pages by write_date >= last read, excluding the ids already read at it (search_read truncates write_date to the second). Without a cursor: one day before the oldest link's last sync (device clock vs server clock)."
+    },
+    "sync_outbox": {
+      "migration": "2026102202",
+      "columns": ["id", "client_uuid", "note_id", "config_id", "kind (task.create, …)", "params_json", "status (queued|running|failed|blocked|incomplete)", "attempts", "next_attempt_at", "last_error", "depends_on", "created_at", "updated_at"],
+      "notes": "One row per operation of a note on one server. attempts and running are stored before the server is contacted; success deletes the row; failure retries after 30 s doubled per attempt (1 h max); a handler may postpone a row to params.notBefore without counting an attempt, honoured even by a forced sync; blocked and incomplete wait for the user; running rows of a killed app turn failed at startup."
+    },
+    "server_capabilities": {
+      "migration": "2026102202",
+      "columns": ["id (config_id#model)", "config_id", "model", "exists_flag", "can_read", "can_create", "can_write", "has_activities", "has_chatter", "fields_json", "odoo_version", "probed_at", "error"],
+      "notes": "Result of capabilities.probe per server and model, used offline; probed again after one day when online."
+    },
+    "remote_records_cache": {
+      "migration": "2026102203",
+      "columns": ["id (config_id#model#res_id)", "config_id", "model", "res_id", "display_name", "extra_json", "fetched_at"],
+      "notes": "Records of a server kept for offline choices. projects.list replaces the project rows of that server as a whole; partners.search adds or refreshes the partners found and keeps the 200 most recently fetched per server."
+    },
+    "activities_cache": {
+      "migration": "2026102302",
+      "columns": ["id (config_id#res_id)", "config_id", "res_id", "deadline", "data_json", "fetched_at"],
+      "notes": "The activity calendar's activities per server (see calendar.read): record, type, summary, deadline, user, done/dateDone, pending (a local change waiting in the outbox)."
+    },
+    "sync_target_prefs": {
+      "migration": "2026102203",
+      "columns": ["id (config_id#kind)", "config_id", "kind (task.create, …)", "params_json", "updated_at"],
+      "notes": "invoice.form.out_invoice / invoice.form.in_invoice: the extra required fields of invoices.form, kept for offline. Last choice per server and kind of target (task.create: projectId, projectName), offered first; also the project of a creation queued without a choice. Kind targets: the target kinds last checked in the picker for that server (task, lead), checked by default for a note with nothing there. A lead's client and revenue are not remembered."
     }
   }
 }
