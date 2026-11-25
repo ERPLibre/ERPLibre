@@ -40,8 +40,9 @@ from script.dolibarr import (  # noqa: E402
     lib_dolibarr,
     native_prod,
 )
-from script.dolibarr.install_native import StepError, t, tail  # noqa: E402
 from script.dolibarr.run import port_is_free, served_version  # noqa: E402
+from script.erp_common import steps as common_steps  # noqa: E402
+from script.erp_common.steps import StepError, t, tail  # noqa: E402
 
 HOOK = os.path.join(os.path.dirname(__file__), "container", "10-erplibre.php")
 
@@ -167,7 +168,7 @@ def ensure_container_secrets(ctx, runner):
         if os.path.exists(path):
             with open(path, encoding="utf-8") as f:
                 current = f.read().strip()
-        value = current or install_native.generate_secret(length)
+        value = current or common_steps.generate_secret(length)
         if name == "admin_password" and typed:
             value = typed
         if value != current:
@@ -384,9 +385,9 @@ def main(argv=None, engines=None, runner=None):
             % t(lib_dolibarr.NO_ENGINE)
         )
         return 1
-    runner = runner or install_native.Runner(dry_run=args.dry_run)
+    runner = runner or common_steps.Runner(dry_run=args.dry_run)
     ctx = Context(args, pin, fiche)
-    status = install_native.run_steps(ctx, runner, STEPS)
+    status = common_steps.run_steps(ctx, runner, STEPS)
     if status == 0 and not args.dry_run:
         print()
         print(t("Dolibarr %s installed: %s") % (ctx.version, ctx.url))

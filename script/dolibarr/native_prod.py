@@ -36,7 +36,8 @@ from script.dolibarr import (
     units,
     web_config,
 )
-from script.dolibarr.install_native import StepError, t, tail
+from script.erp_common import steps as common_steps
+from script.erp_common.steps import StepError, t, tail
 
 # Activation du module Cron et pose de CRON_KEY, sous le compte de
 # l'instance ; la clé arrive par stdin, jamais par argv.
@@ -115,21 +116,9 @@ def ensure_conf_d_include(text):
     return text[: fin + 1] + INCLUDE_CONF_D + text[fin + 1 :]
 
 
-def _sudo_file(runner, path):
-    res = runner.probe(["sudo", "cat", path])
-    return res[1] if res and res[0] == 0 else None
-
-
-def _sudo_exists(runner, path):
-    res = runner.probe(["sudo", "test", "-e", path])
-    return bool(res) and res[0] == 0
-
-
-def _run(runner, argv, message, **kw):
-    code, out = runner.run(argv, **kw)
-    if code:
-        raise StepError(message, tail(out))
-    return out
+_sudo_file = common_steps.sudo_read
+_sudo_exists = common_steps.sudo_exists
+_run = common_steps.run_or_fail
 
 
 # ---------------------------------------------------------------------------

@@ -30,9 +30,7 @@ import argparse
 import json
 import os
 import re
-import secrets
 import ssl
-import string
 import sys
 import urllib.error
 import urllib.request
@@ -45,13 +43,13 @@ if new_path not in sys.path:
 
 from script.dolibarr import backup, debug, lib_dolibarr  # noqa: E402
 from script.dolibarr.fleet import _local_base  # noqa: E402
+from script.erp_common.steps import generate_secret  # noqa: E402
 
 ROOT = new_path
 t = backup.t
 
 KEYS = os.path.join("private", "dolibarr", "api")
 _LOGIN = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
-_ALPHABET = string.ascii_letters + string.digits
 
 # %s : master.inc.php. Le login et la clé (vide : garder la sienne)
 # arrivent sur stdin, en JSON.
@@ -109,7 +107,8 @@ class System(backup.System):
 
 
 def new_key():
-    return "".join(secrets.choice(_ALPHABET) for _ in range(32))
+    """Clé d'API de 32 lettres et chiffres."""
+    return generate_secret(32)
 
 
 def _key_path(root, name):

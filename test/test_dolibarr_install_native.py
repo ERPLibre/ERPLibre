@@ -628,9 +628,8 @@ class TestEssaiABlanc(Banc):
 class TestPointDEntree(unittest.TestCase):
     def test_the_script_runs_the_module_native_prod_shares(self):
         # Lancé comme script, le fichier est __main__ ; native_prod importe
-        # script.dolibarr.install_native, un second module dont StepError
-        # est une autre classe : run_steps laisserait passer ses erreurs en
-        # traceback. Le point d'entrée délègue au module du paquet.
+        # script.dolibarr.install_native, un second exemplaire du module.
+        # Le point d'entrée délègue au module du paquet.
         script = RACINE / "script" / "dolibarr" / "install_native.py"
         with (
             mock.patch.object(install_native, "main", return_value=0) as main,
@@ -640,6 +639,44 @@ class TestPointDEntree(unittest.TestCase):
             runpy.run_path(str(script), run_name="__main__")
         self.assertEqual(fin.exception.code, 0)
         main.assert_called_once_with()
+
+
+class TestMoteurCommun(unittest.TestCase):
+    """Le moteur d'étapes vient de script/erp_common, lié à « dolibarr »."""
+
+    def test_the_installers_share_one_step_error(self):
+        from script.dolibarr import install_container, native_prod
+        from script.erp_common import steps
+
+        for module in (install_native, native_prod, install_container):
+            with self.subTest(module=module.__name__):
+                self.assertIs(module.StepError, steps.StepError)
+        self.assertIs(install_native.Runner, steps.Runner)
+
+    def test_the_state_dir_is_bound_to_dolibarr(self):
+        with mock.patch.dict(os.environ, {"XDG_DATA_HOME": "/xdg"}):
+            self.assertEqual(
+                install_native.state_dir("erp"), "/xdg/ERPLibre/dolibarr/erp"
+            )
+
+    def test_the_registry_error_names_dolibarr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registre = Path(tmp, "private", "dolibarr", "instances.json")
+            registre.parent.mkdir(parents=True)
+            registre.write_text("{illisible")
+            ctx = mock.Mock(instance="erp")
+            runner = FauxRunner(lambda argv: None)
+            with (
+                mock.patch.object(install_native, "ROOT", tmp),
+                self.assertRaises(install_native.StepError) as err,
+            ):
+                install_native.record_entry(ctx, runner, {})
+            gabarit = install_native.t("Dolibarr registry unreadable: %s")
+            self.assertTrue(
+                str(err.exception).startswith(gabarit.split("%s")[0])
+            )
+            self.assertIn("instances.json", str(err.exception))
+            self.assertEqual(registre.read_text(), "{illisible")
 
 
 if __name__ == "__main__":

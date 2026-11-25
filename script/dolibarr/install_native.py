@@ -23,13 +23,9 @@ checkout ne sert qu'une instance : conf/conf.php est à chemin fixe.
 """
 
 import argparse
-import json
 import os
 import platform
-import secrets
 import shlex
-import string
-import subprocess
 import sys
 
 new_path = os.path.normpath(
@@ -43,6 +39,16 @@ from script.dolibarr import (  # noqa: E402
     lib_dolibarr,
     packages,
     web_config,
+)
+from script.erp_common import steps as common_steps  # noqa: E402
+from script.erp_common.steps import (  # noqa: E402
+    Runner,
+    StepError,
+    generate_secret,
+    parse_secrets,
+    read_secrets,
+    t,
+    tail,
 )
 from script.todo import todo_install  # noqa: E402
 
@@ -63,117 +69,10 @@ REQUIRED_EXTENSIONS = (
     "openssl",
 )
 
-# Alphabet des secrets générés : ni « \\ » ni « " », que l'installeur de
-# Dolibarr réécrit dans conf.php, ni rien qu'un shell ou du SQL interprète.
-_SECRET_ALPHABET = string.ascii_letters + string.digits
-
-
-def t(key):
-    """Traduction si l'outillage TODO est là ; la clé sinon."""
-    try:
-        from script.todo.todo_i18n import t as _t
-    except Exception:
-        return key
-    return _t(key)
-
-
-class StepError(Exception):
-    """Une étape a échoué ; `detail` porte la sortie utile, déjà filtrée.
-
-    `resumable` faux : un refus avant toute écriture, que relancer ne
-    reprendrait pas (instance existante, système non pris en charge).
-    """
-
-    def __init__(self, message, detail="", resumable=True):
-        super().__init__(message)
-        self.detail = detail
-        self.resumable = resumable
-
-
-class Runner:
-    """Seul point qui exécute. En essai à blanc, il affiche et rend (0, "").
-
-    Les sondes en lecture (probe) tournent aussi à blanc tant qu'elles ne
-    demandent pas sudo : elles rendent le plan fidèle sans rien changer.
-    """
-
-    def __init__(self, dry_run=False, out=print):
-        self.dry_run = dry_run
-        self.out = out
-
-    def run(self, argv, input=None, cwd=None, env=None):
-        shown = shlex.join(argv)
-        if input is not None:
-            shown += "  < stdin"
-        if self.dry_run:
-            self.out(f"      [dry-run] $ {shown}")
-            return 0, ""
-        return self._exec(argv, input, cwd, env)
-
-    def probe(self, argv, cwd=None):
-        """Commande en lecture seule. None si à blanc et qu'elle veut sudo."""
-        if self.dry_run and argv and argv[0] == "sudo":
-            return None
-        return self._exec(argv, None, cwd, None)
-
-    def write(
-        self, path, text, mode=0o600, sudo=False, owner=None, group=None
-    ):
-        """Écrit `text` dans `path` ; le contenu passe par stdin sous sudo.
-
-        Sous sudo, `owner` et `group` fixent le propriétaire du fichier.
-        """
-        if self.dry_run:
-            self.out(f"      [dry-run] write {path} ({oct(mode)})")
-            return
-        if sudo:
-            argv = ["sudo", "install", "-m", f"{mode:o}"]
-            if owner:
-                argv += ["-o", owner]
-            if group:
-                argv += ["-g", group]
-            code, out = self._exec(
-                argv + ["/dev/stdin", path],
-                text,
-                None,
-                None,
-            )
-            if code:
-                raise StepError(t("Cannot write %s") % path, out)
-            return
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.chmod(path, mode)
-
-    def _exec(self, argv, input, cwd, env):
-        full_env = None
-        if env:
-            full_env = dict(os.environ, **env)
-        try:
-            r = subprocess.run(
-                argv,
-                input=input,
-                cwd=cwd,
-                env=full_env,
-                capture_output=True,
-                text=True,
-            )
-        except OSError as e:
-            return 127, str(e)
-        return r.returncode, (r.stdout or "") + (r.stderr or "")
-
-
-def generate_secret(length=32):
-    return "".join(secrets.choice(_SECRET_ALPHABET) for _ in range(length))
-
 
 def state_dir(instance):
     """~/.local/share/ERPLibre/dolibarr/<instance>, XDG_DATA_HOME respecté."""
-    base = os.environ.get("XDG_DATA_HOME") or os.path.join(
-        os.path.expanduser("~"), ".local", "share"
-    )
-    return os.path.join(base, "ERPLibre", "dolibarr", instance)
+    return common_steps.state_dir("dolibarr", instance)
 
 
 def default_lang():
@@ -183,10 +82,6 @@ def default_lang():
         return "fr_FR" if get_lang() == "fr" else "en_US"
     except Exception:
         return "en_US"
-
-
-def tail(text, lines=20):
-    return "\n".join((text or "").strip().splitlines()[-lines:])
 
 
 # ---------------------------------------------------------------------------
@@ -232,25 +127,6 @@ class Context:
             self.socket = f"/run/erplibre-dolibarr-{args.instance}.sock"
             scheme = "http" if args.tls == "none" else "https"
             self.url = f"{scheme}://{args.domain}"
-
-
-def parse_secrets(text):
-    """{NOM: valeur} du texte d'un fichier secrets.env."""
-    out = {}
-    for line in (text or "").splitlines():
-        if "=" in line and not line.startswith("#"):
-            name, value = line.split("=", 1)
-            out[name.strip()] = value
-    return out
-
-
-def read_secrets(path):
-    """{NOM: valeur} d'un fichier secrets.env, {} s'il n'existe pas."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            return parse_secrets(f.read())
-    except FileNotFoundError:
-        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -892,18 +768,17 @@ def step_record(ctx, runner):
 
 def record_entry(ctx, runner, entry):
     """Inscrit `entry` au registre des instances, sous private/."""
+
+    def known():
+        try:
+            return lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            raise StepError(t("Dolibarr registry unreadable: %s") % e)
+
     registry = os.path.join(ROOT, lib_dolibarr.REGISTRY)
-    if runner.dry_run:
-        runner.out(f"      [dry-run] record {ctx.instance} in {registry}")
-        return t("ok")
-    try:
-        data = {"instances": lib_dolibarr.load_registry(ROOT)}
-    except lib_dolibarr.RegistryError as e:
-        raise StepError(t("Dolibarr registry unreadable: %s") % e)
-    data["instances"][ctx.instance] = entry
-    os.makedirs(os.path.dirname(registry), mode=0o700, exist_ok=True)
-    runner.write(registry, json.dumps(data, indent=4, sort_keys=True) + "\n")
-    return t("ok")
+    return common_steps.record_entry(
+        runner, registry, known, ctx.instance, entry
+    )
 
 
 STEPS = (
@@ -935,24 +810,7 @@ def host_facts():
 
 def run_steps(ctx, runner, steps=STEPS):
     """Joue les étapes ; rend 0, ou 1 à la première qui échoue."""
-    total = len(steps)
-    for i, (label, step) in enumerate(steps, start=1):
-        try:
-            result = step(ctx, runner)
-        except StepError as e:
-            runner.out(f"[{i}/{total}] {t(label)}: {t('FAILED')} — {e}")
-            if e.detail:
-                runner.out(e.detail)
-            runner.out(t("Step failed, stopping here."))
-            if e.resumable:
-                runner.out(
-                    t(
-                        "Nothing was undone: running again resumes at this step."
-                    )
-                )
-            return 1
-        runner.out(f"[{i}/{total}] {t(label)}: {result}")
-    return 0
+    return common_steps.run_steps(ctx, runner, steps)
 
 
 def build_parser():
@@ -1033,9 +891,9 @@ def main(argv=None, facts=None, runner=None):
 
 if __name__ == "__main__":
     # Lancé comme script, ce fichier est __main__ : native_prod importe
-    # script.dolibarr.install_native, un second module dont StepError est
-    # une autre classe, que run_steps d'ici laisserait passer. Tout passe
-    # donc par le module du paquet.
+    # script.dolibarr.install_native, un second exemplaire du module avec
+    # ses propres globales. Tout passe donc par le module du paquet, seul
+    # exemplaire que voient native_prod et install_container.
     from script.dolibarr import install_native as _package
 
     sys.exit(_package.main())
