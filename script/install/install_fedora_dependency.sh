@@ -112,7 +112,11 @@ if [[ $retVal -ne 0 ]]; then
   exit 1
 fi
 # Initialisation du cluster (Fedora ne le fait pas automatiquement).
-if [ ! -f /var/lib/pgsql/data/PG_VERSION ]; then
+# Le test passe par sudo : /var/lib/pgsql est en 0700 à postgres, et un
+# « [ -f ] » de l'utilisateur ne voit jamais PG_VERSION. Il conclurait au
+# cluster absent à chaque passage, et le « rm -rf » ci-dessous effacerait un
+# cluster en service, ses bases comprises.
+if ! sudo test -f /var/lib/pgsql/data/PG_VERSION; then
   echo -e "\n---- Initialisation du cluster PostgreSQL ----"
   # Nettoie un init partiel et FORCE une locale valide : les images cloud
   # Fedora n'ont pas de LANG défini -> « initdb: invalid locale settings ».

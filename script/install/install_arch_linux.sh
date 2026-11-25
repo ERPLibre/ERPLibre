@@ -95,7 +95,9 @@ if [[ $retVal -ne 0 ]]; then
   exit 1
 fi
 # Initialisation du cluster (chemin Arch : /var/lib/postgres/data).
-if [ ! -f /var/lib/postgres/data/PG_VERSION ]; then
+# Le test passe par sudo : le répertoire est en 0700 à postgres, et un
+# « [ -f ] » de l'utilisateur ne voit jamais PG_VERSION.
+if ! sudo test -f /var/lib/postgres/data/PG_VERSION; then
   echo -e "\n---- Initialisation du cluster PostgreSQL ----"
   sudo -u postgres initdb --locale=C.UTF-8 --encoding=UTF8 \
     -D /var/lib/postgres/data || true
