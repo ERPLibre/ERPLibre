@@ -812,6 +812,7 @@ class TestOpsHealthMenuNumbering(MenuCoherence, unittest.TestCase):
         "Health check of this instance": "_ops_health_local",
         "Health check of a public URL": "_ops_health_url",
         "Warm up the cache (deep)": "_ops_warmup_deep",
+        "Validate odoo.conf": "_ops_odoo_conf_check",
     }
 
 

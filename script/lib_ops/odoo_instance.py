@@ -147,6 +147,11 @@ def lire_config(chemin):
     {} si le fichier n'existe pas ou n'a pas de section [options].
     PermissionError remonte : un fichier présent mais illisible n'est pas
     un fichier vide, et l'appelant doit le dire.
+
+    Lecture tolérante, pour la détection : une clé répétée garde sa
+    dernière valeur, et un fichier que configparser refuse rend {}. Odoo,
+    lui, refuse ces fichiers ; un geste qui arrête l'instance les valide
+    d'abord par `odoo_conf.verifier`.
     """
     if not chemin or not os.path.isfile(chemin):
         return {}

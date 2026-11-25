@@ -3307,6 +3307,7 @@ PROFIL_GROUPES = (
     "mail_retry",
     "health_check",
     "warmup",
+    "odoo_conf",
     PROFIL_GROUPE,
 )
 # Les champs du groupe, dans l'ordre du catalogue, et les options exclues

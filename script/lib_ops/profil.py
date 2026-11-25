@@ -140,6 +140,7 @@ CHAMPS = collections.OrderedDict(
                 "strict",
             ),
         ),
+        ("odoo_conf", ("cpus", "memory_mb", "verbose")),
         (
             GROUPE_HOTE,
             ("duration", "interval", "no_guests", "top", "verbose"),
@@ -263,6 +264,12 @@ EXCLUSIONS = {
         "local": "mode",
         "url": "objet",
         "service": "identite",
+    },
+    "odoo_conf": {
+        "file": "objet",
+        "service": "identite",
+        "odoo_version": "identite",
+        "json": "format",
     },
     GROUPE_HOTE: {"csv": "format", "json": "format", "root": "tests"},
 }
@@ -458,6 +465,13 @@ OUTILS = (
         "analyser_profond",
         ("--deep", "--local"),
         _avec_local,
+    ),
+    Outil(
+        "odoo_conf",
+        "script.odoo.odoo_conf_check",
+        "analyser",
+        (),
+        _sans_file,
     ),
     Outil(
         GROUPE_HOTE,

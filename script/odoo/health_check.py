@@ -48,6 +48,13 @@ Chacune rend OK, ATTN, FAIL ou SKIP, avec un conseil d'une ligne :
    la bibliothèque standard n'a pas de résolveur. Sans l'un ni l'autre,
    SKIP. Une recherche en échec est un SKIP, jamais « enregistrement
    absent ».
+10. `odoo_conf` (local) : le fichier de configuration de l'unité relu
+   comme Odoo le lira au prochain démarrage (`lib_ops/odoo_conf.py`) —
+   FAIL quand Odoo le refuserait ou ne pourrait pas servir avec lui, ATTN
+   sur un avertissement ; les
+   conseils de workers et de mémoire, d'après les processeurs et la
+   mémoire de ce poste, vont dans `data`. La version vient du
+   `.odoo-version` du dossier de l'unité, sinon de version_info.
 
 La version d'Odoo vient de /web/webclient/version_info (JSON-RPC sans
 authentification) ; inconnue, les vérifications qui en dépendent sondent.
@@ -110,6 +117,7 @@ sys.path.append(
 )
 
 from script.lib_ops import (  # noqa: E402
+    odoo_conf,
     odoo_instance,
     profil,
     report,
@@ -317,6 +325,10 @@ class Systeme(service.SystemeBase):
     def quel(self, nom):
         return shutil.which(nom)
 
+    def ressources(self):
+        """(processeurs, mémoire en Mo) de ce poste, None si illisible."""
+        return odoo_conf.ressources_hote()
+
     def certificat(self, hote, port, delai):
         """Le certificat présenté pour `hote` (SNI), chaîne et nom vérifiés :
         dict de `getpeercert()`. Lève ssl.SSLCertVerificationError sur un
@@ -384,8 +396,19 @@ def normaliser_url(texte):
     )
 
 
-def cible_locale(hote, port, base=None, list_db=None, unite=""):
-    """La cible d'une instance locale, jointe en http sur `hote:port`."""
+def cible_locale(
+    hote,
+    port,
+    base=None,
+    list_db=None,
+    unite="",
+    config_path="",
+    version_conf=None,
+):
+    """La cible d'une instance locale, jointe en http sur `hote:port`.
+    `config_path` ajoute le résultat `odoo_conf`, jugé pour Odoo
+    `version_conf` (celle du checkout de l'unité), sinon pour la version
+    que l'instance annonce."""
     return types.SimpleNamespace(
         kind="local",
         url=f"http://{_netloc(hote, port, 'http')}",
@@ -396,6 +419,8 @@ def cible_locale(hote, port, base=None, list_db=None, unite=""):
         list_db=list_db,
         unite=unite,
         version=None,
+        config_path=config_path,
+        version_conf=version_conf,
     )
 
 
@@ -413,7 +438,15 @@ def detecter_locale(explicite, systeme, devinee=None):
     config = service.detecter_config(None, plan)
     hote, port = odoo_instance.adresse_http(plan.execstart, config)
     base, _origine = odoo_instance.trouver_base(None, plan.execstart, config)
-    return cible_locale(hote, port, base, config.get("list_db"), plan.unite)
+    return cible_locale(
+        hote,
+        port,
+        base,
+        config.get("list_db"),
+        plan.unite,
+        plan.config_path,
+        odoo_conf.version_instance(plan.wd, plan.execstart),
+    )
 
 
 def version_odoo(cible, systeme, delai):
@@ -927,6 +960,90 @@ def classer_list_db(valeur):
     )
 
 
+class ResultatConstat(Resultat):
+    """Un Resultat dont la valeur `first` est un `odoo_conf.Constat`,
+    décrit dans la langue du message : traduit par `message(t)`, anglais
+    dans `json()`."""
+
+    def __init__(
+        self, ident, statut, modele, valeurs, conseil, donnees, constat
+    ):
+        super().__init__(ident, statut, modele, valeurs, conseil, donnees)
+        self.constat = constat
+
+    def _former(self, modele, t):
+        self.valeurs["first"] = self.constat.decrire(t)
+        return super()._former(modele, t)
+
+
+def classer_odoo_conf(verification):
+    """Le verdict `odoo_conf` d'une `odoo_conf.Verification` : FAIL quand
+    Odoo refuserait le fichier au prochain démarrage, ou ne pourrait pas
+    servir avec lui, ATTN sur un
+    avertissement, OK sinon. Le message cite le premier constat du niveau
+    retenu ; `data` porte tous les constats, conseils compris."""
+    erreurs = verification.erreurs()
+    avertissements = verification.avertissements()
+    donnees = verification.json()
+    conseil = N_("Details: script/odoo/odoo_conf_check.py --file {path}")
+    valeurs = {"path": verification.chemin}
+    if erreurs:
+        valeurs["count"] = len(erreurs)
+        return ResultatConstat(
+            "odoo_conf",
+            FAIL,
+            N_(
+                "{path}: {count} error(s), Odoo refuses it or cannot serve"
+                " with it at its next start; {first}"
+            ),
+            valeurs,
+            N_(
+                "Fix the file before any restart. Details:"
+                " script/odoo/odoo_conf_check.py --file {path}"
+            ),
+            donnees,
+            erreurs[0],
+        )
+    if avertissements:
+        valeurs["count"] = len(avertissements)
+        return ResultatConstat(
+            "odoo_conf",
+            ATTN,
+            N_("{path}: {count} warning(s); {first}"),
+            valeurs,
+            conseil,
+            donnees,
+            avertissements[0],
+        )
+    return Resultat(
+        "odoo_conf",
+        OK,
+        N_("{path}: read as Odoo reads it, no error."),
+        valeurs,
+        conseil if verification.infos() else "",
+        donnees,
+    )
+
+
+def verifier_odoo_conf(cible, systeme):
+    """`odoo_conf` de la configuration d'une cible locale. Un fichier
+    devenu illisible depuis la détection est un ATTN."""
+    version = getattr(cible, "version_conf", None) or cible.version
+    cpus, memoire = systeme.ressources()
+    try:
+        verification = odoo_conf.verifier(
+            cible.config_path, version, cpus, memoire
+        )
+    except OSError as err:
+        return Resultat(
+            "odoo_conf",
+            ATTN,
+            N_("Cannot read {path}: {error}"),
+            {"path": cible.config_path, "error": err},
+        )
+    return classer_odoo_conf(verification)
+
+
 # --- Bus, robots.txt ---------------------------------------------------------
 
 
@@ -1363,6 +1480,8 @@ def verifier_cible(cible, systeme, delai):
         resultats.append(classer_gestionnaire(rep, page, publique))
     if cible.kind == "local":
         resultats.append(classer_list_db(cible.list_db))
+    if getattr(cible, "config_path", ""):
+        resultats.append(verifier_odoo_conf(cible, systeme))
     resultats.append(verifier_bus(cible, systeme, delai))
     if publique:
         robots = systeme.ouvrir(cible.url + "/robots.txt", delai)

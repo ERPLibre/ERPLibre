@@ -212,6 +212,12 @@ sudo ./script/odoo/update_module.py --module 'my_module_*' --db DATABASE
 ```
 
 <!-- [en] -->
+Before anything is stopped, the tool reads the Odoo configuration file the
+way Odoo will read it at the restart: a key given twice, a comment after a
+number (`workers = 4 # four`) or a memory limit written in MB instead of
+bytes refuses the update (code 2), since the stopped unit would not come
+back. See "Validate odoo.conf" below.
+
 After a verified restart, the tool checks the health of the local instance
 (see below; findings are warnings, never a failure of the update), and
 `--warmup-deep` first warms up the public pages and their asset bundles.
@@ -224,6 +230,12 @@ Update`. Options, detection order and exit codes:
 [script/odoo/README.md](../script/odoo/README.md).
 
 <!-- [fr] -->
+Avant tout arrêt, l'outil relit le fichier de configuration d'Odoo comme
+Odoo le lira au redémarrage : une clé donnée deux fois, un commentaire
+après un nombre (`workers = 4 # quatre`) ou une limite de mémoire écrite en
+Mo au lieu d'octets refuse la mise à jour (code 2), puisque l'unité
+arrêtée ne repartirait pas. Voir « Valider odoo.conf » plus bas.
+
 Après une relance vérifiée, l'outil vérifie la santé de l'instance locale
 (voir plus bas ; ses constats sont des avertissements, jamais un échec de
 la mise à jour), et `--warmup-deep` préchauffe d'abord les pages publiques
@@ -707,6 +719,21 @@ failed. All three are in `make todo`: `TODO › Execute › Production ›
 Health and warm-up`. Details and the Odoo 12 to 18 matrix:
 [script/odoo/README.md](../script/odoo/README.md).
 
+**Validate odoo.conf.** Odoo has no command that only checks its
+configuration file, and configparser keeps a comment written after a value
+inside the value: only a line that starts with `#` or `;` is a comment.
+`script/odoo/odoo_conf_check.py` reads the file the unit uses (or
+`--file PATH`) the way Odoo will read it at its next start, without
+starting anything: repeated keys and sections, lines outside a section,
+values of typed and choice options refused by optparse, comments after a
+connection value, memory limits in bytes, soft
+limit above the hard one, `gevent` limits, old option names, with the
+types of the Odoo version of the checkout. It adds workers and memory
+advice from the processors and memory of the machine. Exit codes: 0 no
+error, 1 Odoo would refuse the file, 2 could not check. `health_check.py
+--local` reports the same as `odoo_conf`, and it is in `make todo`: `TODO ›
+Execute › Production › Health and warm-up › Validate odoo.conf`.
+
 <!-- [fr] -->
 Un déploiement par défaut expose le gestionnaire de bases : Odoo garde
 `list_db = True` quand la configuration ne le pose pas, et les gabarits
@@ -726,6 +753,22 @@ sort en 0, ou en 1 avec `--strict` quand une requête a échoué. Les trois
 gestes sont dans `make todo` : `TODO › Exécuter › Production › Santé et
 préchauffage`. Détails et matrice Odoo 12 à 18 :
 [script/odoo/README.fr.md](../script/odoo/README.fr.md).
+
+**Valider odoo.conf.** Odoo n'a pas de commande qui vérifie seulement son
+fichier de configuration, et configparser garde dans la valeur un
+commentaire écrit après elle : seule une ligne qui commence par `#` ou `;`
+est un commentaire. `script/odoo/odoo_conf_check.py` lit le fichier de
+l'unité (ou `--file CHEMIN`) comme Odoo le lira à son prochain démarrage,
+sans rien lancer : clés et sections répétées, lignes hors section, valeurs
+d'options typées et à choix refusées par optparse, commentaires après une
+valeur de connexion, limites de mémoire en octets,
+limite douce au-dessus de la dure, limites `gevent`, anciens noms
+d'options, avec les types de la version d'Odoo du checkout. Il ajoute des
+conseils de workers et de mémoire d'après les processeurs et la mémoire du
+poste. Codes de sortie : 0 aucune erreur, 1 Odoo refuserait le fichier, 2
+vérification impossible. `health_check.py --local` rend le même constat
+sous `odoo_conf`, et l'outil est dans `make todo` : `TODO › Exécuter ›
+Production › Santé et préchauffage › Valider odoo.conf`.
 
 <!-- [en] -->
 ### Host performance audit

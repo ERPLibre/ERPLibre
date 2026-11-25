@@ -12,6 +12,14 @@ Le déroulé
    `systemctl show` ; le fichier de configuration, la base, l'adresse
    HTTP, puis les modules, développés sur l'addons_path. Tout ce qui
    manque ou se contredit refuse ici, code 2, le service intact.
+   Le fichier de configuration est relu comme Odoo le lira au redémarrage
+   (`lib_ops/odoo_conf.py`, types de la version du `.odoo-version` du
+   dossier de l'unité), avant la base : une clé répétée, un commentaire
+   après une valeur typée ou de connexion, une valeur qu'optparse refuse ou
+   une limite de mémoire écrite en Mo refusent ici, code 2 — sinon l'unité
+   arrêtée ne repartirait pas, ou ne servirait pas. Avec `--odoo-conf`, le
+   fichier de l'unité, celui de la relance, est validé aussi. Les
+   avertissements s'affichent dans le plan.
    La sauvegarde est préparée ici aussi : dossiers de destination et
    d'état inscriptibles par le compte de l'unité (ou à créer), base lisible,
    espace disque suffisant pour `(taille de la base + filestore) × 1,2`.
@@ -123,6 +131,7 @@ from script.database import odoo_backup  # noqa: E402
 from script.lib_ops import (  # noqa: E402
     journal,
     lock,
+    odoo_conf,
     odoo_instance,
     profil,
     report,
@@ -403,6 +412,10 @@ class Plan:
         self.namespace_ecarte = ""
         self.config_path = ""
         self.origine_config = ""
+        # La version majeure d'Odoo de l'instance (None si inconnue) et la
+        # validation de son fichier de configuration.
+        self.version_odoo = None
+        self.verification_conf = None
         self.base = ""
         self.origine_base = ""
         self.hote = odoo_instance.HOTE_LOCAL
@@ -562,10 +575,72 @@ def _preparer_sauvegarde(args, systeme, plan, config):
         )
 
 
+def _verifier_fichier(chemin, version):
+    """La `odoo_conf.Verification` de `chemin`. Lève Refus quand il ne se
+    lit pas, ou quand Odoo le refuserait ou ne pourrait pas servir avec
+    lui, chaque erreur sur sa ligne."""
+    try:
+        verification = odoo_conf.verifier(chemin, version)
+    except FileNotFoundError:
+        raise Refus(
+            service.N_("Configuration file not found: {path}."), path=chemin
+        )
+    except PermissionError:
+        raise Refus(
+            service.N_("Cannot read {path}: run with sudo."), path=chemin
+        )
+    except OSError as err:
+        raise Refus(
+            service.N_("Cannot read {path}: {error}"),
+            path=chemin,
+            error=err.strerror or err,
+        )
+    erreurs = verification.erreurs()
+    if erreurs:
+        raise Refus(
+            service.N_(
+                "{path}: Odoo would refuse it, or could not serve with it,"
+                " at the next start ({count} error(s)): nothing was"
+                " stopped.\n{details}"
+            ),
+            path=chemin,
+            count=len(erreurs),
+            details="\n".join("   " + c.decrire(t) for c in erreurs),
+        )
+    return verification
+
+
+def valider_config(plan):
+    """Relit `plan.config_path` comme Odoo le lira au redémarrage : pose
+    `plan.version_odoo` et `plan.verification_conf`. Lève Refus quand Odoo
+    refuserait le fichier : rien n'est encore arrêté, et une unité arrêtée
+    sur ce fichier ne repartirait pas.
+
+    Avec `--odoo-conf`, la mise à jour lit ce fichier-là, mais
+    `systemctl start` relance l'unité sur le sien : celui-ci est validé
+    aussi, et ses erreurs refusent de même."""
+    plan.version_odoo = odoo_conf.version_instance(plan.wd, plan.execstart)
+    plan.verification_conf = _verifier_fichier(
+        plan.config_path, plan.version_odoo
+    )
+    if plan.origine_config != "--odoo-conf":
+        return
+    try:
+        chemin, _origine = odoo_instance.trouver_config(
+            plan.execstart, plan.wd, plan.env_unite
+        )
+    except odoo_instance.ErreurDetection:
+        return
+    if os.path.realpath(chemin) != os.path.realpath(plan.config_path):
+        _verifier_fichier(chemin, plan.version_odoo)
+
+
 def detecter(args, systeme, racine=RACINE):
     """Établit le Plan. Lève Refus sur tout ce qui manque, rien arrêté."""
     plan = Plan()
-    config = service.detecter_instance(args, systeme, racine, plan)
+    config = service.detecter_instance(
+        args, systeme, racine, plan, apres_config=valider_config
+    )
     _detecter_adresse(plan, config)
     _detecter_modules(args, plan, config)
     _preparer_sauvegarde(args, systeme, plan, config)
@@ -642,6 +717,11 @@ def afficher_plan(plan, rapport, args=None):
     rapport.champ(t("Log"), plan.journal)
     if application is not None:
         profil.afficher(application, rapport, t)
+    if plan.verification_conf is not None:
+        for constat in plan.verification_conf.avertissements():
+            rapport.attn(
+                t("Odoo config, {finding}").format(finding=constat.decrire(t))
+            )
     for motif in plan.motifs_vides:
         rapport.attn(
             t("No module matches the pattern {pattern}.").format(pattern=motif)

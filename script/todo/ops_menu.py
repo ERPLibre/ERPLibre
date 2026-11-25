@@ -11,7 +11,8 @@ restauration dans une nouvelle base),
 `script/odoo/log_check.py` (journal d'Odoo), `script/odoo/mail_retry.py`
 (courriels en échec d'envoi), `script/odoo/health_check.py` (santé de
 l'instance ou d'une URL publique), `script/odoo/warmup_http.py --deep`
-(préchauffage du cache) et `script/proxmox/host_perf_audit.py` (audit de
+(préchauffage du cache), `script/odoo/odoo_conf_check.py` (validation du
+fichier de configuration) et `script/proxmox/host_perf_audit.py` (audit de
 performance de ce poste, en lecture seule). Le menu n'en duplique rien :
 ce qui se fait depuis ici se fait aussi bien en ligne de commande.
 
@@ -36,10 +37,11 @@ Tout ce qui écrit passe par deux temps :
 
 Une simulation qui refuse (code non nul) arrête là : il n'y a rien à
 confirmer. L'état des sauvegardes, le journal d'Odoo, la liste des
-courriels en échec, la santé de l'instance locale et le préchauffage, qui
-n'écrivent rien dans l'instance, se lancent directement, sans
-confirmation ni sudo ; quand le compte courant ne peut pas lire ce qu'il
-faut (code 2), la même commande sous sudo est proposée. La santé d'une
+courriels en échec, la santé de l'instance locale, le préchauffage et la
+validation d'odoo.conf, qui n'écrivent rien dans l'instance, se lancent
+directement, sans confirmation ni sudo ; quand le compte courant ne peut
+pas lire ce qu'il faut (code 2), la même commande sous sudo est proposée.
+La validation d'un fichier tapé ne vise aucune unité. La santé d'une
 URL publique ne lit rien sur ce poste : son code 2 est une URL refusée, et
 sudo n'est jamais proposé.
 
@@ -332,6 +334,12 @@ class OpsMenuMixin:
                     "Warm up the cache (deep) - public pages and asset bundles"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Validate odoo.conf - as Odoo reads it at its next start,"
+                    " read-only"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -345,6 +353,8 @@ class OpsMenuMixin:
                 self._ops_health_url()
             elif status == "3":
                 self._ops_warmup_deep()
+            elif status == "4":
+                self._ops_odoo_conf_check()
             else:
                 print(t("Command not found !"))
 
@@ -913,6 +923,26 @@ class OpsMenuMixin:
 
     def _ops_warmup_deep(self):
         self._ops_lire("warmup", ["--deep", "--local"])
+
+    def _ops_odoo_conf_check(self):
+        """Le fichier de l'instance (réponse vide), ou un fichier tapé, qui
+        doit exister : sans `--service` alors. Lecture seule ; un fichier
+        illisible au compte courant (code 2) propose sudo."""
+        chemin = input(
+            t("odoo.conf to check (empty = the one of the instance): ")
+        ).strip()
+        args = []
+        if chemin:
+            chemin = os.path.abspath(os.path.expanduser(chemin))
+            if not os.path.isfile(chemin):
+                print(
+                    t("Cancelled: file not found: {path}").format(
+                        path=affichable(chemin)
+                    )
+                )
+                return
+            args = ["--file", chemin]
+        self._ops_lire("odoo_conf", args)
 
     # -- Audit de performance --------------------------------------------
 

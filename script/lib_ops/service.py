@@ -458,11 +458,16 @@ def detecter_base(explicite, plan, config):
         )
 
 
-def detecter_instance(args, systeme, racine, plan):
+def detecter_instance(args, systeme, racine, plan, apres_config=None):
     """Unité, compte, dossier, configuration et base, dans `plan`, depuis
     `args.service`, `args.user`, `args.odoo_conf` et `args.db`, et de
     l'unité déjà devinée par le profil (`args.profil`). Rend la
-    configuration lue."""
+    configuration lue.
+
+    `apres_config(plan)` est appelée dès que le fichier de configuration
+    est connu, avant la base : un fichier que la lecture tolérante rend
+    vide y est refusé pour sa vraie cause, pas pour la base qu'il ne
+    donne plus."""
     application = getattr(args, "profil", None)
     props = detecter_unite(
         args.service,
@@ -473,6 +478,8 @@ def detecter_instance(args, systeme, racine, plan):
     )
     detecter_compte_et_dossier(args.user, systeme, plan, props)
     config = detecter_config(args.odoo_conf, plan)
+    if apres_config is not None:
+        apres_config(plan)
     detecter_base(args.db, plan, config)
     return config
 

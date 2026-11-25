@@ -117,6 +117,12 @@ happens. Always simulate first:
 sudo ./script/odoo/update_module.py --module 'my_module_*' --db DATABASE
 ```
 
+Before anything is stopped, the tool reads the Odoo configuration file the
+way Odoo will read it at the restart: a key given twice, a comment after a
+number (`workers = 4 # four`) or a memory limit written in MB instead of
+bytes refuses the update (code 2), since the stopped unit would not come
+back. See "Validate odoo.conf" below.
+
 After a verified restart, the tool checks the health of the local instance
 (see below; findings are warnings, never a failure of the update), and
 `--warmup-deep` first warms up the public pages and their asset bundles.
@@ -370,6 +376,21 @@ calls. It prints a summary and exits 0, or 1 with `--strict` when a request
 failed. All three are in `make todo`: `TODO › Execute › Production ›
 Health and warm-up`. Details and the Odoo 12 to 18 matrix:
 [script/odoo/README.md](../script/odoo/README.md).
+
+**Validate odoo.conf.** Odoo has no command that only checks its
+configuration file, and configparser keeps a comment written after a value
+inside the value: only a line that starts with `#` or `;` is a comment.
+`script/odoo/odoo_conf_check.py` reads the file the unit uses (or
+`--file PATH`) the way Odoo will read it at its next start, without
+starting anything: repeated keys and sections, lines outside a section,
+values of typed and choice options refused by optparse, comments after a
+connection value, memory limits in bytes, soft
+limit above the hard one, `gevent` limits, old option names, with the
+types of the Odoo version of the checkout. It adds workers and memory
+advice from the processors and memory of the machine. Exit codes: 0 no
+error, 1 Odoo would refuse the file, 2 could not check. `health_check.py
+--local` reports the same as `odoo_conf`, and it is in `make todo`: `TODO ›
+Execute › Production › Health and warm-up › Validate odoo.conf`.
 
 ### Host performance audit
 

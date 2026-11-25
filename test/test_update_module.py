@@ -894,6 +894,138 @@ class TestFilet(Base):
         self.assertFalse(self.a_appele("systemctl start"))
 
 
+class TestConfigurationOdoo(Base):
+    """Un fichier de configuration qu'Odoo refuserait au redémarrage
+    arrête la mise à jour à la détection : code 2, ni arrêt, ni
+    sauvegarde, ni écriture, simulation comprise."""
+
+    def ajouter(self, texte):
+        with open(self.conf, "a") as f:
+            f.write(texte)
+
+    def assert_rien_touche(self):
+        self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertFalse(self.a_appele("backup "))
+        self.assertFalse(self.a_appele("odoo "))
+        self.assertEqual(self.fichiers_de_sauvegarde(), [])
+        self.assertEqual(self.systeme.etat, "active")
+
+    def test_cle_repetee_refusee_avant_l_arret(self):
+        self.ajouter("workers = 2\nworkers = 4\n")
+        self.assertEqual(self.lancer(), um.CODE_REFUS, self.sortie)
+        self.assert_rien_touche()
+        self.assertIn(self.conf, self.erreurs)
+        # La ligne de la seconde occurrence, sous la ligne du refus.
+        debut = um.t("line {line}, {key}: {message}").format(
+            line=6, key="workers", message=""
+        )
+        self.assertIn("\n   " + debut, self.erreurs)
+
+    def test_cle_repetee_refusee_en_simulation(self):
+        self.ajouter("workers = 2\nworkers = 4\n")
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_REFUS)
+        self.assert_rien_touche()
+        self.assertNotIn("(simulation)", self.sortie)
+
+    def test_commentaire_apres_une_valeur_typee(self):
+        self.ajouter("limit_time_real = 1200 # vingt minutes\n")
+        self.assertEqual(self.lancer(), um.CODE_REFUS)
+        self.assert_rien_touche()
+        self.assertIn("limit_time_real = 1200", self.erreurs)
+
+    def test_limite_en_mo_refusee(self):
+        self.ajouter("limit_memory_hard = 2560\n")
+        self.assertEqual(self.lancer(), um.CODE_REFUS)
+        self.assert_rien_touche()
+
+    def test_option_typee_selon_la_version_du_checkout(self):
+        """gevent_port n'est typé qu'à partir d'Odoo 16 : le .odoo-version
+        du dossier de l'unité décide."""
+        self.ajouter("gevent_port = non\n")
+        ecrire(os.path.join(self.wd, ".odoo-version"), "15.0\n")
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_OK, self.erreurs)
+        ecrire(os.path.join(self.wd, ".odoo-version"), "18.0\n")
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_REFUS)
+
+    def test_avertissement_dans_le_plan_sans_refus(self):
+        self.ajouter(
+            "limit_memory_soft = 3221225472\nlimit_memory_hard = 2147483648\n"
+        )
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("limit_memory_soft", self.sortie)
+        self.assertLess(
+            self.sortie.index("limit_memory_soft"),
+            self.sortie.index(um.t("Stopping {unit}").split("{")[0]),
+        )
+
+    def test_valide_sans_avertissement(self):
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_OK)
+        self.assertNotIn("[ATTN]", self.sortie)
+
+    def test_option_a_choix_refusee(self):
+        self.ajouter("log_level = warning\n")
+        self.assertEqual(self.lancer(), um.CODE_REFUS, self.sortie)
+        self.assert_rien_touche()
+        self.assertIn("log_level", self.erreurs)
+
+    def test_commentaire_apres_une_cle_de_connexion(self):
+        self.ajouter("db_host = localhost # socket local\n")
+        self.assertEqual(self.lancer(), um.CODE_REFUS, self.sortie)
+        self.assert_rien_touche()
+        self.assertIn("db_host = localhost", self.erreurs)
+
+    def sans_base_dans_l_unite(self):
+        self.systeme.proprietes["ExecStart"] = self.systeme.proprietes[
+            "ExecStart"
+        ].replace(" -d demo_db", "")
+
+    def test_base_de_db_name_et_fichier_illisible_par_odoo(self):
+        """La base ne vient que de db_name, et configparser refuse le
+        fichier : le refus nomme le fichier, pas la base."""
+        self.sans_base_dans_l_unite()
+        self.ajouter("db_name = demo_db\nworkers 2\n")
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_REFUS)
+        self.assert_rien_touche()
+        self.assertIn(self.conf, self.erreurs)
+        # « configparser » s'écrit pareil dans toutes les langues du CLI.
+        self.assertIn("configparser", self.erreurs)
+        self.assertNotIn("--db", self.erreurs)
+
+    def test_config_de_la_ligne_de_commande_absente(self):
+        self.systeme.proprietes["ExecStart"] = self.systeme.proprietes[
+            "ExecStart"
+        ].replace(" -d demo_db", " -d demo_db -c /nonexistent/odoo.conf")
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_REFUS)
+        self.assert_rien_touche()
+        self.assertIn(
+            um.t("Configuration file not found: {path}.").format(
+                path="/nonexistent/odoo.conf"
+            ),
+            self.erreurs,
+        )
+        self.assertNotIn("sudo", self.erreurs)
+
+    def test_odoo_conf_propre_et_fichier_de_l_unite_refuse(self):
+        """Avec --odoo-conf, systemctl start relance l'unité sur SON
+        fichier : ses erreurs refusent aussi, avant l'arrêt."""
+        copie = ecrire(os.path.join(self.tmp, "copie.conf"), self.CONFIG)
+        self.ajouter("workers = 2\nworkers = 4\n")
+        self.assertEqual(
+            self.lancer("--odoo-conf", copie), um.CODE_REFUS, self.sortie
+        )
+        self.assert_rien_touche()
+        self.assertIn(self.conf, self.erreurs)
+
+    def test_odoo_conf_propre_et_fichier_de_l_unite_valide(self):
+        copie = ecrire(os.path.join(self.tmp, "copie.conf"), self.CONFIG)
+        self.assertEqual(
+            self.lancer("--dry-run", "--odoo-conf", copie),
+            um.CODE_OK,
+            self.erreurs,
+        )
+
+
 class TestOdooHorsDuService(Base):
     def test_meme_base_refuse_puis_relance(self):
         self.systeme.processus_liste = [

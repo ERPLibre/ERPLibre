@@ -120,6 +120,17 @@ def champ(groupe, cle):
     return ops_settings.champ_cible(CATALOGUE, groupe, cle)
 
 
+def enregistrer():
+    """Le numéro de « Enregistrer » sur l'écran des groupes : il suit le
+    dernier groupe, et chaque outil ajouté le décale."""
+    return str(len(CATALOGUE.champs) + 1)
+
+
+def differences():
+    """Le numéro de « Différences », après « Enregistrer »."""
+    return str(len(CATALOGUE.champs) + 2)
+
+
 def t_(texte):
     """Le libellé que todo affiche, dans la langue courante."""
     return ops_settings.t(texte)
@@ -247,12 +258,13 @@ class TestSaisie(unittest.TestCase):
 
 
 class TestEditeurLigneParLigne(Base):
-    """Groupes : [3] Sauvegardes, [9] Enregistrer, [10] Différences."""
+    """Groupes : [3] Sauvegardes, puis Enregistrer et Différences après le
+    dernier groupe (`enregistrer()`, `differences()`)."""
 
     def test_entier_invalide_puis_valide(self):
         ecrit, sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["3", "3", "0", "9"],
+            choix=["3", "3", "0", enregistrer()],
             saisies=["abc", "²", "10"],
             args=(self.brouillon(),),
         )
@@ -264,7 +276,7 @@ class TestEditeurLigneParLigne(Base):
         ecrire_profil(backup={"keep_daily": 10})
         ecrit, _sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["3", "3", "0", "9"],
+            choix=["3", "3", "0", enregistrer()],
             saisies=["-"],
             args=(self.brouillon(),),
         )
@@ -274,7 +286,7 @@ class TestEditeurLigneParLigne(Base):
     def test_booleen(self):
         ecrit, _sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["2", "6", "0", "9"],
+            choix=["2", "6", "0", enregistrer()],
             confirmations=[True],
             args=(self.brouillon(),),
         )
@@ -286,7 +298,7 @@ class TestEditeurLigneParLigne(Base):
             "_ops_reglages_groupes",
             # Mise à jour › --ignore-error : ajouter deux fois, un motif
             # trop large refusé, retirer le premier.
-            choix=["2", "3", "1", "1", "1", "2", "0", "0", "9"],
+            choix=["2", "3", "1", "1", "1", "2", "0", "0", enregistrer()],
             saisies=["motif_a: x", "motif_b: y", ".*", "1"],
             args=(self.brouillon(),),
         )
@@ -300,7 +312,7 @@ class TestEditeurLigneParLigne(Base):
         ecrire_profil(update_module={"ignore_error": ["motif_a: x"]})
         ecrit, _sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["2", "3", "3", "0", "0", "9"],
+            choix=["2", "3", "3", "0", "0", enregistrer()],
             args=(self.brouillon(),),
         )
         self.assertTrue(ecrit)
@@ -328,7 +340,7 @@ class TestEditeurLigneParLigne(Base):
     def test_differences(self):
         _ecrit, sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["3", "3", "0", "10", "0"],
+            choix=["3", "3", "0", differences(), "0"],
             saisies=["10"],
             confirmations=[False],
             args=(self.brouillon(),),
@@ -339,7 +351,7 @@ class TestEditeurLigneParLigne(Base):
         # Mise à jour : 6 champs, puis --db (→ Instance), --backup-dest…
         ecrit, _sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["2", "7", "0", "9"],
+            choix=["2", "7", "0", enregistrer()],
             saisies=["exemple_db"],
             args=(self.brouillon(),),
         )
@@ -501,7 +513,7 @@ class TestSecrets(Base):
             # Préchauffage approfondi [8] › --api-key-file [5] › [1] saisir.
             ecrit, sortie, _ = self.jouer(
                 "_ops_reglages_groupes",
-                choix=["8", "5", "1", "0", "9"],
+                choix=["8", "5", "1", "0", enregistrer()],
                 kdbx="/var/tmp/exemple.kdbx",
                 args=(
                     ops_settings.Brouillon.ouvrir(

@@ -29730,6 +29730,227 @@ TRANSLATIONS = {
         "fr": "Profil enregistré, mais KeePass a gardé {refs} :",
         "en": "Profile saved, but KeePass kept {refs}:",
     },
+    # Production - validation d'odoo.conf (lib_ops/odoo_conf, odoo_conf_check, update_module, health_check, ops_menu)
+    "line {line}, {key}: {message}": {
+        "fr": "ligne {line}, {key} : {message}",
+        "en": "line {line}, {key}: {message}",
+    },
+    "line {line}: {message}": {
+        "fr": "ligne {line} : {message}",
+        "en": "line {line}: {message}",
+    },
+    "{key}: {message}": {
+        "fr": "{key} : {message}",
+        "en": "{key}: {message}",
+    },
+    "No [options] section: Odoo reads none of these settings and starts with its defaults.": {
+        "fr": "Aucune section [options] : Odoo ne lit aucun de ces réglages et démarre avec ses valeurs par défaut.",
+        "en": "No [options] section: Odoo reads none of these settings and starts with its defaults.",
+    },
+    "Line outside any section: configparser refuses the whole file and Odoo does not start.": {
+        "fr": "Ligne hors de toute section : configparser refuse tout le fichier et Odoo ne démarre pas.",
+        "en": "Line outside any section: configparser refuses the whole file and Odoo does not start.",
+    },
+    "Line without '=' or ':': configparser refuses the whole file and Odoo does not start.": {
+        "fr": "Ligne sans « = » ni « : » : configparser refuse tout le fichier et Odoo ne démarre pas.",
+        "en": "Line without '=' or ':': configparser refuses the whole file and Odoo does not start.",
+    },
+    "Refused by configparser ({error}): Odoo does not start.": {
+        "fr": "Refusé par configparser ({error}) : Odoo ne démarre pas.",
+        "en": "Refused by configparser ({error}): Odoo does not start.",
+    },
+    "Key given twice (first on line {first}): configparser refuses the whole file and Odoo does not start.": {
+        "fr": "Clé donnée deux fois (d'abord à la ligne {first}) : configparser refuse tout le fichier et Odoo ne démarre pas.",
+        "en": "Key given twice (first on line {first}): configparser refuses the whole file and Odoo does not start.",
+    },
+    "Section [{section}] given twice (first on line {first}): configparser refuses the whole file and Odoo does not start.": {
+        "fr": "Section [{section}] donnée deux fois (d'abord à la ligne {first}) : configparser refuse tout le fichier et Odoo ne démarre pas.",
+        "en": "Section [{section}] given twice (first on line {first}): configparser refuses the whole file and Odoo does not start.",
+    },
+    "Comment after the value: Odoo keeps it in the value ({value}), refuses it as a number and does not start. Write '{key} = {clean}' and put the comment on its own line.": {
+        "fr": "Commentaire après la valeur : Odoo le garde dans la valeur ({value}), la refuse comme nombre et ne démarre pas. Écrire « {key} = {clean} » et mettre le commentaire sur sa propre ligne.",
+        "en": "Comment after the value: Odoo keeps it in the value ({value}), refuses it as a number and does not start. Write '{key} = {clean}' and put the comment on its own line.",
+    },
+    "Comment after the value: Odoo keeps it in the value ({value}), refuses it as none of {choices} and does not start. Write '{key} = {clean}' and put the comment on its own line.": {
+        "fr": "Commentaire après la valeur : Odoo le garde dans la valeur ({value}), la refuse comme n'étant aucun de {choices} et ne démarre pas. Écrire « {key} = {clean} » et mettre le commentaire sur sa propre ligne.",
+        "en": "Comment after the value: Odoo keeps it in the value ({value}), refuses it as none of {choices} and does not start. Write '{key} = {clean}' and put the comment on its own line.",
+    },
+    "Comment after the value: Odoo keeps it in the value ({value}) and passes it as is to PostgreSQL or to the listening socket: the instance cannot connect or listen. Write '{key} = {clean}' and put the comment on its own line.": {
+        "fr": "Commentaire après la valeur : Odoo le garde dans la valeur ({value}) et la passe telle quelle à PostgreSQL ou au socket d'écoute : l'instance ne peut ni se connecter ni écouter. Écrire « {key} = {clean} » et mettre le commentaire sur sa propre ligne.",
+        "en": "Comment after the value: Odoo keeps it in the value ({value}) and passes it as is to PostgreSQL or to the listening socket: the instance cannot connect or listen. Write '{key} = {clean}' and put the comment on its own line.",
+    },
+    "Comment after the value: Odoo keeps it in the value ({value}). Write '{key} = {clean}' and put the comment on its own line.": {
+        "fr": "Commentaire après la valeur : Odoo le garde dans la valeur ({value}). Écrire « {key} = {clean} » et mettre le commentaire sur sa propre ligne.",
+        "en": "Comment after the value: Odoo keeps it in the value ({value}). Write '{key} = {clean}' and put the comment on its own line.",
+    },
+    "Integer expected, read {value}: Odoo does not start (invalid integer value).": {
+        "fr": "Entier attendu, lu {value} : Odoo ne démarre pas (invalid integer value).",
+        "en": "Integer expected, read {value}: Odoo does not start (invalid integer value).",
+    },
+    "Number expected, read {value}: Odoo does not start (invalid floating-point value).": {
+        "fr": "Nombre attendu, lu {value} : Odoo ne démarre pas (invalid floating-point value).",
+        "en": "Number expected, read {value}: Odoo does not start (invalid floating-point value).",
+    },
+    "One of {choices} expected, read {value}: Odoo does not start (invalid choice).": {
+        "fr": "Une valeur parmi {choices} attendue, lu {value} : Odoo ne démarre pas (invalid choice).",
+        "en": "One of {choices} expected, read {value}: Odoo does not start (invalid choice).",
+    },
+    "The value is in bytes: {value} bytes leave Odoo no memory and it cannot serve (meant {value} MB? {bytes}).": {
+        "fr": "La valeur est en octets : {value} octets ne laissent aucune mémoire à Odoo, qui ne peut pas servir ({value} Mo voulus ? {bytes}).",
+        "en": "The value is in bytes: {value} bytes leave Odoo no memory and it cannot serve (meant {value} MB? {bytes}).",
+    },
+    "limit_memory_soft ({soft} MB) is above limit_memory_hard ({hard} MB): the hard limit comes first, a request ends in MemoryError instead of a recycled worker.": {
+        "fr": "limit_memory_soft ({soft} Mo) dépasse limit_memory_hard ({hard} Mo) : la limite dure arrive d'abord, une requête finit en MemoryError au lieu d'un worker recyclé.",
+        "en": "limit_memory_soft ({soft} MB) is above limit_memory_hard ({hard} MB): the hard limit comes first, a request ends in MemoryError instead of a recycled worker.",
+    },
+    "limit_memory_soft is {soft} MB: under {floor} MB of virtual memory, workers are recycled very often, or as soon as they start.": {
+        "fr": "limit_memory_soft vaut {soft} Mo : sous {floor} Mo de mémoire virtuelle, les workers sont recyclés très souvent, ou dès leur démarrage.",
+        "en": "limit_memory_soft is {soft} MB: under {floor} MB of virtual memory, workers are recycled very often, or as soon as they start.",
+    },
+    "Not set: the gevent process (bus, live chat) takes the limit of the workers; suggested: limit_memory_soft_gevent = {soft} and limit_memory_hard_gevent = {hard}.": {
+        "fr": "Non défini : le processus gevent (bus, discussion en direct) prend la limite des workers ; conseillé : limit_memory_soft_gevent = {soft} et limit_memory_hard_gevent = {hard}.",
+        "en": "Not set: the gevent process (bus, live chat) takes the limit of the workers; suggested: limit_memory_soft_gevent = {soft} and limit_memory_hard_gevent = {hard}.",
+    },
+    "Old name, read by Odoo as {new}.": {
+        "fr": "Ancien nom, lu par Odoo comme {new}.",
+        "en": "Old name, read by Odoo as {new}.",
+    },
+    "{key} and {new} are both set to different values: Odoo keeps the one written last ({kept}).": {
+        "fr": "{key} et {new} sont posés tous les deux à des valeurs différentes : Odoo garde celle écrite en dernier ({kept}).",
+        "en": "{key} and {new} are both set to different values: Odoo keeps the one written last ({kept}).",
+    },
+    "No longer read from Odoo 17: the bus listens on gevent_port ({port}).": {
+        "fr": "Plus lu depuis Odoo 17 : le bus écoute sur gevent_port ({port}).",
+        "en": "No longer read from Odoo 17: the bus listens on gevent_port ({port}).",
+    },
+    "Deprecated alias of gevent_port in Odoo 16: rename it gevent_port.": {
+        "fr": "Alias déprécié de gevent_port dans Odoo 16 : le renommer gevent_port.",
+        "en": "Deprecated alias of gevent_port in Odoo 16: rename it gevent_port.",
+    },
+    "Odoo version unknown: only the types common to Odoo 12 to 18 are checked.": {
+        "fr": "Version d'Odoo inconnue : seuls les types communs à Odoo 12 à 18 sont vérifiés.",
+        "en": "Odoo version unknown: only the types common to Odoo 12 to 18 are checked.",
+    },
+    "workers = 0: one threaded process serves every request; with {cpus} CPU and {memory} MB, about {suggested} workers suit a production server.": {
+        "fr": "workers = 0 : un seul processus à fils sert toutes les requêtes ; avec {cpus} CPU et {memory} Mo, environ {suggested} workers conviennent à un serveur de production.",
+        "en": "workers = 0: one threaded process serves every request; with {cpus} CPU and {memory} MB, about {suggested} workers suit a production server.",
+    },
+    "{workers} workers for {cpus} CPU: at most {best} ((2 x CPU) + 1).": {
+        "fr": "{workers} workers pour {cpus} CPU : au plus {best} ((2 x CPU) + 1).",
+        "en": "{workers} workers for {cpus} CPU: at most {best} ((2 x CPU) + 1).",
+    },
+    "{workers} workers for {cpus} CPU and {memory} MB: up to {suggested} would fit.": {
+        "fr": "{workers} workers pour {cpus} CPU et {memory} Mo : jusqu'à {suggested} tiendraient.",
+        "en": "{workers} workers for {cpus} CPU and {memory} MB: up to {suggested} would fit.",
+    },
+    "{workers} workers and {cron} cron threads need about {need} MB of RAM; this machine has {memory} MB.": {
+        "fr": "{workers} workers et {cron} fils de cron demandent environ {need} Mo de mémoire vive ; ce poste en a {memory} Mo.",
+        "en": "{workers} workers and {cron} cron threads need about {need} MB of RAM; this machine has {memory} MB.",
+    },
+    "{processes} processes do not fit in {memory} MB with limit_memory_soft of at least {floor} MB: at most {max_workers} workers, or {ram_needed} MB of memory.": {
+        "fr": "{processes} processus ne tiennent pas dans {memory} Mo avec un limit_memory_soft d'au moins {floor} Mo : au plus {max_workers} workers, ou {ram_needed} Mo de mémoire.",
+        "en": "{processes} processes do not fit in {memory} MB with limit_memory_soft of at least {floor} MB: at most {max_workers} workers, or {ram_needed} MB of memory.",
+    },
+    "For {workers} workers on {memory} MB, suggested: limit_memory_soft = {soft_bytes} ({soft} MB), limit_memory_hard = {hard_bytes} ({hard} MB).": {
+        "fr": "Pour {workers} workers sur {memory} Mo, conseillé : limit_memory_soft = {soft_bytes} ({soft} Mo), limit_memory_hard = {hard_bytes} ({hard} Mo).",
+        "en": "For {workers} workers on {memory} MB, suggested: limit_memory_soft = {soft_bytes} ({soft} MB), limit_memory_hard = {hard_bytes} ({hard} MB).",
+    },
+    "Odoo configuration check": {
+        "fr": "Validation de la configuration d'Odoo",
+        "en": "Odoo configuration check",
+    },
+    "Check an Odoo configuration file the way Odoo reads it at its next start: repeated keys, comments after a value, types, memory limits; workers and memory advice. Read-only.": {
+        "fr": "Vérifier un fichier de configuration d'Odoo comme Odoo le lit à son prochain démarrage : clés répétées, commentaires après une valeur, types, limites de mémoire ; conseils de workers et de mémoire. Lecture seule.",
+        "en": "Check an Odoo configuration file the way Odoo reads it at its next start: repeated keys, comments after a value, types, memory limits; workers and memory advice. Read-only.",
+    },
+    "Configuration file to check; default: the one the systemd unit reads.": {
+        "fr": "Fichier de configuration à vérifier ; par défaut : celui que lit l'unité systemd.",
+        "en": "Configuration file to check; default: the one the systemd unit reads.",
+    },
+    "Odoo version whose types apply (12 to 18); default: the .odoo-version of the unit's directory, or of the file's directory.": {
+        "fr": "Version d'Odoo dont les types s'appliquent (12 à 18) ; par défaut : le .odoo-version du dossier de l'unité, ou du dossier du fichier.",
+        "en": "Odoo version whose types apply (12 to 18); default: the .odoo-version of the unit's directory, or of the file's directory.",
+    },
+    "Processors for the workers advice; default: those of this machine.": {
+        "fr": "Processeurs pour le conseil de workers ; par défaut : ceux de ce poste.",
+        "en": "Processors for the workers advice; default: those of this machine.",
+    },
+    "Memory in MB for the workers and memory advice; default: that of this machine.": {
+        "fr": "Mémoire en Mo pour les conseils de workers et de mémoire ; par défaut : celle de ce poste.",
+        "en": "Memory in MB for the workers and memory advice; default: that of this machine.",
+    },
+    "--service cannot be combined with --file.": {
+        "fr": "--service ne se combine pas avec --file.",
+        "en": "--service cannot be combined with --file.",
+    },
+    "No Odoo configuration file found (try --file).": {
+        "fr": "Aucun fichier de configuration d'Odoo trouvé (essayer --file).",
+        "en": "No Odoo configuration file found (try --file).",
+    },
+    "{path} (unit {unit})": {
+        "fr": "{path} (unité {unit})",
+        "en": "{path} (unit {unit})",
+    },
+    "{cpus} CPU, {memory} MB": {
+        "fr": "{cpus} CPU, {memory} Mo",
+        "en": "{cpus} CPU, {memory} MB",
+    },
+    "{count} error(s): Odoo refuses this file at its next start, or cannot serve with it.": {
+        "fr": "{count} erreur(s) : Odoo refuse ce fichier à son prochain démarrage, ou ne peut pas servir avec lui.",
+        "en": "{count} error(s): Odoo refuses this file at its next start, or cannot serve with it.",
+    },
+    "No error: Odoo reads this file ({warnings} warning(s)).": {
+        "fr": "Aucune erreur : Odoo lit ce fichier ({warnings} avertissement(s)).",
+        "en": "No error: Odoo reads this file ({warnings} warning(s)).",
+    },
+    "expected an Odoo version from 12 to 18: {value}": {
+        "fr": "version d'Odoo de 12 à 18 attendue : {value}",
+        "en": "expected an Odoo version from 12 to 18: {value}",
+    },
+    "Details: script/odoo/odoo_conf_check.py --file {path}": {
+        "fr": "Détails : script/odoo/odoo_conf_check.py --file {path}",
+        "en": "Details: script/odoo/odoo_conf_check.py --file {path}",
+    },
+    "{path}: read as Odoo reads it, no error.": {
+        "fr": "{path} : lu comme Odoo le lit, aucune erreur.",
+        "en": "{path}: read as Odoo reads it, no error.",
+    },
+    "{path}: {count} error(s), Odoo refuses it or cannot serve with it at its next start; {first}": {
+        "fr": "{path} : {count} erreur(s), Odoo le refuse ou ne peut pas servir avec lui à son prochain démarrage ; {first}",
+        "en": "{path}: {count} error(s), Odoo refuses it or cannot serve with it at its next start; {first}",
+    },
+    "Fix the file before any restart. Details: script/odoo/odoo_conf_check.py --file {path}": {
+        "fr": "Corriger le fichier avant tout redémarrage. Détails : script/odoo/odoo_conf_check.py --file {path}",
+        "en": "Fix the file before any restart. Details: script/odoo/odoo_conf_check.py --file {path}",
+    },
+    "{path}: {count} warning(s); {first}": {
+        "fr": "{path} : {count} avertissement(s) ; {first}",
+        "en": "{path}: {count} warning(s); {first}",
+    },
+    "{path}: Odoo would refuse it, or could not serve with it, at the next start ({count} error(s)): nothing was stopped.\n{details}": {
+        "fr": "{path} : Odoo le refuserait, ou ne pourrait pas servir avec lui, au prochain démarrage ({count} erreur(s)) : rien n'a été arrêté.\n{details}",
+        "en": "{path}: Odoo would refuse it, or could not serve with it, at the next start ({count} error(s)): nothing was stopped.\n{details}",
+    },
+    "Configuration file not found: {path}.": {
+        "fr": "Fichier de configuration introuvable : {path}.",
+        "en": "Configuration file not found: {path}.",
+    },
+    "Odoo config, {finding}": {
+        "fr": "Config Odoo, {finding}",
+        "en": "Odoo config, {finding}",
+    },
+    "Validate odoo.conf - as Odoo reads it at its next start, read-only": {
+        "fr": "Valider odoo.conf - comme Odoo le lit à son prochain démarrage, lecture seule",
+        "en": "Validate odoo.conf - as Odoo reads it at its next start, read-only",
+    },
+    "odoo.conf to check (empty = the one of the instance): ": {
+        "fr": "odoo.conf à vérifier (vide = celui de l'instance) : ",
+        "en": "odoo.conf to check (empty = the one of the instance): ",
+    },
+    "Cancelled: file not found: {path}": {
+        "fr": "Annulé : fichier introuvable : {path}",
+        "en": "Cancelled: file not found: {path}",
+    },
 }
 
 

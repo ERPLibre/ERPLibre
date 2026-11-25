@@ -8,6 +8,7 @@
 | `mail_retry.py` | liste les courriels sortants en échec d'une instance (lecture seule), puis remet en file ceux qu'on choisit par le shell d'Odoo |
 | `health_check.py` | vérifie qu'une instance répond et n'expose rien de trop : page de connexion, `/web/health`, TLS, redirection HTTPS, HSTS, gestionnaire de bases, bus, robots.txt, DNS du courriel (lecture seule) |
 | `warmup_http.py` | réveille le registre dès que le serveur écoute ; lancé par `run.sh`. `--deep` préchauffe les pages publiques, les paquets d'assets et, avec une clé d'API, les vues |
+| `odoo_conf_check.py` | vérifie un fichier de configuration d'Odoo comme Odoo le lit à son prochain démarrage : clés répétées, commentaire après une valeur, types selon la version, limites de mémoire ; conseils de workers et de mémoire (lecture seule) |
 | `migration/` | outils de migration, voir [migration/README.fr.md](migration/README.fr.md) |
 
 ## update_module.py
@@ -30,7 +31,14 @@ Ce qu'il fait, dans l'ordre :
    base (`--db`, sinon le `-d` de l'unité, sinon `db_name`), le port HTTP et
    les modules (motifs développés sur l'`addons_path`, seuls les dossiers
    portant un `__manifest__.py`) en sont déduits. Tout manque refuse avec
-   le code 2.
+   le code 2. La configuration est relue comme Odoo la lira au redémarrage
+   (voir `odoo_conf_check.py` plus bas, types de la version d'Odoo du
+   `.odoo-version` de l'unité), avant de chercher la base : une clé
+   répétée, un commentaire après une valeur typée ou de connexion, une
+   valeur qu'optparse refuse ou une limite de mémoire écrite en Mo refusent
+   avec le code 2, puisque l'unité arrêtée ne repartirait pas, ou ne
+   servirait pas. Avec `--odoo-conf`, le fichier de l'unité, celui de la
+   relance, est vérifié aussi. Les avertissements sont listés dans le plan.
 2. **Root et verrou.** Root est exigé (sauf `--dry-run`) ; un verrou par
    base, partagé avec l'outil de sauvegarde, code 75 quand une autre mise à
    jour ou une sauvegarde le détient.
@@ -312,6 +320,7 @@ requête, connexion TLS et recherche DNS.
 | `hsts` | `max-age` ≥ 1 jour | absent, plus court | | pas de 200 sur `/web/login`, URL http, `--local` |
 | `db_manager`, `db_selector` | bloqué (401/403/404/3xx), page « disabled » (`list_db = False`) | indéterminé (5xx) ; exposé en `--local` ; sélecteur qui liste les bases | gestionnaire joignable, ou mot de passe maître absent, en `--url` | |
 | `list_db` (`--local`) | `False` | absent ou vrai | | |
+| `odoo_conf` (`--local`) | lu sans erreur | un avertissement (commentaire après une valeur texte, limite douce au-dessus de la dure, ancien nom) | Odoo refuse le fichier à son prochain démarrage, ou ne peut pas servir avec lui | |
 | `websocket` (`--url`) | relayé (400/426) | 404, aucune réponse | 502/503/504 | `--local` |
 | `robots` (`--url`) | servi, ou `Disallow: /` sans ligne `Sitemap:` (pas de site public) | `Disallow: /` avec une ligne `Sitemap:` (l'URL employée n'est pas le domaine du site) | | 404 |
 | `mail_spf` | un enregistrement fini par `-all`/`~all` | autre fin | aucun, plusieurs, `+all` | ni dig ni host, recherche en échec |
@@ -361,6 +370,68 @@ avertissements sur stderr.
 | 0 | aucun FAIL (les ATTN sont listés) |
 | 1 | au moins un FAIL |
 | 2 | vérification impossible (usage, détection, configuration illisible : lancer avec sudo) |
+| 130 | interrompu |
+
+## odoo_conf_check.py
+
+```bash
+./script/odoo/odoo_conf_check.py
+./script/odoo/odoo_conf_check.py --file /etc/odoo/odoo.conf --odoo-version 16
+./script/odoo/odoo_conf_check.py --service odoo-exemple --json
+```
+
+Odoo n'a pas de commande qui vérifie seulement son fichier de
+configuration : une erreur se voit au démarrage, c'est-à-dire après un
+`systemctl stop`. Cet outil lit le fichier de `--file`, sinon celui que lit
+l'unité systemd (`--service`, sinon l'unité détectée, comme la trouve
+`update_module.py`), avec les règles d'Odoo lui-même, et ne change rien.
+Dans `make todo` : `TODO › Exécuter › Production › Santé et préchauffage ›
+Valider odoo.conf`.
+
+| Niveau | Constat |
+|--------|---------|
+| erreur | clé ou section donnée deux fois, ligne hors de toute section ou sans `=` (`configparser` strict refuse tout le fichier) ; une option typée (`workers`, ports, `limit_*`…) ou à choix (`log_level`, `db_sslmode`) dont optparse refuse la valeur, commentaire après elle compris (`workers = 4 # quatre` garde `# quatre` dans la valeur) ; un commentaire après une valeur de connexion ou d'écoute (`db_host`, `db_user`, `db_name`, `db_replica_host`, `http_interface`), passée telle quelle à PostgreSQL ou au socket ; une limite de mémoire sous 100000 (des octets, voulus en Mo) |
+| avertissement | aucune section `[options]` (Odoo démarre avec ses valeurs par défaut) ; commentaire après une autre valeur texte ; `limit_memory_soft` au-dessus de `limit_memory_hard` ; `limit_memory_soft` sous 1024 Mo avec des workers (16 et suivantes) ; `longpolling_port` dès la 17 (ignoré, le bus écoute sur `gevent_port`) ; un ancien nom (`xmlrpc_port`) et son nouveau nom posés tous les deux à des valeurs différentes ; trop de workers pour les processeurs, ou pour la mémoire |
+| info | ancien nom (`xmlrpc_port`, lu comme `http_port`) ; limites `gevent` non posées (18) ; `workers = 0` ; `limit_memory_soft`/`limit_memory_hard` conseillés |
+
+Seule une ligne qui COMMENCE par `#` ou `;` est un commentaire.
+`True`/`true` et `False`/`false` sont des booléens ; toute autre valeur
+d'une option typée passe par optparse (`0x10` et `-1` passent, `08` et
+`2048MB` non). La valeur d'une clé qui ressemble à un secret
+(`admin_passwd`, `db_password`, `sentry_dsn`…) n'est jamais citée, ni le
+compte et le mot de passe d'une adresse (`schéma://compte:mot@hôte`),
+quelle que soit la clé.
+
+Les types suivent la version d'Odoo : `--odoo-version`, sinon le
+`.odoo-version` du dossier de l'unité (ou du dossier du fichier avec
+`--file`), sinon un chemin `odooNN.0` de la ligne de commande de l'unité ;
+inconnue, seuls les types communs aux versions 12 à 18 sont vérifiés. Les
+conseils de workers et de mémoire suivent le guide de déploiement d'Odoo —
+au plus (2 × CPU) + 1 workers, 150 Mo par worker léger et 1 Gio par lourd
+— avec les processeurs et la mémoire de `--cpus` et `--memory-mb`, sinon
+de ce poste (les limites d'un cgroup ne sont pas lues). Les limites
+conseillées gardent 15 % de la mémoire pour le reste du poste et une marge
+de 10 %, et ne mettent jamais `limit_memory_soft` sous 1050 Mo.
+
+La même validation tourne dans `update_module.py` avant tout arrêt (une
+erreur refuse, code 2) et dans `health_check.py --local` (résultat
+`odoo_conf`).
+
+**Profil.** Le groupe `odoo_conf` donne `--cpus`, `--memory-mb` et
+`--verbose`. `--file`, `--service`, `--odoo-version` et `--json` ne
+viennent jamais d'un profil. Avec `--file`, l'unité n'est pas devinée :
+seul `--profile` apporte un profil.
+
+Clés de `--json` (anglais, stables) : `tool`, `service`, `path`,
+`odoo_version`, `findings` (`level`, `line`, `key`, `code`, `message`),
+`summary` (`error`, `warning`, `info`), `host` (`cpus`, `memory_mb`),
+`exit_code`.
+
+| Code | Sens |
+|------|------|
+| 0 | aucune erreur (les avertissements sont listés) |
+| 1 | au moins une erreur : Odoo refuse le fichier à son prochain démarrage, ou ne peut pas servir avec lui |
+| 2 | vérification impossible (usage, détection, fichier illisible : lancer avec sudo) |
 | 130 | interrompu |
 
 ## warmup_http.py --deep
@@ -447,3 +518,4 @@ l'environnement (`http_proxy`).
 | `/robots.txt` | sans website, 18 : `Disallow: /` et des lignes `Allow:`, 404 jusqu'à 17 (non vérifié) ; avec website : une ligne `Sitemap:`, et `Disallow: /` quand l'URL n'est pas le domaine du site (vérifié en 18) |
 | Gestionnaire de bases avec `list_db = False` | 18 : 200 avec la page « disabled » (le corps est lu, pas seulement le statut) ; non vérifié de 12 à 17, un 403 est traité aussi |
 | Gabarits nginx d'ERPLibre | pas de HSTS de 12 à 15 ; HSTS dans `location /` dès 16 ; aucun ne bloque `/web/database` |
+| Options typées d'`odoo.conf` (`odoo_conf_check.py`) | communes de 12 à 18 : `http_port`, `db_port`, `smtp_port`, `workers`, `max_cron_threads`, `limit_memory_soft`/`hard`, `limit_time_*`, `limit_request`, `db_maxconn` ; `longpolling_port` de 12 à 16, ignoré dès 17 ; `gevent_port` dès 16 ; `osv_memory_age_limit` jusqu'à 17 ; `transient_age_limit` dès 14 ; les limites de mémoire `gevent`, `db_replica_port`, `db_maxconn_gevent` et `limit_time_worker_cron` en 18 |

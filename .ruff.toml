@@ -48,6 +48,7 @@ extend-exclude = [
 "script/odoo/mail_retry.py" = "py37"
 "script/odoo/health_check.py" = "py37"
 "script/odoo/warmup_http.py" = "py37"
+"script/odoo/odoo_conf_check.py" = "py37"
 "script/database/odoo_backup.py" = "py37"
 "script/systemd/install_backup_timer.py" = "py37"
 "script/lib_ops/*.py" = "py37"

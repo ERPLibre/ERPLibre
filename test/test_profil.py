@@ -1679,8 +1679,8 @@ class TestTables(unittest.TestCase):
     def champs_f(self):
         return {(g, c) for g, cles in profil.CHAMPS.items() for c in cles}
 
-    def test_quarante_huit_champs(self):
-        self.assertEqual(len(self.champs_f()), 48)
+    def test_cinquante_et_un_champs(self):
+        self.assertEqual(len(self.champs_f()), 51)
 
     def test_alias_vers_un_champ(self):
         for groupe, alias in profil.ALIAS.items():

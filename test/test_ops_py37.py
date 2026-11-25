@@ -37,6 +37,7 @@ PROGRAMMES = (
     "script/odoo/mail_retry.py",
     "script/odoo/health_check.py",
     "script/odoo/warmup_http.py",
+    "script/odoo/odoo_conf_check.py",
     "script/database/odoo_backup.py",
     "script/systemd/install_backup_timer.py",
 )
@@ -49,6 +50,7 @@ EXECUTABLES = (
     "script/odoo/log_check.py",
     "script/odoo/mail_retry.py",
     "script/odoo/health_check.py",
+    "script/odoo/odoo_conf_check.py",
     "script/database/odoo_backup.py",
     "script/systemd/install_backup_timer.py",
 )

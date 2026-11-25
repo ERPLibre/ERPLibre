@@ -110,6 +110,8 @@ DETECTES = frozenset(
         (profil.GROUPE_INSTANCE, "db"),
         ("update_module", "log_dir"),
         ("log_check", "namespace"),
+        ("odoo_conf", "cpus"),
+        ("odoo_conf", "memory_mb"),
         (GROUPE_HOTE, "interval"),
     ]
 )
@@ -126,6 +128,7 @@ def nom_groupe(groupe):
         "mail_retry": t("Outgoing mail"),
         "health_check": t("Health check"),
         "warmup": t("Deep warm-up"),
+        "odoo_conf": t("Odoo configuration check"),
         GROUPE_HOTE: t("Host audit"),
     }
     return noms.get(groupe, groupe)

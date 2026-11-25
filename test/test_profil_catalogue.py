@@ -103,6 +103,7 @@ EXEMPLES = {
         "models": "res.partner,res.users",
         "strict": True,
     },
+    "odoo_conf": {"cpus": 4, "memory_mb": 8192, "verbose": True},
     "host_perf_audit": {
         "duration": "5m",
         "interval": 10,
@@ -214,6 +215,14 @@ CAS = {
         (["--deep", "--local", "--profile-unset", "login"], 0, 0),
         (["--deep", "--local", "--profile-unset", "api-key-file"], 0, 0),
         (["--deep", "--service", "odoo-exemple"], 2, 2),
+    ],
+    "odoo_conf": [
+        ([], 0, 0),
+        (["--file", "/var/tmp/exemple.conf", "--json"], 0, 0),
+        (["--service", "odoo-exemple", "--odoo-version", "16"], 0, 0),
+        (["--cpus", "2", "--memory-mb", "4096"], 0, 0),
+        (["--odoo-version", "11"], 2, 2),
+        (["--file", "/var/tmp/exemple.conf", "--service", "x"], 2, 2),
     ],
     "host_perf_audit": [
         ([], 0, 0),

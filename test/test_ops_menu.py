@@ -682,6 +682,35 @@ class TestSante(Base):
         self.assertTrue(commande.endswith("--deep --local"), commande)
         self.assertIn(f"--service {SERVICE}", commande)
 
+    def test_validation_d_odoo_conf_de_l_instance(self):
+        jeu = self.jouer("_ops_odoo_conf_check", [""])
+        (commande,) = jeu.todo.execute.commandes
+        self.assertIn("odoo_conf_check.py", commande)
+        self.assertIn(f"--service {SERVICE}", commande)
+        self.assertNotIn("--file", commande)
+        self.assertFalse(jeu.confirm.called)
+        jeu = self.jouer("_ops_odoo_conf_check", [""], code=2)
+        self.assertTrue(jeu.confirm.called)
+        self.assertEqual(self.reelle(jeu)[0], "sudo")
+
+    def test_validation_d_un_fichier_tape(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = os.path.join(dossier, "exemple.conf")
+            with open(chemin, "w") as f:
+                f.write("[options]\n")
+            jeu = self.jouer("_ops_odoo_conf_check", [chemin])
+            (commande,) = jeu.todo.execute.commandes
+            self.assertTrue(commande.endswith(f"--file {chemin}"), commande)
+            self.assertNotIn("--service", commande)
+            jeu = self.jouer(
+                "_ops_odoo_conf_check", [os.path.join(dossier, "absent")]
+            )
+        self.assertEqual(jeu.todo.execute.commandes, [])
+        self.assertFalse(jeu.terminal.called)
+        self.assertIn(
+            t_("Cancelled: file not found: {path}").split("{")[0], jeu.sortie
+        )
+
     def test_sante_d_une_url_tapee(self):
         for saisies, attendu in (
             (["example.org", ""], "--url https://example.org"),
@@ -929,6 +958,7 @@ class TestLesMenusSontBranches(Base):
         (["5", "1"], "_ops_health_local"),
         (["5", "2"], "_ops_health_url"),
         (["5", "3"], "_ops_warmup_deep"),
+        (["5", "4"], "_ops_odoo_conf_check"),
         (["6", "1"], "_ops_perf_audit"),
         (["6", "2"], "_ops_settings_host_local"),
         (["7", "1"], "_ops_timers_status"),

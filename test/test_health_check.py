@@ -137,6 +137,10 @@ class FauxSysteme(hc.Systeme):
     def horloge(self):
         return self.horloges.pop(0) if self.horloges else 0.0
 
+    def ressources(self):
+        # Fixées : le verdict `odoo_conf` ne dépend pas du poste de test.
+        return 4, 8192
+
     def ouvrir(self, url, delai, donnees=None, entetes=None):
         if self.reponses is None:
             return super().ouvrir(url, delai, donnees, entetes)
@@ -1100,6 +1104,92 @@ class TestModeLocal(unittest.TestCase):
             self.assertRaises(SystemExit),
         ):
             hc.analyser(["--url", "example.org", "--service", "x"])
+
+    def lancer_json(self, serveur):
+        systeme = self.systeme()
+        sortie = io.StringIO()
+        code = hc.main(
+            ["--local", "--service", "erplibre_demo", "--json"],
+            systeme=systeme,
+            flux=sortie,
+        )
+        resume = json.loads(sortie.getvalue())
+        return code, {c["id"]: c for c in resume["checks"]}
+
+    def test_odoo_conf_valide(self):
+        with FauxOdoo(routes_saines()) as serveur:
+            self.config(serveur.port, "list_db = False\nworkers = 2\n")
+            code, checks = self.lancer_json(serveur)
+        self.assertEqual(code, hc.CODE_OK)
+        conf = checks["odoo_conf"]
+        self.assertEqual(conf["status"], "OK")
+        self.assertEqual(conf["data"]["odoo_version"], 18)
+        self.assertEqual(
+            conf["data"]["path"], os.path.join(self.wd, "config.conf")
+        )
+        # Les conseils de workers et de mémoire vont dans data.
+        self.assertIn(
+            "gevent_unset", [f["code"] for f in conf["data"]["findings"]]
+        )
+
+    def test_odoo_conf_refuse_est_un_fail(self):
+        with FauxOdoo(routes_saines()) as serveur:
+            self.config(
+                serveur.port, "list_db = False\nworkers = 2\nworkers = 3\n"
+            )
+            code, checks = self.lancer_json(serveur)
+        self.assertEqual(code, hc.CODE_FAIL)
+        conf = checks["odoo_conf"]
+        self.assertEqual(conf["status"], "FAIL")
+        # JSON en anglais, constat compris.
+        self.assertIn("line 6, workers: Key given twice", conf["message"])
+        self.assertIn("odoo_conf_check.py --file", conf["hint"])
+
+    def test_odoo_conf_avertissement_est_un_attn(self):
+        with FauxOdoo(routes_saines()) as serveur:
+            self.config(serveur.port, "list_db = False # masque\n")
+            code, checks = self.lancer_json(serveur)
+        self.assertEqual(code, hc.CODE_OK)
+        self.assertEqual(checks["odoo_conf"]["status"], "ATTN")
+
+    def test_odoo_conf_version_du_checkout(self):
+        """Le .odoo-version du dossier de l'unité l'emporte sur la version
+        annoncée : gevent_port n'est pas typé en 15."""
+        with open(os.path.join(self.wd, ".odoo-version"), "w") as f:
+            f.write("15.0\n")
+        with FauxOdoo(routes_saines()) as serveur:
+            self.config(serveur.port, "list_db = False\ngevent_port = non\n")
+            _code, checks = self.lancer_json(serveur)
+        self.assertEqual(checks["odoo_conf"]["status"], "OK")
+        self.assertEqual(checks["odoo_conf"]["data"]["odoo_version"], 15)
+
+    def test_verifier_local_sans_odoo_conf(self):
+        """L'API d'update_module ne relit pas la configuration : la
+        mise à jour l'a validée avant l'arrêt."""
+        with FauxOdoo(routes_saines()) as serveur:
+            self.config(serveur.port)
+            _version, resultats = hc.verifier_local(
+                "127.0.0.1", serveur.port, "base1", None, 5, self.systeme()
+            )
+        self.assertNotIn("odoo_conf", [r.ident for r in resultats])
+
+    def test_message_traduit_constat_compris(self):
+        """En français, le constat cité est traduit dans le texte et reste
+        anglais dans le JSON, quelle que soit la langue du poste."""
+        from script.lib_ops import odoo_conf
+        from script.todo import todo_i18n
+
+        verification = odoo_conf.verifier_texte(
+            "[options]\nworkers = 2\nworkers = 3\n", 18, chemin="/srv/e.conf"
+        )
+        resultat = hc.classer_odoo_conf(verification)
+        self.assertEqual(resultat.statut, hc.FAIL)
+        constat = verification.erreurs()[0]
+        with mock.patch.object(todo_i18n, "_current_lang", "fr"):
+            self.assertNotEqual(constat.decrire(hc.t), constat.decrire())
+            self.assertIn(constat.decrire(hc.t), resultat.message(hc.t))
+            self.assertIn(constat.decrire(), resultat.json()["message"])
+            self.assertNotIn(constat.decrire(hc.t), resultat.json()["message"])
 
 
 def ecrire_profil(cas, groupe, service="odoo-exemple.service", dossier=None):
