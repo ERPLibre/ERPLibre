@@ -47,6 +47,9 @@ REGLAGES = (
     # Les Stream Deck de l'hôte passés à la VM : la même case sur les deux
     # hyperviseurs, SPICE en plus sur libvirt seulement.
     "f_usb_deck",
+    # Le choix commun d'installation : l'ERP, puis sa version.
+    "f_erp",
+    "f_version",
 )
 
 CATALOGUE = [
@@ -198,10 +201,23 @@ class TestLesDeuxEcrans(unittest.TestCase):
         L'écran Proxmox n'en offrait aucun, alors qu'on y déploie le plus
         souvent un parc MIXTE — un hyperviseur imbriqué à côté de VM
         ERPLibre — c'est-à-dire le cas où ils servent le plus."""
-        for ident in ("v0_branch", "v0_prof", "v0_type"):
+        for ident in ("v0_branch", "v0_erp", "v0_ver", "v0_type"):
             with self.subTest(reglage=ident):
                 self.assertIn(ident, self.qemu["rangee"], "QEMU/KVM")
                 self.assertIn(ident, self.pve["rangee"], "Proxmox")
+
+    def test_both_install_blocks_carry_the_erp_and_its_version(self):
+        # Le bloc commun dit QUOI est installé, et pas seulement par quelle
+        # commande : les deux écrans l'écrivent de la même façon.
+        blocs = {}
+        for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
+            install = vu["spec"]["install"]
+            blocs[nom] = {k: install[k] for k in ("app", "version", "options")}
+        self.assertEqual(
+            {"app": "odoo", "version": "18.0", "options": {}},
+            blocs["QEMU/KVM"],
+        )
+        self.assertEqual(blocs["QEMU/KVM"], blocs["Proxmox"])
 
     def test_both_screens_bind_the_same_catalog_shortcuts(self):
         # « Versions principales » (F7) manquait à l'écran Proxmox, qui

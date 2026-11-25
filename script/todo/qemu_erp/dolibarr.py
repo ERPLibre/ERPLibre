@@ -16,13 +16,16 @@ APP_ODOO, APP_DOLIBARR sont réexportées ici : elles se lisent aussi sous
 ce module.
 """
 
+import json
 import shlex
+from pathlib import Path
 
 from script.dolibarr import lib_dolibarr
 from script.todo.qemu_erp import (  # noqa: F401 - réexportés
     APP_DOLIBARR,
     APP_ODOO,
     ErpApp,
+    ErpVersion,
     app_of,
     install_refusals,
     profile_app,
@@ -72,6 +75,31 @@ DISTRO_FAMILY = {
     "opensuse": "zypper",
     "arch": "pacman",
 }
+
+
+def pinned_version():
+    """La version épinglée de conf/supported_version_dolibarr.json, ou ""
+    quand le fichier est illisible."""
+    chemin = Path(__file__).resolve().parents[3] / lib_dolibarr.PIN_JSON
+    try:
+        return str(json.loads(chemin.read_text(encoding="utf-8"))["version"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+
+
+def versions():
+    """La seule version offerte : celle de l'épinglage. INSTALL_CMD
+    installe la source que le manifeste épingle, quelle que soit la clé."""
+    version = pinned_version()
+    return (
+        ErpVersion(
+            key=version or "pinned",
+            label=version or t("pinned version"),
+            cmd=INSTALL_CMD,
+            profile_label=t(PROFILE_LABEL),
+            default=True,
+        ),
+    )
 
 
 def distro_refusal(distro):
@@ -159,4 +187,5 @@ APP = ErpApp(
     credentials_title="Dolibarr login",
     action_refusal=action_refusal,
     web_hint=web_hint,
+    versions=versions,
 )

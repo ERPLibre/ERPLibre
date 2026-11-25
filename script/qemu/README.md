@@ -336,10 +336,34 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
 `grdctl` 46 only takes it as an argument, and `pkexec`, which `grdctl
 --system` goes through, logs that command line in the VM's journal.
 
+### ERP and version
+
+The QEMU/KVM and Proxmox VE deployment forms ask what to install in two
+lists: **ERP** — Odoo, Dolibarr or None — then **Version**. Odoo's versions
+are read from `conf/supported_version_erplibre.json`, newest first, the
+deprecated ones marked, the `default` one (18.0) preselected, followed by
+*All versions*. Dolibarr offers its single pinned version, from
+`conf/supported_version_dolibarr.json`. *None* replaces the version list
+with the profiles that install no ERP: ERPLibre only, ERPLibre mobile,
+ERPLibre Home, ERPLibre Deployment and the Proxmox VE hypervisor. A system
+that imposes its profile, such as Proxmox VE, still does.
+
+The common choice is every VM's default, and each row of the plan can take
+its own ERP and version. The text prompts ask the same two questions, and a
+question with a single answer is skipped; a blank answer keeps the starred
+choice, Odoo 18 by default.
+
+The spec carries the choice next to the install command: `app`, `version`
+and `options` in the `install` block, `app`, `app_version` and
+`app_options` on a VM that has its own command (a VM's `version` is its
+system's). The command is derived from the ERP and its version, and stays
+in `cmd` and `install_cmd`, which the deployment runs. A spec without these
+keys is judged on its command, so it replays as before.
+
 ### Dolibarr profile
 
-The install profile **Dolibarr (development, MariaDB)** puts Dolibarr in the
-VM instead of Odoo. The VM clones ERPLibre into `~/git/erplibre`, runs
+The ERP **Dolibarr**, profile **Dolibarr (development, MariaDB)**, puts
+Dolibarr in the VM instead of Odoo. The VM clones ERPLibre into `~/git/erplibre`, runs
 `script/dolibarr/install_native.py --mode dev` on MariaDB, then starts the
 instance with `script/dolibarr/run.py start`: no Odoo, no
 `erplibre.service`, no reboot. The instance listens on the VM's loopback

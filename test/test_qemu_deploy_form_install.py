@@ -138,14 +138,16 @@ class TestCeQuElleGrise(unittest.TestCase):
                     etat = {}
                     for cible in (
                         "f_branch",
-                        "f_profile_install",
+                        "f_erp",
+                        "f_version",
                         "f_python",
                         "f_prod",
                         "f_store",
                         "f_type",
                         "f_monitor",
                         "v0_branch",
-                        "v0_prof",
+                        "v0_erp",
+                        "v0_ver",
                     ):
                         try:
                             etat[cible] = app.query_one(f"#{cible}").disabled
@@ -193,7 +195,14 @@ class TestCeQuElleGrise(unittest.TestCase):
 
     def test_the_branch_and_the_profile_only_serve_an_install(self):
         vu = self.etats()
-        for champ in ("f_branch", "f_profile_install", "v0_branch", "v0_prof"):
+        for champ in (
+            "f_branch",
+            "f_erp",
+            "f_version",
+            "v0_branch",
+            "v0_erp",
+            "v0_ver",
+        ):
             self.assertFalse(vu["installe"][champ], champ)
             self.assertTrue(vu["rien"][champ], champ)
             # Même avec un bureau : ils ne servent QU'à ERPLibre.

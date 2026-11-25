@@ -43,11 +43,13 @@ def contextes():
     pve = contexte_proxmox(todo)
     pve["install_profiles"] = profils
     pve["catalog"] = {"amd64": pve["catalog"]["amd64"] + [NIXOS]}
-    doli = next(i for i, (_l, c) in enumerate(profils) if c == qd.INSTALL_CMD)
-    return {"qemu": qemu, "proxmox": pve}, doli
+    return {"qemu": qemu, "proxmox": pve}
 
 
-CTX, DOLI = contextes() if TEXTUAL else ({}, 0)
+CTX = contextes() if TEXTUAL else {}
+# Valeurs de la liste ERP : Dolibarr, et Odoo pour y revenir.
+DOLI = qd.APP_DOLIBARR
+ODOO = qd.APP_ODOO
 
 
 def fabrique(nom):
@@ -84,10 +86,10 @@ def scenario(nom, distros, gestes):
     return vu
 
 
-async def commun(app, pilote, rang):
+async def commun(app, pilote, cle):
     from textual.widgets import Select
 
-    app.query_one("#f_profile_install", Select).value = rang
+    app.query_one("#f_erp", Select).value = cle
     await pilote.pause()
     await pilote.pause()
 
@@ -111,7 +113,7 @@ class TestLaProduction(unittest.TestCase):
                     vu["grise"] = case.disabled
                     vu["note"] = app.query_one("#t_prod_note").display
                     vu["prod"] = app._form_values()["install"]["prod"]
-                    await commun(app, pilote, 0)
+                    await commun(app, pilote, ODOO)
                     vu["rendu"] = (
                         case.disabled,
                         app._form_values()["install"]["prod"],
@@ -174,7 +176,7 @@ class TestLesSystemesRefuses(unittest.TestCase):
                         for k, r in enumerate(app.rows)
                         if r["vm"]["distro"] == "nixos"
                     )
-                    app.query_one(f"#v{i}_prof", Select).value = DOLI
+                    app.query_one(f"#v{i}_erp", Select).value = DOLI
                     await pilote.pause()
                     await pilote.pause()
                     vu["tete"] = app._row_head(i, app.rows[i])

@@ -52,28 +52,25 @@ class QemuInstallMixin:
 
     def _qemu_install_profiles(self):
         """Profils installables : [(libellé, commande)]. Le premier est le
-        défaut. Partagé par l'invite en ligne et le formulaire TUI."""
+        défaut. Partagé par l'invite en ligne et le formulaire TUI.
+
+        Une version par ERP du registre, dans l'ordre du registre (Odoo de
+        la plus récente à la plus ancienne, puis toutes ses versions, puis
+        Dolibarr), suivies des profils sans ERP de _qemu_other_profiles."""
         profiles = [
-            (
-                f"ERPLibre + Odoo {v}",
-                f"make install_os && make install_odoo_{v}",
-            )
-            for v in ("18", "17", "16", "15", "14", "13", "12")
+            (v.profile_label, v.cmd)
+            for app in erp.REGISTRY
+            for v in app.versions()
         ]
-        profiles += [
-            (
-                t("ERPLibre + all Odoo versions"),
-                "make install_os && make install_odoo_all_version",
-            ),
+        return profiles + self._qemu_other_profiles()
+
+    def _qemu_other_profiles(self):
+        """Les profils qui n'installent aucun ERP du registre : le choix
+        « Aucun » du sélecteur ERP les offre à la place des versions."""
+        return [
             (
                 t("ERPLibre only (no Odoo)"),
                 "make install_os && ./script/install/install_erplibre.sh",
-            ),
-            # Un profil par ERP du registre qui en déclare un.
-            *(
-                (t(app.label), app.install_cmd)
-                for app in erp.REGISTRY
-                if app.install_cmd
             ),
             (
                 t("ERPLibre mobile (home)"),
@@ -100,7 +97,6 @@ class QemuInstallMixin:
                 "./script/proxmox/install_proxmox.sh",
             ),
         ]
-        return profiles
 
     # Un système qui IMPOSE ce qu'on installe dessus. Choisir « Proxmox VE »
     # comme système, c'est demander qu'il soit installé : ni ERPLibre, ni
@@ -168,35 +164,62 @@ class QemuInstallMixin:
         """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
         finale exécutée dans ~/git/erplibre).
 
-        Le profil qu'un système impose passe en tête, et devient donc le
-        défaut de la réponse vide. Un profil dont l'ERP refuse un des
-        `systems` (son distro_refusal) affiche la raison par système et
-        repose la question ; la réponse vide vaut le premier profil, jugé
-        de la même façon.
+        Deux questions : l'ERP (« Aucun » compris), puis sa version, ou le
+        profil sans ERP quand c'est « Aucun ». Une question à un seul choix
+        n'est pas posée. La réponse vide vaut le défaut marqué « * » : Odoo
+        et sa version « default », ou le profil qu'un système impose. Un
+        ERP qui refuse un des `systems` (son distro_refusal) affiche la
+        raison par système et repose les deux questions.
         """
-        profiles = self._qemu_install_profiles()
+        choix = erp.Choices(self._qemu_install_profiles())
         impose = self._qemu_distro_profile(distro)
-        if impose:
-            profiles.sort(key=lambda p: p[0] != impose[0])
-        print(f"\n{t('What to install on the VM(s)?')}")
-        for i, (label, _cmd) in enumerate(profiles, 1):
-            print(f"  [{i}] {label}{' *' if i == 1 else ''}")
+        defaut = choix.of_cmd(impose[1]) if impose else choix.first()
+        noms = {cle: nom for nom, cle in choix.apps}
         while True:
-            choix = profiles[0]  # défaut : ERPLibre + Odoo 18
-            sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
-            try:
-                idx = int(sel) - 1
-                if 0 <= idx < len(profiles):
-                    choix = profiles[idx]
-            except ValueError:
-                pass
-            app = erp.app_for_cmd(choix[1])
-            refus = [(s, app.distro_refusal(s)) for s in systems]
+            app = self._qemu_ask_pick(t("Which ERP?"), choix.apps, defaut[0])
+            valeur_defaut = (
+                defaut[1] if app == defaut[0] else choix.default(app)
+            )
+            options = choix.options(app)
+            titre = (
+                t("What to install on the VM(s)?")
+                if app == erp.APP_NONE
+                else f"{t('Which version?')} ({noms.get(app, app)})"
+            )
+            valeur = self._qemu_ask_pick(titre, options, valeur_defaut)
+            cmd = choix.cmd(app, valeur)
+            label = choix.label_of_cmd(cmd)
+            refus = [
+                (s, erp.app_for_cmd(cmd).distro_refusal(s)) for s in systems
+            ]
             refus = [(s, r) for s, r in refus if r]
             if not refus:
-                return choix
+                return label, cmd
             for s, raison in refus:
                 print(f"  ✗ {s}: {raison}")
+
+    @staticmethod
+    def _qemu_ask_pick(titre, options, defaut):
+        """La valeur choisie parmi `options` [(libellé, valeur)].
+
+        Une liste d'un seul choix le rend sans rien demander. La réponse
+        vide, ou qui n'est pas un rang de la liste, vaut `defaut`, marqué
+        « * » ; un `defaut` absent de la liste vaut le premier choix."""
+        valeurs = [v for _l, v in options]
+        if defaut not in valeurs:
+            defaut = valeurs[0] if valeurs else defaut
+        if len(options) <= 1:
+            return defaut
+        print(f"\n{titre}")
+        for i, (label, valeur) in enumerate(options, 1):
+            print(f"  [{i}] {label}{' *' if valeur == defaut else ''}")
+        libelle = options[valeurs.index(defaut)][0]
+        sel = input(t("Choice (number, blank = %s): ") % libelle).strip()
+        try:
+            idx = int(sel) - 1
+        except ValueError:
+            return defaut
+        return valeurs[idx] if 0 <= idx < len(valeurs) else defaut
 
     @staticmethod
     def _qemu_effective_prod(prod, install_cmd):

@@ -258,7 +258,8 @@ class TestLeFormulaire(unittest.TestCase):
         async def gestes(app, pilote):
             from textual.widgets import Select
 
-            app.query_one("#v0_prof", Select).value = 0  # ERPLibre + Odoo 18
+            # Odoo, dans sa version par défaut : 18.0.
+            app.query_one("#v0_erp", Select).value = "odoo"
             await pilote.pause()
             await pilote.pause()
 
@@ -269,9 +270,10 @@ class TestLeFormulaire(unittest.TestCase):
         async def gestes(app, pilote):
             from textual.widgets import Select
 
-            app.query_one("#v0_prof", Select).value = 0
+            app.query_one("#v0_erp", Select).value = "odoo"
             await pilote.pause()
-            app.query_one("#v0_prof", Select).focus()
+            await pilote.pause()
+            app.query_one("#v0_ver", Select).focus()
             await pilote.pause()
             app.action_clear_vm()
             await pilote.pause()

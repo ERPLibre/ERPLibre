@@ -207,6 +207,11 @@ def apply_profile(
                 # Libelle du profil, pour que le recapitulatif puisse dire
                 # « Odoo 18 » sans connaitre la liste des profils.
                 "install_label": "",
+                # L'ERP et sa version que porte « install_cmd », vides avec
+                # elle ; « version » est déjà celle du système de la VM.
+                "app": "",
+                "app_version": "",
+                "app_options": {},
             }
         )
     return out
@@ -837,9 +842,24 @@ def usb_deck_selectors(devs) -> list:
     return sels
 
 
+def with_erp_fields(vms, install):
+    """Pose sur chaque VM l'ERP et la version de sa propre commande
+    (qemu_erp.vm_choice_fields), et rend `install` complété des siens
+    quand il n'en porte pas. Une VM imposée par son système, ou surchargée,
+    les reçoit ainsi de la commande même qui sera lancée."""
+    from script.todo import qemu_erp as erp
+
+    for vm in vms:
+        vm.update(erp.vm_choice_fields(vm))
+    if install and "app" not in install:
+        install = {**install, **erp.choice_fields(install.get("cmd"))}
+    return install
+
+
 def build_spec(vms, domains, form):
     """Assemble la spec finale, dans la forme exacte que produit la CLI."""
     known = set(domains)
+    install = with_erp_fields(vms, form["install"])
     return {
         "res_label": form["res_label"],
         "vms": [vm for vm in vms if vm["name"] not in known],
@@ -850,7 +870,7 @@ def build_spec(vms, domains, form):
         "vm_tools": tuple(form.get("vm_tools") or ()),
         "python_provider": form.get("python_provider", ""),
         "app_store": form.get("app_store", "deb"),
-        "install": form["install"],
+        "install": install,
         # Au NIVEAU DU DÉPLOIEMENT, pas de l'installation : une VM sans
         # ERPLibre se suit aussi (cloud-init, puis relevé système). Absent de
         # cette assemblée, le choix du formulaire n'atteignait jamais la spec.

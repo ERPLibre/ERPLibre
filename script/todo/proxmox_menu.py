@@ -3327,7 +3327,12 @@ class ProxmoxMenuMixin:
                 distro, systems=(distro,)
             )
             print(f"  {label}")
-            install = {"branch": branch, "cmd": cmd, "label": label}
+            install = {
+                "branch": branch,
+                "cmd": cmd,
+                "label": label,
+                **erp.choice_fields(cmd),
+            }
         spec_finale = {
             "host": host,
             "storage": stockage,

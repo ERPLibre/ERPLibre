@@ -33,7 +33,10 @@ Ce que le formulaire hôte fournit, en plus du contrat de PlanMixin :
 * `_hist_sync_derived(s)`    remet ce qui découle des champs (grisés,
   champs révélés) ;
 * `_hist_rebuild()`          reconstruit le plan depuis le modèle ;
-* `_hist_sync_rows()`        règle les rangées neuves (grisés, saisies).
+* `_hist_sync_rows()`        règle les rangées neuves (grisés, saisies) ;
+* `_hist_prepare(s)`         facultatif : donne aux listes dont les choix
+  dépendent d'un autre champ ceux de l'instantané, avant que leurs valeurs
+  soient reposées.
 
 Tout cela s'appelle sous `prevent()` : les gestionnaires du formulaire ne
 voient pas les valeurs reposées, sans quoi un profil ou une branche reposés
@@ -75,7 +78,8 @@ FIELD_NAMES = {
     "f_disk": "Disk",
     "c_disk": "Disk",
     "f_branch": "ERPLibre branch",
-    "f_profile_install": "Install profile",
+    "f_erp": "ERP",
+    "f_version": "Version",
     "f_key": "SSH public key path",
     "f_storage": "Storage",
     "f_bridge": "Bridge",
@@ -731,6 +735,9 @@ class HistoryMixin:
         ):
             self._hist_restore_catalog(snap)
             self._hist_restore_radios(snap)
+            prepare = getattr(self, "_hist_prepare", None)
+            if callable(prepare):
+                prepare(snap)
             for wid, value in snap["widgets"].items():
                 self._hist_put(wid, value)
         # Les confirmations « F5 à nouveau » valaient pour le plan d'avant.

@@ -504,10 +504,34 @@ GNOME Remote Desktop 47 and later read the password on their standard input.
 `grdctl` 46 only takes it as an argument, and `pkexec`, which `grdctl
 --system` goes through, logs that command line in the VM's journal.
 
+### ERP and version
+
+The QEMU/KVM and Proxmox VE deployment forms ask what to install in two
+lists: **ERP** — Odoo, Dolibarr or None — then **Version**. Odoo's versions
+are read from `conf/supported_version_erplibre.json`, newest first, the
+deprecated ones marked, the `default` one (18.0) preselected, followed by
+*All versions*. Dolibarr offers its single pinned version, from
+`conf/supported_version_dolibarr.json`. *None* replaces the version list
+with the profiles that install no ERP: ERPLibre only, ERPLibre mobile,
+ERPLibre Home, ERPLibre Deployment and the Proxmox VE hypervisor. A system
+that imposes its profile, such as Proxmox VE, still does.
+
+The common choice is every VM's default, and each row of the plan can take
+its own ERP and version. The text prompts ask the same two questions, and a
+question with a single answer is skipped; a blank answer keeps the starred
+choice, Odoo 18 by default.
+
+The spec carries the choice next to the install command: `app`, `version`
+and `options` in the `install` block, `app`, `app_version` and
+`app_options` on a VM that has its own command (a VM's `version` is its
+system's). The command is derived from the ERP and its version, and stays
+in `cmd` and `install_cmd`, which the deployment runs. A spec without these
+keys is judged on its command, so it replays as before.
+
 ### Dolibarr profile
 
-The install profile **Dolibarr (development, MariaDB)** puts Dolibarr in the
-VM instead of Odoo. The VM clones ERPLibre into `~/git/erplibre`, runs
+The ERP **Dolibarr**, profile **Dolibarr (development, MariaDB)**, puts
+Dolibarr in the VM instead of Odoo. The VM clones ERPLibre into `~/git/erplibre`, runs
 `script/dolibarr/install_native.py --mode dev` on MariaDB, then starts the
 instance with `script/dolibarr/run.py start`: no Odoo, no
 `erplibre.service`, no reboot. The instance listens on the VM's loopback
@@ -802,10 +826,36 @@ GNOME Remote Desktop 47 et suivants lisent le mot de passe sur leur entrée
 standard. `grdctl` 46 ne le prend qu'en argument, et `pkexec`, par lequel
 passe `grdctl --system`, journalise cette ligne de commande dans la VM.
 
+### ERP et version
+
+Les formulaires de déploiement QEMU/KVM et Proxmox VE demandent quoi
+installer en deux listes : **ERP** — Odoo, Dolibarr ou Aucun —, puis
+**Version**. Les versions d'Odoo sont lues dans
+`conf/supported_version_erplibre.json`, la plus récente d'abord, les
+dépréciées marquées, celle marquée `default` (18.0) présélectionnée, suivies
+de *Toutes les versions*. Dolibarr offre sa seule version épinglée, celle de
+`conf/supported_version_dolibarr.json`. *Aucun* remplace la liste des
+versions par les profils qui n'installent aucun ERP : ERPLibre seul,
+ERPLibre mobile, ERPLibre Home, ERPLibre Déploiement et l'hyperviseur
+Proxmox VE. Un système qui impose son profil, comme Proxmox VE, l'impose
+toujours.
+
+Le choix commun est le défaut de chaque VM, et chaque rangée du plan peut
+prendre son propre ERP et sa propre version. Les invites en ligne posent les
+deux mêmes questions, et une question à une seule réponse n'est pas posée ;
+une réponse vide garde le choix étoilé, Odoo 18 par défaut.
+
+La spec porte le choix à côté de la commande d'installation : `app`,
+`version` et `options` dans le bloc `install`, `app`, `app_version` et
+`app_options` sur une VM qui a sa propre commande (la `version` d'une VM est
+celle de son système). La commande se déduit de l'ERP et de sa version, et
+reste dans `cmd` et `install_cmd`, que le déploiement exécute. Une spec sans
+ces clés se juge sur sa commande : elle se rejoue comme avant.
+
 ### Profil Dolibarr
 
-Le profil d'installation **Dolibarr (développement, MariaDB)** met Dolibarr
-dans la VM à la place d'Odoo. La VM clone ERPLibre dans `~/git/erplibre`,
+L'ERP **Dolibarr**, profil **Dolibarr (développement, MariaDB)**, met
+Dolibarr dans la VM à la place d'Odoo. La VM clone ERPLibre dans `~/git/erplibre`,
 lance `script/dolibarr/install_native.py --mode dev` sur MariaDB, puis
 démarre l'instance par `script/dolibarr/run.py start` : ni Odoo, ni
 `erplibre.service`, ni redémarrage. L'instance n'écoute que sur la boucle

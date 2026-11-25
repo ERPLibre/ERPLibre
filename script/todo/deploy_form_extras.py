@@ -248,6 +248,11 @@ class ExtrasMixin:
         self._extras = extras_tables(ctx)
         self._extras["branches"] = list(branches)
         self._extras["profiles"] = list(profiles)
+        # Le sélecteur ERP / Version, bâti sur ces mêmes profils : le choix
+        # commun et celui de chaque rangée en lisent les listes.
+        self._extras["choices"] = erp.Choices(profiles)
+        # L'ERP dont la liste Version porte les choix en ce moment.
+        self._erp_shown = None
         self._extras["distro_profiles"] = dict(
             ctx.get("distro_profiles") or {}
         )
@@ -293,6 +298,31 @@ class ExtrasMixin:
                     f"{t('Graphical (server + desktop):')} {label}",
                     value=tab["defaults"].get("desktop", "") == key,
                 )
+
+    def compose_erp_choice(self):
+        """Le choix commun d'installation : l'ERP (« Aucun » compris), puis
+        sa version, ou le profil sans ERP pour « Aucun ». Chaque rangée
+        offre les deux mêmes listes (install_row_widgets) ; sans profil, les
+        deux restent vides."""
+        from textual.widgets import Select, Static
+
+        null = getattr(Select, "NULL", Select.BLANK)
+        choix = self._extras["choices"]
+        app, valeur = choix.first()
+        self._erp_shown = app
+        yield Static(f"  {t('ERP and version:')}", id="t_erp")
+        yield Select(
+            choix.apps,
+            value=app if choix.apps else null,
+            allow_blank=not choix.apps,
+            id="f_erp",
+        )
+        yield Select(
+            choix.options(app),
+            value=valeur if choix.apps else null,
+            allow_blank=not choix.apps,
+            id="f_version",
+        )
 
     def compose_install_extras(self):
         """Ce qui pend à la case « installer » : production, magasin,
@@ -778,14 +808,37 @@ class ExtrasMixin:
         branches = self._extras["branches"]
         return valeur if isinstance(valeur, str) else (branches or [""])[0]
 
+    def _erp_choice(self):
+        """(ERP, valeur) du choix commun, lu sur #f_erp et #f_version.
+
+        ("", "") sans ces listes ; une version que l'ERP n'offre pas vaut
+        sa version par défaut, un ERP absent le premier choix."""
+        choix = self._extras["choices"]
+        app_w, ver_w = self._widget("#f_erp"), self._widget("#f_version")
+        if app_w is None or ver_w is None:
+            return "", ""
+        app, valeur = app_w.value, ver_w.value
+        if choix.cmd(app, valeur):
+            return app, valeur
+        if isinstance(app, str) and choix.options(app):
+            return app, choix.default(app)
+        return choix.first()
+
     def _profile_cmd(self) -> str:
-        """Commande du profil choisi en haut : le défaut de chaque VM."""
-        profiles = self._extras["profiles"]
-        widget = self._widget("#f_profile_install")
-        if not profiles or widget is None:
-            return ""
-        index = widget.value
-        return profiles[index if isinstance(index, int) else 0][1]
+        """Commande du choix d'en haut, déduite de l'ERP et de sa version :
+        le défaut de chaque VM."""
+        return self._extras["choices"].cmd(*self._erp_choice())
+
+    def install_choice(self) -> dict:
+        """Le fragment du bloc « install » que donne le choix commun :
+        libellé et commande du profil, ERP, version et options
+        (qemu_erp.choice_fields)."""
+        cmd = self._profile_cmd()
+        return {
+            "label": self._extras["choices"].label_of_cmd(cmd),
+            "cmd": cmd,
+            **erp.choice_fields(cmd),
+        }
 
     def _row_default_cmd(self, i) -> str:
         """Commande qu'une rangée prend d'elle-même : celle que son système
@@ -826,16 +879,49 @@ class ExtrasMixin:
         cmd = vm.get("install_cmd") or self._row_default_cmd(i)
         return erp.app_for_cmd(cmd).distro_refusal(vm.get("distro", ""))
 
-    def _row_profile_index(self, i) -> int:
-        """Rang du profil que la rangée doit AFFICHER."""
+    def _row_cmd(self, i) -> str:
+        """Commande effective de la rangée `i` : la sienne, sinon son
+        défaut."""
         cmd = ""
         if i < len(self.rows):
             cmd = self.rows[i]["vm"].get("install_cmd") or ""
-        cmd = cmd or self._row_default_cmd(i)
-        for k, (_lbl, c) in enumerate(self._extras["profiles"]):
-            if c == cmd:
-                return k
-        return 0
+        return cmd or self._row_default_cmd(i)
+
+    def _row_choice(self, i):
+        """(ERP, valeur) que la rangée doit AFFICHER ; une commande que la
+        liste n'offre pas s'affiche sur le premier choix."""
+        return self._extras["choices"].of_cmd(self._row_cmd(i))
+
+    def _row_install_fields(self, i) -> dict:
+        """Le choix d'installation de la rangée `i`, résolu : sa commande
+        effective, son libellé, son ERP et sa version. Ce que fige un
+        verrou."""
+        cmd = self._row_cmd(i)
+        vm = self.rows[i]["vm"] if i < len(self.rows) else {}
+        champs = erp.choice_fields(cmd)
+        return {
+            "install_cmd": cmd,
+            "install_label": (
+                vm.get("install_label")
+                or self._extras["choices"].label_of_cmd(cmd)
+            ),
+            "app": champs["app"],
+            "app_version": champs["version"],
+        }
+
+    def _set_row_install(self, index, cmd) -> None:
+        """Écrit la commande `cmd` en surcharge de la rangée, avec son
+        libellé, son ERP et sa version ; la retire quand `cmd` est le
+        défaut de la rangée, qui suit alors le choix commun."""
+        meme = cmd == self._row_default_cmd(index)
+        champs = erp.choice_fields(cmd)
+        for field, value in (
+            ("install_cmd", cmd),
+            ("install_label", self._extras["choices"].label_of_cmd(cmd)),
+            ("app", champs["app"]),
+            ("app_version", champs["version"]),
+        ):
+            self._set_override(index, field, "" if meme else value)
 
     def _type_options(self, distro=None):
         """Choix du type d'UNE rangée : serveur, puis les saveurs que son
@@ -852,9 +938,10 @@ class ExtrasMixin:
         ]
 
     def install_row_widgets(self, i, null=None):
-        """Les trois choix qu'une VM peut prendre à elle seule.
+        """Les choix qu'une VM peut prendre à elle seule : branche, ERP,
+        version (ou profil sans ERP), type.
 
-        Ici et non dans un formulaire : ce sont les mêmes trois des deux
+        Ici et non dans un formulaire : ce sont les mêmes des deux
         côtés, et ils manquaient à l'écran Proxmox — où l'on déploie pourtant
         le plus souvent un parc MIXTE, un hyperviseur imbriqué à côté de VM
         ERPLibre."""
@@ -877,18 +964,28 @@ class ExtrasMixin:
                 allow_blank=False,
                 id=f"v{i}_branch",
             ),
-            (
-                Select(
-                    [(lbl, k) for k, (lbl, _c) in enumerate(tab["profiles"])],
-                    value=self._row_profile_index(i),
-                    allow_blank=False,
-                    classes="vmprof",
-                    id=f"v{i}_prof",
-                )
-                if tab["profiles"]
-                else Static("", classes="vmprof")
-            ),
         ]
+        choix = tab["choices"]
+        if choix.apps:
+            app, valeur = self._row_choice(i)
+            widgets += [
+                Select(
+                    choix.apps,
+                    value=app,
+                    allow_blank=False,
+                    classes="vmerp",
+                    id=f"v{i}_erp",
+                ),
+                Select(
+                    choix.options(app),
+                    value=valeur,
+                    allow_blank=False,
+                    classes="vmver",
+                    id=f"v{i}_ver",
+                ),
+            ]
+        else:
+            widgets.append(Static("", classes="vmver"))
         if tab["desktops"]:
             options = self._type_options(vm.get("distro"))
             valeur = vm.get("desktop") or SERVER
@@ -905,9 +1002,10 @@ class ExtrasMixin:
         return widgets
 
     def extras_on_row_select(self, event, index, field, null=None) -> bool:
-        """Traite branche / profil / type d'UNE rangée. True quand c'est fait.
+        """Traite branche / ERP / version / type d'UNE rangée. True quand
+        c'est fait.
 
-        Ce que ces trois partagent, et qui n'est pas évident : poser
+        Ce que ces choix partagent, et qui n'est pas évident : poser
         « value= » au montage fait émettre un Changed que Textual délivre
         APRÈS coup, et un verrou temporel ne l'attrape pas — mesuré, les
         champs de chaque VM se retrouvaient surchargés dès l'affichage et le
@@ -918,25 +1016,33 @@ class ExtrasMixin:
         donne déjà n'enregistre pas de surcharge. La VM suivra donc le profil
         s'il change — ce qui est aussi le plus attendu quand on n'a rien
         changé de visible."""
-        if field not in ("branch", "prof", "type"):
+        if field not in ("branch", "erp", "ver", "type"):
             return False
         vm_now = self.rows[index]["vm"]
-        if field == "prof":
+        if field in ("erp", "ver"):
             # L'écho se reconnaît à ceci : la valeur est CELLE QU'ON VIENT
-            # D'AFFICHER. Comparer les commandes ne suffisait pas — quand la
-            # commande imposée par le système n'est pas dans la liste
-            # proposée, la liste retombe sur le rang 0, et l'écho de ce
-            # rang 0 effaçait l'imposition. Un Proxmox imbriqué reprenait
-            # ainsi ERPLibre et Odoo 18, le défaut qu'on venait de corriger.
-            if event.value == self._row_profile_index(index):
+            # D'AFFICHER. Comparer les commandes ne suffit pas : une
+            # commande imposée que la liste n'offre pas s'affiche sur le
+            # premier choix, et l'écho de ce choix effacerait l'imposition.
+            choix = self._extras["choices"]
+            app, valeur = self._row_choice(index)
+            if event.value == (app if field == "erp" else valeur):
                 return True
-            label, cmd = self._extras["profiles"][event.value]
-            defaut = self._row_default_cmd(index)
-            if cmd == (vm_now.get("install_cmd") or defaut):
+            if field == "erp":
+                # Un autre ERP prend la version du défaut de la rangée
+                # quand c'est le même ERP, sinon sa version par défaut ; ses
+                # versions ne sont pas celles que la rangée montre, d'où le
+                # remontage forcé.
+                app = event.value
+                d_app, d_val = choix.of_cmd(self._row_default_cmd(index))
+                valeur = d_val if app == d_app else choix.default(app)
+                self._shown_ids = ()
+            else:
+                valeur = event.value
+            cmd = choix.cmd(app, valeur)
+            if not cmd or cmd == self._row_cmd(index):
                 return True
-            meme = cmd == defaut
-            self._set_override(index, "install_cmd", "" if meme else cmd)
-            self._set_override(index, "install_label", "" if meme else label)
+            self._set_row_install(index, cmd)
             self._recompute()
             return True
         if field == "branch":
@@ -1131,7 +1237,8 @@ class ExtrasMixin:
         dev_seul = installe and app.dev_only
         for cible, actif in (
             ("#f_branch", installe),
-            ("#f_profile_install", installe),
+            ("#f_erp", installe),
+            ("#f_version", installe),
             ("#f_prod", quelque_chose and not dev_seul),
         ):
             widget = self._widget(cible)
@@ -1148,6 +1255,7 @@ class ExtrasMixin:
         # Le titre suit ses champs : une section entière se lit inactive d'un
         # coup d'œil, au lieu de se déduire de trois widgets ternes.
         for cible, actif in (
+            ("#t_erp", installe),
             ("#t_store", quelque_chose),
             ("#t_tools", quelque_chose),
             ("#t_python", installe),
@@ -1157,7 +1265,7 @@ class ExtrasMixin:
                 widget.set_class(not actif, "off")
         # Les rangées portent les mêmes choix, par VM.
         for i in range(len(getattr(self, "rows", ()))):
-            for cible in (f"#v{i}_branch", f"#v{i}_prof"):
+            for cible in (f"#v{i}_branch", f"#v{i}_erp", f"#v{i}_ver"):
                 widget = self._widget(cible)
                 if widget is not None:
                     widget.disabled = not installe
@@ -1165,6 +1273,56 @@ class ExtrasMixin:
     # ------------------------------------------------------------------ #
     # Les messages, et la spec
     # ------------------------------------------------------------------ #
+    def _erp_set_versions(self, app, value=None) -> None:
+        """Donne à #f_version les choix de `app`, sur `value` quand elle y
+        est, sinon sur la valeur par défaut de `app`. Sous prevent() : ce
+        remplacement n'est pas une saisie, et son Changed, délivré après
+        coup, serait pris pour une."""
+        from textual.widgets import Select
+
+        widget = self._widget("#f_version")
+        if widget is None:
+            return
+        choix = self._extras["choices"]
+        options = choix.options(app)
+        if value not in [v for _l, v in options]:
+            value = choix.default(app)
+        with self.prevent(Select.Changed):
+            widget.set_options(options)
+            if options:
+                widget.value = value
+        self._erp_shown = app
+
+    def erp_on_select(self, event) -> bool:
+        """Traite le choix commun #f_erp / #f_version. True quand c'est
+        fait ; l'appelant recalcule ensuite son plan.
+
+        Un autre ERP remplace les choix de la liste Version et force le
+        remontage des rangées, dont les listes Version changent aussi. Le
+        choix commun reprend la main sur les rangées non figées, comme
+        l'ancien profil unique."""
+        ident = getattr(event.select, "id", "")
+        if ident not in ("f_erp", "f_version"):
+            return False
+        if (
+            ident == "f_erp"
+            and isinstance(event.value, str)
+            and event.value != self._erp_shown
+        ):
+            self._erp_set_versions(event.value)
+            self._shown_ids = ()
+        self._clear_overrides(("install_cmd",))
+        self._sync_install_deps()
+        return True
+
+    def _hist_prepare(self, snap) -> None:
+        """Appelée par l'historique avant de reposer les champs : #f_version
+        reçoit les choix de l'ERP de l'instantané, sans quoi sa valeur,
+        absente des choix de l'ERP affiché, serait laissée de côté."""
+        app = (snap.get("widgets") or {}).get("f_erp")
+        if isinstance(app, str) and app != self._erp_shown:
+            self._erp_set_versions(app)
+
     def extras_on_select(self, event) -> bool:
         """Traite le sélecteur de fuseau. Rend True quand c'est fait, pour
         que l'appelant s'arrête là.

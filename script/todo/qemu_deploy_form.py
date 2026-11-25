@@ -168,7 +168,8 @@ def run_deploy_form(ctx, run_app: bool = True):
         noms longs (« 1.6.0 », « develop », « feature/xyz ») : trop étroite, la
         liste les tronque et on ne sait plus ce qu'on a choisi. */
         .vmrow Select.vmbranch { width: 34; }
-        .vmrow Select.vmprof { width: 40; }
+        .vmrow Select.vmerp { width: 16; }
+        .vmrow Select.vmver { width: 36; }
         """
         )
         # Touches de fonction plutôt que ctrl+lettre : ctrl+p est pris par la
@@ -333,12 +334,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         allow_blank=False,
                         id="f_branch",
                     )
-                    yield Select(
-                        [(lbl, i) for i, (lbl, _c) in enumerate(profiles)],
-                        value=0 if profiles else SELECT_NULL,
-                        allow_blank=not profiles,
-                        id="f_profile_install",
-                    )
+                    yield from self.compose_erp_choice()
                     yield from self.compose_install_extras()
                     # Aucune case pour le cache : l'interception est
                     # transparente et vaut pour tout le pont, donc une VM ne
@@ -642,17 +638,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 "disk": vm["disk"],
                 "desktop": vm.get("desktop") or "",
                 "branch": vm.get("branch") or self._branch(),
-                "install_cmd": (
-                    vm.get("install_cmd") or self._row_default_cmd(index)
-                ),
-                "install_label": (
-                    vm.get("install_label")
-                    or (
-                        profiles[self._row_profile_index(index)][0]
-                        if profiles
-                        else ""
-                    )
-                ),
+                **self._row_install_fields(index),
             }
 
         def _recompute(self):
@@ -951,10 +937,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                     sel.value = (
                         vm[field] if vm[field] in presets else SELECT_NULL
                     )
+                app, version = self._row_choice(i)
                 for wid, value in (
                     (f"#v{i}_type", vm.get("desktop") or SERVER),
                     (f"#v{i}_branch", vm.get("branch") or self._branch()),
-                    (f"#v{i}_prof", self._row_profile_index(i)),
+                    (f"#v{i}_erp", app),
+                    (f"#v{i}_ver", version),
                 ):
                     try:
                         sel = self.query_one(wid, Select)
@@ -1078,7 +1066,9 @@ def run_deploy_form(ctx, run_app: bool = True):
             if self._syncing:
                 return
             wid = event.select.id or ""
-            row = re.match(r"v(\d+)_(vcpus|ram|disk|type|branch|prof)$", wid)
+            row = re.match(
+                r"v(\d+)_(vcpus|ram|disk|type|branch|erp|ver)$", wid
+            )
             if row and not self._is_current(event.select):
                 # Widget d'une génération périmée : son rang ne désigne plus
                 # la même VM. L'appliquer écraserait le réglage d'une voisine.
@@ -1121,14 +1111,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             # veut dire « celle du formulaire » — il suffit de redessiner.
             if self.extras_on_select(event):
                 return
-            if event.select.id in ("f_branch", "f_profile_install"):
-                self._clear_overrides(
-                    ("branch",)
-                    if event.select.id == "f_branch"
-                    else ("install_cmd",)
-                )
-                if event.select.id == "f_profile_install":
-                    self._sync_install_deps()
+            if self.erp_on_select(event):
+                self._recompute()
+                return
+            if event.select.id == "f_branch":
+                self._clear_overrides(("branch",))
                 self._recompute()
                 return
             field = SELECT_TO_FIELD.get(event.select.id)
@@ -1253,13 +1240,12 @@ def run_deploy_form(ctx, run_app: bool = True):
             monitor = offline or self.query_one("#f_monitor", Checkbox).value
             install = None
             if self.query_one("#f_install", Checkbox).value and profiles:
-                index = self.query_one("#f_profile_install", Select).value
-                label, cmd = profiles[index if isinstance(index, int) else 0]
                 install = {
                     "branch": self.query_one("#f_branch", Select).value,
                     "prod": self._prod_value(),
-                    "label": label,
-                    "cmd": cmd,
+                    # Libellé, commande, ERP, version et options du choix
+                    # commun.
+                    **self.install_choice(),
                     "monitor": monitor,
                 }
             key = self.query_one("#f_key", Input).value.strip()
@@ -1345,7 +1331,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
                 shown = {}
-                for f in ("vcpus", "ram", "disk", "type", "branch", "prof"):
+                for f in (*RES_FIELDS, "type", "branch", "erp", "ver"):
                     try:
                         shown[f] = self.query_one(f"#v{i}_{f}", Select).value
                     except Exception:

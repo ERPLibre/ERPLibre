@@ -39,9 +39,9 @@ from script.todo.deploy_form_lib import (
 )
 
 # Champs qui ne veulent rien dire l'un sans l'autre : retirer la commande
-# d'installation doit emporter son libellé, sinon le plan afficherait
-# « Odoo 18 » à côté d'une VM qui n'installe plus rien.
-COMPANIONS = {"install_cmd": ("install_label",)}
+# d'installation doit emporter son libellé, son ERP et sa version, sinon le
+# plan afficherait « Odoo 18 » à côté d'une VM qui n'installe plus rien.
+COMPANIONS = {"install_cmd": ("install_label", "app", "app_version")}
 
 # Les écrans sont construits à l'APPEL, pas à l'import : ce module se lit sans
 # Textual installé (le CLI TODO l'importe pour ses fonctions pures).

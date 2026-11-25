@@ -2791,6 +2791,9 @@ class QemuDeployMixin:
                 "prod": prod,
                 "label": label,
                 "cmd": cmd,
+                # L'ERP et sa version, déduits de la commande comme le
+                # formulaire les écrit.
+                **erp.choice_fields(cmd),
                 "monitor": monitor,
             }
         else:

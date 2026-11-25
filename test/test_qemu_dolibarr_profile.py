@@ -254,12 +254,14 @@ class TestLeGuide(unittest.TestCase):
 
 class TestLInvite(unittest.TestCase):
     def _choisit(self, reponses, systems):
+        """Joue `reponses` aux questions ERP puis Version ; « doli » est le
+        rang de Dolibarr dans la liste ERP, dont la seule version n'est pas
+        demandée."""
+        from script.todo import qemu_erp as erp
+
         todo = TODO.__new__(TODO)
-        rang = next(
-            str(i)
-            for i, (_l, c) in enumerate(todo._qemu_install_profiles(), 1)
-            if c == qd.INSTALL_CMD
-        )
+        choix = erp.Choices(todo._qemu_install_profiles())
+        rang = str(1 + [k for _n, k in choix.apps].index(qd.APP_DOLIBARR))
         suite = iter(rang if r == "doli" else r for r in reponses)
         with (
             contextlib.redirect_stdout(io.StringIO()) as sortie,
@@ -273,7 +275,7 @@ class TestLInvite(unittest.TestCase):
         self.assertEqual(qd.INSTALL_CMD, choix[1])
 
     def test_nixos_says_why_and_asks_again(self):
-        choix, sortie = self._choisit(["doli", "1"], ("ubuntu", "nixos"))
+        choix, sortie = self._choisit(["doli", "1", ""], ("ubuntu", "nixos"))
         self.assertIn("odoo_18", choix[1])
         self.assertIn("✗ nixos: ", sortie)
         self.assertIn(t(lib_dolibarr.NIXOS_DECLARE), sortie)

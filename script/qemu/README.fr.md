@@ -378,10 +378,36 @@ GNOME Remote Desktop 47 et suivants lisent le mot de passe sur leur entrée
 standard. `grdctl` 46 ne le prend qu'en argument, et `pkexec`, par lequel
 passe `grdctl --system`, journalise cette ligne de commande dans la VM.
 
+### ERP et version
+
+Les formulaires de déploiement QEMU/KVM et Proxmox VE demandent quoi
+installer en deux listes : **ERP** — Odoo, Dolibarr ou Aucun —, puis
+**Version**. Les versions d'Odoo sont lues dans
+`conf/supported_version_erplibre.json`, la plus récente d'abord, les
+dépréciées marquées, celle marquée `default` (18.0) présélectionnée, suivies
+de *Toutes les versions*. Dolibarr offre sa seule version épinglée, celle de
+`conf/supported_version_dolibarr.json`. *Aucun* remplace la liste des
+versions par les profils qui n'installent aucun ERP : ERPLibre seul,
+ERPLibre mobile, ERPLibre Home, ERPLibre Déploiement et l'hyperviseur
+Proxmox VE. Un système qui impose son profil, comme Proxmox VE, l'impose
+toujours.
+
+Le choix commun est le défaut de chaque VM, et chaque rangée du plan peut
+prendre son propre ERP et sa propre version. Les invites en ligne posent les
+deux mêmes questions, et une question à une seule réponse n'est pas posée ;
+une réponse vide garde le choix étoilé, Odoo 18 par défaut.
+
+La spec porte le choix à côté de la commande d'installation : `app`,
+`version` et `options` dans le bloc `install`, `app`, `app_version` et
+`app_options` sur une VM qui a sa propre commande (la `version` d'une VM est
+celle de son système). La commande se déduit de l'ERP et de sa version, et
+reste dans `cmd` et `install_cmd`, que le déploiement exécute. Une spec sans
+ces clés se juge sur sa commande : elle se rejoue comme avant.
+
 ### Profil Dolibarr
 
-Le profil d'installation **Dolibarr (développement, MariaDB)** met Dolibarr
-dans la VM à la place d'Odoo. La VM clone ERPLibre dans `~/git/erplibre`,
+L'ERP **Dolibarr**, profil **Dolibarr (développement, MariaDB)**, met
+Dolibarr dans la VM à la place d'Odoo. La VM clone ERPLibre dans `~/git/erplibre`,
 lance `script/dolibarr/install_native.py --mode dev` sur MariaDB, puis
 démarre l'instance par `script/dolibarr/run.py start` : ni Odoo, ni
 `erplibre.service`, ni redémarrage. L'instance n'écoute que sur la boucle

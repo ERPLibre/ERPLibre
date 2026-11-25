@@ -10955,9 +10955,38 @@ TRANSLATIONS = {
         "fr": "Que veut-on installer sur la/les VM ?",
         "en": "What to install on the VM(s)?",
     },
-    "Choice (number, blank = Odoo 18): ": {
-        "fr": "Choix (numéro, vide = Odoo 18) : ",
-        "en": "Choice (number, blank = Odoo 18): ",
+    "Choice (number, blank = %s): ": {
+        "fr": "Choix (numéro, vide = %s) : ",
+        "en": "Choice (number, blank = %s): ",
+    },
+    # Sélecteur ERP / Version (qemu_erp, deploy_form_extras.py)
+    "Which ERP?": {
+        "fr": "Quel ERP ?",
+        "en": "Which ERP?",
+    },
+    "Which version?": {
+        "fr": "Quelle version ?",
+        "en": "Which version?",
+    },
+    "No ERP": {
+        "fr": "Aucun",
+        "en": "None",
+    },
+    "ERP": {
+        "fr": "ERP",
+        "en": "ERP",
+    },
+    "ERP and version:": {
+        "fr": "ERP et version :",
+        "en": "ERP and version:",
+    },
+    "%s (deprecated)": {
+        "fr": "%s (dépréciée)",
+        "en": "%s (deprecated)",
+    },
+    "pinned version": {
+        "fr": "version épinglée",
+        "en": "pinned version",
     },
     "ERPLibre + all Odoo versions": {
         "fr": "ERPLibre + toutes les versions Odoo",

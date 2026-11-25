@@ -43,6 +43,7 @@ from script.todo.deploy_form_lib import (
     plan_totals,
     res_row_widgets,
     t,
+    with_erp_fields,
 )
 from script.todo.deploy_form_plan import PlanMixin, preview_screen
 
@@ -89,6 +90,7 @@ def build_spec(vms, existants, form):
     """La spec que le déploiement exécutera. Une VM qui existe déjà n'y entre
     pas : Proxmox refuserait le VMID, et on ne veut surtout pas l'écraser."""
     connus = set(existants)
+    install = with_erp_fields(vms, form["install"])
     return {
         "host": form["host"],
         "storage": form["storage"],
@@ -109,7 +111,7 @@ def build_spec(vms, existants, form):
         "keep_login_in_vm": form.get("keep_login_in_vm", False),
         "start": form["start"],
         "add_ssh_config": form["add_ssh_config"],
-        "install": form["install"],
+        "install": install,
         "python_provider": form.get("python_provider") or "",
         # Ce qui décrit le SYSTÈME INVITÉ, et non l'hyperviseur : il valait
         # déjà sur libvirt, il vaut ici. Sans ces cinq clés, une VM créée sur
@@ -118,7 +120,7 @@ def build_spec(vms, existants, form):
         "desktop": form.get("desktop") or "",
         "vm_tools": tuple(form.get("vm_tools") or ()),
         "app_store": form.get("app_store") or "deb",
-        "prod": bool((form.get("install") or {}).get("prod")),
+        "prod": bool((install or {}).get("prod")),
         "monitor": form["monitor"],
         "parallelism": form["parallelism"],
         # La coupure d'amont demandée pour TOUT le déploiement, installation
@@ -244,7 +246,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
         longs (« 1.6.0 », « develop », « feature/xyz ») : trop étroite, la
         liste les tronque et on ne sait plus ce qu'on a choisi. */
         .vmrow Select.vmbranch { width: 34; }
-        .vmrow Select.vmprof { width: 40; }
+        .vmrow Select.vmerp { width: 16; }
+        .vmrow Select.vmver { width: 36; }
         #hostline { height: 1; color: $accent; padding: 0 1; }
         """
 
@@ -428,12 +431,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         value=True,
                         id="f_install",
                     )
-                    yield Select(
-                        [(lbl, i) for i, (lbl, _c) in enumerate(profiles)],
-                        value=0 if profiles else SELECT_NULL,
-                        allow_blank=not profiles,
-                        id="f_profile_install",
-                    )
+                    yield from self.compose_erp_choice()
                     yield Select(
                         [(b, b) for b in branches],
                         value=branch_default(
@@ -1045,14 +1043,13 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if ident in ("f_storage", "f_bridge"):
                 self._refresh_after()
                 return
-            if ident in ("f_branch", "f_profile_install"):
+            if self.erp_on_select(event):
+                self._refresh_after(remonter=True)
+                return
+            if ident == "f_branch":
                 # Un réglage commun reprend la main sur les VM non figées :
                 # c'est le sens même du mot « commun ».
-                self._clear_overrides(
-                    ("branch",) if ident == "f_branch" else ("install_cmd",)
-                )
-                if ident == "f_profile_install":
-                    self._sync_install_deps()
+                self._clear_overrides(("branch",))
                 self._refresh_after(remonter=True)
                 return
             # Réglage commun : « libre… » révèle la saisie, une valeur
@@ -1167,19 +1164,13 @@ def run_proxmox_form(ctx, run_app: bool = True):
         def _install(self):
             if not self.query_one("#f_install", Checkbox).value:
                 return None
-            index = self.query_one("#f_profile_install", Select).value
-            label, cmd = (
-                profiles[index]
-                if profiles and isinstance(index, int)
-                else ("", "")
-            )
             return {
                 "branch": self.query_one("#f_branch", Select).value,
                 # /opt et service confiné, comme en QEMU/KVM : le choix ne
                 # regarde pas l'hyperviseur, il regarde le système invité.
                 "prod": self._prod_value(),
-                "label": label,
-                "cmd": cmd,
+                # Libellé, commande, ERP, version et options du choix commun.
+                **self.install_choice(),
             }
 
         def _form_values(self):
