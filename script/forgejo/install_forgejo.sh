@@ -23,6 +23,14 @@
 #   FORGEJO_ADMIN_EMAIL    son courriel     (défaut : admin@erplibre.local)
 #   FORGEJO_USER           compte système propriétaire    (défaut : git)
 #   FORGEJO_SKIP_ADMIN     à 1, ne crée aucun compte (installateur web)
+#   FORGEJO_PUSH_CREATE    à 1, un push crée le dépôt absent d'un compte ou
+#                          d'une organisation existante, privé
+#   FORGEJO_DISABLE_REGISTRATION  à 1, seul l'administrateur crée des comptes
+#   FORGEJO_DEFAULT_PRIVATE       à 1, un dépôt neuf est privé par défaut
+#   FORGEJO_SHALLOW_PUSH   à 1, accepte le push d'un clone superficiel
+#                          (git « receive.shallowUpdate »)
+# Ces quatre réglages ne s'appliquent qu'à une configuration neuve : celle qui
+# existe n'est jamais réécrite.
 set -euo pipefail
 
 Red='\033[0;31m'
@@ -40,6 +48,10 @@ ADMIN_PASSWORD="${FORGEJO_ADMIN_PASSWORD:-erplibre}"
 ADMIN_EMAIL="${FORGEJO_ADMIN_EMAIL:-admin@erplibre.local}"
 RUN_USER="${FORGEJO_USER:-git}"
 SKIP_ADMIN="${FORGEJO_SKIP_ADMIN:-0}"
+PUSH_CREATE="${FORGEJO_PUSH_CREATE:-0}"
+DISABLE_REGISTRATION="${FORGEJO_DISABLE_REGISTRATION:-0}"
+DEFAULT_PRIVATE="${FORGEJO_DEFAULT_PRIVATE:-0}"
+SHALLOW_PUSH="${FORGEJO_SHALLOW_PUSH:-0}"
 
 # Ce qui a changé sur le disque pendant ce passage. Le service ne redémarre que
 # si quelque chose a bougé : rejouer le script sur une forge saine ne doit pas
@@ -55,7 +67,7 @@ API=https://codeberg.org/api/v1/repos/forgejo/forgejo/releases
 DL=https://codeberg.org/forgejo/forgejo/releases/download
 
 usage() {
-    sed -n '5,26p' "$0" | sed 's/^# \?//'
+    sed -n '5,33p' "$0" | sed 's/^# \?//'
     exit 0
 }
 case "${1:-}" in
@@ -63,6 +75,9 @@ case "${1:-}" in
 esac
 
 say() { echo -e "   $*"; }
+# « true » quand le réglage vaut 1, « false » sinon : la valeur qu'app.ini
+# attend pour un booléen.
+booleen() { if [ "$1" = 1 ]; then echo true; else echo false; fi; }
 die() { echo -e "   ${Red}✗ $*${Color_Off}" >&2; exit 1; }
 
 # Adresse par laquelle la machine est joignable, pour ROOT_URL et SSH_DOMAIN.
@@ -189,11 +204,11 @@ if sudo test -f "$CONF"; then
     say "configuration conservée : $CONF"
 else
     host=$(host_address)
-    # Les QUATRE secrets, et pas seulement les deux évidents. Vécu : sans
+    # Les QUATRE secrets, et pas seulement les deux évidents : sans
     # « oauth2.JWT_SECRET », Forgejo tente de l'écrire dans app.ini au
     # démarrage, n'y arrive pas — le fichier appartient à root — et s'arrête
-    # sur « [F] save oauth2.JWT_SECRET failed ». Le service redémarrait en
-    # boucle, 25 fois, sans jamais écouter le port.
+    # sur « [F] save oauth2.JWT_SECRET failed ». Le service redémarre alors
+    # en boucle sans jamais écouter le port.
     #
     # Les poser ici garde app.ini NON inscriptible par le service : c'est la
     # bonne posture, et ça évite un fichier de configuration qui se réécrit
@@ -232,6 +247,10 @@ PATH = $DATA/data/forgejo.db
 
 [repository]
 ROOT = $DATA/data/forgejo-repositories
+ENABLE_PUSH_CREATE_USER = $(booleen "$PUSH_CREATE")
+ENABLE_PUSH_CREATE_ORG = $(booleen "$PUSH_CREATE")
+DEFAULT_PUSH_CREATE_PRIVATE = true
+DEFAULT_PRIVATE = $(if [ "$DEFAULT_PRIVATE" = 1 ]; then echo private; else echo last; fi)
 
 [security]
 INSTALL_LOCK = true
@@ -243,7 +262,7 @@ INTERNAL_TOKEN = $token
 JWT_SECRET = $jwt
 
 [service]
-DISABLE_REGISTRATION = false
+DISABLE_REGISTRATION = $(booleen "$DISABLE_REGISTRATION")
 REQUIRE_SIGNIN_VIEW = false
 
 [lfs]
@@ -252,6 +271,7 @@ PATH = $DATA/data/lfs
 [log]
 ROOT_PATH = $DATA/log
 LEVEL = info
+$(if [ "$SHALLOW_PUSH" = 1 ]; then printf '\n[git.config]\nreceive.shallowUpdate = true\n'; fi)
 CONFEOF
     sudo chown root:"$RUN_USER" "$CONF"
     sudo chmod 640 "$CONF"

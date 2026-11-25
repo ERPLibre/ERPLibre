@@ -279,6 +279,25 @@ class ClientForgejo:
         )
         return corps if statut == 200 else None
 
+    def creer_jeton(self, nom, portees):
+        """Crée un jeton d'accès `nom` aux `portees` (« write:organization »…)
+        pour le compte des identifiants, et rend sa valeur. Forgejo ne la
+        montre qu'une fois. Exige l'authentification basique : un jeton ne
+        peut pas en créer un autre."""
+        if not self.auth:
+            raise ErreurForgejo("creating a token needs the account password")
+        corps = self._appel(
+            "POST",
+            f"/users/{self._q(self.auth[0])}/tokens",
+            ok=(201,),
+            json={"name": nom, "scopes": list(portees)},
+        )[1]
+        valeur = corps.get("sha1") or ""
+        if not valeur:
+            raise ErreurForgejo("the forge returned no token value")
+        self._secrets.append(valeur)
+        return valeur
+
     def cles_ssh(self):
         """Les clés publiques du compte."""
         return self._appel("GET", "/user/keys", attendu=list)[1]
@@ -362,6 +381,20 @@ class ClientForgejo:
             ok=(200, 404),
         )
         return corps if statut == 200 else None
+
+    def commit_de_branche(self, proprietaire, nom, branche):
+        """Le commit de la branche `branche` du dépôt, ou None si la branche
+        ou le dépôt manque. Une branche à « / » garde ses barres : la route
+        de Forgejo les accepte telles quelles."""
+        statut, corps = self._appel(
+            "GET",
+            f"/repos/{self._q(proprietaire)}/{self._q(nom)}/branches/"
+            + urllib.parse.quote(branche, safe="/"),
+            ok=(200, 404),
+        )
+        if statut != 200:
+            return None
+        return (corps.get("commit") or {}).get("id")
 
     def creer_depot(self, proprietaire, nom, prive=True, organisation=True):
         """Crée le dépôt vide `nom` dans l'organisation `proprietaire`, ou

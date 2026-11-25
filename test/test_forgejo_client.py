@@ -633,5 +633,37 @@ class TestMain(unittest.TestCase):
         self.assertIn("--allow-http", self.sortie)
 
 
+class TestJetonEtBranche(unittest.TestCase):
+    def test_creer_un_jeton_avec_le_mot_de_passe(self):
+        c, s = client(
+            {("POST", "/users/admin/tokens"): Reponse(201, {"sha1": "neuf"})},
+            identifiants=("admin", "mdp"),
+        )
+        self.assertEqual(c.creer_jeton("t", ["write:repository"]), "neuf")
+        self.assertEqual(s.appels[0]["auth"], ("admin", "mdp"))
+        self.assertEqual(
+            s.appels[0]["json"], {"name": "t", "scopes": ["write:repository"]}
+        )
+        # La valeur neuve est masquée comme le mot de passe.
+        self.assertEqual(c._masque("x neuf mdp"), "x *** ***")
+
+    def test_sans_mot_de_passe_pas_de_jeton(self):
+        c, s = client({}, jeton_api="jeton")
+        with self.assertRaises(fc.ErreurForgejo):
+            c.creer_jeton("t", [])
+        self.assertEqual(s.appels, [])
+
+    def test_commit_d_une_branche_a_barre(self):
+        c, s = client(
+            {
+                ("GET", "/repos/P/d/branches/dev/x"): Reponse(
+                    200, {"commit": {"id": "abc"}}
+                )
+            }
+        )
+        self.assertEqual(c.commit_de_branche("P", "d", "dev/x"), "abc")
+        self.assertIsNone(c.commit_de_branche("P", "d", "absente"))
+
+
 if __name__ == "__main__":
     unittest.main()
