@@ -1,0 +1,89 @@
+{
+  "boot": {
+    "editor": false,
+    "hibernation": "auto",
+    "loader": "auto",
+    "timeout": 3,
+    "uki": false
+  },
+  "desktop": {
+    "apps": [],
+    "env": "gnome",
+    "extra": false,
+    "power": "auto",
+    "printing": true
+  },
+  "disk": {
+    "esp_mib": 1024,
+    "layout": "plain",
+    "luks": {
+      "discards": "auto",
+      "iter_time_ms": 2000,
+      "sector_size": "auto"
+    },
+    "lvm": {
+      "root_fs": "ext4",
+      "secret_lv": null,
+      "swap": "ram",
+      "vg": "vg0",
+      "vg_free_mib": 1024
+    },
+    "nvme_lba_4k": "auto",
+    "target": "auto"
+  },
+  "erplibre": {
+    "profile": "odoo18"
+  },
+  "extends": null,
+  "firstboot": {
+    "aur_helper": null,
+    "makepkg_native": false
+  },
+  "gpu": {
+    "driver": "auto"
+  },
+  "live": {
+    "keymap": "ask",
+    "mirrors_country": "auto"
+  },
+  "name": "generic",
+  "schema": 1,
+  "security": {
+    "apparmor": false,
+    "header_backup": "ask",
+    "recovery_key_to_key": false
+  },
+  "system": {
+    "console_keymap": "ask",
+    "dkms": false,
+    "e2scrub": false,
+    "extra_packages": [],
+    "hostname": "erplibre",
+    "kernel_headers": false,
+    "kernels": [
+      "linux"
+    ],
+    "lang": "en_US.UTF-8",
+    "lc_collate": null,
+    "locales": [
+      "en_US.UTF-8"
+    ],
+    "microcode": "auto",
+    "services": [
+      "NetworkManager",
+      "fstrim.timer"
+    ],
+    "timezone": "ask",
+    "zram": {
+      "algorithm": "zstd",
+      "enabled": true,
+      "size": "min(ram / 4, 32768)",
+      "sysctl_tuning": false
+    }
+  },
+  "user": {
+    "name": "ask",
+    "shell": "bash",
+    "sudo": true
+  }
+}

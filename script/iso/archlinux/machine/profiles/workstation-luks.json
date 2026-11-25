@@ -1,0 +1,88 @@
+{
+  "desktop": {
+    "apps": [
+      "firefox",
+      "thunderbird",
+      "libreoffice-fresh",
+      "vlc",
+      "gimp",
+      "inkscape",
+      "keepassxc",
+      "gnome-tweaks",
+      "gnome-firmware"
+    ]
+  },
+  "disk": {
+    "esp_mib": 4096,
+    "layout": "lvm_on_luks",
+    "luks": {
+      "discards": "auto",
+      "iter_time_ms": 3000,
+      "sector_size": "auto"
+    },
+    "lvm": {
+      "secret_lv": {
+        "optional": true,
+        "size_gib": 8
+      },
+      "swap": "ram",
+      "vg": "vg0",
+      "vg_free_mib": 1024
+    }
+  },
+  "extends": "generic",
+  "name": "workstation-luks",
+  "schema": 1,
+  "security": {
+    "apparmor": true
+  },
+  "system": {
+    "dkms": true,
+    "e2scrub": true,
+    "extra_packages": [
+      "base-devel",
+      "git",
+      "vim",
+      "htop",
+      "man-db",
+      "man-pages",
+      "bash-completion",
+      "rsync",
+      "wget",
+      "curl",
+      "openssh",
+      "unzip",
+      "zip",
+      "p7zip",
+      "lsof",
+      "tree",
+      "smartmontools",
+      "nvme-cli",
+      "pciutils",
+      "usbutils",
+      "dosfstools",
+      "e2fsprogs",
+      "reflector"
+    ],
+    "kernel_headers": true,
+    "kernels": [
+      "linux",
+      "linux-lts"
+    ],
+    "services": [
+      "NetworkManager",
+      "fstrim.timer",
+      "sshd",
+      "systemd-timesyncd"
+    ],
+    "zram": {
+      "algorithm": "zstd",
+      "enabled": true,
+      "size": "min(ram / 4, 32768)",
+      "sysctl_tuning": true
+    }
+  },
+  "user": {
+    "shell": "zsh"
+  }
+}
