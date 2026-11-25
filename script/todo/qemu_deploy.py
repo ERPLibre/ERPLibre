@@ -75,6 +75,7 @@ class QemuDeployMixin:
         ai_agent="",
         distro="",
         keep_login=False,
+        web_access=None,
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -92,7 +93,10 @@ class QemuDeployMixin:
         du seul gestionnaire de paquets ; « » quand l'appelant l'ignore.
         `keep_login` : le bloc GNOME Remote Desktop laisse en place le
         fichier du mot de passe après l'avoir relu (voir
-        _qemu_grd_remote_cmd)."""
+        _qemu_grd_remote_cmd). `web_access` : le bloc d'installation, ou ce
+        qu'il porte de l'accès web (« access », « domain », « email ») ; une
+        VM Odoo de production y reçoit nginx (_qemu_nginx_cmd) selon
+        qemu_erp.effective_access. None vaut l'accès direct."""
         if not branch:
             # Bureau seul : ni clone ni make, mais on garde le prologue —
             # attente de cloud-init et coupure des mises à jour automatiques,
@@ -156,6 +160,16 @@ class QemuDeployMixin:
             # ne rattrape pas : il n'interrompt pas sur un maillon d'une liste
             # « && ». Les accolades font porter le && sur le bloc entier.
             svc = self._qemu_odoo_service_cmd(prod).strip().rstrip(";")
+            # nginx vient APRÈS le service : il sert un Odoo déjà vérifié,
+            # et son échec est celui de la VM, dans le même bloc.
+            champs = erp.access.fields({**(web_access or {}), "prod": prod})
+            nginx = self._qemu_nginx_cmd(
+                erp.effective_access(prod, final_cmd, champs["access"]),
+                champs["domain"],
+                champs["email"],
+            )
+            if nginx:
+                svc = f"{svc}; {nginx.strip().rstrip(';')}"
             final_cmd = f"{final_cmd} && {{ {svc}; }}"
         # VM de DÉVELOPPEMENT uniquement : couper les mises à jour automatiques.
         # unattended-upgrades REDÉMARRE le cluster PostgreSQL sous lui-même —
@@ -418,6 +432,7 @@ class QemuDeployMixin:
         created=(),
         keep_login=False,
         vm_password=None,
+        web_access=None,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -456,7 +471,10 @@ class QemuDeployMixin:
         suivent `keep_login` (« garder dans la VM ») : une VM existante
         garde le compte de sa création, et le fichier qu'elle porterait
         n'est jamais retiré. Le clair n'est remis qu'à celles qui en ont
-        besoin (_qemu_vm_login_file_needed)."""
+        besoin (_qemu_vm_login_file_needed).
+        `web_access` : voir _qemu_erplibre_remote_cmd ; l'entrée d'une VM
+        qui reçoit nginx porte son mode (« access »), et son domaine pour
+        Let's Encrypt, que le suivi lit pour ouvrir la page."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -484,7 +502,9 @@ class QemuDeployMixin:
             app_store,
             ai_agent=ai_agent,
             keep_login=keep_login,
+            web_access=web_access,
         )
+        champs_web = erp.access.fields({**(web_access or {}), "prod": prod})
         try:
             mod = self._qemu_import_module()
         except Exception:
@@ -547,6 +567,21 @@ class QemuDeployMixin:
                 app = erp.profile_app(cmd_map.get(name, cmd_def))
                 if branch_map.get(name, branch_def) and app != erp.APP_ODOO:
                     entry["app"] = app
+                # Le mode d'accès web que la commande distante pose, calculé
+                # sur la même commande, défaut compris : le suivi ouvre la
+                # page là où nginx l'attend.
+                mode_web = erp.effective_access(
+                    prod,
+                    cmd_map.get(name, cmd_def)
+                    or f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}",
+                    champs_web["access"],
+                )
+                if branch_map.get(name, branch_def) and (
+                    mode_web != erp.access.DIRECT
+                ):
+                    entry["access"] = mode_web
+                    if champs_web["domain"]:
+                        entry["domain"] = champs_web["domain"]
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
@@ -564,6 +599,7 @@ class QemuDeployMixin:
                         ai_agent,
                         distro=d or "",
                         keep_login=vm_keep,
+                        web_access=web_access,
                     )
                 vms.append(entry)
             else:
@@ -643,6 +679,7 @@ class QemuDeployMixin:
         user="",
         keep_login=False,
         vm_password=None,
+        web_access=None,
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -655,7 +692,7 @@ class QemuDeployMixin:
         (_qemu_vm_login_file_needed) ; None, rien n'est déposé. Il ne passe
         que par l'environnement de la commande (new_env) et l'entrée
         standard de ssh : la commande affichée et journalisée ne porte que
-        le nom de la variable. `keep_login` : voir
+        le nom de la variable. `keep_login`, `web_access` : voir
         _qemu_erplibre_remote_cmd."""
         from script.todo.qemu_install_monitor import (
             VM_LOGIN_ENV,
@@ -701,6 +738,7 @@ class QemuDeployMixin:
             ai_agent,
             distro=vm_distro or "",
             keep_login=keep_login,
+            web_access=web_access,
         )
         cible = shlex.quote(f"{user}@{ip}")
         if vm_password and self._qemu_vm_login_file_needed(
@@ -1164,6 +1202,14 @@ class QemuDeployMixin:
                 if install["prod"]
                 else t("development (~/git)")
             )
+            # Le mode d'accès web de la production, tel que le formulaire
+            # l'a choisi ; une VM qui ne le reçoit pas (Dolibarr, profil
+            # sans ERP) reste en accès direct.
+            mode_web = erp.access.get(erp.access.fields(install)["access"])
+            if install["prod"] and mode_web and mode_web.nginx:
+                env += f" · {t(mode_web.label)}"
+                if mode_web.needs_domain:
+                    env += f" ({install.get('domain', '')})"
             # « par defaut » : chaque VM peut s'en ecarter, et sa ligne le dit.
             # Ce qui sera REELLEMENT pose, pas le defaut du formulaire. Avec
             # une seule VM figee sur un autre profil, annoncer le defaut
@@ -1343,9 +1389,15 @@ class QemuDeployMixin:
         password_hash="",
         usb_hostdev=(),
         spice_usbredir=False,
+        web_access="",
+        web_domain="",
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel).
+
+        `web_access` : mode d'accès web que la VM reçoit (qemu_erp.vm_access),
+        et `web_domain` son domaine Let's Encrypt ; le guide de connexion y
+        annonce l'URL de nginx. Vide ou « direct », rien n'est passé.
 
         `user` : compte créé par cloud-init ; vide, VM_USER_DEFAULT.
         `password_hash` : empreinte SHA-512 crypt de son mot de passe, passée
@@ -1448,6 +1500,10 @@ class QemuDeployMixin:
             app = erp.profile_app(install_cmd)
             if app != erp.APP_ODOO:
                 parts += ["--app", app]
+            if web_access and web_access != erp.access.DIRECT:
+                parts += ["--web-access", web_access]
+                if web_domain:
+                    parts += ["--web-domain", web_domain]
         extra = 0
         if pose_erplibre:
             # ERPLibre dépasse le minimum : +5 Go de disque.
@@ -1551,6 +1607,10 @@ class QemuDeployMixin:
                 else ()
             ),
             spice_usbredir=bool(spec.get("spice_usbredir")),
+            # L'URL que le guide annonce : celle du nginx que CETTE VM
+            # reçoit, jugée sur sa commande.
+            web_access=erp.vm_access(vm, install),
+            web_domain=erp.access.fields(install)["domain"],
         )
         if sudo_n and parts[:1] == ["sudo"]:
             parts.insert(1, "-n")
@@ -2775,20 +2835,28 @@ class QemuDeployMixin:
             # dev (~/git, SELinux relâché) vs prod (/opt, confiné)
             prod = self._qemu_ask_prod()
             label, cmd = self._qemu_pick_install_profile(
-                "proxmox"
-                if any(v.get("distro") == "proxmox" for v in vms)
-                else "",
+                (
+                    "proxmox"
+                    if any(v.get("distro") == "proxmox" for v in vms)
+                    else ""
+                ),
                 systems=[v.get("distro") or "" for v in vms],
             )
             if self._qemu_effective_prod(prod, cmd) != prod:
                 print(f"  {t(erp.app_for_cmd(cmd).prod_note)}")
                 prod = False
+            # L'accès web n'a de sens qu'en production : nginx devant l'ERP,
+            # ou son port directement.
+            acces = (
+                self._qemu_ask_access(cmd) if prod else erp.access.fields({})
+            )
             monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )
             install = {
                 "branch": branch,
                 "prod": prod,
+                **acces,
                 "label": label,
                 "cmd": cmd,
                 # L'ERP et sa version, déduits de la commande comme le
@@ -3760,6 +3828,7 @@ class QemuDeployMixin:
                     created=created,
                     keep_login=keep_login,
                     vm_password=vm_password,
+                    web_access=install,
                 )
             elif install:
                 print(
@@ -3782,6 +3851,7 @@ class QemuDeployMixin:
                         user=users.get(name) or VM_USER_DEFAULT,
                         keep_login=keep_login or name not in created,
                         vm_password=vm_password if name in created else None,
+                        web_access=install,
                     )
 
         if session:

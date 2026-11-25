@@ -3,13 +3,56 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu QEMU/KVM : ce qui s'installe DANS la VM.\n\nCe fichier ne cr\u00e9e aucune VM : il fabrique les commandes distantes qu'on y\nex\u00e9cutera. Profils ERPLibre et service Odoo, bureau GNOME et ses saveurs,\nmagasins d'applications, fuseaux, miroirs de paquets, et les outils de\nd\u00e9veloppement (PyCharm, Android Studio, extensions GNOME, compilation mobile,\nAVD, Forgejo).\n\nFronti\u00e8re claire : ici on \u00e9crit du shell destin\u00e9 \u00e0 l'invit\u00e9 ; dans\nqemu_deploy.py on d\u00e9cide QUELLES VM le recevront."""
 
+import base64
+import functools
+import gzip
+import io
+import os
 import re
 import shlex
+import tarfile
 
 from script.todo import dev_tools
 from script.todo import qemu_erp as erp
 from script.todo.deploy_form_lib import VM_LOGIN_FILE, VM_LOGIN_READ_CMD
 from script.todo.todo_i18n import t
+
+# Racine du dépôt de l'hôte, deux niveaux au-dessus de script/todo/.
+_DEPOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+
+
+@functools.lru_cache(maxsize=1)
+def nginx_kit_b64():
+    """L'archive tar.gz, en base64, du script/nginx/ de l'hôte : le script
+    deploy_nginx_and_certbot.py et ses gabarits template_nginx*_odoo_*.txt,
+    sous leur chemin relatif au dépôt.
+
+    L'invité exécute cette copie, et non celle de son clone : le clone suit
+    la branche choisie, qui peut ne pas encore porter les options que le
+    bloc nginx passe au script (--nginx_conf, --default_server,
+    --no_certbot_options). argparse y sortirait en 2, après un Odoo
+    installé. L'archive est reproductible — ordre, date et propriétaire
+    fixes, en-tête gzip sans date — : deux appels rendent la même
+    commande."""
+    dossier = os.path.join(_DEPOT, "script", "nginx")
+    noms = ["deploy_nginx_and_certbot.py"] + sorted(
+        n
+        for n in os.listdir(dossier)
+        if n.startswith("template_nginx") and n.endswith(".txt")
+    )
+    brut = io.BytesIO()
+    with tarfile.open(fileobj=brut, mode="w", format=tarfile.GNU_FORMAT) as tf:
+        for nom in noms:
+            with open(os.path.join(dossier, nom), "rb") as f:
+                donnees = f.read()
+            info = tarfile.TarInfo(f"script/nginx/{nom}")
+            info.size = len(donnees)
+            info.mode = 0o644
+            tf.addfile(info, io.BytesIO(donnees))
+    return base64.b64encode(gzip.compress(brut.getvalue(), mtime=0)).decode()
+
 
 # Première adresse IPv4 globale de l'invité, à placer dans « $( … ) ».
 # « ip » (iproute2) est dans toutes les images du catalogue ; « hostname »
@@ -49,6 +92,52 @@ class QemuInstallMixin:
         print(f"  [2] {t('Production (/opt/erplibre, SELinux enforced)')}")
         sel = input(t("Choice (1-2, default 1): ")).strip()
         return sel == "2"
+
+    def _qemu_ask_access(self, install_cmd):
+        """{"access", "domain", "email"} d'une VM de production installée
+        par `install_cmd`.
+
+        Les modes offerts sont les access_modes de son ERP, le défaut
+        access.DEFAULT quand il en est. Un profil hors registre, ou un ERP
+        qui n'en déclare aucun, rend access.DIRECT sans rien demander. Pour
+        un mode needs_domain (Let's Encrypt), le domaine puis le courriel
+        sont redemandés tant qu'access.domain_error ou email_error les
+        refuse."""
+        cle = erp.choice_for_cmd(install_cmd)[0]
+        modes = (
+            ()
+            if cle == erp.APP_NONE
+            else erp.access.modes_for(erp.get(cle).access_modes)
+        )
+        choix = erp.access.fields({})
+        if not modes:
+            return choix
+        cles = [m.key for m in modes]
+        defaut = erp.access.DEFAULT if erp.access.DEFAULT in cles else cles[0]
+        mode = self._qemu_ask_pick(
+            t("Web access?"), [(t(m.label), m.key) for m in modes], defaut
+        )
+        choix["access"] = mode
+        if erp.access.get(mode).needs_domain:
+            choix["domain"] = self._qemu_ask_valid(
+                t("Domain (Let's Encrypt): "), erp.access.domain_error
+            )
+            choix["email"] = self._qemu_ask_valid(
+                t("Admin email (Let's Encrypt): "), erp.access.email_error
+            )
+        return choix
+
+    @staticmethod
+    def _qemu_ask_valid(question, erreur):
+        """La première réponse à `question` que `erreur` accepte, sans
+        espaces autour. `erreur(réponse)` rend la raison du refus, affichée
+        avant de reposer la question, ou ""."""
+        while True:
+            reponse = input(question).strip()
+            raison = erreur(reponse)
+            if not raison:
+                return reponse
+            print(f"  ✗ {raison}")
 
     def _qemu_install_profiles(self):
         """Profils installables : [(libellé, commande)]. Le premier est le
@@ -444,6 +533,243 @@ class QemuInstallMixin:
             ' pas sur $EL_URL."; ' + journal + "exit 1; "
             "fi; "
             "fi"
+        )
+
+    # Paquets de l'accès web par nginx, par gestionnaire de l'invité :
+    # (nginx et openssl, puis certbot et son greffon nginx, posés pour
+    # Let's Encrypt seulement), et la commande qui les installe. Sur la
+    # famille RHEL, certbot vient d'EPEL (_qemu_epel_cmd).
+    _QEMU_NGINX_PKGS = {
+        "apt-get": ("nginx openssl", "certbot python3-certbot-nginx"),
+        "dnf": ("nginx openssl", "certbot python3-certbot-nginx"),
+        "pacman": ("nginx openssl", "certbot certbot-nginx"),
+        "zypper": ("nginx openssl", "python3-certbot python3-certbot-nginx"),
+    }
+    _QEMU_NGINX_INSTALL = {
+        "apt-get": "sudo apt-get -o DPkg::Lock::Timeout=600 install -y",
+        "dnf": "sudo dnf install -y",
+        "pacman": "sudo pacman -S --needed --noconfirm",
+        "zypper": "sudo zypper --non-interactive install"
+        " --auto-agree-with-licenses",
+    }
+    # Certificat auto-signé de l'invité : fullchain.pem et privkey.pem, les
+    # noms que lit le gabarit ssl sous --force_ssl_dir.
+    _QEMU_SELF_SIGNED_DIR = "/etc/ssl/erplibre"
+
+    def _qemu_nginx_cmd(self, mode, domain="", email=""):
+        """Snippet shell (exécuté dans la VM, $SVC_DIR posé, service
+        erplibre en place) qui met nginx devant Odoo selon le mode d'accès
+        web `mode` ; "" pour un mode sans nginx ou inconnu.
+
+        Le site est écrit par script/nginx/deploy_nginx_and_certbot.py et
+        ses gabarits, ceux de l'HÔTE (nginx_kit_b64), dépaquetés dans un
+        répertoire temporaire de l'invité et retirés une fois le site en
+        place ; la version d'Odoo est celle de $SVC_DIR/.odoo-version. Le
+        site va dans
+        sites-available (lié depuis sites-enabled, site « default » retiré)
+        quand ce répertoire existe, sinon dans conf.d, que nginx.conf
+        inclut alors. Le site est default_server : il répond à l'adresse de
+        la VM comme à un tunnel ; les « default_server » de nginx.conf sont
+        retirés, deux sur un même port faisant échouer nginx -t.
+
+        - self-signed : certificat openssl de 825 jours dans
+          _QEMU_SELF_SIGNED_DIR, clé en 0600, CN le nom d'hôte de l'invité
+          et son adresse en subjectAltName ; gabarit ssl sans les fichiers
+          de certbot ;
+        - http : gabarit simple, sur 80 ;
+        - letsencrypt : gabarit simple pour `domain`, puis certbot --nginx
+          avec `email` ; l'absence du certificat ensuite fait échouer.
+
+        /websocket et /longpolling vont au port 8072 quand config.conf
+        porte des workers, à 8069 sinon : en mode threadé, Odoo les sert
+        sur son port HTTP. proxy_mode = True est posé dans config.conf et le
+        service relancé : Odoo lit alors les en-têtes X-Forwarded-*. Odoo
+        écoute toujours sur 8069, que la sonde du suivi garde. SELinux
+        reçoit httpd_can_network_connect, sans quoi nginx ne joint pas
+        127.0.0.1:8069 ; firewalld ouvre http et https quand il est là.
+
+        NixOS est refusé avant le déploiement (access.NIXOS_REFUSAL) ; dans
+        l'invité, le bloc sort en 1 s'il s'y trouve quand même. Toute étape
+        qui empêche la page de servir sort en 1 ; une page qui ne répond
+        pas encore à curl n'est qu'un avertissement, Odoo pouvant démarrer
+        lentement."""
+        m = erp.access.get(mode)
+        if m is None or not m.nginx:
+            return ""
+        le = m.needs_domain
+        script = "script/nginx/deploy_nginx_and_certbot.py"
+        ssl_dir = self._QEMU_SELF_SIGNED_DIR
+
+        def ko(message):
+            return f'echo "❌ {message}" >&2; exit 1; '
+
+        paquets = ""
+        for i, (mgr, (base, certbot)) in enumerate(
+            self._QEMU_NGINX_PKGS.items()
+        ):
+            liste = f"{base} {certbot}" if le else base
+            epel = self._qemu_epel_cmd() if le and mgr == "dnf" else ""
+            paquets += (
+                f"{'if' if i == 0 else 'elif'} command -v {mgr} "
+                f">/dev/null 2>&1; then {epel}"
+                f"{self._QEMU_NGINX_INSTALL[mgr]} {liste}; "
+            )
+        paquets += "else " + ko(t("nginx: no known package manager.")) + "fi; "
+        kit = (
+            "if ! EL_NGX_DIR=$(mktemp -d) || ! printf %s "
+            f"{shlex.quote(nginx_kit_b64())} | base64 -d "
+            '| tar -xzf - -C "$EL_NGX_DIR"; then '
+            + ko(t("nginx: the deployment script could not be unpacked."))
+            + "fi; "
+        )
+        if le:
+            nom = (
+                f"EL_HOST={shlex.quote(domain)}; "
+                f"EL_URL={shlex.quote(f'https://{domain}/')}; "
+            )
+        else:
+            nom = (
+                "EL_HOST=$(cat /proc/sys/kernel/hostname); "
+                f"EL_IP=$({QEMU_GUEST_IP_SH}); "
+                f'EL_URL="{m.scheme}://${{EL_IP:-<ip>}}/"; '
+            )
+        certificat = ""
+        options = ""
+        if mode == erp.access.SELF_SIGNED:
+            # « umask 077 » : la clé naît en 0600, sans instant lisible.
+            certificat = (
+                f"sudo mkdir -p {ssl_dir}; "
+                f"if ! sudo test -s {ssl_dir}/privkey.pem; then "
+                "if ! ( umask 077 && sudo openssl req -x509 -newkey rsa:2048"
+                ' -nodes -days 825 -subj "/CN=$EL_HOST"'
+                ' -addext "subjectAltName=DNS:$EL_HOST${EL_IP:+,IP:$EL_IP}"'
+                f" -keyout {ssl_dir}/privkey.pem"
+                f" -out {ssl_dir}/fullchain.pem ) >/dev/null 2>&1; then "
+                + ko(t("nginx: the self-signed certificate was not created."))
+                + "fi; fi; "
+                f"sudo chmod 0600 {ssl_dir}/privkey.pem; "
+                f"sudo chmod 0644 {ssl_dir}/fullchain.pem; "
+            )
+            options = (
+                f" --ssl_exist --force_ssl_dir {ssl_dir} --no_certbot_options"
+            )
+        site = (
+            'EL_V=$(cat "$SVC_DIR/.odoo-version"); '
+            "EL_W=$(sed -n 's/^workers *= *//p' \"$SVC_DIR/config.conf\" "
+            "2>/dev/null | head -n1); "
+            'EL_WS=8072; [ "${EL_W:-0}" -gt 0 ] 2>/dev/null || EL_WS=8069; '
+            f'if ! ( cd "$EL_NGX_DIR" && sudo python3 {script}'
+            ' --generate_nginx --default_server --nginx_conf "$EL_NGX_CONF"'
+            ' --domain "$EL_HOST" --odoo_version "$EL_V"'
+            f' --default_port_websocket "$EL_WS"{options} ); then '
+            + ko(t("nginx: the site was not written."))
+            + "fi; "
+        )
+        disposition = (
+            "if [ -d /etc/nginx/sites-available ]; then "
+            "EL_NGX_CONF=/etc/nginx/sites-available/erplibre; "
+            "sudo mkdir -p /etc/nginx/sites-enabled; "
+            "sudo rm -f /etc/nginx/sites-enabled/default; "
+            "else EL_NGX_CONF=/etc/nginx/conf.d/erplibre.conf; "
+            "sudo mkdir -p /etc/nginx/conf.d; "
+            "grep -q 'conf.d/[*].conf' /etc/nginx/nginx.conf || "
+            "sudo sed -i 's|^http {|&\\n    include "
+            "/etc/nginx/conf.d/*.conf;|' /etc/nginx/nginx.conf; "
+            "sudo sed -i 's/ default_server//' /etc/nginx/nginx.conf; fi; "
+        )
+        selinux = (
+            "if command -v getenforce >/dev/null 2>&1 && "
+            '[ "$(getenforce)" != Disabled ]; then '
+            "sudo setsebool -P httpd_can_network_connect 1 || "
+            f'echo "   ⚠ {t("SELinux: nginx may not reach Odoo")}"; '
+            f"sudo restorecon -R /etc/nginx {ssl_dir} >/dev/null 2>&1 "
+            "|| true; fi; "
+        )
+        demarre = (
+            "if ! sudo nginx -t; then "
+            + ko(t("nginx: invalid configuration (sudo nginx -t)."))
+            + "fi; "
+            "sudo systemctl enable nginx >/dev/null 2>&1 || true; "
+            "if ! sudo systemctl restart nginx; then "
+            "sudo journalctl -u nginx -n 20 --no-pager -o cat 2>/dev/null "
+            "| sed 's/^/     /'; "
+            + ko(t("nginx: the service does not start."))
+            + "fi; "
+        )
+        pare_feu = (
+            "if command -v firewall-cmd >/dev/null 2>&1; then "
+            "sudo firewall-offline-cmd --add-service=http "
+            "--add-service=https >/dev/null 2>&1 || true; "
+            "if systemctl is-active --quiet firewalld 2>/dev/null; then "
+            "sudo firewall-cmd --permanent --add-service=http "
+            "--add-service=https >/dev/null 2>&1 && "
+            "sudo firewall-cmd --reload >/dev/null 2>&1 || "
+            f'echo "   ⚠ {t("firewalld: http and https not opened")}"; '
+            "fi; fi; "
+        )
+        proxy_mode = (
+            'EL_CONF="$SVC_DIR/config.conf"; '
+            "if grep -q '^proxy_mode' \"$EL_CONF\"; then "
+            "sed -i 's/^proxy_mode.*/proxy_mode = True/' \"$EL_CONF\"; "
+            "else printf 'proxy_mode = True\\n' >> \"$EL_CONF\"; fi; "
+            "sudo systemctl restart erplibre.service; "
+        )
+        certbot = ""
+        if le:
+            q_dom = shlex.quote(domain)
+            certbot = (
+                f'if ! ( cd "$EL_NGX_DIR" && sudo python3 {script}'
+                f" --run_certbot --domain {q_dom}"
+                f" --admin_email {shlex.quote(email)}"
+                ' --odoo_version "$EL_V" ); then '
+                + ko(t("certbot failed."))
+                + "fi; "
+                f"if ! sudo test -d /etc/letsencrypt/live/{q_dom}; then "
+                + ko(
+                    t(
+                        "certbot: no certificate. Does the domain point to"
+                        " this VM, with port 80 reachable?"
+                    )
+                )
+                + "fi; "
+                "sudo nginx -t >/dev/null 2>&1 && "
+                "sudo systemctl reload nginx; "
+                "EL_RENEW=; for u in certbot.timer certbot-renew.timer; do "
+                'if systemctl cat "$u" >/dev/null 2>&1; then '
+                'sudo systemctl enable --now "$u" >/dev/null 2>&1 || true; '
+                'EL_RENEW="$u"; break; fi; done; '
+                '[ -n "$EL_RENEW" ] || '
+                f'echo "   ⚠ {t("certbot: no renewal timer found")}"; '
+            )
+        verifie = (
+            f"EL_PURL={m.scheme}://127.0.0.1/web/login; "
+            "EL_PCODE=$(curl -sk -o /dev/null -m 10 -w '%{http_code}' "
+            '"$EL_PURL" 2>/dev/null || true); '
+            'case "$EL_PCODE" in '
+            '[1-4]??) echo "   nginx : $EL_PURL → $EL_PCODE.";; '
+            f'*) echo "   ⚠ nginx : $EL_PURL → $EL_PCODE ;'
+            f' {t("Odoo may still be starting")}.";; '
+            "esac; "
+            f'echo "   {t("Web access:")} $EL_URL"'
+        )
+        return (
+            f'echo "== nginx ({t(m.label)}) =="; '
+            "if grep -q '^ID=nixos' /etc/os-release 2>/dev/null; then "
+            + ko(t(erp.access.NIXOS_REFUSAL))
+            + "fi; "
+            + paquets
+            + kit
+            + nom
+            + certificat
+            + disposition
+            + site
+            + selinux
+            + demarre
+            + pare_feu
+            + proxy_mode
+            + certbot
+            + 'rm -rf "$EL_NGX_DIR"; '
+            + verifie
         )
 
     # Bureaux disponibles, par gestionnaire de paquets. Une seule source pour

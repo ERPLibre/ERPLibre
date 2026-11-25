@@ -717,6 +717,11 @@ def launch_installs(
             entree["notes"] = list(vm["notes"])
         if vm.get("app"):
             entree["app"] = vm["app"]
+        # L'accès web d'une VM de production derrière nginx : web_target y
+        # lit l'URL à ouvrir. Absent, la page se joint en direct.
+        for cle in ("access", "domain"):
+            if vm.get(cle):
+                entree[cle] = vm[cle]
         if vm.get("spec"):
             entree["spec_file"] = _write_spec_file(
                 logdir / f"{vm['name']}.spec.json", vm["spec"]
@@ -2220,14 +2225,25 @@ def web_target(vm) -> tuple:
     """(argv du tunnel ou None, URL) de la page web de `vm`.
 
     Une VM dont l'ERP est guest_probe (Dolibarr) passe toujours par un
-    tunnel ssh vers sa boucle locale. Une VM Odoo locale se joint
-    directement sur son port ; derrière un hôte Proxmox, par un tunnel à
-    travers lui, sur son tunnel_port.
+    tunnel ssh vers sa boucle locale. Une VM dont l'entrée porte un accès
+    web par nginx (« access ») s'ouvre sur le port de nginx, 443 ou 80, ou
+    par https://<domain>/ pour Let's Encrypt (access.web_target). Sinon la
+    VM se joint directement sur le port de son ERP. Derrière un hôte
+    Proxmox, un tunnel à travers lui mène au port visé.
     """
     app = erp.app_for_entry(vm)
     if app.guest_probe:
         return dolibarr_tunnel_argv(vm), f"http://127.0.0.1:{app.tunnel_port}/"
-    argv = web_tunnel_argv((vm or {}).get("pve"), app.tunnel_port, app.port)
+    pve = (vm or {}).get("pve")
+    par_nginx = erp.access.web_target(
+        (vm or {}).get("access"),
+        (vm or {}).get("ip"),
+        (vm or {}).get("domain") or "",
+        lambda local, cible: web_tunnel_argv(pve, local, cible),
+    )
+    if par_nginx:
+        return par_nginx
+    argv = web_tunnel_argv(pve, app.tunnel_port, app.port)
     if argv:
         return argv, f"http://127.0.0.1:{app.tunnel_port}"
     return None, f"http://{(vm or {}).get('ip')}:{app.port}"
@@ -4438,8 +4454,8 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
             """Ouvre l'UI web de la VM dans un navigateur CLI
             (browsh/carbonyl/w3m/links/elinks/lynx). Surtout utile une fois
             l'installation TERMINÉE. web_target choisit la cible : Odoo sur
-            :8069, Dolibarr toujours par un tunnel SSH vers 127.0.0.1:8080
-            dans la VM."""
+            :8069 ou par le nginx de son accès web, Dolibarr toujours par un
+            tunnel SSH vers 127.0.0.1:8080 dans la VM."""
             vm = self._vm_by_name(self._selected)
             if not vm or not vm.get("ip"):
                 self.notify(t("No IP for this VM."), title="Web")

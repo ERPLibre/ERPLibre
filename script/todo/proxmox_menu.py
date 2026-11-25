@@ -2670,6 +2670,9 @@ class ProxmoxMenuMixin:
             no_git_identity=False,
             user=spec.get("user") or VM_USER_DEFAULT,
             app=erp.profile_app(cmd_install),
+            # L'URL du nginx que cette VM reçoit, comme la voie libvirt.
+            web_access=erp.vm_access(vm, install),
+            web_domain=erp.access.fields(install)["domain"],
         )
         try:
             fichiers = mod.guide_files(args)
@@ -3087,6 +3090,9 @@ class ProxmoxMenuMixin:
                 created=set(noms),
                 keep_login=garder,
                 vm_password=secret,
+                # nginx devant Odoo en production, et l'URL que le suivi
+                # ouvre : le choix d'accès web du bloc d'installation.
+                web_access=spec.get("install"),
             )
             if entrees is not None and session:
                 entrees.extend(lancees or [])
@@ -3110,6 +3116,7 @@ class ProxmoxMenuMixin:
                 user=compte,
                 keep_login=garder,
                 vm_password=secret,
+                web_access=spec.get("install"),
             )
         return resultat
 

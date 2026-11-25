@@ -87,6 +87,9 @@ FIELD_NAMES = {
     "f_git_name": "Name for git",
     "f_git_email": "Email for git",
     "f_vm_user": "VM user",
+    "f_access": "Web access:",
+    "f_access_domain": "Domain (Let's Encrypt)",
+    "f_access_email": "Admin email (Let's Encrypt)",
 }
 
 # Les champs d'une surcharge, tels que la liste les nomme.

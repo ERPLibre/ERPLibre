@@ -325,10 +325,17 @@ class ExtrasMixin:
         )
 
     def compose_install_extras(self):
-        """Ce qui pend à la case « installer » : production, magasin,
-        outils. Posé DANS la section « Installation », après la branche et le
-        profil."""
-        from textual.widgets import Checkbox, RadioButton, RadioSet, Static
+        """Ce qui pend à la case « installer » : production et son accès
+        web, magasin, outils. Posé DANS la section « Installation », après la
+        branche et le profil."""
+        from textual.widgets import (
+            Checkbox,
+            Input,
+            RadioButton,
+            RadioSet,
+            Select,
+            Static,
+        )
 
         tab = self._extras
         yield Checkbox(
@@ -342,6 +349,31 @@ class ExtrasMixin:
         note = Static("", id="t_prod_note")
         note.display = False
         yield note
+        # L'accès web de la production : montré par _sync_access quand la
+        # case est cochée et active, et que l'ERP commun déclare des modes ;
+        # c'est lui qui réduit la liste, posée ici avec tous les modes, à
+        # ceux de cet ERP. Le domaine et le courriel ne paraissent que pour
+        # Let's Encrypt.
+        modes = erp.access.MODES
+        defaut = tab["defaults"].get("access") or erp.access.DEFAULT
+        if erp.access.get(defaut) is None:
+            defaut = erp.access.DEFAULT
+        titre = Static(f"  {t('Web access:')}", id="t_access")
+        champ = Select(
+            [(t(m.label), m.key) for m in modes],
+            value=defaut,
+            allow_blank=False,
+            id="f_access",
+        )
+        domaine = Input(
+            placeholder=t("Domain (Let's Encrypt)"), id="f_access_domain"
+        )
+        courriel = Input(
+            placeholder=t("Admin email (Let's Encrypt)"), id="f_access_email"
+        )
+        for widget in (titre, champ, domaine, courriel):
+            widget.display = False
+            yield widget
         if tab["app_stores"]:
             yield Static(
                 t("Application store:"), id="t_store", classes="grouptitle"
@@ -859,6 +891,82 @@ class ExtrasMixin:
         """Le descripteur qemu_erp du profil commun d'en haut."""
         return erp.app_for_cmd(self._profile_cmd())
 
+    def _access_modes(self):
+        """Les AccessMode que sert l'ERP du choix commun ; () pour un profil
+        sans ERP ou un ERP qui n'en déclare aucun."""
+        cmd = self._profile_cmd()
+        if erp.choice_for_cmd(cmd)[0] == erp.APP_NONE:
+            return ()
+        return erp.access.modes_for(erp.app_for_cmd(cmd).access_modes)
+
+    def _access_shown(self) -> bool:
+        """Vrai quand le champ « Accès web » a un objet : la production est
+        cochée et active, et l'ERP commun déclare des modes."""
+        return self._prod_value() and bool(self._access_modes())
+
+    def _sync_access(self) -> None:
+        """Montre le champ « Accès web » quand il a un objet, avec les modes
+        de l'ERP commun, et ses champs Let's Encrypt pour un mode
+        needs_domain. Les choix ne sont remplacés que s'ils changent, sous
+        prevent() : le Changed délivré après coup serait pris pour une
+        saisie."""
+        from textual.widgets import Select
+
+        champ = self._widget("#f_access")
+        if champ is None:
+            return
+        modes = self._access_modes()
+        options = [(t(m.label), m.key) for m in modes]
+        cles = [m.key for m in modes]
+        if cles and cles != getattr(self, "_access_keys", None):
+            valeur = champ.value if champ.value in cles else None
+            if valeur is None:
+                valeur = (
+                    erp.access.DEFAULT
+                    if erp.access.DEFAULT in cles
+                    else cles[0]
+                )
+            with self.prevent(Select.Changed):
+                champ.set_options(options)
+                champ.value = valeur
+            self._access_keys = cles
+        vu = self._access_shown()
+        for sel in ("#t_access", "#f_access"):
+            widget = self._widget(sel)
+            if widget is not None:
+                widget.display = vu
+        m = erp.access.get(champ.value) if vu else None
+        for sel in ("#f_access_domain", "#f_access_email"):
+            widget = self._widget(sel)
+            if widget is not None:
+                widget.display = bool(m and m.needs_domain)
+
+    def access_values(self) -> dict:
+        """{"access", "domain", "email"} que le bloc d'installation reçoit.
+
+        access.DIRECT quand le champ n'a pas d'objet (_access_shown) ; le
+        domaine et le courriel, sans espaces autour, pour un mode
+        needs_domain seulement. Jugés par qemu_erp.install_refusals avant
+        F5."""
+        valeurs = erp.access.fields({})
+        champ = self._widget("#f_access")
+        if champ is None or not self._access_shown():
+            return valeurs
+        mode = champ.value
+        if not isinstance(mode, str) or erp.access.get(mode) is None:
+            return valeurs
+        valeurs["access"] = mode
+        if erp.access.get(mode).needs_domain:
+            for cle, sel in (
+                ("domain", "#f_access_domain"),
+                ("email", "#f_access_email"),
+            ):
+                widget = self._widget(sel)
+                valeurs[cle] = (
+                    widget.value.strip() if widget is not None else ""
+                )
+        return valeurs
+
     def _prod_value(self) -> bool:
         """La production que la spec reçoit : la coche, sauf quand la case
         est grisée. La coche elle-même n'est jamais touchée, pour revenir
@@ -877,7 +985,15 @@ class ExtrasMixin:
             return ""
         vm = self.rows[i]["vm"]
         cmd = vm.get("install_cmd") or self._row_default_cmd(i)
-        return erp.app_for_cmd(cmd).distro_refusal(vm.get("distro", ""))
+        raison = erp.app_for_cmd(cmd).distro_refusal(vm.get("distro", ""))
+        if raison:
+            return raison
+        # L'accès web de la production, jugé sur la commande de la rangée :
+        # nginx refusé sur NixOS, mode que son ERP ne sert pas.
+        return erp.vm_access_refusal(
+            {"install_cmd": cmd, "distro": vm.get("distro", "")},
+            {"prod": self._prod_value(), **self.access_values()},
+        )
 
     def _row_cmd(self, i) -> str:
         """Commande effective de la rangée `i` : la sienne, sinon son
@@ -1249,6 +1365,7 @@ class ExtrasMixin:
             if dev_seul:
                 note.update(t(app.prod_note))
             note.display = dev_seul
+        self._sync_access()
         # Le magasin, les outils et l'interpréteur Python ont leur PROPRE
         # raison de se griser (architecture, bureau, distribution) : ils
         # composent les deux dans « _render_* », qui a le dernier mot.
@@ -1294,14 +1411,20 @@ class ExtrasMixin:
         self._erp_shown = app
 
     def erp_on_select(self, event) -> bool:
-        """Traite le choix commun #f_erp / #f_version. True quand c'est
-        fait ; l'appelant recalcule ensuite son plan.
+        """Traite le choix commun #f_erp / #f_version, et l'accès web
+        #f_access. True quand c'est fait ; l'appelant recalcule ensuite son
+        plan.
 
         Un autre ERP remplace les choix de la liste Version et force le
         remontage des rangées, dont les listes Version changent aussi. Le
         choix commun reprend la main sur les rangées non figées, comme
         l'ancien profil unique."""
         ident = getattr(event.select, "id", "")
+        if ident == "f_access":
+            # Le mode d'accès web change le refus d'une rangée NixOS :
+            # l'appelant recalcule, sans toucher aux surcharges.
+            self._sync_access()
+            return True
         if ident not in ("f_erp", "f_version"):
             return False
         if (
@@ -1318,10 +1441,17 @@ class ExtrasMixin:
     def _hist_prepare(self, snap) -> None:
         """Appelée par l'historique avant de reposer les champs : #f_version
         reçoit les choix de l'ERP de l'instantané, sans quoi sa valeur,
-        absente des choix de l'ERP affiché, serait laissée de côté."""
-        app = (snap.get("widgets") or {}).get("f_erp")
+        absente des choix de l'ERP affiché, serait laissée de côté.
+
+        Un instantané de production qui ne porte pas #f_access, pris avant
+        ce champ, pose l'accès direct : il se rejoue comme il a été pris."""
+        widgets = snap.get("widgets") or {}
+        app = widgets.get("f_erp")
         if isinstance(app, str) and app != self._erp_shown:
             self._erp_set_versions(app)
+        champ = self._widget("#f_access")
+        if widgets.get("f_prod") and "f_access" not in widgets and champ:
+            champ.value = erp.access.DIRECT
 
     def extras_on_select(self, event) -> bool:
         """Traite le sélecteur de fuseau. Rend True quand c'est fait, pour

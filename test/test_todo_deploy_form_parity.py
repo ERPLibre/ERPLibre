@@ -50,6 +50,10 @@ REGLAGES = (
     # Le choix commun d'installation : l'ERP, puis sa version.
     "f_erp",
     "f_version",
+    # L'accès web de la production, et les champs de Let's Encrypt.
+    "f_access",
+    "f_access_domain",
+    "f_access_email",
 )
 
 CATALOGUE = [
@@ -215,6 +219,19 @@ class TestLesDeuxEcrans(unittest.TestCase):
             blocs[nom] = {k: install[k] for k in ("app", "version", "options")}
         self.assertEqual(
             {"app": "odoo", "version": "18.0", "options": {}},
+            blocs["QEMU/KVM"],
+        )
+        self.assertEqual(blocs["QEMU/KVM"], blocs["Proxmox"])
+
+    def test_both_install_blocks_carry_the_web_access(self):
+        # Même bloc, mêmes clés : la production en accès direct par défaut
+        # tant que la case n'est pas cochée.
+        blocs = {}
+        for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
+            install = vu["spec"]["install"]
+            blocs[nom] = {k: install[k] for k in ("access", "domain", "email")}
+        self.assertEqual(
+            {"access": "direct", "domain": "", "email": ""},
             blocs["QEMU/KVM"],
         )
         self.assertEqual(blocs["QEMU/KVM"], blocs["Proxmox"])

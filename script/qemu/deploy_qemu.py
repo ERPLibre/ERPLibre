@@ -3926,8 +3926,56 @@ DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# Accès web d'une VM de production servie par nginx : la ligne que le guide
+# donne pour la page, (URL, glose fr, glose en), « {domain} » remplacé par
+# le domaine Let's Encrypt. Les mêmes clés, schémas et ports que les modes
+# nginx de script/todo/qemu_erp/access.py, que vérifie un test de parité :
+# ce script reste autonome et ne l'importe pas. Le mode « direct », absent
+# ici, garde la ligne :8069.
+WEB_ACCESS_DIRECT = "direct"
+WEB_ACCESS_GUIDE = {
+    "selfsigned": (
+        "https://<ip>/",
+        "interface web (nginx, certificat auto-signé)",
+        "web interface (nginx, self-signed certificate)",
+    ),
+    "http": (
+        "http://<ip>/",
+        "interface web (nginx, TLS terminé en amont)",
+        "web interface (nginx, TLS terminated upstream)",
+    ),
+    "letsencrypt": (
+        "https://{domain}/",
+        "interface web (nginx, Let's Encrypt)",
+        "web interface (nginx, Let's Encrypt)",
+    ),
+}
+
+
+def web_access_rows(
+    access: str = WEB_ACCESS_DIRECT, domain: str = ""
+) -> tuple[tuple[str, str, str], ...]:
+    """Lignes du guide qui donnent la page web de la VM.
+
+    `access` : mode d'accès web de la VM, une clé de WEB_ACCESS_GUIDE ou
+    « direct » ; une clé inconnue vaut « direct », la ligne :8069. Avec
+    nginx, l'URL de nginx et la commande qui le recharge.
+    """
+    if access not in WEB_ACCESS_GUIDE:
+        return (("http://<ip>:8069", "interface web", "web interface"),)
+    url, glose_fr, glose_en = WEB_ACCESS_GUIDE[access]
+    return (
+        (url.replace("{domain}", domain or "<domaine>"), glose_fr, glose_en),
+        ("sudo systemctl reload nginx", "recharger nginx", "reload nginx"),
+    )
+
+
 def erplibre_guide(
-    el_dir: str, el_make: str = "", editor: str = ""
+    el_dir: str,
+    el_make: str = "",
+    editor: str = "",
+    access: str = WEB_ACCESS_DIRECT,
+    domain: str = "",
 ) -> tuple[tuple[str, str, str], ...]:
     """Commandes ERPLibre de la VM.
 
@@ -3943,6 +3991,9 @@ def erplibre_guide(
     nomme le fichier de configuration sans nommer d'éditeur — « vi » n'est pas
     garanti sur toutes les images cloud, et un guide qui propose une commande
     absente est pire que muet.
+
+    `access`, `domain` : l'accès web de la VM (web_access_rows), qui donne
+    la ligne de la page.
     """
     rows = [
         (f"cd {el_dir}", "aller au dépôt", "go to the checkout"),
@@ -3987,7 +4038,7 @@ def erplibre_guide(
             ),
             "update ERPLibre/Odoo" if el_make else "update the checkout",
         ),
-        ("http://<ip>:8069", "interface web", "web interface"),
+        *web_access_rows(access, domain),
     ]
     return tuple(rows)
 
@@ -4121,13 +4172,16 @@ def build_motd(
     desktop: bool = False,
     tools: tuple = (),
     app: str = "odoo",
+    access: str = WEB_ACCESS_DIRECT,
+    domain: str = "",
 ) -> str:
     """Texte du /etc/motd de la VM. Fonction PURE : aucun I/O, donc testable.
 
     La section ERPLibre n'apparaît qu'avec `el_dir` : une VM déployée sans
     installation ne doit pas annoncer un dépôt et un service qui n'existent pas.
     Avec `app` « dolibarr », le bloc Dolibarr prend sa place : la VM n'a ni
-    Odoo ni service erplibre.
+    Odoo ni service erplibre. `access` et `domain` donnent la ligne de la
+    page web du bloc ERPLibre (web_access_rows).
     Le bloc « Bureau » suit la même règle avec `desktop` : sur un serveur, ces
     deux commandes ne mèneraient à aucune unité.
     """
@@ -4158,7 +4212,7 @@ def build_motd(
         body += motd_block("Dolibarr", doli_rows, lang, gloss_col(doli_rows))
     elif el_dir:
         body.append("")
-        el_rows = erplibre_guide(el_dir, el_make, editor)
+        el_rows = erplibre_guide(el_dir, el_make, editor, access, domain)
         body += motd_block("ERPLibre", el_rows, lang, gloss_col(el_rows))
     # UN BLOC PAR OUTIL POSÉ, titré de son libellé. La liste vient de
     # l'appelant, filtrée par la machine : annoncer un outil que l'
@@ -5082,6 +5136,8 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
             if c.strip()
         ),
         getattr(args, "app", "odoo"),
+        getattr(args, "web_access", WEB_ACCESS_DIRECT),
+        getattr(args, "web_domain", ""),
     )
     if args.desktop and args.distro != "nixos":
         # Voir « Guide de connexion » : /etc/motd retarderait GDM.
@@ -6888,6 +6944,19 @@ def build_parser() -> argparse.ArgumentParser:
         default="odoo",
         help="Application installée dans la VM : odoo (défaut) ou dolibarr, "
         "dont le bloc remplace celui du service ERPLibre dans le guide.",
+    )
+    g_cloud.add_argument(
+        "--web-access",
+        choices=(WEB_ACCESS_DIRECT, *WEB_ACCESS_GUIDE),
+        default=WEB_ACCESS_DIRECT,
+        help="Accès web de la VM de production : direct (défaut, :8069) ou "
+        "un mode nginx, dont le guide annonce l'URL.",
+    )
+    g_cloud.add_argument(
+        "--web-domain",
+        default="",
+        metavar="DOMAINE",
+        help="Domaine Let's Encrypt de la VM, pour --web-access letsencrypt.",
     )
     g_cloud.add_argument(
         "--git-name",

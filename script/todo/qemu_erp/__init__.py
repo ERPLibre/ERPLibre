@@ -18,10 +18,18 @@ la commande s'en déduit par ErpApp.install_cmd_for, et la spec porte le
 couple dans « app » et « version » à côté de la commande. Le choix APP_NONE
 désigne les profils qui n'installent aucun ERP du registre (ERPLibre seul,
 Home, hyperviseur…) : ses valeurs sont les commandes elles-mêmes.
+
+En production, le bloc d'installation porte aussi l'accès web (« access »,
+et « domain », « email » pour Let's Encrypt) ; les modes sont ceux de
+access.py, et chaque ErpApp déclare ceux qu'il sert (access_modes).
+vm_access dit le mode qu'une VM reçoit vraiment, access_refusals ce qui en
+est refusé.
 """
 
 from dataclasses import dataclass
 from typing import Callable, Optional
+
+from script.todo.qemu_erp import access
 
 try:
     from script.todo.todo_i18n import t
@@ -129,6 +137,10 @@ class ErpApp:
     # () -> les ErpVersion offertes, dans l'ordre d'affichage ; vide, l'ERP
     # n'apparaît pas au sélecteur ERP / Version.
     versions: Callable[[], tuple] = no_versions
+    # Clés des modes d'accès web (access.MODES) que l'ERP sert en
+    # production ; vide, aucun champ « Accès web » n'est offert et la VM
+    # reste en accès direct.
+    access_modes: tuple = ()
 
     def matches(self, cmd):
         """Vrai si `cmd` est la commande du profil de cet ERP."""
@@ -324,13 +336,105 @@ class Choices:
         return self.first()
 
 
+def vm_access(vm, install=None):
+    """La clé du mode d'accès web que reçoit la VM `vm` d'une spec.
+
+    access.DIRECT sans production, pour un profil hors registre (APP_NONE)
+    et pour un ERP dev_only, qui s'installe en développement quelle que
+    soit la case. Sinon le mode du bloc `install`, DIRECT quand il n'en
+    porte pas : une spec écrite avant ce choix se rejoue à l'identique. Le
+    mode rendu n'est pas jugé ici : vm_access_refusal le fait.
+    """
+    vm, install = vm or {}, install or {}
+    if not install.get("prod"):
+        return access.DIRECT
+    cmd = vm.get("install_cmd") or install.get("cmd")
+    if choice_for_cmd(cmd)[0] == APP_NONE or vm_app(vm, install).dev_only:
+        return access.DIRECT
+    return access.fields(install)["access"]
+
+
+def effective_access(prod, cmd, mode):
+    """vm_access d'une VM installée par `cmd`, en production si `prod`,
+    pour le mode demandé `mode` : la forme des appelants qui ne tiennent
+    pas de spec."""
+    return vm_access(
+        {"install_cmd": cmd}, {"prod": prod, "cmd": cmd, "access": mode}
+    )
+
+
+def vm_access_refusal(vm, install=None):
+    """La raison traduite de refuser l'accès web de `vm`, ou "".
+
+    Un mode inconnu, un mode que l'ERP de la VM ne déclare pas dans
+    access_modes, ou un mode nginx sur NixOS, dont /etc est en lecture
+    seule. DIRECT n'est jamais refusé ici.
+    """
+    mode = vm_access(vm, install)
+    if mode == access.DIRECT:
+        return ""
+    m = access.get(mode)
+    if m is None:
+        return t("Unknown web access: %s") % mode
+    app = vm_app(vm, install)
+    if mode not in app.access_modes:
+        return t("%s does not offer this web access: %s") % (
+            app.name,
+            t(m.label),
+        )
+    if m.nginx and (vm or {}).get("distro") == "nixos":
+        return t(access.NIXOS_REFUSAL)
+    return ""
+
+
+def access_refusals(spec):
+    """Les raisons de refuser l'accès web de `spec`, dans l'ordre des VM.
+
+    Chaque VM refusée donne « <nom>: <raison> » (vm_access_refusal). Les
+    VM en mode needs_domain (Let's Encrypt) ajoutent ensuite, une fois, le
+    domaine ou le courriel manquant ou invalide, et le refus de plusieurs
+    VM : un domaine désigne une seule machine.
+    """
+    install = spec.get("install") or {}
+    refus = []
+    par_domaine = []
+    for vm in spec.get("vms") or []:
+        raison = vm_access_refusal(vm, install)
+        if raison:
+            refus.append(f"{vm['name']}: {raison}")
+            continue
+        m = access.get(vm_access(vm, install))
+        if m is not None and m.needs_domain:
+            par_domaine.append(vm["name"])
+    if par_domaine:
+        champs = access.fields(install)
+        refus += [
+            r
+            for r in (
+                access.domain_error(champs["domain"]),
+                access.email_error(champs["email"]),
+            )
+            if r
+        ]
+        if len(par_domaine) > 1:
+            refus.append(
+                t(
+                    "Let's Encrypt: one domain names one VM, %d VMs would"
+                    " share it (%s); deploy them one at a time."
+                )
+                % (len(par_domaine), ", ".join(par_domaine))
+            )
+    return refus
+
+
 def install_refusals(spec):
     """Les raisons de refuser `spec` avant de créer quoi que ce soit.
 
     Une VM sur un système que son ERP refuse donne « <nom>: <raison> », dans
-    l'ordre des VM. Une spec hors ligne ajoute ensuite, une fois par ERP et
-    dans l'ordre de première apparition, le offline_refusal traduit de
-    chaque ERP qui ne s'y déploie pas. Rend [] sans installation.
+    l'ordre des VM. Suivent les refus de l'accès web (access_refusals). Une
+    spec hors ligne ajoute enfin, une fois par ERP et dans l'ordre de
+    première apparition, le offline_refusal traduit de chaque ERP qui ne
+    s'y déploie pas. Rend [] sans installation.
     """
     install = spec.get("install")
     if not install:
@@ -344,6 +448,7 @@ def install_refusals(spec):
         raison = app.distro_refusal(vm.get("distro", ""))
         if raison:
             refus.append(f"{vm['name']}: {raison}")
+    refus += access_refusals(spec)
     if spec.get("offline"):
         refus += [t(r) for r in hors_ligne]
     return refus

@@ -428,6 +428,42 @@ VM, et relancent l'instance par `run.py start` ; la restauration d'une base
 Odoo et la mise à jour des dépendances Python d'Odoo sont refusées avec un
 message.
 
+### Accès web de la production
+
+Quand **Production** est cochée, une VM Odoo reçoit aussi un choix **Accès
+web** ; les invites en ligne le posent après l'environnement. Odoo écoute
+toujours sur 8069, quel que soit le mode, et le suivi l'y sonde encore.
+
+- **HTTPS auto-signé** (défaut) : nginx devant Odoo, avec un certificat
+  généré par openssl dans la VM, dans `/etc/ssl/erplibre` (clé en mode
+  0600, CN le nom d'hôte de la VM, son adresse en subjectAltName). Le
+  navigateur avertit sur le certificat.
+- **HTTP (TLS terminé ailleurs)** : nginx sur le port 80, pour un
+  mandataire ou un répartiteur qui tient le certificat.
+- **Let's Encrypt** : nginx, puis `certbot --nginx` pour le domaine, avec le
+  courriel d'administration ; les deux champs sont vérifiés avant F5. Le
+  domaine doit désigner la VM, port 80 joignable depuis Internet ; un
+  domaine désigne une seule VM, un plan de plusieurs VM est donc refusé.
+- **Direct :8069, sans nginx** : le comportement d'avant ce choix.
+
+Le site est écrit par `script/nginx/deploy_nginx_and_certbot.py` et ses
+gabarits, pour la version d'Odoo de la VM, dans `sites-available` sur Debian
+et Ubuntu, dans `conf.d` ailleurs. La VM exécute la copie de l'hôte du
+script et des gabarits, envoyée avec la commande d'installation, et non
+celle de son clone : la branche clonée peut ne pas porter les options que
+l'installation passe. `proxy_mode = True` est posé dans
+`config.conf`, SELinux reçoit `httpd_can_network_connect`, et firewalld
+ouvre http et https quand il est là. NixOS est refusé pour les trois modes
+nginx : son `/etc` est en lecture seule. Dolibarr reste en développement
+seulement et n'a pas de choix.
+
+La spec porte `access`, et `domain` et `email` pour Let's Encrypt, dans le
+bloc `install` ; une spec de production sans `access` se rejoue en Direct.
+`w` dans le suivi ouvre `https://<ip>/`, `http://<ip>/` ou
+`https://<domaine>/` ; derrière un hôte Proxmox, le tunnel va vers 443
+(local 18443) ou 80 (local 18480) au lieu de 8069. Le guide de connexion
+donne la même URL.
+
 ## Principales options
 
 - `--distro` — `ubuntu` (défaut), `debian`, `fedora`, `almalinux`,
@@ -464,6 +500,10 @@ message.
   (ex. `install_odoo_18`), reprise dans le guide pour la mettre à jour.
 - `--app` — `odoo` (défaut) ou `dolibarr` : l'application installée dans la
   VM, dont le bloc remplace celui d'ERPLibre dans le guide de connexion.
+- `--web-access`, `--web-domain` — l'accès web de production de la VM
+  (`direct` par défaut, `selfsigned`, `http`, `letsencrypt`) et son domaine
+  Let's Encrypt : le guide de connexion donne l'URL de nginx au lieu de
+  :8069.
 - `--no-git-identity` — ne recopie pas les `user.name`, `user.email` et
   `core.editor` de l'hôte dans le `~/.gitconfig` de la VM.
 

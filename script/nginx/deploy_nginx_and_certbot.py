@@ -4,6 +4,9 @@
 import argparse
 import logging
 import os
+import shlex
+import subprocess
+import sys
 import time
 
 logging.basicConfig()
@@ -47,6 +50,25 @@ def get_config():
         help="Change the dir of certificate for this dir. Will contain fullchain.pem and privkey.pem.",
     )
     parser.add_argument(
+        "--nginx_conf",
+        help="Path of the nginx file to write, instead of"
+        " /etc/nginx/sites-available/<main domain>. A file under a"
+        " sites-available directory is linked from its sites-enabled.",
+    )
+    parser.add_argument(
+        "--default_server",
+        action="store_true",
+        help="Mark the listen directives default_server: the site answers"
+        " any host name, the VM address or a tunnel included.",
+    )
+    parser.add_argument(
+        "--no_certbot_options",
+        action="store_true",
+        help="Drop the certbot include and ssl_dhparam lines of the ssl"
+        " template, for a certificate given by --force_ssl_dir on a host"
+        " without certbot.",
+    )
+    parser.add_argument(
         "--domain",
         required=True,
         help="Separate by ; for multiple domains. Main domain is first on the list.",
@@ -75,6 +97,40 @@ def get_config():
     return args
 
 
+def enabled_link(site_path):
+    """Le lien sites-enabled du fichier `site_path`, ou None.
+
+    Seul un fichier rangé dans un répertoire « sites-available » (Debian,
+    Ubuntu) a un lien à poser, dans le « sites-enabled » voisin. Ailleurs,
+    conf.d par exemple, nginx lit le fichier lui-même."""
+    dossier, nom = os.path.split(os.path.normpath(site_path))
+    if os.path.basename(dossier) != "sites-available":
+        return None
+    return os.path.join(os.path.dirname(dossier), "sites-enabled", nom)
+
+
+def adapt_template(content, default_server=False, no_certbot_options=False):
+    """Le gabarit `content` déjà rempli, ajusté par deux options.
+
+    `default_server` ajoute « default_server » aux directives « listen 80 »
+    et « listen 443 ssl » : le site répond alors à tout nom d'hôte.
+    `no_certbot_options` retire les lignes qui lisent les fichiers de
+    certbot (options-ssl-nginx.conf, ssl-dhparams.pem), absents d'un hôte
+    où certbot n'est pas installé : nginx -t échouerait sur elles."""
+    if default_server:
+        content = content.replace(
+            "listen 80;", "listen 80 default_server;"
+        ).replace("listen 443 ssl;", "listen 443 ssl default_server;")
+    if no_certbot_options:
+        content = "".join(
+            ligne
+            for ligne in content.splitlines(keepends=True)
+            if "/etc/letsencrypt/options-ssl-nginx.conf" not in ligne
+            and "/etc/letsencrypt/ssl-dhparams.pem" not in ligne
+        )
+    return content
+
+
 def main():
     config = get_config()
 
@@ -100,8 +156,10 @@ def main():
 
     if config.generate_nginx:
         # TODO check if exist, overwrite it
-        site_available_path = f"/etc/nginx/sites-available/{main_domain}"
-        site_enabled_path = f"/etc/nginx/sites-enabled/{main_domain}"
+        site_available_path = (
+            config.nginx_conf or f"/etc/nginx/sites-available/{main_domain}"
+        )
+        site_enabled_path = enabled_link(site_available_path)
         print(f"Create file {site_available_path}")
 
         with open(template_name, "r") as template:
@@ -118,11 +176,13 @@ def main():
             .replace("8069", str(config.default_port_http))
             .replace("8072", str(config.default_port_websocket))
         )
+        content = adapt_template(
+            content, config.default_server, config.no_certbot_options
+        )
         with open(site_available_path, "w") as template:
             template.write(content)
-        if not os.path.exists(site_enabled_path):
-            cmd_syslink = f"ln -s {site_available_path} {site_enabled_path}"
-            os.system(cmd_syslink)
+        if site_enabled_path and not os.path.exists(site_enabled_path):
+            os.symlink(site_available_path, site_enabled_path)
 
     # TODO support both ssl_exist and run_certbot
     if config.ssl_exist and config.run_certbot:
@@ -134,20 +194,26 @@ def main():
     elif config.run_certbot:
         if config.generate_nginx:
             time.sleep(10)
-        cmd_lst_domain = " -d " + " -d ".join(lst_domain)
-        cmd_more_certbot_cmd = ""
+        cmd_certbot = certbot_argv(lst_domain, config.admin_email)
+        print(shlex.join(cmd_certbot))
+        return subprocess.run(cmd_certbot).returncode
+    return 0
 
-        if config.admin_email:
-            cmd_more_certbot_cmd += (
-                f"--email {config.admin_email} --non-interactive --agree-tos "
-            )
 
-        cmd_certbot = (
-            f"sudo certbot {cmd_more_certbot_cmd}--nginx{cmd_lst_domain}"
-        )
-        print(cmd_certbot)
-        os.system(cmd_certbot)
+def certbot_argv(lst_domain, admin_email=None):
+    """L'argv de « sudo certbot --nginx » pour les domaines `lst_domain`.
+
+    Passé tel quel à subprocess, sans shell : un domaine ou un courriel n'y
+    est jamais interprété. `admin_email` ajoute --email et le mode non
+    interactif."""
+    argv = ["sudo", "certbot"]
+    if admin_email:
+        argv += ["--email", admin_email, "--non-interactive", "--agree-tos"]
+    argv.append("--nginx")
+    for domain in lst_domain:
+        argv += ["-d", domain]
+    return argv
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -996,6 +996,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 # Le disque d'ERPLibre entre — ou sort — du total.
                 self._sync_install_deps()
                 self._refresh_after()
+            elif event.checkbox.id == "f_prod":
+                # L'accès web suit la production, et le refus d'une rangée
+                # NixOS avec lui.
+                self._sync_access()
+                self._refresh_after()
             elif event.checkbox.id == "f_par_all":
                 self.query_one("#f_par", Select).disabled = event.value
             elif event.checkbox.id == "f_offline":
@@ -1169,6 +1174,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 # /opt et service confiné, comme en QEMU/KVM : le choix ne
                 # regarde pas l'hyperviseur, il regarde le système invité.
                 "prod": self._prod_value(),
+                # L'accès web de la production : mode, domaine, courriel.
+                **self.access_values(),
                 # Libellé, commande, ERP, version et options du choix commun.
                 **self.install_choice(),
             }

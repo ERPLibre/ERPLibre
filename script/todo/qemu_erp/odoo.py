@@ -9,14 +9,15 @@ récente d'abord, plus « toutes les versions » ; chacune a sa commande, et
 aucune commande unique ne reconnaît Odoo. Il accepte la production, tous
 les systèmes du catalogue, et le hors-ligne que le cache de téléchargement
 gère ailleurs. Le suivi le sonde par une connexion TCP sur 8069 et le
-relance par le service ERPLibre.
+relance par le service ERPLibre. En production, il sert les quatre modes
+d'accès web : nginx devant 8069, ou 8069 directement.
 """
 
 import functools
 import json
 from pathlib import Path
 
-from script.todo.qemu_erp import APP_ODOO, ErpApp, ErpVersion, t
+from script.todo.qemu_erp import APP_ODOO, ErpApp, ErpVersion, access, t
 
 # La table des versions d'ERPLibre, lue depuis la racine du dépôt quel que
 # soit le répertoire courant.
@@ -105,4 +106,5 @@ APP = ErpApp(
     restart_title="Restarting Odoo",
     web_hint=web_hint,
     versions=versions,
+    access_modes=access.ALL_KEYS,
 )

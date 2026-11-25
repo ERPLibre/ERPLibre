@@ -27505,6 +27505,126 @@ TRANSLATIONS = {
         "fr": "Allumer avec Xdebug (pas à pas)",
         "en": "Turn on with Xdebug (step debugging)",
     },
+    "HTTPS self-signed": {
+        "fr": "HTTPS auto-signé",
+        "en": "HTTPS self-signed",
+    },
+    "HTTP (TLS terminated elsewhere)": {
+        "fr": "HTTP (TLS terminé ailleurs)",
+        "en": "HTTP (TLS terminated elsewhere)",
+    },
+    "Let's Encrypt": {
+        "fr": "Let's Encrypt",
+        "en": "Let's Encrypt",
+    },
+    "Direct :8069, no nginx": {
+        "fr": "Direct :8069, sans nginx",
+        "en": "Direct :8069, no nginx",
+    },
+    "NixOS: /etc is read-only, nginx is not configured there; choose Direct :8069.": {
+        "fr": "NixOS : /etc y est en lecture seule, nginx n'y est pas configuré ; choisissez Direct :8069.",
+        "en": "NixOS: /etc is read-only, nginx is not configured there; choose Direct :8069.",
+    },
+    "Let's Encrypt needs a domain.": {
+        "fr": "Let's Encrypt demande un domaine.",
+        "en": "Let's Encrypt needs a domain.",
+    },
+    "Let's Encrypt: invalid domain: %s": {
+        "fr": "Let's Encrypt : domaine invalide : %s",
+        "en": "Let's Encrypt: invalid domain: %s",
+    },
+    "Let's Encrypt needs an admin email.": {
+        "fr": "Let's Encrypt demande un courriel d'administration.",
+        "en": "Let's Encrypt needs an admin email.",
+    },
+    "Let's Encrypt: invalid admin email: %s": {
+        "fr": "Let's Encrypt : courriel d'administration invalide : %s",
+        "en": "Let's Encrypt: invalid admin email: %s",
+    },
+    "Unknown web access: %s": {
+        "fr": "Accès web inconnu : %s",
+        "en": "Unknown web access: %s",
+    },
+    "%s does not offer this web access: %s": {
+        "fr": "%s n'offre pas cet accès web : %s",
+        "en": "%s does not offer this web access: %s",
+    },
+    "Let's Encrypt: one domain names one VM, %d VMs would share it (%s); deploy them one at a time.": {
+        "fr": "Let's Encrypt : un domaine désigne une seule VM, %d VM le partageraient (%s) ; déployez-les une à la fois.",
+        "en": "Let's Encrypt: one domain names one VM, %d VMs would share it (%s); deploy them one at a time.",
+    },
+    "Web access?": {
+        "fr": "Accès web ?",
+        "en": "Web access?",
+    },
+    "Web access:": {
+        "fr": "Accès web :",
+        "en": "Web access:",
+    },
+    "Domain (Let's Encrypt): ": {
+        "fr": "Domaine (Let's Encrypt) : ",
+        "en": "Domain (Let's Encrypt): ",
+    },
+    "Admin email (Let's Encrypt): ": {
+        "fr": "Courriel d'administration (Let's Encrypt) : ",
+        "en": "Admin email (Let's Encrypt): ",
+    },
+    "Domain (Let's Encrypt)": {
+        "fr": "Domaine (Let's Encrypt)",
+        "en": "Domain (Let's Encrypt)",
+    },
+    "Admin email (Let's Encrypt)": {
+        "fr": "Courriel d'administration (Let's Encrypt)",
+        "en": "Admin email (Let's Encrypt)",
+    },
+    "nginx: no known package manager.": {
+        "fr": "nginx : aucun gestionnaire de paquets connu.",
+        "en": "nginx: no known package manager.",
+    },
+    "nginx: the self-signed certificate was not created.": {
+        "fr": "nginx : le certificat auto-signé n'a pas été créé.",
+        "en": "nginx: the self-signed certificate was not created.",
+    },
+    "nginx: the deployment script could not be unpacked.": {
+        "fr": "nginx : le script de déploiement n'a pas pu être dépaqueté.",
+        "en": "nginx: the deployment script could not be unpacked.",
+    },
+    "nginx: the site was not written.": {
+        "fr": "nginx : le site n'a pas été écrit.",
+        "en": "nginx: the site was not written.",
+    },
+    "SELinux: nginx may not reach Odoo": {
+        "fr": "SELinux : nginx risque de ne pas joindre Odoo",
+        "en": "SELinux: nginx may not reach Odoo",
+    },
+    "nginx: invalid configuration (sudo nginx -t).": {
+        "fr": "nginx : configuration invalide (sudo nginx -t).",
+        "en": "nginx: invalid configuration (sudo nginx -t).",
+    },
+    "nginx: the service does not start.": {
+        "fr": "nginx : le service ne démarre pas.",
+        "en": "nginx: the service does not start.",
+    },
+    "firewalld: http and https not opened": {
+        "fr": "firewalld : http et https non ouverts",
+        "en": "firewalld: http and https not opened",
+    },
+    "certbot failed.": {
+        "fr": "certbot a échoué.",
+        "en": "certbot failed.",
+    },
+    "certbot: no certificate. Does the domain point to this VM, with port 80 reachable?": {
+        "fr": "certbot : aucun certificat. Le domaine désigne-t-il cette VM, port 80 joignable ?",
+        "en": "certbot: no certificate. Does the domain point to this VM, with port 80 reachable?",
+    },
+    "certbot: no renewal timer found": {
+        "fr": "certbot : aucun minuteur de renouvellement trouvé",
+        "en": "certbot: no renewal timer found",
+    },
+    "Odoo may still be starting": {
+        "fr": "Odoo démarre peut-être encore",
+        "en": "Odoo may still be starting",
+    },
 }
 
 

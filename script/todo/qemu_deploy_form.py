@@ -1188,6 +1188,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             if event.checkbox.id == "f_install":
                 self._sync_install_deps()
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
+            elif event.checkbox.id == "f_prod":
+                # L'accès web suit la production, et le refus d'une rangée
+                # NixOS avec lui.
+                self._sync_access()
+                self._recompute()
             elif event.checkbox.id == "f_par_all":
                 self.query_one("#f_par", Select).disabled = event.value
             elif event.checkbox.id == "f_tool_aidev":
@@ -1243,6 +1248,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                 install = {
                     "branch": self.query_one("#f_branch", Select).value,
                     "prod": self._prod_value(),
+                    # L'accès web de la production : mode, domaine, courriel.
+                    **self.access_values(),
                     # Libellé, commande, ERP, version et options du choix
                     # commun.
                     **self.install_choice(),
