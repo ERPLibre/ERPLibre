@@ -333,20 +333,40 @@ def sonder(
     vers la cible, jamais par le proxy de l'environnement
     (`ouvrir_sans_proxy`).
     """
+    return bool(
+        premier_code(
+            cible, delai_total, entre_essais, requete, horloge, dormir
+        )
+    )
+
+
+def premier_code(
+    cible,
+    delai_total=DELAI_TOTAL,
+    entre_essais=DELAI_ENTRE_ESSAIS,
+    requete=DELAI_REQUETE,
+    horloge=time.monotonic,
+    dormir=time.sleep,
+):
+    """Le code HTTP de la première réponse de `cible`, ou 0 si aucune
+    n'est venue dans `delai_total` secondes. Les mêmes essais que
+    `sonder` : seul le refus de connexion fait recommencer, et une
+    réponse 4xx ou 5xx rend son code. Une réponse sans code lisible
+    compte pour 200 ; les redirections sont suivies."""
     import urllib.error
 
     fin = horloge() + delai_total
     while horloge() < fin:
         try:
-            with ouvrir_sans_proxy(cible, requete):
-                return True
-        except urllib.error.HTTPError:
-            # Le serveur a répondu, et c'est tout ce qu'on demandait.
-            return True
+            with ouvrir_sans_proxy(cible, requete) as reponse:
+                return getattr(reponse, "status", None) or 200
+        except urllib.error.HTTPError as err:
+            # Le serveur a répondu : son code dit comment.
+            return err.code or 500
         except Exception:  # noqa: BLE001 - un serveur pas encore prêt
             pass
         dormir(entre_essais)
-    return False
+    return 0
 
 
 def sonder_tous(cible, workers, delai_total=DELAI_TOTAL, sonde=None):

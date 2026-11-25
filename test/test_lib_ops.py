@@ -279,6 +279,101 @@ class TestDevinerUnite(unittest.TestCase):
             systemd.deviner_unite("/srv/x", lanceur)
         self.assertEqual(ctx.exception.candidates, [])
 
+    def execstart(self, lanceur, nom, argv):
+        lanceur.reponses[cle_show(nom, "ExecStart")] = (
+            0,
+            "ExecStart={ path=%s ; argv[]=%s ; ignore_errors=no }\n"
+            % (argv.split()[0], argv),
+        )
+
+    def test_l_unite_de_sauvegarde_du_checkout_est_ecartee(self):
+        """L'unité Odoo arrêtée et l'unité de sauvegarde ont le même
+        WorkingDirectory : seule la première lance Odoo."""
+        racine = dossier_temporaire(self)
+        lanceur = self.lanceur(
+            [
+                "erplibre_demo.service loaded failed failed Odoo",
+                "erplibre-backup-demo_db.service loaded inactive dead B",
+            ],
+            {
+                "erplibre_demo.service": racine,
+                "erplibre-backup-demo_db.service": racine,
+            },
+        )
+        self.execstart(
+            lanceur, "erplibre_demo.service", f"/bin/bash {racine}/run.sh"
+        )
+        self.execstart(
+            lanceur,
+            "erplibre-backup-demo_db.service",
+            f"/usr/bin/python3 {racine}/script/database/odoo_backup.py"
+            " --service erplibre_demo.service --dest /srv/odoo",
+        )
+        self.assertEqual(
+            systemd.deviner_unite(racine, lanceur),
+            ("erplibre_demo.service", "workdir"),
+        )
+
+    def test_seule_l_unite_auxiliaire_au_checkout_n_est_pas_retenue(self):
+        racine = dossier_temporaire(self)
+        lanceur = self.lanceur(
+            [
+                "erplibre-backup-demo_db.service loaded inactive dead B",
+                "odoo.service loaded active running Odoo",
+            ],
+            {"erplibre-backup-demo_db.service": racine},
+        )
+        self.execstart(
+            lanceur,
+            "erplibre-backup-demo_db.service",
+            "/usr/bin/python3 /srv/x/script/database/odoo_backup.py",
+        )
+        self.assertEqual(
+            systemd.deviner_unite(racine, lanceur), ("odoo.service", "active")
+        )
+
+    def test_execstart_illisible_l_unite_reste_candidate(self):
+        racine = dossier_temporaire(self)
+        lanceur = self.lanceur(
+            ["erplibre_demo.service loaded inactive dead A"],
+            {"erplibre_demo.service": racine},
+        )
+        self.assertEqual(
+            systemd.deviner_unite(racine, lanceur),
+            ("erplibre_demo.service", "workdir"),
+        )
+
+
+class TestLanceOdoo(unittest.TestCase):
+    def test_lanceurs(self):
+        for argv in (
+            ["/bin/bash", "/srv/x/run.sh"],
+            ["/usr/bin/odoo", "--config", "/etc/odoo/odoo.conf"],
+            ["python3", "/opt/odoo/odoo-bin", "-c", "x.conf"],
+            ["/bin/bash", "-c", "cd /srv/x && ./run.sh -d demo_db"],
+            ["/bin/sh", "-c", "exec '/srv/x/odoo_bin.sh'"],
+            ["runuser", "-u", "odoo", "--", "/srv/x/run.sh"],
+            ["/usr/bin/authbind", "--deep", "/opt/odoo/odoo-bin", "-c", "x"],
+            ["env", "--ignore-environment", "/srv/x/odoo-bin"],
+            ["/usr/bin/authbind", "--deep", "/usr/bin/odoo", "-c", "x"],
+            ["/bin/sh", "-c", "exec authbind --deep /srv/x/run.sh"],
+        ):
+            with self.subTest(argv=argv):
+                self.assertTrue(odoo_instance.lance_odoo(argv))
+
+    def test_pas_un_serveur(self):
+        for argv in (
+            ["/usr/bin/python3", "/srv/odoo/script/database/odoo_backup.py"],
+            ["python3", "warmup_http.py", "--dest", "/srv/odoo"],
+            ["python3", "odoo_backup.py", "--dest=/var/backups/odoo"],
+            ["/bin/bash", "-c", "echo odoo_backup"],
+            ["python3", "outil.py", "--db", "odoo"],
+            ["python3", "outil.py", "--dest", "/srv/odoo", "-v"],
+            [],
+        ):
+            with self.subTest(argv=argv):
+                self.assertFalse(odoo_instance.lance_odoo(argv))
+
 
 class TestConfigEtBase(unittest.TestCase):
     def setUp(self):
@@ -550,6 +645,212 @@ class TestProcessus(unittest.TestCase):
 
     def test_racine_absente(self):
         self.assertEqual(odoo_instance.lister_processus("/proc_absent_x"), [])
+
+    def test_dossier_processus(self):
+        dossier = dossier_temporaire(self)
+        os.symlink(dossier, os.path.join(self.proc, "101", "cwd"))
+        self.assertEqual(
+            odoo_instance.dossier_processus(101, self.proc), dossier
+        )
+        self.assertEqual(odoo_instance.dossier_processus(102, self.proc), "")
+
+
+class TestProcessusSansBase(unittest.TestCase):
+    """Un Odoo sans `-d` compte quand le `db_name` de sa configuration
+    vise la base, ou qu'il est vide."""
+
+    def setUp(self):
+        self.wd = dossier_temporaire(self)
+        self.dossiers = {}
+
+    def odoo(self, pid, argv, db_name=None, conf="odoo.conf"):
+        dossier = os.path.join(self.wd, str(pid))
+        os.makedirs(dossier)
+        if db_name is not None:
+            ecrire(
+                os.path.join(dossier, conf),
+                f"[options]\naddons_path = addons\ndb_name = {db_name}\n",
+            )
+        self.dossiers[pid] = dossier
+        return (pid, argv)
+
+    def trouver(self, processus, exclus=()):
+        return [
+            pid
+            for pid, _ in odoo_instance.processus_odoo_sans_base(
+                "demo_db", processus, exclus, self.dossiers.get
+            )
+        ]
+
+    def test_classement(self):
+        processus = [
+            self.odoo(
+                201, ["python3", "odoo-bin", "-c", "odoo.conf"], "demo_db"
+            ),
+            self.odoo(202, ["python3", "odoo-bin", "-c", "odoo.conf"], ""),
+            self.odoo(
+                203, ["python3", "odoo-bin", "-c", "odoo.conf"], "autre_db"
+            ),
+            self.odoo(
+                204, ["python3", "odoo-bin", "-c", "odoo.conf"], "a_db,demo_db"
+            ),
+            self.odoo(
+                205,
+                ["/bin/bash", "/srv/x/run.sh"],
+                "demo_db",
+                conf="config.conf",
+            ),
+            self.odoo(206, ["python3", "odoo-bin"], "demo_db"),
+            self.odoo(207, ["python3", "odoo-bin", "-c", "absent.conf"]),
+            self.odoo(
+                208,
+                ["python3", "odoo-bin", "-d", "x_db", "-c", "odoo.conf"],
+                "",
+            ),
+            self.odoo(
+                209, ["python3", "outil.py", "-c", "odoo.conf"], "demo_db"
+            ),
+            self.odoo(
+                210,
+                ["/bin/bash", "./odoo_bin.sh", "-c", "odoo.conf"],
+                "demo_db",
+            ),
+            self.odoo(
+                211,
+                ["/usr/bin/python3", "/usr/bin/odoo", "--config=odoo.conf"],
+                "demo_db",
+            ),
+        ]
+        # 205 et 210 : run.sh et odoo_bin.sh ne sont pas le serveur.
+        self.assertEqual(self.trouver(processus), [201, 202, 204, 211])
+        self.assertEqual(
+            self.trouver(processus, exclus=(201,)), [202, 204, 211]
+        )
+
+    def test_run_sh_sans_d_juge_par_son_enfant(self):
+        processus = [
+            self.odoo(
+                501, ["/bin/bash", "/srv/x/run.sh"], "", conf="config.conf"
+            ),
+            self.odoo(
+                502,
+                ["/bin/bash", "./odoo_bin.sh", "-c", "./config.conf"]
+                + ["-d", "autre_db"],
+                "",
+                conf="config.conf",
+            ),
+            self.odoo(
+                503,
+                ["python3", "./odoo/odoo-bin", "-c", "./config.conf"]
+                + ["-d", "autre_db"],
+                "",
+                conf="config.conf",
+            ),
+        ]
+        self.assertEqual(self.trouver(processus), [])
+
+    def test_seuls_les_comptes_admis(self):
+        processus = [
+            self.odoo(601, ["python3", "odoo-bin", "-c", "odoo.conf"], ""),
+            self.odoo(602, ["python3", "odoo-bin", "-c", "odoo.conf"], ""),
+            self.odoo(603, ["python3", "odoo-bin", "-c", "odoo.conf"], ""),
+        ]
+        lus = []
+
+        def lire(chemin):
+            lus.append(chemin)
+            return odoo_instance.lire_config_bornee(chemin)
+
+        uids = {601: 0, 602: 1500, 603: None}
+        trouves = odoo_instance.processus_odoo_sans_base(
+            "demo_db",
+            processus,
+            (),
+            self.dossiers.get,
+            lire,
+            uid_de=uids.get,
+            uids={0, 1000},
+        )
+        self.assertEqual([pid for pid, _ in trouves], [601])
+        # La configuration d'un autre compte n'est pas même lue.
+        self.assertEqual(lus, [os.path.join(self.dossiers[601], "odoo.conf")])
+
+    def test_chemin_relatif_sans_dossier_ignore(self):
+        processus = [(301, ["python3", "odoo-bin", "-c", "odoo.conf"])]
+        self.assertEqual(self.trouver(processus), [])
+
+    def test_vise_base(self):
+        def vise(db_name, db_user="", mon_role=""):
+            config = {"db_name": db_name, "db_user": db_user}
+            return odoo_instance.vise_base(config, "demo_db", mon_role)
+
+        self.assertTrue(vise(None))
+        self.assertTrue(vise("False"))
+        self.assertTrue(vise("demo_db"))
+        self.assertTrue(vise("a_db, demo_db"))
+        self.assertFalse(vise("demo_db_2"))
+        # db_name vide : seulement les bases de son rôle.
+        self.assertTrue(vise("", "role_a", "role_a"))
+        self.assertTrue(vise("", "", "role_a"))
+        self.assertTrue(vise("", "role_b", ""))
+        self.assertFalse(vise("", "role_b", "role_a"))
+        self.assertTrue(vise("demo_db", "role_b", "role_a"))
+
+    def test_multi_bases_d_un_autre_role_ignore(self):
+        processus = [
+            self.odoo(401, ["python3", "odoo-bin", "-c", "odoo.conf"], ""),
+        ]
+        trouves = odoo_instance.processus_odoo_sans_base(
+            "demo_db", processus, (), self.dossiers.get, db_user="role_a"
+        )
+        self.assertEqual([pid for pid, _ in trouves], [401])
+        ecrire(
+            os.path.join(self.dossiers[401], "odoo.conf"),
+            "[options]\ndb_user = role_b\n",
+        )
+        trouves = odoo_instance.processus_odoo_sans_base(
+            "demo_db", processus, (), self.dossiers.get, db_user="role_a"
+        )
+        self.assertEqual(trouves, [])
+
+
+class TestLireConfigBornee(unittest.TestCase):
+    """La configuration que nomme un autre processus : un fichier
+    ordinaire et petit, sinon {} sans rien charger ni attendre."""
+
+    def setUp(self):
+        self.wd = dossier_temporaire(self)
+
+    def test_fichier_ordinaire(self):
+        chemin = ecrire(
+            os.path.join(self.wd, "odoo.conf"), "[options]\ndb_name =\n"
+        )
+        self.assertEqual(
+            odoo_instance.lire_config_bornee(chemin), {"db_name": ""}
+        )
+
+    def test_absent(self):
+        absent = os.path.join(self.wd, "absent.conf")
+        self.assertEqual(odoo_instance.lire_config_bornee(absent), {})
+
+    def test_trop_gros(self):
+        chemin = os.path.join(self.wd, "gros.conf")
+        with open(chemin, "w") as f:
+            f.write("[options]\ndb_name =\n#")
+            f.write("x" * odoo_instance.TAILLE_MAX_CONFIG + "\n")
+        self.assertEqual(odoo_instance.lire_config_bornee(chemin), {})
+        self.assertEqual(
+            odoo_instance.lire_config_bornee(chemin, limite=10**7),
+            {"db_name": ""},
+        )
+
+    def test_fifo_sans_attendre(self):
+        chemin = os.path.join(self.wd, "fifo.conf")
+        os.mkfifo(chemin)
+        self.assertEqual(odoo_instance.lire_config_bornee(chemin), {})
+
+    def test_dossier(self):
+        self.assertEqual(odoo_instance.lire_config_bornee(self.wd), {})
 
 
 class TestLireAjout(unittest.TestCase):

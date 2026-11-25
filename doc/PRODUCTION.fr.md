@@ -130,6 +130,17 @@ et leurs paquets d'assets.
 `--warmup-deep` reste anonyme, aux réglages par défaut du préchauffage :
 le groupe `warmup` du profil (login, clé d'API, pages) ne s'y applique pas.
 
+Un module demandé que la base n'a pas installé est signalé, puisque `-u`
+l'ignore ; la mise à jour est refusée avant l'arrêt quand aucun ne l'est.
+Après l'arrêt, un Odoo sans `-d` dont la configuration sert cette base, ou
+une session PostgreSQL encore connectée à elle, refuse la mise à jour sauf
+`--force`. Le journal est relu une seconde fois après le préchauffage et la
+santé. Le rapport finit par la durée de chaque phase et le temps où le site
+est resté coupé. Les anciens journaux de mise à jour de la base sont
+retirés après chaque exécution réelle (`--log-keep-days`, 180 jours par
+défaut, les 10 plus récents gardés), une valeur aussi modifiable dans
+`TODO › Exécuter › Production › Réglages`.
+
 Le même geste est accessible depuis `make todo` : `TODO › Exécuter ›
 Production › Mise à jour`. Options, ordre de détection et codes de sortie :
 [script/odoo/README.fr.md](../script/odoo/README.fr.md).

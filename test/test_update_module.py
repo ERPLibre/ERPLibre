@@ -47,7 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from profil_isole import profil_isole  # noqa: E402
 
-from script.lib_ops import lock, profil, report, service  # noqa: E402
+from script.lib_ops import lock, postgres, profil, report, service  # noqa: E402
 from script.odoo import health_check, warmup_http  # noqa: E402
 from script.odoo import update_module as um  # noqa: E402
 
@@ -82,7 +82,11 @@ TRACE_VALUEERROR = (
 DUMP = b"-- dump\n-- PostgreSQL database dump complete\n"
 FAITS = {
     "base": "18.0.1.3",
-    "modules": {"base": "18.0.1.3", "my_module_a": "18.0.1.0"},
+    "modules": {
+        "base": "18.0.1.3",
+        "my_module_a": "18.0.1.0",
+        "my_module_b": "18.0.1.0",
+    },
     "server_version_num": 160004,
     "size": 1000,
     "stored_attachments": 1,
@@ -130,9 +134,26 @@ class FauxSysteme(um.Systeme):
         # Dossiers où `inscriptible` répond non ; tous les autres, oui.
         self.non_inscriptibles = set()
         self.verrou_tenu = None
-        self.sonde = True
+        # Le code HTTP de la première réponse ; 0 : aucune réponse.
+        self.sonde = 200
         self.processus_liste = []
+        # {pid: dossier courant} des processus de `processus_liste`.
+        self.dossiers_processus = {}
+        # {pid: uid} ; un pid absent est au compte qui lance les tests,
+        # celui que rend `uid` pour le compte de l'unité.
+        self.uids_processus = {}
         self.journal_texte = ""
+        # Les textes servis aux lectures successives du journal ; épuisés,
+        # `journal_texte` les remplace.
+        self.journal_textes = []
+        self.epoques_journal = []
+        # Les sessions servies à chaque lecture de pg_stat_activity ;
+        # épuisées, aucune. `sessions_erreur` fait échouer psql.
+        self.sessions_lectures = []
+        self.sessions_erreur = ""
+        self.lectures_sessions = 0
+        self.modules_erreur = ""
+        self.dormi = []
         self.epoque_journal = None
         self.horloge_au_demarrage = None
         self.odoo_issue = um.Issue(0, False, False)
@@ -204,7 +225,10 @@ class FauxSysteme(um.Systeme):
     def journal(self, unite, epoque, namespace=""):
         self.appels.append("journalctl")
         self.epoque_journal = epoque
+        self.epoques_journal.append(epoque)
         self.namespace_journal = namespace
+        if self.journal_textes:
+            return self.journal_textes.pop(0)
         return self.journal_texte
 
     def euid(self):
@@ -229,6 +253,12 @@ class FauxSysteme(um.Systeme):
         self._lever("processus")
         return self.processus_liste
 
+    def dossier_processus(self, pid):
+        return self.dossiers_processus.get(pid, "")
+
+    def uid_processus(self, pid):
+        return self.uids_processus.get(pid, os.getuid())
+
     def pids_exclus(self):
         return ()
 
@@ -236,6 +266,7 @@ class FauxSysteme(um.Systeme):
         return self.horloge
 
     def dormir(self, secondes):
+        self.dormi.append(secondes)
         self.horloge += secondes
 
     def sonder(self, cible, delai):
@@ -301,6 +332,24 @@ class FauxSysteme(um.Systeme):
         self.appels.append("requete " + " ".join(argv))
         self.vu["requete"] = {"argv": list(argv), "env": dict(env)}
         psql = any(os.path.basename(a) == "psql" for a in argv)
+        if psql and argv[-1] == postgres.REQUETE_SESSIONS:
+            self.appels.append("sessions")
+            self.lectures_sessions += 1
+            if self.sessions_erreur:
+                return 2, "", self.sessions_erreur
+            sessions = (
+                self.sessions_lectures.pop(0) if self.sessions_lectures else []
+            )
+            return 0, json.dumps({"sessions": sessions or None}) + "\n", ""
+        if psql and argv[-1] == postgres.REQUETE_MODULES:
+            self.appels.append("modules")
+            if self.modules_erreur:
+                return 2, "", self.modules_erreur
+            reponse = {
+                "modules": self.faits["modules"],
+                "to_upgrade": self.faits.get("to_upgrade"),
+            }
+            return 0, json.dumps(reponse) + "\n", ""
         if psql and "json_build_object" in argv[-1]:
             return 0, json.dumps(self.faits) + "\n", ""
         return 1, "", "commande inattendue"
@@ -593,14 +642,14 @@ class TestOrdreEtReussite(Base):
 
     def test_sortie_lisible_numerotee(self):
         self.lancer()
-        for etape in ("[1/6]", "[2/6]", "[3/6]", "[4/6]", "[5/6]", "[6/6]"):
-            self.assertIn(etape, self.sortie)
+        for rang in range(1, 8):
+            self.assertIn(f"[{rang}/7]", self.sortie)
         self.assertNotIn("\x1b[", self.sortie)
 
     def test_sans_sauvegarde(self):
         self.assertEqual(self.lancer("--no-backup"), um.CODE_OK)
         self.assertFalse(self.a_appele("backup "))
-        self.assertIn("[5/5]", self.sortie)
+        self.assertIn("[6/6]", self.sortie)
 
     def test_un_compte_different_passe_par_runuser(self):
         self.systeme.proprietes["User"] = "svc"
@@ -1170,7 +1219,7 @@ class TestApresLaRelance(Base):
         self.assertLess(self.rang("journalctl"), self.rang("prechauffage"))
         self.assertLess(self.rang("prechauffage"), self.rang("sante"))
         self.assertIn("prechauffage 127.0.0.1:10000", self.systeme.appels)
-        self.assertIn("[7/7]", self.sortie)
+        self.assertIn("[8/8]", self.sortie)
         self.assertTrue(self.systeme.verrou_libre_apres)
         # La ligne finale reste la dernière.
         fin = um.t("Update finished: {modules}").format(
@@ -2455,6 +2504,479 @@ class TestUneSeuleBase(Base):
                 self.assertEqual(bases, ["-d"])
                 self.assertEqual(argv[argv.index("-d") + 1], "demo_db")
                 self.assertIn("8090", argv)
+
+
+class TestModulesNonInstalles(Base):
+    """`-u` ignore un module que la base n'a pas installé : ATTN pour
+    chacun, refus avant l'arrêt quand aucun ne l'est, état inconnu quand
+    la base ne se lit pas."""
+
+    def sans(self, *noms):
+        self.systeme.faits["modules"] = {
+            nom: version
+            for nom, version in FAITS["modules"].items()
+            if nom not in noms
+        }
+
+    def test_un_module_non_installe_est_signale(self):
+        self.sans("my_module_b")
+        self.assertEqual(self.lancer(), um.CODE_OK, self.erreurs)
+        self.assertIn(
+            um.t("Not installed in {database}, ignored by -u: {names}").format(
+                database="demo_db", names="my_module_b"
+            ),
+            self.sortie,
+        )
+        argv = self.systeme.vu["odoo"]["argv"]
+        self.assertEqual(argv[argv.index("-u") + 1], "my_module_a,my_module_b")
+        fin = um.t("Update finished: {modules}").format(modules="my_module_a")
+        self.assertTrue(self.sortie.rstrip().endswith(fin), self.sortie)
+
+    def test_aucun_installe_refuse_avant_l_arret(self):
+        self.sans("my_module_a", "my_module_b")
+        self.assertEqual(self.lancer(), um.CODE_REFUS)
+        self.assertFalse(self.a_appele("systemctl stop"))
+        self.assertIn("my_module_a, my_module_b", self.erreurs)
+        self.assertIn("demo_db", self.erreurs)
+
+    def test_aucun_installe_refuse_aussi_en_simulation(self):
+        self.sans("my_module_a", "my_module_b")
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_REFUS)
+
+    def verifier_to_upgrade(self, *options):
+        """my_module_b à l'état `to upgrade`, my_module_a absent : `-u`
+        met à jour le premier, la mise à jour n'est pas refusée."""
+        self.sans("my_module_a", "my_module_b")
+        self.systeme.faits["to_upgrade"] = ["my_module_b"]
+        self.assertEqual(self.lancer(*options), um.CODE_OK, self.erreurs)
+        self.assertIn(
+            um.t("Not installed in {database}, ignored by -u: {names}").format(
+                database="demo_db", names="my_module_a"
+            ),
+            self.sortie,
+        )
+        fin = um.t("Update finished: {modules}").format(modules="my_module_b")
+        self.assertTrue(self.sortie.rstrip().endswith(fin), self.sortie)
+
+    def test_un_module_to_upgrade_est_mis_a_jour(self):
+        self.verifier_to_upgrade()
+
+    def test_un_module_to_upgrade_est_mis_a_jour_sans_sauvegarde(self):
+        self.verifier_to_upgrade("--no-backup")
+        self.assertTrue(self.a_appele("modules"))
+
+    def test_sans_sauvegarde_une_requete_en_lecture_seule(self):
+        self.sans("my_module_b")
+        self.assertEqual(self.lancer("--no-backup"), um.CODE_OK)
+        self.assertTrue(self.a_appele("modules"))
+        env = self.systeme.vu["requete"]["env"]
+        self.assertIn("default_transaction_read_only=on", env["PGOPTIONS"])
+        self.assertIn("my_module_b", self.sortie)
+
+    def test_lecture_impossible_etat_inconnu_rien_retire(self):
+        self.systeme.modules_erreur = "connexion refusee"
+        self.assertEqual(self.lancer("--no-backup"), um.CODE_OK)
+        self.assertIn("connexion refusee", self.sortie)
+        argv = self.systeme.vu["odoo"]["argv"]
+        self.assertEqual(argv[argv.index("-u") + 1], "my_module_a,my_module_b")
+
+    def test_simulation_par_un_autre_compte_etat_inconnu(self):
+        self.systeme.euid_valeur = 1000
+        self.systeme.proprietes["User"] = "svc"
+        self.assertEqual(self.lancer("--dry-run", "--no-backup"), um.CODE_OK)
+        self.assertFalse(self.a_appele("modules"))
+        self.assertIn(
+            um.t(
+                "Installed modules of {database} unknown ({reason}): -u"
+                " ignores a module the database has not installed."
+            ).format(database="demo_db", reason=um.t("requires sudo")),
+            self.sortie,
+        )
+
+    def test_all_n_est_pas_examine(self):
+        plan = um.Plan(modules=["all"])
+        um._verifier_installes(None, plan)
+        self.assertEqual(plan.non_installes, [])
+        self.assertEqual(plan.installes_inconnus, "")
+
+
+class TestGenesApresArret(Base):
+    """Après l'arrêt : un Odoo sans `-d` qui vise la base, et les sessions
+    qui restent dans pg_stat_activity."""
+
+    SESSION = {
+        "pid": 4343,
+        "user": "odoo",
+        "application": "odoo-4343",
+        "client": None,
+        "state": "idle",
+    }
+
+    def odoo_sans_base(self, db_name, db_user=""):
+        dossier = os.path.join(self.tmp, "autre_instance")
+        ecrire(
+            os.path.join(dossier, "autre.conf"),
+            f"[options]\ndb_name = {db_name}\ndb_user = {db_user}\n",
+        )
+        self.systeme.processus_liste = [
+            (4343, ["python3", "./odoo-bin", "-c", "autre.conf"])
+        ]
+        self.systeme.dossiers_processus = {4343: dossier}
+
+    def test_odoo_sans_d_sur_la_meme_base_refuse(self):
+        self.odoo_sans_base("demo_db")
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertFalse(self.a_appele("backup "))
+        self.assertFalse(self.a_appele("odoo "))
+        self.assertIn("4343 python3 ./odoo-bin -c autre.conf", self.sortie)
+        self.assertEqual(self.systeme.etat, "active")
+
+    def test_odoo_sans_d_multi_bases_refuse(self):
+        self.odoo_sans_base("")
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+
+    def test_odoo_sans_d_d_une_autre_base_passe(self):
+        self.odoo_sans_base("autre_db")
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+
+    def roles(self, mon_role, son_role):
+        with open(self.conf, "a") as f:
+            f.write(f"db_user = {mon_role}\n")
+        self.odoo_sans_base("", son_role)
+
+    def test_multi_bases_d_un_autre_role_passe(self):
+        self.roles("role_a", "role_b")
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+
+    def test_multi_bases_du_meme_role_refuse(self):
+        self.roles("role_a", "role_a")
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertIn("4343 python3 ./odoo-bin -c autre.conf", self.sortie)
+
+    def test_odoo_d_un_autre_compte_n_est_pas_examine(self):
+        self.odoo_sans_base("demo_db")
+        self.systeme.uids_processus = {4343: os.getuid() + 1}
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+
+    def test_odoo_de_root_est_examine(self):
+        self.odoo_sans_base("demo_db")
+        self.systeme.uids_processus = {4343: 0}
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+
+    def test_run_sh_sans_d_dont_l_enfant_vise_une_autre_base_passe(self):
+        dossier = os.path.join(self.tmp, "autre_checkout")
+        ecrire(
+            os.path.join(dossier, "config.conf"),
+            "[options]\ndb_name = False\n",
+        )
+        self.systeme.processus_liste = [
+            (4343, ["/bin/bash", os.path.join(dossier, "run.sh")]),
+            (
+                4344,
+                ["/bin/bash", "./odoo_bin.sh", "-c", "./config.conf"]
+                + ["-d", "autre_db"],
+            ),
+            (
+                4345,
+                ["python3", "./odoo18.0/odoo/odoo-bin", "-c", "./config.conf"]
+                + ["-d", "autre_db"],
+            ),
+        ]
+        self.systeme.dossiers_processus = dict.fromkeys(
+            (4343, 4344, 4345), dossier
+        )
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+
+    def test_sessions_restantes_refusent(self):
+        self.systeme.sessions_lectures = [[self.SESSION]] * 30
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertFalse(self.a_appele("backup "))
+        self.assertFalse(self.a_appele("odoo "))
+        self.assertIn("pid 4343, odoo, odoo-4343, idle", self.sortie)
+        self.assertIn("--force", self.sortie)
+        self.assertEqual(self.systeme.etat, "active")
+        # Relues chaque seconde jusqu'au délai, puis le refus.
+        self.assertEqual(self.systeme.lectures_sessions, um.DELAI_SESSIONS + 1)
+        self.assertLess(self.rang("sessions"), self.rang("systemctl start"))
+
+    def test_sessions_qui_se_ferment_passent(self):
+        self.systeme.sessions_lectures = [[self.SESSION], [self.SESSION]]
+        self.assertEqual(self.lancer(), um.CODE_OK, self.sortie)
+        self.assertEqual(self.systeme.lectures_sessions, 3)
+
+    def test_force_continue_malgre_les_sessions(self):
+        self.systeme.sessions_lectures = [[self.SESSION]] * 30
+        self.assertEqual(self.lancer("--force"), um.CODE_OK)
+        self.assertIn(
+            um.t("--force: going on despite the PostgreSQL sessions found."),
+            self.sortie,
+        )
+
+    def test_lecture_impossible_en_attn(self):
+        self.systeme.sessions_erreur = "permission refusee"
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("permission refusee", self.sortie)
+
+    def test_lues_apres_l_arret_avant_la_sauvegarde(self):
+        self.lancer()
+        self.assertLess(self.rang("systemctl stop"), self.rang("sessions"))
+        self.assertLess(self.rang("sessions"), self.rang("backup "))
+
+    def test_simulation_annonce_le_controle(self):
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_OK)
+        self.assertFalse(self.a_appele("sessions"))
+        self.assertIn(um.t("refused without --force"), self.sortie)
+
+
+class TestSecondeLectureDuJournal(Base):
+    """Le journal relu après le préchauffage et la santé, depuis la même
+    époque : une erreur y est un ATTN, jamais un échec."""
+
+    def test_une_erreur_apres_les_controles_en_attn(self):
+        self.systeme.journal_textes = ["", TRACE_KEYERROR]
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn("KeyError: 'x'", self.sortie)
+        premiere, seconde = self.systeme.epoques_journal
+        self.assertEqual(premiere, seconde)
+        self.assertEqual(premiere, self.systeme.horloge_au_demarrage - 10)
+        dernier = max(
+            i for i, a in enumerate(self.systeme.appels) if a == "journalctl"
+        )
+        self.assertLess(self.rang("sante"), dernier)
+        self.assertLess(self.rang("prechauffage"), dernier)
+        self.assertIn(um.DELAI_JOURNALD, self.systeme.dormi)
+
+    def test_le_logfile_relu_depuis_la_relance(self):
+        logfile = os.path.join(self.tmp, "odoo.log")
+        ecrire(logfile, LIGNE_ERREUR + "\n")
+        with open(self.conf, "a") as f:
+            f.write(f"logfile = {logfile}\n")
+        self.systeme.odoo_logfile = logfile
+        self.systeme.journal_textes = ["", ""]
+        original = self.systeme.sante
+
+        def sante(plan):
+            with open(logfile, "a") as f:
+                f.write(TRACE_VALUEERROR)
+            return original(plan)
+
+        self.systeme.sante = sante
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertIn("ValueError: y", self.sortie)
+        self.assertNotIn("Failed to load module", self.sortie)
+
+    def test_rien_de_nouveau(self):
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertIn(
+            um.t("Still no ERROR or CRITICAL line since the start."),
+            self.sortie,
+        )
+        self.assertEqual(len(self.systeme.epoques_journal), 2)
+
+    def test_seconde_lecture_interrompue_en_attn(self):
+        lectures = []
+        original = self.systeme.journal
+
+        def journal(unite, epoque, namespace=""):
+            lectures.append(epoque)
+            if len(lectures) == 2:
+                raise KeyboardInterrupt()
+            return original(unite, epoque, namespace)
+
+        self.systeme.journal = journal
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertEqual(len(lectures), 2)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertIn(
+            um.t("Second read of the Odoo log not done: {error}").format(
+                error="KeyboardInterrupt"
+            ),
+            self.sortie,
+        )
+        fin = um.t("Update finished: {modules}").format(
+            modules="my_module_a,my_module_b"
+        )
+        self.assertTrue(self.sortie.rstrip().endswith(fin), self.sortie)
+
+    def test_pas_de_seconde_lecture_sans_relance_verifiee(self):
+        self.systeme.demarrage_code = 1
+        self.lancer()
+        self.assertFalse(self.a_appele("journalctl"))
+
+
+def nom_journal(moment):
+    return "update-demo_db-{}.log".format(moment.strftime("%Y%m%d-%H%M%S"))
+
+
+class TestPurgeDesJournaux(Base):
+    """Les journaux `update-<base>-<horodatage>.log` : les 10 plus récents
+    gardés, les autres retirés au-delà de `--log-keep-days` jours."""
+
+    # L'horloge de FauxSysteme lue comme le programme la lit, à l'heure
+    # locale : le nom du journal de l'exécution en dépend.
+    MAINTENANT = um.datetime.datetime.fromtimestamp(1800000000.0)
+
+    def test_fonction_pure(self):
+        jours = [
+            self.MAINTENANT - um.datetime.timedelta(days=200 + n)
+            for n in range(13)
+        ]
+        noms = [nom_journal(m) for m in jours]
+        noms += [
+            "update-demo_db_x-20260101-000000.log",
+            "update-demo_db-20260101-000000.log.gz",
+            "update-demo_db-2026-bad.log",
+        ]
+        retires = um.journaux_a_purger(noms, "demo_db", self.MAINTENANT, 180)
+        self.assertEqual(retires, sorted(nom_journal(m) for m in jours[10:]))
+        self.assertEqual(
+            um.journaux_a_purger(noms, "demo_db", self.MAINTENANT, 0), []
+        )
+
+    def test_les_recents_restent_meme_au_dela_de_dix(self):
+        noms = [
+            nom_journal(self.MAINTENANT - um.datetime.timedelta(days=n))
+            for n in range(20)
+        ]
+        self.assertEqual(
+            um.journaux_a_purger(noms, "demo_db", self.MAINTENANT, 30), []
+        )
+        retires = um.journaux_a_purger(noms, "demo_db", self.MAINTENANT, 5)
+        self.assertEqual(len(retires), 10)
+
+    def poser(self, nombre):
+        os.makedirs(self.journaux, exist_ok=True)
+        chemins = []
+        for n in range(nombre):
+            moment = um.datetime.datetime(2026, 1, 1 + n, 12, 0, 0)
+            chemins.append(
+                ecrire(os.path.join(self.journaux, nom_journal(moment)))
+            )
+        return chemins
+
+    def test_apres_une_mise_a_jour(self):
+        anciens = self.poser(13)
+        autre = ecrire(
+            os.path.join(self.journaux, "update-autre_db-20200101-000000.log")
+        )
+        lien = os.path.join(
+            self.journaux, "update-demo_db-20200101-000000.log"
+        )
+        os.symlink(autre, lien)
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        restants = sorted(os.listdir(self.journaux))
+        # 13 anciens + celui de l'exécution : les 10 plus récents restent.
+        for chemin in anciens[:4]:
+            self.assertNotIn(os.path.basename(chemin), restants)
+        for chemin in anciens[4:]:
+            self.assertIn(os.path.basename(chemin), restants)
+        self.assertIn(os.path.basename(autre), restants)
+        self.assertIn(os.path.basename(lien), restants)
+        self.assertIn(nom_journal(self.MAINTENANT), restants)
+        # Le message suit la langue de TODO : on le compose par t().
+        self.assertIn(
+            um.t(
+                "{count} update log(s) of {database} older than {days}"
+                " day(s) removed from {path}."
+            )
+            .split("{database}")[0]
+            .format(count=4),
+            self.sortie,
+        )
+
+    def test_apres_un_echec_aussi(self):
+        self.poser(13)
+        self.systeme.odoo_issue = um.Issue(1, False, False)
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertEqual(len(os.listdir(self.journaux)), 10)
+
+    def test_zero_garde_tout(self):
+        self.poser(13)
+        self.assertEqual(self.lancer("--log-keep-days", "0"), um.CODE_OK)
+        self.assertEqual(len(os.listdir(self.journaux)), 14)
+
+    def test_simulation_ne_retire_rien(self):
+        self.poser(13)
+        self.systeme.euid_valeur = 1000
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_OK)
+        self.assertEqual(len(os.listdir(self.journaux)), 13)
+        self.assertIn("180", self.sortie)
+
+    def test_valeur_negative_refusee(self):
+        self.assertEqual(self.lancer_code("--log-keep-days", "-1"), 2)
+
+    def lancer_code(self, *options):
+        try:
+            return self.lancer(*options)
+        except SystemExit as err:
+            return err.code
+
+
+class TestDurees(Base):
+    """La durée de chaque phase et le temps où le site est resté coupé."""
+
+    def ligne(self, etiquette):
+        for ligne in self.sortie.splitlines():
+            if ligne.startswith("  " + um.t(etiquette)):
+                return ligne
+        return ""
+
+    def test_lignes_apres_une_reussite(self):
+        self.assertEqual(self.lancer("--warmup-deep"), um.CODE_OK)
+        durees = self.ligne("Durations")
+        for modele in (
+            "stop {duration}",
+            "backup {duration}",
+            "update {duration}",
+            "start {duration}",
+            "first answer {duration}",
+            "warm-up {duration}",
+            "health check {duration}",
+        ):
+            debut = um.t(modele).split("{")[0]
+            self.assertIn(debut, durees)
+        self.assertIn(um.t("start {duration}").format(duration="10 s"), durees)
+        self.assertIn("10 s", self.ligne("Site down"))
+        fin = um.t("Update finished: {modules}").format(
+            modules="my_module_a,my_module_b"
+        )
+        self.assertTrue(self.sortie.rstrip().endswith(fin), self.sortie)
+
+    def test_reponse_500_le_site_reste_coupe(self):
+        self.systeme.sonde = 500
+        self.lancer()
+        attendu = um.datetime.datetime.fromtimestamp(1800000000.0).strftime(
+            "%H:%M:%S"
+        )
+        self.assertIn(attendu, self.ligne("Site down"))
+
+    def test_relance_en_echec(self):
+        self.systeme.demarrage_code = 1
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertTrue(self.ligne("Site down"))
+        self.assertIn(
+            um.t("update {duration}").split("{")[0], self.ligne("Durations")
+        )
+
+    def test_service_arrete_avant_pas_de_coupure(self):
+        self.systeme.etat = "inactive"
+        self.assertEqual(self.lancer(), um.CODE_OK)
+        self.assertEqual(self.ligne("Site down"), "")
+        self.assertTrue(self.ligne("Durations"))
+
+    def test_duree_lisible(self):
+        self.assertEqual(um.duree_lisible(0.4), "0 s")
+        self.assertEqual(um.duree_lisible(45), "45 s")
+        self.assertEqual(um.duree_lisible(185), "3 min 05 s")
+        self.assertEqual(um.duree_lisible(3720), "1 h 02 min")
+
+    def test_simulation_sans_durees(self):
+        self.systeme.euid_valeur = 1000
+        self.lancer("--dry-run")
+        self.assertEqual(self.ligne("Durations"), "")
 
 
 if __name__ == "__main__":

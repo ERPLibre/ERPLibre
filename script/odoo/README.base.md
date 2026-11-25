@@ -30,7 +30,9 @@ What it does, in order:
 
 1. **Detection, nothing stopped.** The unit is `--service`, else the
    `erplibre…`/`odoo…` unit whose `WorkingDirectory` is this checkout, else
-   the only active one. Its account, directory, command line and
+   the only active one; a unit whose `ExecStart` does not launch Odoo
+   (`run.sh`, `odoo-bin`, `odoo_bin.sh`, `odoo`), such as the backup
+   timer's `erplibre-backup-<db>.service`, is never a candidate. Its account, directory, command line and
    environment come from `systemctl show`. The Odoo configuration, the
    database (`--db`, else `-d` of the unit, else `db_name`), the HTTP port
    and the modules (patterns expanded over `addons_path`, only folders with
@@ -42,15 +44,27 @@ What it does, in order:
    optparse refuses or a memory limit written in MB refuses with code 2,
    since the stopped unit would not come back, or not serve. With
    `--odoo-conf`, the unit's own file, the one of the restart, is checked
-   too. The warnings are listed in the plan.
+   too. The warnings are listed in the plan. The installed modules of the
+   database come from the backup's read, or from a read-only query with
+   `--no-backup`: `-u` silently ignores a module the database has not
+   installed, so each one is an ATTN, and the update is refused (code 2)
+   when none of the requested modules is installed. A module in state
+   `to upgrade` counts as installed: `-u` updates it. A state that cannot
+   be read is shown as unknown and removes nothing.
 2. **Root and lock.** Root is required (except `--dry-run`); one lock per
    database, shared with the backup tool, code 75 when another update or
    backup holds it.
 3. **Stop.** The state before is read from `ActiveState`; without an
    answer from systemctl nothing is stopped (code 2). After `systemctl
    stop`, the unit must be `inactive` or `failed` (not `deactivating`).
-   If the port still answers, or an Odoo process runs on the same database
-   outside the unit, the update is refused unless `--force`.
+   If the port still answers, if an Odoo process runs on the same database
+   outside the unit — through its `-d`, or, for an `odoo-bin` server of
+   root or of the unit's account, without `-d` with a configuration (`-c`)
+   whose `db_name` is this database, or is empty without a `db_user` set to
+   another role than this instance's (Odoo lists only the databases its
+   role owns) —, or if PostgreSQL sessions are still connected
+   to the database in `pg_stat_activity` after 10 s, the update is refused
+   unless `--force`.
 4. **Backup** (unless `--no-backup`), after the stop so that it is
    consistent: the verified backup of
    [script/database/odoo_backup.py](../database/README.md), called while
@@ -80,9 +94,15 @@ What it does, in order:
    `logfile` are read since the start.
 7. **After a verified restart**, lock released: with `--warmup-deep`, the
    deep warm-up of `warmup_http.py` (public pages and asset bundles, no
-   key), then the health check of the local instance (`health_check.py`).
-   Their findings are printed as ATTN at most and never change the exit
-   code; Ctrl-C there only stops that step.
+   key), then the health check of the local instance (`health_check.py`),
+   then a second read of the unit's journal and of the `logfile` since the
+   same start, after 2 s for journald: an error raised by the first
+   rendering of an updated view shows only then. Their findings are
+   printed as ATTN at most and never change the exit code; Ctrl-C there
+   only stops that step.
+8. **End of the report**: the duration of each phase (stop, backup,
+   update, start, first answer, warm-up, health check), then how long the
+   site stayed down, from the stop to the first HTTP answer below 500.
 
 The unit is never modified: the tool only reads it and runs `systemctl
 stop` / `start`. Whatever happens after the stop — failure, exception,
@@ -99,13 +119,16 @@ restore decided by a person.
 | 130 | interrupted, service restarted |
 
 The update log goes to `--log-dir` (default `/var/log/erplibre`, falling
-back to the temporary directory).
+back to the temporary directory). After each real run, the logs `update-<db>-<timestamp>.log` of the database older than
+`--log-keep-days` days (default 180, 0 keeps them all) are removed from
+that folder; the 10 most recent always stay, and a symbolic link is never
+removed.
 
 **Profile.** The lasting settings of an instance come from its production
 profile: `--profile FILE`, else `private/production/<unit>.json` of this
 checkout (the unit given by `--service`, else the detected one). The tool
 reads its group `update_module` (`timeout`, `start_wait`, `ignore_error`,
-`log_dir`, `warmup_deep`, `verbose`), plus `instance.db`, `backup.dest` and
+`log_dir`, `log_keep_days`, `warmup_deep`, `verbose`), plus `instance.db`, `backup.dest` and
 `backup.state_dir`. Paths must be absolute, and an `ignore_error` pattern
 that matches any error line or any traceback title (`ValueError: …`) is
 refused (code 2). The command line wins over every value,
@@ -529,7 +552,10 @@ Ce qu'il fait, dans l'ordre :
 
 1. **Détection, rien d'arrêté.** L'unité est `--service`, sinon l'unité
    `erplibre…`/`odoo…` dont `WorkingDirectory` est ce checkout, sinon la
-   seule active. Son compte, son dossier, sa ligne de commande et son
+   seule active ; une unité dont l'`ExecStart` ne lance pas Odoo
+   (`run.sh`, `odoo-bin`, `odoo_bin.sh`, `odoo`), comme
+   `erplibre-backup-<base>.service` de la sauvegarde planifiée, n'est
+   jamais candidate. Son compte, son dossier, sa ligne de commande et son
    environnement viennent de `systemctl show`. La configuration Odoo, la
    base (`--db`, sinon le `-d` de l'unité, sinon `db_name`), le port HTTP et
    les modules (motifs développés sur l'`addons_path`, seuls les dossiers
@@ -542,14 +568,26 @@ Ce qu'il fait, dans l'ordre :
    avec le code 2, puisque l'unité arrêtée ne repartirait pas, ou ne
    servirait pas. Avec `--odoo-conf`, le fichier de l'unité, celui de la
    relance, est vérifié aussi. Les avertissements sont listés dans le plan.
+   Les modules installés de la base viennent de la lecture de la
+   sauvegarde, ou d'une requête en lecture seule avec `--no-backup` : `-u`
+   ignore en silence un module que la base n'a pas installé, d'où un ATTN
+   pour chacun, et un refus (code 2) quand aucun module demandé ne l'est.
+   Un module à l'état `to upgrade` compte comme installé : `-u` le met à
+   jour. Un état illisible est dit inconnu et ne retire rien.
 2. **Root et verrou.** Root est exigé (sauf `--dry-run`) ; un verrou par
    base, partagé avec l'outil de sauvegarde, code 75 quand une autre mise à
    jour ou une sauvegarde le détient.
 3. **Arrêt.** L'état d'avant se lit dans `ActiveState` ; sans réponse de
    systemctl, rien n'est arrêté (code 2). Après `systemctl stop`, l'unité
    doit être `inactive` ou `failed` (pas `deactivating`). Si le port répond
-   encore, ou qu'un processus Odoo tourne sur la même base hors de
-   l'unité, la mise à jour est refusée, sauf `--force`.
+   encore, si un processus Odoo tourne sur la même base hors de l'unité —
+   par son `-d`, ou, pour un serveur `odoo-bin` de root ou du compte de
+   l'unité, sans `-d` avec une configuration (`-c`) dont `db_name` est
+   cette base, ou vide sans un `db_user` qui nomme un autre rôle que celui
+   de l'instance (Odoo ne liste que les bases de son rôle) —, ou
+   si des sessions PostgreSQL restent connectées à la base dans
+   `pg_stat_activity` après 10 s, la mise à jour est refusée, sauf
+   `--force`.
 4. **Sauvegarde** (sauf `--no-backup`), après l'arrêt pour être cohérente :
    la sauvegarde vérifiée de
    [script/database/odoo_backup.py](../database/README.fr.md), appelée
@@ -581,8 +619,15 @@ Ce qu'il fait, dans l'ordre :
 7. **Après une relance vérifiée**, verrou relâché : avec `--warmup-deep`,
    le préchauffage profond de `warmup_http.py` (pages publiques et paquets
    d'assets, sans clé), puis la vérification de santé de l'instance locale
-   (`health_check.py`). Leurs constats s'affichent en ATTN au plus et ne
-   changent jamais le code de sortie ; un Ctrl-C n'y arrête que l'étape.
+   (`health_check.py`), puis une seconde lecture du journal de l'unité et
+   du `logfile` depuis le même démarrage, après 2 s pour journald : une
+   erreur levée au premier rendu d'une vue mise à jour n'apparaît qu'alors.
+   Leurs constats s'affichent en ATTN au plus et ne changent jamais le code
+   de sortie ; un Ctrl-C n'y arrête que l'étape.
+8. **Fin du rapport** : la durée de chaque phase (arrêt, sauvegarde, mise
+   à jour, démarrage, première réponse, préchauffage, santé), puis le
+   temps où le site est resté coupé, de l'arrêt à la première réponse HTTP
+   sous 500.
 
 L'unité n'est jamais modifiée : l'outil la lit et lance seulement
 `systemctl stop` / `start`. Quoi qu'il arrive après l'arrêt — échec,
@@ -599,13 +644,18 @@ restauration décidée par une personne.
 | 130 | interrompu, service relancé |
 
 Le journal de la mise à jour va dans `--log-dir` (par défaut
-`/var/log/erplibre`, avec repli sur le dossier temporaire).
+`/var/log/erplibre`, avec repli sur le dossier temporaire). Après chaque
+exécution réelle, les journaux
+`update-<base>-<horodatage>.log` de la base de plus de `--log-keep-days`
+jours (180 par défaut, 0 les garde tous) sont retirés de ce dossier ; les
+10 plus récents restent toujours, et un lien symbolique n'est jamais
+retiré.
 
 **Profil.** Les réglages durables d'une instance viennent de son profil de
 production : `--profile FICHIER`, sinon `private/production/<unité>.json`
 de ce checkout (l'unité de `--service`, sinon celle qui est détectée).
 L'outil lit son groupe `update_module` (`timeout`, `start_wait`,
-`ignore_error`, `log_dir`, `warmup_deep`, `verbose`), plus `instance.db`,
+`ignore_error`, `log_dir`, `log_keep_days`, `warmup_deep`, `verbose`), plus `instance.db`,
 `backup.dest` et `backup.state_dir`. Les chemins doivent être absolus, et
 un motif `ignore_error` qui trouve n'importe quelle ligne d'erreur ou
 n'importe quel titre de trace (`ValueError: …`) est refusé (code 2). La

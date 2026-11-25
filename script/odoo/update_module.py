@@ -23,15 +23,25 @@ Le déroulé
    La sauvegarde est préparée ici aussi : dossiers de destination et
    d'état inscriptibles par le compte de l'unité (ou à créer), base lisible,
    espace disque suffisant pour `(taille de la base + filestore) × 1,2`.
+   Les modules installés de la base viennent de cette lecture, ou d'une
+   requête en lecture seule sans sauvegarde : `-u` ignore en silence un
+   module que la base n'a pas installé, d'où un ATTN par module, et un
+   refus (code 2) quand aucun ne l'est. Un état illisible est dit
+   inconnu et ne retire aucun module.
 2. Root exigé, puis le verrou de la base, partagé avec
    `script/database/odoo_backup.py` : deux opérations sur la même base ne
    se chevauchent pas (code 75). Les dossiers de la sauvegarde qui manquent
    sont créés ici, au compte de l'unité : un échec refuse encore avant
    l'arrêt (code 2).
-3. Arrêt de l'unité. Si le port répond encore, ou si un processus Odoo
-   tourne sur la même base hors de l'unité, la mise à jour est refusée
-   (code 1), sauf `--force` : deux serveurs sur une base pendant un `-u`
-   se disputent son schéma.
+3. Arrêt de l'unité. Si le port répond encore, si un processus Odoo
+   tourne sur la même base hors de l'unité — par son `-d`, ou, pour un
+   serveur de root ou du compte de l'unité, sans `-d` avec une
+   configuration dont `db_name` est cette base, ou vide sans un autre
+   `db_user` renseigné que celui de l'instance —, ou si
+   des sessions restent connectées à la base dans `pg_stat_activity`
+   après DELAI_SESSIONS secondes, la mise à jour est refusée (code 1),
+   sauf `--force` : deux serveurs sur une base pendant un `-u` se
+   disputent son schéma.
 4. Sauvegarde, APRÈS l'arrêt pour être cohérente : `odoo_backup.sauvegarder`
    appelée en fonction, sous le verrou déjà tenu — pg_dump sous le compte
    de l'unité, zip au format d'Odoo écrit sous un nom provisoire, relu puis
@@ -60,8 +70,17 @@ Le déroulé
    — un Ctrl-C n'y interrompt que cette étape : avec `--warmup-deep`, le
    préchauffage profond de `warmup_http.py` (pages publiques et paquets
    d'assets, sans clé), puis la vérification de santé de l'instance
-   locale par `health_check.py`. Leurs constats sont des ATTN au plus :
-   ils ne changent jamais le code de sortie.
+   locale par `health_check.py`, puis une seconde lecture du journal
+   depuis la même époque, après un court délai pour journald : une erreur
+   au premier rendu d'une vue mise à jour n'y paraît qu'alors. Leurs
+   constats sont des ATTN au plus : ils ne changent jamais le code de
+   sortie.
+8. Dans tous les cas où la mise à jour a été lancée, les journaux
+   `update-<base>-<horodatage>.log` de plus de `--log-keep-days` jours
+   (180 par défaut, 0 n'en retire aucun) sont retirés de leur dossier, les
+   JOURNAUX_GARDES plus récents gardés quel que soit leur âge. Le rapport
+   finit par la durée de chaque phase et par le temps où le site est
+   resté coupé, de l'arrêt à la première réponse HTTP sous 500.
 
 L'invariant
 -----------
@@ -94,8 +113,9 @@ Codes de sortie : 0 réussi ; 1 mise à jour en échec, service relancé ;
 n'arrête, n'écrit ni ne démarre rien ; il ne demande ni root ni verrou.
 
 Les réglages durables d'une instance viennent de son profil de production
-(`lib_ops/profil.py`, groupe `update_module`, plus `instance.db`,
-`backup.dest` et `backup.state_dir`) : `--profile FICHIER`, sinon
+(`lib_ops/profil.py`, groupe `update_module`, `log_keep_days` compris,
+plus `instance.db`, `backup.dest` et `backup.state_dir`) : `--profile
+FICHIER`, sinon
 `private/production/<unité>.json` de ce checkout. La ligne de commande
 l'emporte sur chaque valeur, `--no-profile` l'ignore. Les modules, l'unité,
 le compte, la configuration, `--force`, `--no-backup` et `--dry-run` ne
@@ -118,6 +138,7 @@ import re
 import shlex
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -133,6 +154,7 @@ from script.lib_ops import (  # noqa: E402
     lock,
     odoo_conf,
     odoo_instance,
+    postgres,
     profil,
     report,
     service,
@@ -171,6 +193,18 @@ INTERVALLE_DEMARRAGE = 2
 DOSSIER_JOURNAUX = "/var/log/erplibre"
 # Lignes de fin de journal montrées quand Odoo sort en erreur.
 LIGNES_DE_FIN = 15
+# Attente avant la seconde lecture du journal : journald reçoit les
+# dernières lignes d'Odoo un peu après qu'il les a écrites.
+DELAI_JOURNALD = 2
+# Après l'arrêt, le temps laissé aux sessions PostgreSQL du serveur arrêté
+# pour se fermer, relu chaque seconde.
+DELAI_SESSIONS = 10
+# Purge des journaux de mise à jour : les plus récents gardés quel que
+# soit leur âge, et l'âge par défaut au-delà duquel les autres partent.
+JOURNAUX_GARDES = 10
+JOURS_JOURNAUX = 180
+# Un code HTTP sous ce seuil dit le site rendu à ses visiteurs.
+CODE_SERVI = 500
 
 # L'issue d'un processus long : son code, s'il a été tué pour délai
 # dépassé, s'il a été interrompu à la demande.
@@ -223,6 +257,12 @@ class Systeme(odoo_backup.Systeme):
     def processus(self):
         return odoo_instance.lister_processus("/proc")
 
+    def dossier_processus(self, pid):
+        return odoo_instance.dossier_processus(pid, "/proc")
+
+    def uid_processus(self, pid):
+        return odoo_instance.uid_processus(pid, "/proc")
+
     def pids_exclus(self):
         return (os.getpid(), os.getppid())
 
@@ -230,7 +270,9 @@ class Systeme(odoo_backup.Systeme):
         time.sleep(secondes)
 
     def sonder(self, cible, delai):
-        return warmup_http.sonder(cible, delai_total=delai)
+        """Le code HTTP de la première réponse de `cible`, 0 sans
+        réponse dans `delai` secondes."""
+        return warmup_http.premier_code(cible, delai_total=delai)
 
     def prechauffer(self, plan):
         """Le préchauffage profond de l'instance relancée : un Bilan."""
@@ -426,10 +468,16 @@ class Plan:
         self.list_db = None
         self.modules = []
         self.motifs_vides = []
+        # Les modules demandés que la base n'a pas installés ; quand l'état
+        # ne se lit pas, `installes_inconnus` en porte la raison.
+        self.non_installes = []
+        self.installes_inconnus = ""
         self.sauvegarde = True
         # La Cible d'odoo_backup, et les dossiers qui manquent : l'exécution
-        # réelle les crée avant l'arrêt.
+        # réelle les crée avant l'arrêt. `cible_pg` sert aux requêtes de
+        # lecture : la même Cible, ou une Cible construite sans sauvegarde.
         self.cible = None
+        self.cible_pg = None
         self.dossiers_a_creer = []
         # L'évaluation de la sauvegarde (espace), None si inconnue.
         self.estimation = None
@@ -439,6 +487,16 @@ class Plan:
         self.commande = []
         # Vrai quand la relance a été vérifiée (port, HTTP, journal).
         self.relance_verifiee = False
+        # L'époque prise avant `systemctl start` et la taille du `logfile`
+        # à cet instant : la seconde lecture du journal repart de là.
+        self.epoque_relance = None
+        self.debut_logfile_relance = 0
+        # [(modèle N_ à `{duration}`, secondes)] des phases, dans l'ordre.
+        self.durees = []
+        # Site coupé : de l'instant d'avant `systemctl stop` (None si
+        # l'unité ne tournait pas) à la première réponse sous CODE_SERVI.
+        self.debut_coupure = None
+        self.fin_coupure = None
         self.__dict__.update(valeurs)
 
 
@@ -575,6 +633,68 @@ def _preparer_sauvegarde(args, systeme, plan, config):
         )
 
 
+def _modules_a_jour_possible(faits):
+    """Les noms des modules que `-u` met à jour d'après `faits` : ceux à
+    l'état `installed` (clé `modules`) et ceux à l'état `to upgrade` (clé
+    `to_upgrade`), qu'Odoo sélectionne aussi."""
+    noms = set(faits.get("modules") or {})
+    noms.update(faits.get("to_upgrade") or [])
+    return noms
+
+
+def _modules_installes(systeme, plan):
+    """(noms des modules installés ou `to upgrade` de la base, "") ;
+    (None, raison) quand l'état ne se lit pas.
+
+    Avec la sauvegarde, l'évaluation les a déjà lus
+    (`postgres.REQUETE_FAITS`) ; sans elle, `postgres.REQUETE_MODULES` les
+    lit en lecture seule. Une simulation sous un autre compte que celui de
+    l'unité, sans root, ne lit pas la base."""
+    if plan.estimation is not None:
+        return _modules_a_jour_possible(plan.estimation.faits), ""
+    if not plan.cible_pg.interrogeable:
+        return None, t("requires sudo")
+    try:
+        faits = odoo_backup.interroger(
+            plan.cible_pg, systeme, sql=postgres.REQUETE_MODULES
+        )
+    except odoo_backup.ErreurPg as err:
+        return None, str(err)
+    return _modules_a_jour_possible(faits), ""
+
+
+def _verifier_installes(systeme, plan):
+    """Pose `plan.non_installes`, ou `plan.installes_inconnus` quand l'état
+    ne se lit pas. Odoo ignore en silence, dans `-u`, un module que la base
+    n'a pas installé : refus (rien n'est arrêté) quand AUCUN module demandé
+    ne l'est, avertissement sinon. Un module `to upgrade` compte comme
+    installé : `-u` le met à jour. `all` n'est pas examiné. Un état
+    inconnu ne retire ni ne refuse rien."""
+    if plan.modules == ["all"]:
+        return
+    installes, raison = _modules_installes(systeme, plan)
+    if installes is None:
+        plan.installes_inconnus = raison
+        return
+    absents = [nom for nom in plan.modules if nom not in installes]
+    if absents and len(absents) == len(plan.modules):
+        raise Refus(
+            service.N_(
+                "No requested module is installed in {database}: {names}."
+                " -u would do nothing; nothing was stopped."
+            ),
+            database=plan.base,
+            names=", ".join(absents),
+        )
+    plan.non_installes = absents
+
+
+def modules_mis_a_jour(plan):
+    """Les modules que `-u` met vraiment à jour : ceux demandés, moins
+    ceux que la base n'a pas installés."""
+    return [nom for nom in plan.modules if nom not in plan.non_installes]
+
+
 def _verifier_fichier(chemin, version):
     """La `odoo_conf.Verification` de `chemin`. Lève Refus quand il ne se
     lit pas, ou quand Odoo le refuserait ou ne pourrait pas servir avec
@@ -644,6 +764,10 @@ def detecter(args, systeme, racine=RACINE):
     _detecter_adresse(plan, config)
     _detecter_modules(args, plan, config)
     _preparer_sauvegarde(args, systeme, plan, config)
+    plan.cible_pg = plan.cible or odoo_backup.preparer_cible(
+        plan, config, args.backup_dest, args.state_dir, systeme
+    )
+    _verifier_installes(systeme, plan)
     plan.journal = os.path.join(
         args.log_dir or DOSSIER_JOURNAUX,
         "update-{}-{}.log".format(
@@ -726,6 +850,19 @@ def afficher_plan(plan, rapport, args=None):
         rapport.attn(
             t("No module matches the pattern {pattern}.").format(pattern=motif)
         )
+    if plan.non_installes:
+        rapport.attn(
+            t("Not installed in {database}, ignored by -u: {names}").format(
+                database=plan.base, names=", ".join(plan.non_installes)
+            )
+        )
+    if plan.installes_inconnus:
+        rapport.attn(
+            t(
+                "Installed modules of {database} unknown ({reason}): -u"
+                " ignores a module the database has not installed."
+            ).format(database=plan.base, reason=plan.installes_inconnus)
+        )
 
 
 def creer_dossier_sauvegarde(plan, systeme, rapport):
@@ -756,6 +893,14 @@ def simuler(plan, rapport, args):
                 )
             )
     rapport.sim(joindre(["systemctl", "stop", "--", plan.unite]))
+    rapport.sim(
+        t(
+            "check that no Odoo process and no PostgreSQL session remain"
+            " on {database}"
+        ).format(database=plan.base)
+        + "  # "
+        + t("refused without --force")
+    )
     dans_wd = f"cd {shlex.quote(plan.wd)} && "
     vers_journal = f" >> {shlex.quote(plan.journal)} 2>&1"
     if plan.sauvegarde:
@@ -785,6 +930,23 @@ def simuler(plan, rapport, args):
         + "  # "
         + t("after a verified restart")
     )
+    rapport.sim(
+        t("second read of the Odoo log since the start")
+        + "  # "
+        + t("after a verified restart")
+    )
+    if args.log_keep_days:
+        rapport.sim(
+            t(
+                "purge of the update logs of {database} in {path} older than"
+                " {days} day(s), the {count} most recent kept"
+            ).format(
+                database=plan.base,
+                path=os.path.dirname(plan.journal),
+                days=args.log_keep_days,
+                count=JOURNAUX_GARDES,
+            )
+        )
     rapport.ok(
         t("Simulation finished: nothing was stopped, written or started.")
     )
@@ -842,6 +1004,64 @@ def montrer_groupes(rapport, analyse, limite):
         rapport.extrait([titre, f"    {groupe.echantillon[0]}"], 2)
 
 
+def _noter_duree(plan, systeme, modele, depuis):
+    """Ajoute à `plan.durees` la phase `modele` (anglais, `{duration}`),
+    commencée à `depuis` et finie maintenant."""
+    plan.durees.append((modele, max(0.0, systeme.maintenant() - depuis)))
+
+
+def duree_lisible(secondes):
+    """`45 s`, `3 min 05 s`, `1 h 02 min` : la durée arrondie à la
+    seconde, sans unité vide en tête."""
+    secondes = int(round(secondes))
+    heures, reste = divmod(secondes, 3600)
+    minutes, secondes = divmod(reste, 60)
+    if heures:
+        return f"{heures} h {minutes:02d} min"
+    if minutes:
+        return f"{minutes} min {secondes:02d} s"
+    return f"{secondes} s"
+
+
+def sessions_restantes(plan, systeme, rapport):
+    """Les sessions PostgreSQL encore connectées à la base après l'arrêt
+    ([dict] de `postgres.REQUETE_SESSIONS`), relues chaque seconde pendant
+    au plus DELAI_SESSIONS secondes : celles du serveur arrêté se ferment
+    quand PostgreSQL voit la déconnexion. Une session qui reste vient d'un
+    autre client — un Odoo sans `-d` d'une autre unité, ses crons, un psql
+    ouvert — et écrirait pendant le `-u`. Une lecture impossible rend []
+    avec un ATTN : la sauvegarde ou la mise à jour qui suivent ont besoin
+    de la même connexion et le diront."""
+    limite = systeme.maintenant() + DELAI_SESSIONS
+    while True:
+        try:
+            faits = odoo_backup.interroger(
+                plan.cible_pg, systeme, sql=postgres.REQUETE_SESSIONS
+            )
+        except odoo_backup.ErreurPg as err:
+            rapport.attn(
+                t(
+                    "PostgreSQL sessions on {database} not checked: {error}"
+                ).format(database=plan.base, error=err)
+            )
+            return []
+        sessions = [s for s in faits.get("sessions") or [] if s]
+        if not sessions or systeme.maintenant() >= limite:
+            return sessions
+        systeme.dormir(1)
+
+
+def decrire_session(session):
+    """`pid 4242, odoo, odoo-4242, 192.0.2.10, idle` : les champs
+    renseignés d'une session de `pg_stat_activity`."""
+    morceaux = ["pid {}".format(session.get("pid", "?"))]
+    for cle in ("user", "application", "client", "state"):
+        valeur = session.get(cle)
+        if valeur:
+            morceaux.append(str(valeur))
+    return ", ".join(morceaux)
+
+
 def _mettre_a_jour(plan, systeme, rapport, args):
     debut_journal = odoo_instance.taille(plan.journal)
     debut_logfile = odoo_instance.taille(plan.logfile)
@@ -850,6 +1070,7 @@ def _mettre_a_jour(plan, systeme, rapport, args):
         plan.commande, plan.wd, os.environ.copy(), plan.journal, args.timeout
     )
     duree = int(systeme.maintenant() - depart)
+    _noter_duree(plan, systeme, service.N_("update {duration}"), depart)
     if issue.interrompu or issue.tue:
         if issue.interrompu:
             rapport.fail(
@@ -901,9 +1122,54 @@ def _mettre_a_jour(plan, systeme, rapport, args):
     return CODE_OK
 
 
+def _comptes_de_l_instance(plan, systeme):
+    """Les uid dont un serveur Odoo sans `-d` est examiné : root et le
+    compte de l'unité. Un compte inconnu de passwd laisse root seul."""
+    uids = {0}
+    try:
+        uids.add(systeme.uid(plan.utilisateur))
+    except (KeyError, TypeError):
+        pass
+    return uids
+
+
+def _genes_apres_arret(plan, systeme):
+    """Ce qui tient encore la base ou le port hors de l'unité arrêtée :
+    une ligne par gêne — le port qui répond, un processus Odoo lancé avec
+    `-d <base>`, un serveur Odoo sans `-d` de root ou du compte de l'unité
+    dont la configuration vise la base
+    (`odoo_instance.processus_odoo_sans_base`, avec le `db_user` de cette
+    instance : un Odoo multi-bases d'un autre rôle ne la voit pas). Un
+    serveur d'un autre compte n'est pas examiné ; ses sessions sur la base
+    paraissent dans `pg_stat_activity`."""
+    genes = []
+    if systeme.port_ecoute(plan.hote, plan.port):
+        genes.append(
+            t("{host}:{port} still answers.").format(
+                host=plan.hote, port=plan.port
+            )
+        )
+    processus = systeme.processus()
+    exclus = systeme.pids_exclus()
+    for pid, argv in odoo_instance.processus_odoo(
+        plan.base, processus, exclus
+    ) + odoo_instance.processus_odoo_sans_base(
+        plan.base,
+        processus,
+        exclus,
+        systeme.dossier_processus,
+        db_user=plan.cible_pg.config.get("db_user", ""),
+        uid_de=systeme.uid_processus,
+        uids=_comptes_de_l_instance(plan, systeme),
+    ):
+        genes.append(f"{pid} {' '.join(argv)[:200]}")
+    return genes
+
+
 def _arreter_et_mettre_a_jour(plan, systeme, rapport, args):
     lanceur = systeme.lanceur
     rapport.etape(t("Stopping {unit}").format(unit=plan.unite))
+    debut_arret = systeme.maintenant()
     code_arret, sortie = systemd.arreter(plan.unite, lanceur)
     # Arrêté veut dire `inactive` ou `failed` après un stop qui a réussi :
     # `deactivating`, ou un stop dont le client a expiré, laisse l'ancien
@@ -920,33 +1186,43 @@ def _arreter_et_mettre_a_jour(plan, systeme, rapport, args):
         return CODE_ECHEC
     rapport.ok(t("Service stopped."))
 
-    genes = []
-    if systeme.port_ecoute(plan.hote, plan.port):
-        genes.append(
-            t("{host}:{port} still answers.").format(
-                host=plan.hote, port=plan.port
-            )
-        )
-    for pid, argv in odoo_instance.processus_odoo(
-        plan.base, systeme.processus(), systeme.pids_exclus()
-    ):
-        genes.append(f"{pid} {' '.join(argv)[:200]}")
-    if genes:
-        for gene in genes:
-            rapport.detail(gene)
+    genes = _genes_apres_arret(plan, systeme)
+    for gene in genes:
+        rapport.detail(gene)
+    sessions = sessions_restantes(plan, systeme, rapport)
+    for session in sessions:
+        rapport.detail(decrire_session(session))
+    _noter_duree(plan, systeme, service.N_("stop {duration}"), debut_arret)
+    if genes or sessions:
         if not args.force:
-            rapport.fail(
-                t(
-                    "Odoo still runs on this database or port outside the"
-                    " service: refused (--force to go on)."
+            if genes:
+                rapport.fail(
+                    t(
+                        "Odoo still runs on this database or port outside"
+                        " the service: refused (--force to go on)."
+                    )
                 )
-            )
+            if sessions:
+                rapport.fail(
+                    t(
+                        "{count} PostgreSQL session(s) still connected to"
+                        " {database} after the stop: refused (--force to go"
+                        " on)."
+                    ).format(count=len(sessions), database=plan.base)
+                )
             return CODE_ECHEC
-        rapport.attn(t("--force: going on despite the Odoo found."))
+        if genes:
+            rapport.attn(t("--force: going on despite the Odoo found."))
+        if sessions:
+            rapport.attn(
+                t("--force: going on despite the PostgreSQL sessions found.")
+            )
 
     if plan.sauvegarde:
         rapport.etape(t("Backup of {database}").format(database=plan.base))
+        debut = systeme.maintenant()
         code = _sauvegarder(plan, systeme, rapport, args)
+        _noter_duree(plan, systeme, service.N_("backup {duration}"), debut)
         if code != CODE_OK:
             return code
 
@@ -976,10 +1252,14 @@ def _relancer(plan, systeme, rapport, args):
     lanceur = systeme.lanceur
     try:
         if systemd.est_actif(plan.unite, lanceur):
-            # Jamais arrêté (stop sans effet) : rien à relancer.
+            # Jamais arrêté (stop sans effet) : rien à relancer, et le site
+            # n'a pas été coupé.
+            plan.debut_coupure = None
             return True
         debut_logfile = odoo_instance.taille(plan.logfile)
         epoque = systeme.maintenant()
+        plan.epoque_relance = epoque
+        plan.debut_logfile_relance = debut_logfile
         code, sortie = systemd.demarrer(plan.unite, lanceur)
         rapport.etape(t("Starting {unit}").format(unit=plan.unite))
         if code != 0:
@@ -1021,10 +1301,18 @@ def _relancer(plan, systeme, rapport, args):
                 )
             )
             return False
+        _noter_duree(plan, systeme, service.N_("start {duration}"), epoque)
         cible = warmup_http.url(plan.hote, plan.port, plan.base)
-        if not systeme.sonder(cible, DELAI_SONDE):
+        debut_sonde = systeme.maintenant()
+        code_http = systeme.sonder(cible, DELAI_SONDE)
+        if not code_http:
             rapport.fail(t("No HTTP answer from {url}.").format(url=cible))
             return False
+        _noter_duree(
+            plan, systeme, service.N_("first answer {duration}"), debut_sonde
+        )
+        if code_http < CODE_SERVI and plan.debut_coupure is not None:
+            plan.fin_coupure = systeme.maintenant()
         rapport.ok(t("Service started and answering: {url}").format(url=cible))
 
         rapport.etape(t("Errors in the Odoo log since the start"))
@@ -1082,9 +1370,11 @@ def executer(plan, systeme, rapport, args):
         )
         return CODE_REFUS
     etait_actif = not systemd.est_arrete(etat)
-    apres = 3 + int(args.warmup_deep) if etait_actif else 0
+    apres = 4 + int(args.warmup_deep) if etait_actif else 0
     rapport.total = 2 + int(plan.sauvegarde) + apres
     code = CODE_ECHEC
+    if etait_actif:
+        plan.debut_coupure = systeme.maintenant()
     restaurer = systeme.proteger_signaux()
     try:
         try:
@@ -1124,13 +1414,15 @@ def executer(plan, systeme, rapport, args):
 
 
 def verifier_apres_relance(plan, systeme, rapport, args):
-    """Préchauffage profond (`--warmup-deep`), puis santé de l'instance
-    relancée. Appelée hors du verrou et des signaux protégés, seulement
-    après une relance vérifiée. Ne lève pas : chaque constat est un ATTN
-    au plus, un FAIL de la santé compris, et une erreur ou un Ctrl-C n'y
-    arrête que l'étape en cours."""
+    """Préchauffage profond (`--warmup-deep`), santé de l'instance
+    relancée, puis seconde lecture du journal (`relire_le_journal`).
+    Appelée hors du verrou et des signaux protégés, seulement après une
+    relance vérifiée. Ne lève pas : chaque constat est un ATTN au plus, un
+    FAIL de la santé compris, et une erreur ou un Ctrl-C n'y arrête que
+    l'étape en cours."""
     if args.warmup_deep:
         rapport.etape(t("Deep cache warm-up"))
+        debut = systeme.maintenant()
         try:
             bilan = systeme.prechauffer(plan)
             resume = t(
@@ -1159,7 +1451,9 @@ def verifier_apres_relance(plan, systeme, rapport, args):
                     error=str(err) or type(err).__name__
                 )
             )
+        _noter_duree(plan, systeme, service.N_("warm-up {duration}"), debut)
     rapport.etape(t("Health check of the instance"))
+    debut = systeme.maintenant()
     try:
         _version, resultats = systeme.sante(plan)
         for resultat in resultats:
@@ -1175,15 +1469,166 @@ def verifier_apres_relance(plan, systeme, rapport, args):
                 error=str(err) or type(err).__name__
             )
         )
+    _noter_duree(plan, systeme, service.N_("health check {duration}"), debut)
+    relire_le_journal(plan, systeme, rapport, args)
+
+
+def relire_le_journal(plan, systeme, rapport, args):
+    """Relit le journal de l'unité et le `logfile` depuis l'époque de la
+    relance, après le préchauffage et la santé : une erreur levée au
+    premier rendu d'une vue ou d'un gabarit mis à jour n'y paraît qu'à ce
+    moment. La première lecture, juste après la première réponse, n'avait
+    rien trouvé : tout enregistrement ERROR ou CRITICAL vu ici est un ATTN,
+    sans changer le code de sortie. DELAI_JOURNALD secondes d'abord, pour
+    que journald ait reçu les dernières lignes. Ne lève pas. Sans époque
+    de relance (l'unité tournait déjà au moment de la relancer), rien
+    n'est relu."""
+    if plan.epoque_relance is None:
+        return
+    rapport.etape(t("Errors in the Odoo log after the checks"))
+    try:
+        systeme.dormir(DELAI_JOURNALD)
+        texte = systeme.journal(
+            plan.unite, plan.epoque_relance, plan.namespace
+        )
+        texte += "\n" + odoo_instance.lire_ajout(
+            plan.logfile, plan.debut_logfile_relance
+        )
+        analyse = erreurs_du_journal(texte, args)
+        if analyse.a_revoir:
+            rapport.attn(
+                t(
+                    "{count} ERROR/CRITICAL record(s) in {groups} group(s)"
+                    " since the start, after the warm-up and the health"
+                    " check."
+                ).format(
+                    count=analyse.a_revoir,
+                    groups=len(analyse.groupes_a_revoir()),
+                )
+            )
+            montrer_groupes(rapport, analyse, 8)
+        else:
+            rapport.ok(t("Still no ERROR or CRITICAL line since the start."))
+    except (Exception, KeyboardInterrupt) as err:  # noqa: BLE001
+        rapport.attn(
+            t("Second read of the Odoo log not done: {error}").format(
+                error=str(err) or type(err).__name__
+            )
+        )
+
+
+def resumer_durees(plan, rapport):
+    """Deux lignes après une exécution qui a arrêté l'unité : la durée de
+    chaque phase, puis le temps où le site est resté coupé, de l'instant
+    d'avant `systemctl stop` à la première réponse HTTP sous CODE_SERVI.
+    Sans cette réponse, la ligne dit depuis quand le site est coupé."""
+    if plan.durees:
+        rapport.champ(
+            t("Durations"),
+            ", ".join(
+                t(modele).format(duration=duree_lisible(secondes))
+                for modele, secondes in plan.durees
+            ),
+        )
+    if plan.debut_coupure is None:
+        return
+    if plan.fin_coupure is not None:
+        rapport.champ(
+            t("Site down"),
+            t(
+                "{duration}, from the stop to the first answer below 500"
+            ).format(
+                duration=duree_lisible(plan.fin_coupure - plan.debut_coupure)
+            ),
+        )
+    else:
+        rapport.champ(
+            t("Site down"),
+            t("since {time}: no answer below 500 yet").format(
+                time=datetime.datetime.fromtimestamp(
+                    plan.debut_coupure
+                ).strftime("%H:%M:%S")
+            ),
+        )
+
+
+def journaux_a_purger(noms, base, maintenant, jours, garder=JOURNAUX_GARDES):
+    """Les noms de `noms` à supprimer : les journaux `update-<base>-
+    <AAAAMMJJ-HHMMSS>.log` de CETTE base, hors des `garder` plus récents,
+    dont l'horodatage du nom a plus de `jours` jours au regard de
+    `maintenant` (datetime local, comme l'horodatage). `jours` à 0 ne
+    purge rien. Fonction pure : le disque n'est pas lu."""
+    if jours <= 0:
+        return []
+    motif = re.compile(
+        re.escape("update-" + base + "-") + r"(\d{8}-\d{6})\.log"
+    )
+    dates = []
+    for nom in noms:
+        trouve = motif.fullmatch(nom)
+        if not trouve:
+            continue
+        try:
+            moment = datetime.datetime.strptime(
+                trouve.group(1), "%Y%m%d-%H%M%S"
+            )
+        except ValueError:
+            continue
+        dates.append((moment, nom))
+    dates.sort(reverse=True)
+    limite = maintenant - datetime.timedelta(days=jours)
+    return sorted(nom for moment, nom in dates[garder:] if moment < limite)
+
+
+def purger_journaux(plan, systeme, rapport, args):
+    """Retire du dossier du journal de cette exécution les anciens
+    journaux de la base (`journaux_a_purger`), jamais celui de cette
+    exécution. Seul un fichier ordinaire part : un lien porté par un nom
+    de journal, dans un dossier temporaire partagé, reste. Une suppression
+    qui échoue est passée sous silence ; le nombre retiré s'affiche."""
+    dossier = os.path.dirname(plan.journal)
+    try:
+        noms = os.listdir(dossier)
+    except OSError:
+        return
+    maintenant = datetime.datetime.fromtimestamp(systeme.maintenant())
+    retires = 0
+    for nom in journaux_a_purger(
+        noms, plan.base, maintenant, args.log_keep_days
+    ):
+        chemin = os.path.join(dossier, nom)
+        if chemin == plan.journal:
+            continue
+        try:
+            if not stat.S_ISREG(os.lstat(chemin).st_mode):
+                continue
+            os.remove(chemin)
+        except OSError:
+            continue
+        retires += 1
+    if retires:
+        rapport.detail(
+            t(
+                "{count} update log(s) of {database} older than {days}"
+                " day(s) removed from {path}."
+            ).format(
+                count=retires,
+                database=plan.base,
+                days=args.log_keep_days,
+                path=dossier,
+            )
+        )
 
 
 def conclure(plan, rapport, code):
-    """La dernière ligne du rapport : réussite ou échec de la mise à
-    jour."""
+    """Les durées (`resumer_durees`), puis la dernière ligne du rapport :
+    réussite ou échec de la mise à jour. La réussite nomme les modules
+    que `-u` a mis à jour, ceux que la base n'a pas installés exclus."""
+    resumer_durees(plan, rapport)
     if code == CODE_OK:
         rapport.ok(
             t("Update finished: {modules}").format(
-                modules=",".join(plan.modules)
+                modules=",".join(modules_mis_a_jour(plan))
             )
         )
     elif code == CODE_ECHEC:
@@ -1310,6 +1755,17 @@ def construire_parseur():
         ),
     )
     parser.add_argument(
+        "--log-keep-days",
+        type=TYPES.entier,
+        default=JOURS_JOURNAUX,
+        metavar="DAYS",
+        help=t(
+            "After the run, remove the update logs of the database older"
+            " than DAYS days, the {count} most recent always kept; 0 keeps"
+            " them all. Default: {days}."
+        ).format(count=JOURNAUX_GARDES, days=JOURS_JOURNAUX),
+    )
+    parser.add_argument(
         "--warmup-deep",
         action="store_true",
         help=t(
@@ -1412,6 +1868,7 @@ def main(argv=None, systeme=None, rapport=None):
         verrou.relacher()
     if code == CODE_OK and plan.relance_verifiee:
         verifier_apres_relance(plan, systeme, rapport, args)
+    purger_journaux(plan, systeme, rapport, args)
     conclure(plan, rapport, code)
     return code
 

@@ -90,6 +90,7 @@ CHAMPS = collections.OrderedDict(
                 "start_wait",
                 "ignore_error",
                 "log_dir",
+                "log_keep_days",
                 "warmup_deep",
                 "verbose",
             ),

@@ -11,7 +11,10 @@ dossier de travail et de son fichier de configuration, ce module dit :
 - sur quelle adresse le serveur écoute (`adresse_http`) ;
 - quels dossiers forment l'addons_path, et quels modules y répondent à
   des motifs (`chemins_addons`, `developper_modules`) ;
-- quels processus Odoo tournent sur une base (`processus_odoo`) ;
+- si une ligne de commande lance un serveur Odoo (`lance_odoo`) ;
+- quels processus Odoo tournent sur une base, par leur `-d`
+  (`processus_odoo`) ou, sans `-d`, par le `db_name` et le `db_user` de
+  leur configuration (`processus_odoo_sans_base`) ;
 - ce qu'un journal a reçu depuis une position (`taille`, `lire_ajout`) ;
 - où vit le filestore d'une base (`data_dir`, `filestore`) ;
 - si une sauvegarde au format zip d'Odoo est complète
@@ -22,7 +25,7 @@ La ligne de commande l'emporte toujours sur la configuration, comme dans
 Odoo : une option passée à odoo-bin écrase la valeur du fichier.
 
 Aucune fonction n'écrit quoi que ce soit. Celles qui lisent le système de
-fichiers reçoivent leurs chemins ; `processus_odoo` reçoit la racine de
+fichiers reçoivent leurs chemins ; `lister_processus` reçoit la racine de
 /proc, qu'un test remplace par un dossier fabriqué.
 
 Bibliothèque standard seulement.
@@ -35,6 +38,7 @@ import fnmatch
 import json
 import os
 import re
+import stat
 import zipfile
 import zlib
 
@@ -49,6 +53,16 @@ RE_MOTIF_MODULE = re.compile(r"[a-z0-9_*?]+")
 # Noms de fichier qui désignent un lanceur d'Odoo dans une ligne de
 # commande.
 LANCEURS_ODOO = ("odoo-bin", "odoo_bin.sh", "odoo", "run.sh")
+
+# Noms de fichier du serveur lui-même, sans les scripts qui l'enveloppent :
+# run.sh et odoo_bin.sh restent dans la liste des processus pendant que
+# leur enfant sert, et ce sont les options de cet enfant (`-c`, `-d`
+# qu'ajoute run.sh) qui disent quelle configuration et quelle base il sert.
+SERVEURS_ODOO = ("odoo-bin", "odoo")
+
+# Taille au-delà de laquelle le fichier de configuration d'un autre
+# processus n'est pas lu : un odoo.conf pèse quelques kilooctets.
+TAILLE_MAX_CONFIG = 1024 * 1024
 
 # Valeurs de configuration qui veulent dire « non renseigné ».
 VIDES = ("", "false", "none")
@@ -88,6 +102,42 @@ def valeur_argv(argv, courtes=(), longues=()):
 def lance_run_sh(argv):
     """True si la ligne de commande passe par le run.sh d'ERPLibre."""
     return any(os.path.basename(a) == "run.sh" for a in argv)
+
+
+# Caractères de shell qui collent à un mot du script d'un `sh -c`.
+PONCTUATION_SHELL = "'\";&|()`"
+
+
+def lance_odoo(argv):
+    """True si la ligne de commande lance un lanceur d'Odoo
+    (`LANCEURS_ODOO`), lui-même ou par un interpréteur : chaque argument
+    est découpé aux espaces, ce qui couvre le script d'un `bash -c`.
+
+    Un mot qui commence par un tiret n'est jamais un programme
+    (`--dest=/srv/odoo`). Le mot qui suit une option longue peut être sa
+    valeur (`--dest /srv/odoo`, `--db odoo`) ou le programme qu'un
+    lanceur exécute après une option sans valeur (`authbind --deep
+    /opt/odoo/odoo-bin`) : il compte quand il nomme odoo-bin, odoo_bin.sh
+    ou run.sh, ou un `odoo` rangé dans un dossier `bin`, jamais quand il
+    n'est qu'un `odoo` nu ou un dossier qui porte ce nom. Une unité qui
+    lance `odoo_backup.py` ou `warmup_http.py` n'est donc pas un serveur
+    Odoo, même quand ses chemins portent le mot « odoo »."""
+    precedent = ""
+    for argument in argv:
+        for mot in argument.split():
+            mot = mot.strip(PONCTUATION_SHELL)
+            nom = os.path.basename(mot)
+            if mot and not mot.startswith("-") and nom in LANCEURS_ODOO:
+                valeur_longue = (
+                    precedent.startswith("--") and precedent != "--"
+                )
+                programme = nom != "odoo" or (
+                    os.path.basename(os.path.dirname(mot)) == "bin"
+                )
+                if not valeur_longue or programme:
+                    return True
+            precedent = mot
+    return False
 
 
 def _absolu(chemin, dossier):
@@ -156,7 +206,47 @@ def lire_config(chemin):
     if not chemin or not os.path.isfile(chemin):
         return {}
     with open(chemin, encoding="utf-8", errors="replace") as fichier:
-        texte = fichier.read()
+        return _options(fichier.read())
+
+
+def lire_config_bornee(chemin, limite=TAILLE_MAX_CONFIG):
+    """`lire_config` d'un fichier que nomme la ligne de commande d'un
+    AUTRE processus : {} pour tout ce qui n'est pas un fichier ordinaire
+    d'au plus `limite` octets.
+
+    Le fichier est ouvert sans bloquer (une FIFO ne suspend pas la
+    lecture), puis examiné par `fstat` sur le descripteur ouvert, ce qui
+    ferme la fenêtre entre un test sur le nom et l'ouverture. Seuls
+    `limite` + 1 octets sont lus : un fichier plus gros est écarté sans
+    être chargé. OSError remonte."""
+    if not chemin:
+        return {}
+    try:
+        fd = os.open(chemin, os.O_RDONLY | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return {}
+    try:
+        etat = os.fstat(fd)
+        if not stat.S_ISREG(etat.st_mode) or etat.st_size > limite:
+            return {}
+        morceaux, reste = [], limite + 1
+        while reste > 0:
+            morceau = os.read(fd, reste)
+            if not morceau:
+                break
+            morceaux.append(morceau)
+            reste -= len(morceau)
+    finally:
+        os.close(fd)
+    brut = b"".join(morceaux)
+    if len(brut) > limite:
+        return {}
+    return _options(brut.decode("utf-8", "replace"))
+
+
+def _options(texte):
+    """La section [options] de `texte`, en dict ; {} quand configparser
+    le refuse ou qu'elle manque."""
     parser = configparser.RawConfigParser(strict=False)
     try:
         parser.read_string(texte)
@@ -317,6 +407,25 @@ def lister_processus(racine="/proc"):
     return processus
 
 
+def dossier_processus(pid, racine="/proc"):
+    """Le dossier courant du processus `pid` (lien `cwd` sous `racine`),
+    ou "" quand il ne se lit pas : processus parti, ou d'un autre compte
+    pour qui n'est pas root."""
+    try:
+        return os.readlink(os.path.join(racine, str(pid), "cwd"))
+    except OSError:
+        return ""
+
+
+def uid_processus(pid, racine="/proc"):
+    """L'uid effectif du processus `pid` (propriétaire de son dossier sous
+    `racine`), ou None quand il ne se lit pas : processus parti."""
+    try:
+        return os.stat(os.path.join(racine, str(pid))).st_uid
+    except OSError:
+        return None
+
+
 def processus_odoo(base, processus, exclus=()):
     """Les processus de `processus` qui lancent Odoo sur `base`.
 
@@ -332,6 +441,92 @@ def processus_odoo(base, processus, exclus=()):
         if not any(os.path.basename(a) in LANCEURS_ODOO for a in argv):
             continue
         if valeur_argv(argv, ("-d",), ("--database",)) == base:
+            trouves.append((pid, argv))
+    return trouves
+
+
+def config_du_processus(argv, dossier):
+    """Le fichier de configuration qu'un serveur Odoo lit, quand sa ligne
+    de commande le désigne par `-c`/`--config` (un chemin relatif se lit
+    depuis `dossier`, le dossier courant du processus). None sinon : un
+    odoo-bin sans `-c` lit l'ODOO_RC de son environnement ou le
+    `~/.odoorc` de son compte, que la ligne de commande ne nomme pas.
+    run.sh passe toujours `-c` au serveur qu'il lance, le repli sur
+    /etc/odoo/odoo.conf compris."""
+    depuis_argv = valeur_argv(argv, ("-c",), ("--config",))
+    if not depuis_argv:
+        return None
+    if not os.path.isabs(os.path.expanduser(depuis_argv)) and not dossier:
+        return None
+    return _absolu(depuis_argv, dossier)
+
+
+def vise_base(config, base, db_user=""):
+    """True si une instance de configuration `config` (section [options])
+    peut servir `base` : `db_name` égal à `base`, ou liste à virgules qui
+    la contient ; ou `db_name` vide, qui ouvre toutes les bases du rôle,
+    crons compris — sauf quand son `db_user` et `db_user`, celui de
+    l'instance de `base`, sont tous deux renseignés et diffèrent : Odoo ne
+    liste que les bases dont son rôle est propriétaire."""
+    valeur = _renseigne(config.get("db_name"))
+    if valeur:
+        return base in [nom.strip() for nom in valeur.split(",")]
+    son_role = _renseigne(config.get("db_user"))
+    mon_role = _renseigne(db_user)
+    return not (son_role and mon_role and son_role != mon_role)
+
+
+def processus_odoo_sans_base(
+    base,
+    processus,
+    exclus=(),
+    dossier_de=None,
+    lire=None,
+    db_user="",
+    uid_de=None,
+    uids=None,
+):
+    """Les serveurs Odoo SANS `-d` dont la configuration peut viser
+    `base` (`vise_base`, `db_user` étant celui de l'instance de `base`) :
+    un serveur multi-bases y lance ses crons, ou sert la base à qui la
+    demande.
+
+    Seul le serveur lui-même est jugé (`SERVEURS_ODOO`), jamais run.sh ni
+    odoo_bin.sh : ils ne portent pas le `-d` que run.sh ajoute à son
+    enfant, et cet enfant, qui le porte, est dans `processus` lui aussi.
+
+    `uids` : quand il est donné, seuls comptent les processus dont
+    `uid_de(pid)` y figure. La configuration d'un processus d'un autre
+    compte n'est alors pas lue : sa ligne de commande ne choisit pas ce
+    que lit l'appelant, et ses sessions sur la base paraissent dans
+    `pg_stat_activity`.
+
+    `dossier_de(pid)` rend le dossier courant du processus ("" s'il ne se
+    lit pas) ; `lire(chemin)` la section [options] (`lire_config_bornee`
+    par défaut). Un processus dont la configuration n'est pas désignée par
+    sa ligne de commande (`config_du_processus`), ou ne se lit pas, n'est
+    pas compté : la lecture de `pg_stat_activity` après l'arrêt voit ses
+    sessions, s'il en a sur la base."""
+    lire = lire or lire_config_bornee
+    trouves = []
+    for pid, argv in processus:
+        if pid in exclus:
+            continue
+        if not any(os.path.basename(a) in SERVEURS_ODOO for a in argv):
+            continue
+        if valeur_argv(argv, ("-d",), ("--database",)):
+            continue
+        if uids is not None and (uid_de(pid) if uid_de else None) not in uids:
+            continue
+        dossier = dossier_de(pid) if dossier_de else ""
+        chemin = config_du_processus(argv, dossier)
+        if not chemin:
+            continue
+        try:
+            config = lire(chemin)
+        except OSError:
+            continue
+        if config and vise_base(config, base, db_user):
             trouves.append((pid, argv))
     return trouves
 

@@ -66,6 +66,8 @@ REQUETE_FAITS = (
     " WHERE name = 'base'),"
     "'modules', (SELECT json_object_agg(name, latest_version ORDER BY name)"
     " FROM ir_module_module WHERE state = 'installed'),"
+    "'to_upgrade', (SELECT json_agg(name ORDER BY name)"
+    " FROM ir_module_module WHERE state = 'to upgrade'),"
     "'server_version_num', current_setting('server_version_num')::int,"
     "'size', pg_database_size(current_database()),"
     "'stored_attachments', (SELECT count(*) FROM ir_attachment"
@@ -82,6 +84,33 @@ REQUETE_CONTROLE = (
     " WHERE state = 'installed'),"
     "'stored_files', (SELECT count(DISTINCT store_fname) FROM ir_attachment"
     " WHERE store_fname IS NOT NULL))"
+)
+
+# Les modules installés de la base et ceux marqués `to upgrade`, sous les
+# clés `modules` et `to_upgrade` de REQUETE_FAITS : la mise à jour les lit
+# quand elle ne sauvegarde pas. `-u` met à jour les uns et les autres.
+REQUETE_MODULES = (
+    "SELECT json_build_object("
+    "'modules', (SELECT json_object_agg(name, latest_version ORDER BY name)"
+    " FROM ir_module_module WHERE state = 'installed'),"
+    "'to_upgrade', (SELECT json_agg(name ORDER BY name)"
+    " FROM ir_module_module WHERE state = 'to upgrade'))"
+)
+
+# Les sessions des clients connectés à la base, la sienne exclue. Les
+# processus de fond (autovacuum, réplication) portent aussi `datname` :
+# seul un `backend_type` « client backend » compte. PostgreSQL 9.x n'a pas
+# cette colonne ; `row_to_json` la rend alors nulle, et toute session y
+# compte. Un rôle qui n'est pas superutilisateur voit le pid, le rôle et
+# l'application des sessions des autres rôles ; leur état est nul.
+REQUETE_SESSIONS = (
+    "SELECT json_build_object('sessions', (SELECT json_agg(json_build_object("
+    "'pid', a.pid, 'user', a.usename, 'application', a.application_name,"
+    " 'client', a.client_addr::text, 'state', a.state) ORDER BY a.pid)"
+    " FROM pg_stat_activity a WHERE a.datname = current_database()"
+    " AND a.pid <> pg_backend_pid()"
+    " AND COALESCE(row_to_json(a)->>'backend_type', 'client backend')"
+    " = 'client backend'))"
 )
 
 REQUETE_BASES = "SELECT datname FROM pg_database"

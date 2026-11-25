@@ -225,6 +225,11 @@ class TestMiseAJour(Base):
         self.assertEqual(argv[-2:], ["--profile-sha256", empreinte])
         self.assertEqual(argv[argv.index("--profile") + 1], chemin_profil())
 
+    def test_la_question_rappelle_la_purge_des_journaux(self):
+        ecrire_profil(update_module={"log_keep_days": 30})
+        jeu = self.jouer("_ops_update_modules", ["base", "", ""])
+        self.assertIn("--log-keep-days 30", jeu.confirm.call_args.args[0])
+
     def test_sans_profil_ni_empreinte(self):
         jeu = self.jouer("_ops_update_modules", ["base", "", ""])
         argv = self.reelle(jeu)

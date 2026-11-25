@@ -286,7 +286,7 @@ class TestEditeurLigneParLigne(Base):
     def test_booleen(self):
         ecrit, _sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["2", "6", "0", enregistrer()],
+            choix=["2", "7", "0", enregistrer()],
             confirmations=[True],
             args=(self.brouillon(),),
         )
@@ -348,10 +348,10 @@ class TestEditeurLigneParLigne(Base):
         self.assertIn("keep_daily : — → 10", sortie)
 
     def test_alias_mene_a_sa_cible(self):
-        # Mise à jour : 6 champs, puis --db (→ Instance), --backup-dest…
+        # Mise à jour : 7 champs, puis --db (→ Instance), --backup-dest…
         ecrit, _sortie, _ = self.jouer(
             "_ops_reglages_groupes",
-            choix=["2", "7", "0", enregistrer()],
+            choix=["2", "8", "0", enregistrer()],
             saisies=["exemple_db"],
             args=(self.brouillon(),),
         )

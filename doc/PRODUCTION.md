@@ -130,6 +130,17 @@ After a verified restart, the tool checks the health of the local instance
 `--warmup-deep` stays anonymous with the default warm-up settings: the
 profile group `warmup` (login, API key, pages) does not apply to it.
 
+A requested module that the database has not installed is listed as a
+warning, since `-u` ignores it; the update is refused before the stop when
+none is installed. After the stop, an Odoo without `-d` whose configuration
+serves this database, or a PostgreSQL session still connected to it,
+refuses the update unless `--force`. The journal is read a second time
+after the warm-up and the health check. The report ends with the duration
+of each phase and how long the site stayed down. Old update logs of the
+database are removed after each real run (`--log-keep-days`, 180 days by
+default, the 10 most recent kept), a value also editable in `TODO ›
+Execute › Production › Settings`.
+
 The same is reachable from `make todo`: `TODO › Execute › Production ›
 Update`. Options, detection order and exit codes:
 [script/odoo/README.md](../script/odoo/README.md).

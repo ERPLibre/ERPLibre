@@ -56,6 +56,7 @@ EXEMPLES = {
         "start_wait": 30,
         "ignore_error": ["exemple_module: champ obsolete"],
         "log_dir": "/var/tmp/exemple/journaux",
+        "log_keep_days": 30,
         "warmup_deep": True,
         "verbose": True,
     },

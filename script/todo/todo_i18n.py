@@ -29951,6 +29951,119 @@ TRANSLATIONS = {
         "fr": "Annulé : fichier introuvable : {path}",
         "en": "Cancelled: file not found: {path}",
     },
+    # Production - fiabilité d'update_module : modules non installés, sessions, seconde lecture, purge, durées (update_module)
+    "--force: going on despite the PostgreSQL sessions found.": {
+        "fr": "--force : on continue malgré les sessions PostgreSQL trouvées.",
+        "en": "--force: going on despite the PostgreSQL sessions found.",
+    },
+    "After the run, remove the update logs of the database older than DAYS days, the {count} most recent always kept; 0 keeps them all. Default: {days}.": {
+        "fr": "Après l'exécution, retirer les journaux de mise à jour de la base de plus de DAYS jours, les {count} plus récents toujours gardés ; 0 les garde tous. Par défaut : {days}.",
+        "en": "After the run, remove the update logs of the database older than DAYS days, the {count} most recent always kept; 0 keeps them all. Default: {days}.",
+    },
+    "Durations": {
+        "fr": "Durées",
+        "en": "Durations",
+    },
+    "Errors in the Odoo log after the checks": {
+        "fr": "Erreurs du journal Odoo après les vérifications",
+        "en": "Errors in the Odoo log after the checks",
+    },
+    "Installed modules of {database} unknown ({reason}): -u ignores a module the database has not installed.": {
+        "fr": "Modules installés de {database} inconnus ({reason}) : -u ignore un module que la base n'a pas installé.",
+        "en": "Installed modules of {database} unknown ({reason}): -u ignores a module the database has not installed.",
+    },
+    "No requested module is installed in {database}: {names}. -u would do nothing; nothing was stopped.": {
+        "fr": "Aucun module demandé n'est installé dans {database} : {names}. -u ne ferait rien ; rien n'a été arrêté.",
+        "en": "No requested module is installed in {database}: {names}. -u would do nothing; nothing was stopped.",
+    },
+    "Not installed in {database}, ignored by -u: {names}": {
+        "fr": "Non installé(s) dans {database}, ignoré(s) par -u : {names}",
+        "en": "Not installed in {database}, ignored by -u: {names}",
+    },
+    "PostgreSQL sessions on {database} not checked: {error}": {
+        "fr": "Sessions PostgreSQL de {database} non vérifiées : {error}",
+        "en": "PostgreSQL sessions on {database} not checked: {error}",
+    },
+    "Second read of the Odoo log not done: {error}": {
+        "fr": "Seconde lecture du journal Odoo non faite : {error}",
+        "en": "Second read of the Odoo log not done: {error}",
+    },
+    "Site down": {
+        "fr": "Site coupé",
+        "en": "Site down",
+    },
+    "Still no ERROR or CRITICAL line since the start.": {
+        "fr": "Toujours aucune ligne ERROR ou CRITICAL depuis le démarrage.",
+        "en": "Still no ERROR or CRITICAL line since the start.",
+    },
+    "backup {duration}": {
+        "fr": "sauvegarde {duration}",
+        "en": "backup {duration}",
+    },
+    "check that no Odoo process and no PostgreSQL session remain on {database}": {
+        "fr": "vérifier qu'aucun processus Odoo ni aucune session PostgreSQL ne reste sur {database}",
+        "en": "check that no Odoo process and no PostgreSQL session remain on {database}",
+    },
+    "first answer {duration}": {
+        "fr": "première réponse {duration}",
+        "en": "first answer {duration}",
+    },
+    "health check {duration}": {
+        "fr": "santé {duration}",
+        "en": "health check {duration}",
+    },
+    "purge of the update logs of {database} in {path} older than {days} day(s), the {count} most recent kept": {
+        "fr": "purge des journaux de mise à jour de {database} dans {path} de plus de {days} jour(s), les {count} plus récents gardés",
+        "en": "purge of the update logs of {database} in {path} older than {days} day(s), the {count} most recent kept",
+    },
+    "refused without --force": {
+        "fr": "refusé sans --force",
+        "en": "refused without --force",
+    },
+    "requires sudo": {
+        "fr": "exige sudo",
+        "en": "requires sudo",
+    },
+    "second read of the Odoo log since the start": {
+        "fr": "seconde lecture du journal Odoo depuis le démarrage",
+        "en": "second read of the Odoo log since the start",
+    },
+    "since {time}: no answer below 500 yet": {
+        "fr": "depuis {time} : encore aucune réponse sous 500",
+        "en": "since {time}: no answer below 500 yet",
+    },
+    "start {duration}": {
+        "fr": "démarrage {duration}",
+        "en": "start {duration}",
+    },
+    "stop {duration}": {
+        "fr": "arrêt {duration}",
+        "en": "stop {duration}",
+    },
+    "update {duration}": {
+        "fr": "mise à jour {duration}",
+        "en": "update {duration}",
+    },
+    "warm-up {duration}": {
+        "fr": "préchauffage {duration}",
+        "en": "warm-up {duration}",
+    },
+    "{count} ERROR/CRITICAL record(s) in {groups} group(s) since the start, after the warm-up and the health check.": {
+        "fr": "{count} enregistrement(s) ERROR/CRITICAL en {groups} groupe(s) depuis le démarrage, après le préchauffage et la santé.",
+        "en": "{count} ERROR/CRITICAL record(s) in {groups} group(s) since the start, after the warm-up and the health check.",
+    },
+    "{count} PostgreSQL session(s) still connected to {database} after the stop: refused (--force to go on).": {
+        "fr": "{count} session(s) PostgreSQL encore connectée(s) à {database} après l'arrêt : refusé (--force pour continuer).",
+        "en": "{count} PostgreSQL session(s) still connected to {database} after the stop: refused (--force to go on).",
+    },
+    "{count} update log(s) of {database} older than {days} day(s) removed from {path}.": {
+        "fr": "{count} journal(aux) de mise à jour de {database} de plus de {days} jour(s) retiré(s) de {path}.",
+        "en": "{count} update log(s) of {database} older than {days} day(s) removed from {path}.",
+    },
+    "{duration}, from the stop to the first answer below 500": {
+        "fr": "{duration}, de l'arrêt à la première réponse sous 500",
+        "en": "{duration}, from the stop to the first answer below 500",
+    },
 }
 
 

@@ -21,6 +21,8 @@ import re
 import shlex
 import subprocess
 
+from script.lib_ops import odoo_instance
+
 # Nom d'unité admis : ce que systemd accepte, sans rien qu'un shell
 # interpréterait.
 RE_NOM_UNITE = re.compile(r"[A-Za-z0-9@_.:-]+")
@@ -243,12 +245,28 @@ def lister_unites(lanceur=lancer):
     return unites
 
 
+def lance_un_serveur(nom, lanceur=lancer):
+    """False quand l'ExecStart de l'unité `nom` se lit et ne lance pas
+    Odoo (`odoo_instance.lance_odoo`) : une unité auxiliaire du même
+    checkout, comme `erplibre-backup-<base>.service` qui lance
+    `odoo_backup.py`. True quand il lance Odoo, ou qu'il ne se lit pas
+    (systemctl en échec, ExecStart vide) : l'unité reste candidate."""
+    try:
+        valeurs = lire_proprietes(nom, ("ExecStart",), lanceur)
+    except ErreurUnite:
+        return True
+    argv = argv_execstart(valeurs["ExecStart"])
+    return not argv or odoo_instance.lance_odoo(argv)
+
+
 def deviner_unite(racine, lanceur=lancer):
     """L'unité qui fait tourner ce checkout : (nom, raison).
 
-    Les candidates sont les unités `erplibre…` / `odoo…`. On retient
-    d'abord celles dont WorkingDirectory est `racine` ; à défaut, la seule
-    active. `raison` vaut "workdir" ou "active".
+    Les candidates sont les unités `erplibre…` / `odoo…` dont l'ExecStart
+    lance Odoo (`lance_un_serveur`, lu seulement pour celles qui restent
+    en lice). On retient d'abord celles dont WorkingDirectory est
+    `racine` ; à défaut, la seule active. `raison` vaut "workdir" ou
+    "active".
 
     ErreurUnite si aucune candidate ne convient, ou si plusieurs restent
     à égalité — `candidates` les nomme.
@@ -270,6 +288,9 @@ def deviner_unite(racine, lanceur=lancer):
         dossier = dossier_de_travail(wd["WorkingDirectory"])
         if dossier and os.path.realpath(dossier) == cible:
             ici.append((nom, actif))
+    ici = [
+        (nom, actif) for nom, actif in ici if lance_un_serveur(nom, lanceur)
+    ]
     if len(ici) == 1:
         return ici[0][0], "workdir"
     if ici:
@@ -277,7 +298,11 @@ def deviner_unite(racine, lanceur=lancer):
         if len(actives) == 1:
             return actives[0], "workdir"
         raise ErreurUnite("ambiguous", [nom for nom, _ in ici])
-    actives = [nom for nom, actif in candidates if actif]
+    actives = [
+        nom
+        for nom, actif in candidates
+        if actif and lance_un_serveur(nom, lanceur)
+    ]
     if len(actives) == 1:
         return actives[0], "active"
     raise ErreurUnite(

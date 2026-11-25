@@ -248,6 +248,37 @@ class TestWhenItStops(unittest.TestCase):
         self.assertFalse(venu)
         self.assertEqual(len(essais), 5)
 
+    def test_the_first_code_is_returned(self):
+        """`premier_code` rend le code de la première réponse, 0 sans
+        réponse : 500 et 503 se distinguent d'un 200."""
+        import urllib.error
+
+        temps = [0.0]
+        for reponse, attendu in (
+            (None, 200),
+            (urllib.error.HTTPError("u", 503, "boom", {}, None), 503),
+            (ConnectionRefusedError(), 0),
+        ):
+
+            def faux_urlopen(cible, timeout=None, reponse=reponse):
+                if isinstance(reponse, Exception):
+                    raise reponse
+                return io.BytesIO(b"")
+
+            with self.subTest(attendu=attendu):
+                with mock.patch.object(
+                    warmup, "ouvrir_sans_proxy", faux_urlopen
+                ):
+                    code = warmup.premier_code(
+                        "http://x",
+                        delai_total=3,
+                        entre_essais=0,
+                        horloge=lambda: temps[0],
+                        dormir=lambda s: temps.__setitem__(0, temps[0] + 1),
+                    )
+                self.assertEqual(code, attendu)
+                temps[0] = 0.0
+
     def test_the_default_deadline_is_two_minutes(self):
         self.assertEqual(warmup.DELAI_TOTAL, 120.0)
 

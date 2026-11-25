@@ -100,7 +100,8 @@ ATTENTE_RAPPORT_S = 60
 
 # Les `dest` dont la valeur venue du profil est rappelée dans la question
 # d'un geste qui écrit : elles décident de ce qui est supprimé, copié
-# ailleurs ou tu.
+# ailleurs ou tu. `log_keep_days` règle la purge des journaux de mise à
+# jour qui suit chaque exécution.
 A_RAPPELER = (
     "keep_daily",
     "keep_weekly",
@@ -108,6 +109,7 @@ A_RAPPELER = (
     "keep_recent_days",
     "copy_to",
     "ignore_error",
+    "log_keep_days",
 )
 
 
