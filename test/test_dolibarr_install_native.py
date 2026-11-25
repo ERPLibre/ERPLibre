@@ -19,6 +19,7 @@ Ce qui se garde :
   d'Arch) sont appliquées là, et seulement là.
 """
 
+import argparse
 import contextlib
 import io
 import json
@@ -532,16 +533,36 @@ class TestServeurDeBase(Banc):
 
 
 class TestSql(unittest.TestCase):
-    def test_mariadb_account_is_local_and_charset_explicit(self):
+    """Le SQL vient de script/erp_common/db, lié aux choix de Dolibarr."""
+
+    def test_mariadb_gets_the_charset_dolibarr_declares(self):
         sql = install_native.mariadb_sql("dolibarr_erp", "dolibarr_erp", "Pw1")
         self.assertIn("CHARACTER SET utf8 COLLATE utf8_unicode_ci", sql)
         self.assertIn("'dolibarr_erp'@'localhost'", sql)
-        self.assertNotIn("'%'", sql)
 
-    def test_postgresql_role_is_created_or_its_password_reset(self):
-        sql = install_native.postgresql_role_sql("dolibarr_erp", "Pw1")
-        self.assertIn("ALTER ROLE dolibarr_erp LOGIN PASSWORD 'Pw1'", sql)
-        self.assertIn("CREATE ROLE dolibarr_erp LOGIN PASSWORD 'Pw1'", sql)
+    def test_the_database_helpers_are_the_shared_ones(self):
+        from script.erp_common import db
+
+        for nom in (
+            "db_init_commands",
+            "db_unit",
+            "pg_hba_lines",
+            "pg_hba_needs_password_line",
+            "postgresql_role_sql",
+        ):
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(install_native, nom), getattr(db, nom))
+        self.assertIs(install_native._psql, db.psql)
+
+    def test_the_database_and_account_are_named_after_dolibarr(self):
+        args = argparse.Namespace(
+            instance="erp", db="mariadb", port=8080, mode="dev"
+        )
+        ctx = install_native.Context(
+            args, dict(FAITS), {"path": "dolibarr/dolibarr"}
+        )
+        self.assertEqual(ctx.db_name, "dolibarr_erp")
+        self.assertEqual(ctx.db_user, "dolibarr_erp")
 
 
 def sans_saisie():

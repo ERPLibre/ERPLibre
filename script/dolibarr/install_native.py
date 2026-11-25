@@ -40,7 +40,16 @@ from script.dolibarr import (  # noqa: E402
     packages,
     web_config,
 )
+from script.erp_common import db as common_db  # noqa: E402
 from script.erp_common import steps as common_steps  # noqa: E402
+from script.erp_common.db import (  # noqa: E402
+    db_init_commands,
+    db_unit,
+    pg_hba_lines,
+    pg_hba_needs_password_line,
+    postgresql_role_sql,
+)
+from script.erp_common.db import psql as _psql  # noqa: E402
 from script.erp_common.steps import (  # noqa: E402
     Runner,
     StepError,
@@ -68,6 +77,11 @@ REQUIRED_EXTENSIONS = (
     "json",
     "openssl",
 )
+
+# Jeu de caractères de la base MariaDB : celui que l'installeur de Dolibarr
+# déclare dans conf.php.
+MARIADB_CHARSET = "utf8"
+MARIADB_COLLATION = "utf8_unicode_ci"
 
 
 def state_dir(instance):
@@ -106,8 +120,8 @@ class Context:
         self.checkout = os.path.join(ROOT, pin["path"])
         self.htdocs = os.path.join(self.checkout, "htdocs")
         self.url = f"http://127.0.0.1:{args.port}"
-        self.db_name = f"dolibarr_{args.instance}"
-        self.db_user = f"dolibarr_{args.instance}"
+        self.db_name = common_db.db_name("dolibarr", args.instance)
+        self.db_user = self.db_name
         self.db_host = "localhost" if args.db == "mariadb" else "127.0.0.1"
         self.db_port = 3306 if args.db == "mariadb" else 5432
         self.db_type = "mysqli" if args.db == "mariadb" else "pgsql"
@@ -331,61 +345,6 @@ def _service_active(runner, unit):
     return bool(res) and res[0] == 0
 
 
-def _root_path_exists(runner, path):
-    res = runner.probe(["sudo", "test", "-e", path])
-    return None if res is None else res[0] == 0
-
-
-def db_init_commands(family, db, runner):
-    """Commandes d'initialisation du serveur de base, avant de le démarrer.
-
-    Debian/Ubuntu initialisent au postinst ; Fedora/EL et openSUSE au
-    premier démarrage de MariaDB ; Arch jamais. PostgreSQL : initdb sur
-    Fedora/EL et Arch, automatique ailleurs.
-    """
-    if family == "pacman" and db == "mariadb":
-        if _root_path_exists(runner, "/var/lib/mysql/mysql") is False:
-            return [
-                [
-                    "sudo",
-                    "mariadb-install-db",
-                    "--user=mysql",
-                    "--basedir=/usr",
-                    "--datadir=/var/lib/mysql",
-                ]
-            ]
-    if family == "pacman" and db == "postgresql":
-        if (
-            _root_path_exists(runner, "/var/lib/postgres/data/PG_VERSION")
-            is False
-        ):
-            return [
-                [
-                    "sudo",
-                    "-u",
-                    "postgres",
-                    "initdb",
-                    "--locale=C.UTF-8",
-                    "--encoding=UTF8",
-                    "--auth-local=peer",
-                    "--auth-host=scram-sha-256",
-                    "-D",
-                    "/var/lib/postgres/data",
-                ]
-            ]
-    if family == "dnf" and db == "postgresql":
-        if (
-            _root_path_exists(runner, "/var/lib/pgsql/data/PG_VERSION")
-            is False
-        ):
-            return [["sudo", "postgresql-setup", "--initdb"]]
-    return []
-
-
-def db_unit(db):
-    return "mariadb" if db == "mariadb" else "postgresql"
-
-
 def step_db_service(ctx, runner):
     unit = db_unit(ctx.db)
     if _service_active(runner, unit):
@@ -400,56 +359,9 @@ def step_db_service(ctx, runner):
 
 
 def mariadb_sql(db_name, user, password):
-    """SQL de création idempotent. Le compte est « @'localhost' » : le
-    compte anonyme que posent certaines distributions refuserait un
-    « @'%' » en local. Jeu de caractères explicite : celui que
-    l'installeur de Dolibarr déclare dans conf.php."""
-    return (
-        f"CREATE DATABASE IF NOT EXISTS `{db_name}`"
-        " CHARACTER SET utf8 COLLATE utf8_unicode_ci;\n"
-        f"CREATE USER IF NOT EXISTS '{user}'@'localhost'"
-        f" IDENTIFIED BY '{password}';\n"
-        f"ALTER USER '{user}'@'localhost' IDENTIFIED BY '{password}';\n"
-        f"GRANT ALL PRIVILEGES ON `{db_name}`.* TO '{user}'@'localhost';\n"
-        "FLUSH PRIVILEGES;\n"
-    )
-
-
-def postgresql_role_sql(user, password):
-    """Rôle idempotent : créé, ou son mot de passe remis."""
-    return (
-        "DO $$ BEGIN\n"
-        f"  IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{user}') THEN\n"
-        f"    ALTER ROLE {user} LOGIN PASSWORD '{password}';\n"
-        "  ELSE\n"
-        f"    CREATE ROLE {user} LOGIN PASSWORD '{password}';\n"
-        "  END IF;\n"
-        "END $$;\n"
-    )
-
-
-def _psql(sql_args):
-    return [
-        "sudo",
-        "-u",
-        "postgres",
-        "psql",
-        "-v",
-        "ON_ERROR_STOP=1",
-    ] + sql_args
-
-
-def pg_hba_needs_password_line(family):
-    """Fedora/EL et openSUSE initialisent avec « ident » pour 127.0.0.1 :
-    un mot de passe par TCP y échoue tant qu'une ligne scram-sha-256 ne
-    précède pas les lignes ident."""
-    return family in ("dnf", "zypper")
-
-
-def pg_hba_lines(db_name, user):
-    return (
-        f"host {db_name} {user} 127.0.0.1/32 scram-sha-256\n"
-        f"host {db_name} {user} ::1/128 scram-sha-256\n"
+    """SQL de création idempotent, au jeu de caractères de Dolibarr."""
+    return common_db.mariadb_sql(
+        db_name, user, password, MARIADB_CHARSET, MARIADB_COLLATION
     )
 
 
