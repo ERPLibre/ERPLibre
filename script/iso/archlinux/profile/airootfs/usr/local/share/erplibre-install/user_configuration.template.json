@@ -1,0 +1,29 @@
+{
+  "archinstall-language": "English",
+  "script": "guided",
+  "app_config": {
+    "audio_config": {
+      "audio": "pipewire"
+    }
+  },
+  "hostname": "erplibre",
+  "kernels": ["linux"],
+  "network_config": {
+    "type": "nm"
+  },
+  "ntp": true,
+  "profile_config": {
+    "gfx_driver": "All open-source",
+    "greeter": "gdm",
+    "profile": {
+      "main": "Desktop",
+      "details": ["GNOME"]
+    }
+  },
+  "swap": {
+    "enabled": true,
+    "algorithm": "zstd"
+  },
+  "packages": [],
+  "custom_commands": []
+}

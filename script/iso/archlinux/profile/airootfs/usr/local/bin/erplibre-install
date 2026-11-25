@@ -1,0 +1,315 @@
+#!/usr/bin/env bash
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Installateur ERPLibre de l'ISO live Arch Linux.
+#
+# Lancé par /root/.zlogin sur tty1 à la connexion automatique de root, une
+# fois par démarrage (EL_STARTED_FLAG) ; « erplibre-install » le relance à
+# la main.
+#
+# Mode interactif (par défaut) : l'interface erplibre-installer-ui, écran
+# Textual sur la console, ou mode texte sur une console série. Son
+# accueil propose l'installation pilotée par le profil machine, le TODO
+# d'ERPLibre et archinstall guidé pré-rempli ; elle rend la main au shell
+# de root quand on la quitte.
+#
+# Mode automatique : paramètre noyau « erplibre.auto=<profil> » (« 1 » =
+# profil par défaut), posé par l'entrée de démarrage « ERPLibre automatic
+# install » de la seule ISO de test (build_iso.py --auto-default), qui
+# dépose EL_AUTOTEST_MARKER. Sans ce fichier, le mode est refusé (code
+# 22) : l'ISO d'installation n'efface jamais un disque sans question ni ne
+# crée de compte au mot de passe connu, même si le paramètre est tapé à la
+# main. archinstall --silent efface le premier disque qui n'est pas le
+# support de démarrage, crée le compte « erplibre » (mot de passe :
+# « erplibre.password=… », « erplibre » sinon), puis la machine s'éteint.
+# Le mot de passe passe à l'outil de configuration par l'environnement,
+# jamais par argv ; le fichier --creds vit sur le tmpfs EL_RUN, 0600, et
+# est écrasé puis effacé dès qu'archinstall rend la main.
+# La progression et la ligne finale « __ERPLIBRE_EXIT__ <code> » (la
+# convention de script/todo/qemu_install_monitor.py) vont sur /dev/ttyS0.
+# Il ne tourne qu'une fois par démarrage : relancé à la main, il refuse
+# plutôt que d'effacer encore le disque tout juste installé.
+# « erplibre.nopoweroff » laisse la machine allumée. « erplibre.ssh »,
+# posé par la seule ISO de test (build_iso.py --auto-default), ajoute sshd
+# à la cible pour que le test long l'inspecte.
+#
+# Mode automatique piloté par le profil machine : paramètre noyau
+# « erplibre.answers=<chemin ou b64:…> ». Après l'attente du démarrage et
+# du réseau, le cœur erplibre-installer prend tout en charge (étape
+# disque, archinstall pré-monté, greffon) et écrit lui-même la ligne
+# « __ERPLIBRE_EXIT__ <code> » ; ce script ne fait plus qu'éteindre.
+
+set -u
+
+EL_SHARE=/usr/local/share/erplibre-install
+EL_CONFIG_TOOL=/usr/local/bin/erplibre-install-config
+EL_CORE=/usr/local/bin/erplibre-installer
+EL_UI=/usr/local/bin/erplibre-installer-ui
+EL_WORK=/root/erplibre
+EL_CONFIG="${EL_WORK}/user_configuration.json"
+EL_RUN="${EL_RUN:-/run/erplibre-install}"
+EL_CREDS="${EL_RUN}/user_credentials.json"
+EL_AUTOTEST_MARKER="${EL_AUTOTEST_MARKER:-${EL_SHARE}/autotest}"
+EL_STARTED_FLAG="${EL_STARTED_FLAG:-/run/erplibre-install.started}"
+EL_TARGET=/mnt
+EL_TARGET_STATUS="${EL_TARGET}/var/lib/erplibre-install/status"
+EL_ARCHINSTALL_LOG=/var/log/archinstall/install.log
+EL_SERIAL=/dev/ttyS0
+EL_EXIT_MARKER=__ERPLIBRE_EXIT__
+EL_CMDLINE_FILE="${EL_CMDLINE_FILE:-/proc/cmdline}"
+EL_LANG=fr
+# Nom que el_wait_network doit pouvoir résoudre : le réseau sert les miroirs
+# Arch à archinstall. Une source hors ligne change aussi cette sonde.
+EL_NETWORK_PROBE_HOST="${EL_NETWORK_PROBE_HOST:-archlinux.org}"
+
+# el_param <clé> : valeur d'un paramètre « clé=valeur » du noyau, vide si
+# absent. Un paramètre nu (« erplibre.nopoweroff ») rend « 1 ».
+el_param() {
+  local token
+  for token in $(<"${EL_CMDLINE_FILE}"); do
+    case "${token}" in
+      "$1="*)
+        printf '%s\n' "${token#*=}"
+        return 0
+        ;;
+      "$1")
+        printf '1\n'
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+el_say() {
+  if [[ "${EL_LANG}" == "en" ]]; then
+    printf '%s\n' "$2"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# Mode automatique : chaque ligne va aussi sur la console série, que lit le
+# test long. Une console série absente est ignorée.
+el_serial() {
+  { printf '%s\n' "$*" >>"${EL_SERIAL}"; } 2>/dev/null || true
+}
+
+el_log() {
+  local line
+  line="$(el_say "$1" "$2")"
+  printf '[erplibre] %s\n' "${line}"
+  el_serial "[erplibre] ${line}"
+}
+
+# Attend la fin du démarrage : pacman-init (trousseau de clés) doit avoir
+# fini avant qu'archinstall n'appelle pacman. Borné à cinq minutes : un
+# service en échec ne bloque pas l'installateur pour toujours.
+el_wait_boot() {
+  local i
+  timeout 300 systemctl is-system-running --wait >/dev/null 2>&1 || true
+  for ((i = 0; i < 300; i++)); do
+    systemctl is-active --quiet pacman-init.service && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# Le réseau répond-il ? EL_NETWORK_PROBE_HOST doit se résoudre ; jusqu'à
+# `délai` secondes.
+el_wait_network() {
+  local delai="${1:-120}" i
+  for ((i = 0; i < delai; i++)); do
+    getent hosts "${EL_NETWORK_PROBE_HOST}" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
+el_hint_log() {
+  el_say "Journal d'archinstall : ${EL_ARCHINSTALL_LOG}" \
+    "archinstall log: ${EL_ARCHINSTALL_LOG}"
+}
+
+# Mode guidé seulement : en mode automatique, relancer effacerait le
+# disque de nouveau (voir el_hint_auto_done).
+el_hint_relaunch() {
+  printf '\n'
+  el_say "Shell root de l'ISO. Relancer l'installateur : erplibre-install" \
+    "ISO root shell. Relaunch the installer: erplibre-install"
+  el_hint_log
+}
+
+el_hint_auto_done() {
+  printf '\n'
+  el_say "Shell root de l'ISO. Installation automatique terminée ; une" \
+    "ISO root shell. Automatic install finished; another one needs a"
+  el_say "autre exige un redémarrage sur l'entrée automatique." \
+    "reboot on the automatic boot entry."
+  el_hint_log
+}
+
+# L'interface tourne au premier plan ; ce qu'elle rend est son propre
+# code, l'indice de relance suit.
+el_guided() {
+  local rc
+  "${EL_UI}" --lang "${EL_LANG}"
+  rc=$?
+  el_hint_relaunch
+  return "${rc}"
+}
+
+# el_target_stage_rc <défaut> : code de l'étape ERPLibre lu dans le système
+# cible, qu'archinstall laisse monté sur EL_TARGET ; <défaut> quand le
+# fichier d'état manque.
+el_target_stage_rc() {
+  local rc
+  [[ -f "${EL_TARGET_STATUS}" ]] || {
+    printf '%s\n' "$1"
+    return
+  }
+  rc="$(sed -n 's/^rc=//p' "${EL_TARGET_STATUS}" | head -n1)"
+  printf '%s\n' "${rc:-1}"
+}
+
+# Écrase puis efface le fichier --creds ; sans erreur s'il manque.
+el_shred_creds() {
+  [[ -e "${EL_CREDS}" ]] || return 0
+  shred -u -- "${EL_CREDS}" 2>/dev/null || rm -f -- "${EL_CREDS}"
+}
+
+el_auto() {
+  local key password out disk has_stage rc line
+  local -a extra=()
+  if [[ ! -e "${EL_AUTOTEST_MARKER}" ]]; then
+    el_log "erplibre.auto refusé : réservé à l'ISO de test (--auto-default)" \
+      "erplibre.auto refused: only the test ISO (--auto-default) has it"
+    el_auto_end 22
+    return
+  fi
+  key="$(el_param erplibre.auto)"
+  password="$(el_param erplibre.password || printf 'erplibre')"
+  el_param erplibre.ssh >/dev/null && extra+=(--ssh)
+  el_log "installation automatique, profil « ${key} »" \
+    "automatic install, profile \"${key}\""
+  el_wait_boot || el_log "pacman-init inactif" "pacman-init not active"
+  if ! el_wait_network 300; then
+    el_log "pas de réseau" "no network"
+    el_auto_end 20
+    return
+  fi
+  mkdir -p "${EL_WORK}"
+  (umask 077 && mkdir -p "${EL_RUN}")
+  # La sortie de l'outil : « <disque><TAB><1 si le profil a une étape> ».
+  # Sa raison d'échouer (disque introuvable, support de démarrage non
+  # reconnu) passe aussi par el_log, donc sur la console série.
+  if ! out="$(ERPLIBRE_AUTO_PASSWORD="${password}" "${EL_CONFIG_TOOL}" \
+    --auto --profile "${key}" --output "${EL_CONFIG}" \
+    --creds "${EL_CREDS}" --tty "${EL_SERIAL}" --lang "${EL_LANG}" \
+    "${extra[@]}" 2>"${EL_WORK}/config.err")"; then
+    el_shred_creds
+    while IFS= read -r line; do
+      el_log "${line}" "${line}"
+    done <"${EL_WORK}/config.err"
+    el_log "configuration impossible (profil ou disque)" \
+      "cannot configure (profile or disk)"
+    el_auto_end 21
+    return
+  fi
+  IFS=$'\t' read -r disk has_stage <<<"${out}"
+  el_log "disque effacé : ${disk}" "disk erased: ${disk}"
+  archinstall --silent --skip-version-check --config "${EL_CONFIG}" \
+    --creds "${EL_CREDS}"
+  rc=$?
+  el_shred_creds
+  el_log "archinstall : code ${rc}" "archinstall: exit code ${rc}"
+  if ((rc == 0)); then
+    # Profil sans étape : aucun fichier d'état, le code reste 0. Profil
+    # avec étape : un fichier absent veut dire qu'elle n'a pas tourné.
+    if [[ "${has_stage}" == "1" ]]; then
+      rc="$(el_target_stage_rc 1)"
+    else
+      rc="$(el_target_stage_rc 0)"
+    fi
+    el_log "étape ERPLibre : code ${rc}" "ERPLibre stage: exit code ${rc}"
+  elif [[ -f "${EL_ARCHINSTALL_LOG}" ]]; then
+    tail -n 40 "${EL_ARCHINSTALL_LOG}" 2>/dev/null |
+      while IFS= read -r line; do el_serial "${line}"; done
+  fi
+  el_auto_end "${rc}"
+}
+
+el_auto_end() {
+  local rc="$1"
+  sync
+  if mountpoint -q "${EL_TARGET}"; then
+    umount -R "${EL_TARGET}" 2>/dev/null || true
+  fi
+  printf '%s %s\n' "${EL_EXIT_MARKER}" "${rc}"
+  el_serial "${EL_EXIT_MARKER} ${rc}"
+  el_auto_poweroff
+}
+
+# Éteint la machine, sauf « erplibre.nopoweroff ».
+el_auto_poweroff() {
+  sync
+  if el_param erplibre.nopoweroff >/dev/null; then
+    el_hint_auto_done
+    return
+  fi
+  sleep 2
+  systemctl poweroff
+}
+
+# Installation automatique par le cœur : il démonte la cible et écrit le
+# marqueur de fin lui-même ; seules les attentes et l'extinction restent
+# ici. Sans réseau, le cœur n'est pas lancé et le marqueur vient d'ici.
+el_core_auto() {
+  el_log "installation automatique par le profil machine" \
+    "automatic install from the machine profile"
+  el_wait_boot || el_log "pacman-init inactif" "pacman-init not active"
+  if ! el_wait_network 300; then
+    el_log "pas de réseau" "no network"
+    el_auto_end 20
+    return
+  fi
+  "${EL_CORE}" --auto --serial "${EL_SERIAL}"
+  el_auto_poweroff
+}
+
+el_main() {
+  local lang
+  lang="$(el_param erplibre.lang || true)"
+  if [[ "${lang}" != "fr" && "${lang}" != "en" ]]; then
+    lang="$(sed -n 's/^ *"lang": *"\([a-z]*\)".*/\1/p' \
+      "${EL_SHARE}/profiles.json" 2>/dev/null | head -n1)"
+  fi
+  [[ "${lang}" == "en" ]] && EL_LANG=en
+  if el_param erplibre.answers >/dev/null ||
+    el_param erplibre.auto >/dev/null; then
+    # EL_STARTED_FLAG présent : l'installation automatique a déjà tourné
+    # depuis ce démarrage, et la relancer effacerait le disque installé.
+    if [[ -e "${EL_STARTED_FLAG}" ]]; then
+      el_say "Installation automatique déjà lancée depuis ce démarrage :" \
+        "Automatic install already ran since this boot:"
+      el_say "refusée, le disque n'est pas effacé une seconde fois." \
+        "refused, the disk is not erased a second time."
+      el_hint_auto_done
+      return 1
+    fi
+    : >"${EL_STARTED_FLAG}" 2>/dev/null || true
+    if el_param erplibre.answers >/dev/null; then
+      el_core_auto
+    else
+      el_auto
+    fi
+  else
+    : >"${EL_STARTED_FLAG}" 2>/dev/null || true
+    el_guided
+  fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  el_main "$@"
+fi
