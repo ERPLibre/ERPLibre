@@ -41,7 +41,10 @@ Exécutez le script pour restaurer la base de données :
 in Odoo's own zip format (`dump.sql`, `manifest.json`, `filestore/`), the
 one `/web/database/manager` restores as is. It also reports their age,
 test-restores them into a temporary database, and restores one into a new
-database. It needs neither the Odoo venv nor `list_db`.
+database. It needs neither the Odoo venv nor `list_db`. In `make todo`:
+`TODO › Execute › Production › Backups` (now, status, test restore,
+restore into a new database) and `TODO › Execute › Production › systemd
+timers` for the scheduled backup.
 
 <!-- [fr] -->
 ## Sauvegarde de production : odoo_backup.py
@@ -50,7 +53,11 @@ database. It needs neither the Odoo venv nor `list_db`.
 systemd, au format zip d'Odoo (`dump.sql`, `manifest.json`, `filestore/`),
 celui que `/web/database/manager` restaure tel quel. Il en donne aussi
 l'âge, les essaie dans une base temporaire et en restaure une dans une
-nouvelle base. Il n'a besoin ni du venv Odoo ni de `list_db`.
+nouvelle base. Il n'a besoin ni du venv Odoo ni de `list_db`. Dans
+`make todo` : `TODO › Exécuter › Production › Sauvegardes` (maintenant,
+état, restauration d'essai, restauration dans une nouvelle base) et
+`TODO › Exécuter › Production › Minuteries systemd` pour la sauvegarde
+planifiée.
 
 <!-- [common] -->
 ```bash
@@ -138,6 +145,23 @@ the unit's account. A failure after `createdb` drops the new database and
 its partial filestore. Before starting Odoo on
 the copy, neutralize it (`odoo-bin neutralize`, from Odoo 16); its
 `database.uuid` is the source's.
+
+**Into a development checkout.** The zip has Odoo's own format, so
+`db_restore.py` restores it on a development machine: an `--image` that
+holds a `/` is a path, read as is and restored without a `_cache_` copy. A
+database already named like `-d` is dropped first.
+
+```bash
+./script/database/db_restore.py -d demo_copy --neutralize --image ~/Downloads/demo_db_2031-03-10_03h00m00s.zip
+./script/addons/update_prod_to_dev.sh demo_copy
+```
+
+`--neutralize` has Odoo neutralize the database while loading it (Odoo 16
+and later: crons and mail servers off); `update_prod_to_dev.sh` then
+installs the development modules (`test`/`test` account, outgoing mail,
+automatic backups and payment providers disabled). `TODO › Execute ›
+Database › Restore from backup (.zip)` asks the same questions for a zip
+placed in `image_db/`.
 
 **Off-site copy.** `--copy-to [user@]host:/path` (or an absolute path),
 disabled by default: `rsync -a --partial` over `ssh -o BatchMode=yes`, as
@@ -337,6 +361,24 @@ filestore s'écrit sous le compte de l'unité. Un échec après `createdb`
 supprime la nouvelle base et son filestore provisoire.
 Avant d'y démarrer Odoo, la neutraliser (`odoo-bin neutralize`, dès Odoo
 16) ; son `database.uuid` est celui de la source.
+
+**Dans un checkout de développement.** Le zip a le format d'Odoo, donc
+`db_restore.py` le restaure sur un poste de développement : une `--image`
+qui contient un `/` est un chemin, lu tel quel et restauré sans copie
+`_cache_`. Une base qui porte déjà le nom de `-d` est d'abord supprimée.
+
+```bash
+./script/database/db_restore.py -d demo_copy --neutralize --image ~/Downloads/demo_db_2031-03-10_03h00m00s.zip
+./script/addons/update_prod_to_dev.sh demo_copy
+```
+
+`--neutralize` fait neutraliser la base par Odoo pendant son chargement
+(dès Odoo 16 : crons et serveurs de courriel coupés) ; `update_prod_to_dev.sh`
+installe ensuite les modules de développement (compte `test`/`test`,
+courriel sortant, sauvegardes automatiques et fournisseurs de paiement
+désactivés). `TODO › Exécuter › Database › Restaurer a partir d'une sauvegarde
+(.zip)` pose les mêmes questions pour un zip rangé dans
+`image_db/`.
 
 **Copie hors site.** `--copy-to [compte@]hôte:/chemin` (ou un chemin
 absolu), désactivée par défaut : `rsync -a --partial` sur

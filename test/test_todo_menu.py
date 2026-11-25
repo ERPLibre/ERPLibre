@@ -863,6 +863,29 @@ class TestOpsSettingsMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestSystemMenuNumbering(MenuCoherence, unittest.TestCase):
+    """L'audit de performance [10] passe par le même chemin que Production
+    › Audit de l'hôte : le profil d'hôte `local` s'y applique."""
+
+    SOURCE = TODO_DIR / "system_menu.py"
+    ENTRY = "def prompt_execute_system(self):"
+    END = "def _system_diagnostic(self):"
+    MINIMUM = 9
+
+    EXPECTED = {
+        "System diagnostic": "_system_diagnostic",
+        "Space to reclaim": "_system_espace",
+        "Heavy directories next to the repository": "_system_depots_lourds",
+        "System caches (sudo)": "_system_caches_sudo",
+        "QEMU download cache": "_system_cache_qemu",
+        "Containers - size and cleanup": "_system_conteneurs",
+        "CPU memory per process": "_system_cpu",
+        "GPU memory per process": "_system_gpu",
+        "Swap memory": "_system_swap",
+        "Performance audit of this machine": "_ops_perf_audit",
+    }
+
+
 class TestOpsMenusCourts(unittest.TestCase):
     """Chaque écran du menu Production compte huit entrées au plus : les
     sections regroupent, elles ne consomment pas de numéro, et chaque

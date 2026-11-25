@@ -152,10 +152,27 @@ running container and VM, named from `/etc/pve`. A pool's disks are read
 from its own vdevs (`zpool status -P -L`): an idle backup HDD outside any
 pool never makes the answer "yes, buy SSD".
 
+**Swappiness.** The advice follows the swap in use, read from
+`/proc/swaps`. With a zram swap it recommends 100 when the value is under
+60, as `TODO › Execute › System › Swap memory` does; with a disk swap
+alone, used beyond 512 MiB, it recommends 10, which keeps the guests in RAM
+on a ZFS host. It names the `sysctl.d` file that sets the value at boot, in
+systemd's order — the last name wins, so `99-zz-swap.conf` overrides a
+`90-` file — and edits that file when it lies under `/etc`, otherwise
+creates `/etc/sysctl.d/99-zz-swap.conf`, the file Swap memory writes.
+systemd-sysctl never reads `/etc/sysctl.conf` unless a `sysctl.d` link
+leads to it: on such a host that file only counts for `sysctl --system`,
+which applies it last, so the audit names it apart and edits it as well. The
+audit measures over time and changes nothing; Swap memory applies the
+settings on the machine where TODO runs, and `TODO › Execute › System ›
+System diagnostic` describes that machine at one instant.
+
 It is a single file, standard library only, runnable by the `python3` of a
 host from Debian 10 on. Entry `[20]` of this menu sends it to the
 remembered host over `ssh -T` with the file on stdin, or runs it on this
-machine; `TODO › Execute › Production` also runs it locally. Ctrl-C stops
+machine; `TODO › Execute › Production › Host audit` and `TODO › Execute ›
+System › Performance audit of this machine` also run it locally, with the
+`local` host profile. Ctrl-C stops
 the measurement early and still prints the report when the script runs on
 the host itself; over ssh, a local Ctrl-C closes the connection and the
 report is lost. `--json` prints a document with stable keys, `--csv FILE`

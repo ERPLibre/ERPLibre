@@ -4,6 +4,11 @@
 
 """Vérifier qu'une instance Odoo répond, et qu'elle n'expose rien de trop.
 
+Il juge la santé d'une instance servie par systemd ou publiée à une URL ;
+le Healthcheck de TODO, entrée propre du menu principal (TODO ›
+Healthcheck), juge celle du checkout ERPLibre (dépôts, venvs, hooks) et
+ne touche à aucune instance.
+
 Les cibles
 ----------
 - `--url URL` (répétable) : la sonde passe par le proxy inverse, comme un
@@ -810,7 +815,8 @@ def classer_hsts(valeur):
     """Le verdict de l'en-tête Strict-Transport-Security : `hsts`."""
     conseil = N_(
         'add_header Strict-Transport-Security "max-age=31536000" always;'
-        " in the nginx server block."
+        " in the nginx server block (template:"
+        " script/nginx/template_nginx_ssl_odoo_18.0.txt)."
     )
     if not valeur:
         return Resultat(

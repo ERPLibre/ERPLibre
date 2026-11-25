@@ -1269,25 +1269,5 @@ class TestProfil(Base):
         self.assertNotIn("--profile", parser._option_string_actions)
 
 
-class TestPython37(unittest.TestCase):
-    """C15 : rien au-delà de Python 3.7 dans l'outil et ses bibliothèques."""
-
-    def test_syntaxe(self):
-        import ast
-
-        racine = os.path.join(os.path.dirname(__file__), "..")
-        for chemin in (
-            "script/odoo/log_check.py",
-            "script/lib_ops/journal.py",
-            "script/lib_ops/mail_diagnostic.py",
-        ):
-            with self.subTest(fichier=chemin):
-                with open(os.path.join(racine, chemin), encoding="utf-8") as f:
-                    source = f.read()
-                ast.parse(source, feature_version=(3, 7))
-                self.assertNotIn("shlex.join", source)
-                self.assertNotIn("fromisoformat", source)
-
-
 if __name__ == "__main__":
     unittest.main()

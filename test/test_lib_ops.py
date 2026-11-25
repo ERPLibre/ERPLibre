@@ -1685,6 +1685,39 @@ class TestPostgres(unittest.TestCase):
         self.assertIn("default_transaction_read_only=on", lecture["PGOPTIONS"])
         self.assertIn("statement_timeout=30s", lecture["PGOPTIONS"])
 
+    def test_delai_de_connexion(self):
+        """Dix secondes par défaut, dans les deux environnements ; une
+        valeur exportée l'emporte, une valeur vide non."""
+        for fabrique in (postgres.env_pg, postgres.env_pg_local):
+            with self.subTest(fabrique=fabrique.__name__):
+                self.assertEqual(
+                    fabrique(self.CONFIG, environ={})["PGCONNECT_TIMEOUT"],
+                    "10",
+                )
+                self.assertEqual(
+                    fabrique(self.CONFIG, environ={"PGCONNECT_TIMEOUT": "30"})[
+                        "PGCONNECT_TIMEOUT"
+                    ],
+                    "30",
+                )
+                self.assertEqual(
+                    fabrique(self.CONFIG, environ={"PGCONNECT_TIMEOUT": " "})[
+                        "PGCONNECT_TIMEOUT"
+                    ],
+                    "10",
+                )
+
+    def test_delai_de_connexion_lu_dans_os_environ(self):
+        with mock.patch.dict(os.environ, {"PGCONNECT_TIMEOUT": "7"}):
+            self.assertEqual(
+                postgres.env_pg(self.CONFIG)["PGCONNECT_TIMEOUT"], "7"
+            )
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PGCONNECT_TIMEOUT", None)
+            self.assertEqual(
+                postgres.env_pg_local(self.CONFIG)["PGCONNECT_TIMEOUT"], "10"
+            )
+
     def test_masquer(self):
         masque = postgres.masquer(postgres.env_pg(self.CONFIG))
         self.assertEqual(masque["PGPASSWORD"], "***")

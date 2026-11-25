@@ -927,6 +927,11 @@ class SystemMenuMixin:
             {"prompt_description": t("CPU memory per process")},
             {"prompt_description": t("GPU memory per process")},
             {"prompt_description": t("Swap memory")},
+            {
+                "prompt_description": t(
+                    "Performance audit of this machine (read-only)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -952,6 +957,11 @@ class SystemMenuMixin:
                 self._system_gpu()
             elif status == "9":
                 self._system_swap()
+            elif status == "10":
+                # Le même audit que Production › Audit de l'hôte, avec le
+                # profil d'hôte `local` : mesuré sur une durée, là où le
+                # diagnostic [1] décrit le poste à un instant.
+                self._ops_perf_audit()
             else:
                 print(t("Command not found !"))
 

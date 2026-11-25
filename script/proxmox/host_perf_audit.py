@@ -127,6 +127,35 @@ MEM_DISPO_MIN_PCT = 5.0  # MemAvailable minimal, en % de MemTotal
 SWAP_ACTIF_KIB_S = 256.0
 SWAP_UTILISE_CONSEIL_KIB = 512 * 1024
 SWAPPINESS_CIBLE = 10
+# Avec une zram, swapper coûte une compression en RAM, moins que de relire
+# depuis le disque le cache de pages évincé : 100 pèse les deux à égalité.
+# Sous 60, le noyau jette le cache plutôt que de swapper et la zram reste
+# presque vide. Mêmes valeurs que « TODO › Execute › System › Swap memory »
+# d'ERPLibre, qui règle le poste où il tourne.
+SWAPPINESS_ZRAM = 100
+SWAPPINESS_ZRAM_MIN = 60
+# Les dossiers de sysctl.d dans l'ordre de systemd-sysctl : un nom présent
+# dans plusieurs ne compte que dans le premier, puis les noms s'appliquent
+# par ordre lexical et le dernier qui fixe une clé l'emporte.
+DOSSIERS_SYSCTL = (
+    "/etc/sysctl.d",
+    "/run/sysctl.d",
+    "/usr/local/lib/sysctl.d",
+    "/usr/lib/sysctl.d",
+    "/lib/sysctl.d",
+)
+# systemd-sysctl ne lit pas /etc/sysctl.conf : il ne compte au démarrage
+# que relié dans sysctl.d (99-sysctl.conf). Sans systemd-sysctl, procps
+# l'applique après sysctl.d ; avec, seul « sysctl --system » le lit encore.
+SYSCTL_CONF = "/etc/sysctl.conf"
+BINAIRES_SYSTEMD_SYSCTL = (
+    "/usr/lib/systemd/systemd-sysctl",
+    "/lib/systemd/systemd-sysctl",
+)
+# Le fichier conseillé quand aucun fichier de /etc ne fixe la clé, le même
+# que celui de « Swap memory » : « 99-zz- » se classe après les fichiers
+# des paquets et les autres « 99- », un « 90- » serait écrasé par lui.
+NOM_SYSCTL = "99-zz-swap.conf"
 IO_PSI_ATTN = 5.0
 IO_PSI_LIMITE = 15.0
 IO_FULL_LIMITE = 5.0
@@ -765,6 +794,103 @@ class Systeme:
 # ----------------------------------------------------------------------- #
 # Faits lus une fois
 # ----------------------------------------------------------------------- #
+def lire_swaps(texte):
+    """/proc/swaps -> [{"path", "type"}]. type vaut « zram » pour
+    /dev/zramN, que le noyau dit « partition », sinon celui du noyau
+    (« file », « partition »). Le chemin reste échappé comme le noyau
+    l'écrit (« \\040 » pour une espace)."""
+    swaps = []
+    for ligne in (texte or "").splitlines()[1:]:
+        champs = ligne.split()
+        if len(champs) < 5:
+            continue
+        nom = champs[0]
+        genre = "zram" if re.fullmatch(r"/dev/zram\d+", nom) else champs[-4]
+        swaps.append({"path": nom, "type": genre})
+    return swaps
+
+
+def valeur_sysctl(texte, cle):
+    """La dernière valeur que le texte d'un fichier sysctl donne à `cle`
+    (« vm.swappiness »), ou None. « vm/swappiness » désigne la même clé, un
+    « - » de tête (échec toléré) ne la change pas ; les lignes vides, # et ;
+    sont ignorées."""
+    valeur = None
+    for ligne in (texte or "").splitlines():
+        ligne = ligne.strip()
+        if not ligne or ligne[0] in "#;":
+            continue
+        nom, egal, reste = ligne.partition("=")
+        if not egal:
+            continue
+        nom = nom.strip().lstrip("-").strip().replace("/", ".")
+        if nom == cle:
+            valeur = reste.strip()
+    return valeur
+
+
+def _reel(racine, absolu):
+    """Le chemin, absolu sous `racine`, du fichier que `absolu` désigne au
+    bout de ses liens : éditer un lien par « sed -i » le remplacerait par
+    un fichier."""
+    reel = os.path.realpath(chemin(racine, absolu))
+    if racine:
+        base = os.path.realpath(racine)
+        if reel == base or reel.startswith(base + os.sep):
+            return reel[len(base) :] or "/"
+        return absolu
+    return reel
+
+
+def _ordre_sysctl(racine):
+    """Les fichiers réels de sysctl.d dans l'ordre où le démarrage les
+    applique, puis /etc/sysctl.conf quand procps l'applique en dernier :
+    sans lien de sysctl.d qui y mène et sans systemd-sysctl. Rend
+    (ordre, hors_demarrage) : hors_demarrage dit que /etc/sysctl.conf,
+    non relié, n'est lu que par « sysctl --system »."""
+    par_nom = {}
+    for dossier in DOSSIERS_SYSCTL:
+        for trouve in glob.glob(chemin(racine, dossier + "/*.conf")):
+            nom = os.path.basename(trouve)
+            par_nom.setdefault(nom, dossier + "/" + nom)
+    ordre = [_reel(racine, par_nom[nom]) for nom in sorted(par_nom)]
+    if SYSCTL_CONF in ordre:
+        return ordre, False
+    systemd = any(
+        os.path.exists(chemin(racine, b)) for b in BINAIRES_SYSTEMD_SYSCTL
+    )
+    if not systemd:
+        ordre.append(SYSCTL_CONF)
+    return ordre, systemd
+
+
+def source_sysctl(racine, cle):
+    """{"path", "value"} : le fichier qui fixe `cle` au démarrage, le
+    dernier appliqué dans l'ordre de DOSSIERS_SYSCTL, et la valeur qu'il
+    donne ; None si aucun ne la fixe. path est le fichier réel, liens
+    suivis."""
+    ordre, _ = _ordre_sysctl(racine)
+    retenu = None
+    for absolu in ordre:
+        valeur = valeur_sysctl(lire(racine, absolu), cle)
+        if valeur is not None:
+            retenu = {"path": absolu, "value": valeur}
+    return retenu
+
+
+def sysctl_hors_demarrage(racine, cle):
+    """{"path", "value"} quand /etc/sysctl.conf fixe `cle` sans compter
+    au démarrage (systemd-sysctl présent, aucun lien de sysctl.d) : seul
+    « sysctl --system » l'applique, après tous les autres. None sinon."""
+    _, hors_demarrage = _ordre_sysctl(racine)
+    if not hors_demarrage:
+        return None
+    valeur = valeur_sysctl(lire(racine, SYSCTL_CONF), cle)
+    if valeur is None:
+        return None
+    return {"path": SYSCTL_CONF, "value": valeur}
+
+
 def faits_hote(racine, systeme, blocs):
     """Noyau, Proxmox, processeur, mémoire, réglages, et les disques
     entiers (sans les zd, trop nombreux et décrits par leur pool)."""
@@ -814,6 +940,11 @@ def faits_hote(racine, systeme, blocs):
         "cores": stat.get("n") or os.cpu_count() or 1,
         "mem_total_kib": mem.get("MemTotal"),
         "swappiness": (lire(racine, "/proc/sys/vm/swappiness") or "").strip(),
+        "swappiness_source": source_sysctl(racine, "vm.swappiness"),
+        "swappiness_outside_boot": sysctl_hors_demarrage(
+            racine, "vm.swappiness"
+        ),
+        "swaps": lire_swaps(lire(racine, "/proc/swaps")),
         "governor": (
             lire(
                 racine, "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
@@ -1825,25 +1956,99 @@ def analyser_memoire(ech, faits, conseils):
             )
         )
     niveau, raison = choisir(candidats)
-    swappiness = faits.get("swappiness") or ""
-    if (
-        (res["swap_used_kib"] or 0) > SWAP_UTILISE_CONSEIL_KIB
-        and swappiness.isdigit()
-        and int(swappiness) > SWAPPINESS_CIBLE
-    ):
-        conseils.ajouter(
-            "medium",
-            "swappiness",
-            "Swap in use (%.1f GiB) with vm.swappiness=%s: on a ZFS host, %d"
-            " keeps the guests in RAM."
-            % (res["swap_used_kib"] / 1048576.0, swappiness, SWAPPINESS_CIBLE),
-            [
-                "sysctl -w vm.swappiness=%d" % SWAPPINESS_CIBLE,
-                "echo 'vm.swappiness = %d' > /etc/sysctl.d/90-swappiness.conf"
-                % SWAPPINESS_CIBLE,
-            ],
-        )
+    conseil_swappiness(res, faits, conseils)
     return res, {"level": niveau, "reason": raison}
+
+
+def sed_swappiness(valeur, path):
+    """La commande « sed -i -E » qui donne `valeur` à chaque ligne active
+    de `path` qui fixe vm.swappiness, sous la forme pointée ou en chemin,
+    avec ou sans « - » de tête suivi ou non d'espaces ; le « - » et les
+    espaces autour du « = » restent."""
+    return (
+        "sed -i -E 's/^([[:space:]]*-?[[:space:]]*vm[./]swappiness"
+        "[[:space:]]*=[[:space:]]*).*$/\\1%d/' %s"
+        % (valeur, shlex.quote(path))
+    )
+
+
+def commandes_swappiness(valeur, source, hors_demarrage=None):
+    """`sysctl -w`, puis la ligne qui garde `valeur` au démarrage : le
+    fichier de /etc qui fixe déjà la clé est modifié sur place ; sinon
+    /etc/sysctl.d/NOM_SYSCTL est créé, classé après les autres. Un
+    /etc/sysctl.conf hors démarrage (`hors_demarrage`) est modifié aussi :
+    « sysctl --system », qui l'applique en dernier, rend la même valeur
+    que le démarrage."""
+    commandes = ["sysctl -w vm.swappiness=%d" % valeur]
+    path = (source or {}).get("path") or ""
+    if path == SYSCTL_CONF or path.startswith("/etc/sysctl.d/"):
+        commandes.append(sed_swappiness(valeur, path))
+    else:
+        commandes.append(
+            "echo 'vm.swappiness = %d' > /etc/sysctl.d/%s"
+            % (valeur, NOM_SYSCTL)
+        )
+    if hors_demarrage and path != SYSCTL_CONF:
+        commandes.append(sed_swappiness(valeur, SYSCTL_CONF))
+    return commandes
+
+
+def conseil_swappiness(res, faits, conseils):
+    """Le conseil `swappiness`. Une zram active dans /proc/swaps appelle
+    SWAPPINESS_ZRAM dès que la valeur passe sous SWAPPINESS_ZRAM_MIN,
+    utilisée ou non ; un swap sur disque seul appelle SWAPPINESS_CIBLE
+    quand il sert à plus de SWAP_UTILISE_CONSEIL_KIB. Le texte nomme le
+    fichier qui fixe la valeur au démarrage."""
+    swappiness = faits.get("swappiness") or ""
+    if not swappiness.isdigit():
+        return
+    actuelle = int(swappiness)
+    zram = any(s.get("type") == "zram" for s in faits.get("swaps") or [])
+    if zram:
+        if actuelle >= SWAPPINESS_ZRAM_MIN:
+            return
+        cible = SWAPPINESS_ZRAM
+        priorite = "low"
+        texte = (
+            "zram serves as swap with vm.swappiness=%d: under %d the"
+            " kernel drops page cache rather than swap and the zram stays"
+            " nearly unused; %d weighs compression in RAM against"
+            " re-reading from disk."
+            % (actuelle, SWAPPINESS_ZRAM_MIN, SWAPPINESS_ZRAM)
+        )
+    else:
+        if (res["swap_used_kib"] or 0) <= SWAP_UTILISE_CONSEIL_KIB:
+            return
+        if actuelle <= SWAPPINESS_CIBLE:
+            return
+        cible = SWAPPINESS_CIBLE
+        priorite = "medium"
+        texte = (
+            "Swap in use (%.1f GiB) with vm.swappiness=%d: on a ZFS host, %d"
+            " keeps the guests in RAM."
+            % (res["swap_used_kib"] / 1048576.0, actuelle, SWAPPINESS_CIBLE)
+        )
+    source = faits.get("swappiness_source")
+    if source:
+        texte += " Set at boot by %s (%s)." % (source["path"], source["value"])
+    else:
+        texte += " No sysctl file sets it at boot."
+    hors_demarrage = faits.get("swappiness_outside_boot")
+    if hors_demarrage:
+        texte += (
+            " %s sets it too (%s), but only sysctl --system reads it, not"
+            " the boot." % (hors_demarrage["path"], hors_demarrage["value"])
+        )
+    texte += (
+        " With ERPLibre, TODO > Execute > System > Swap memory applies it"
+        " on its own machine."
+    )
+    conseils.ajouter(
+        priorite,
+        "swappiness",
+        texte,
+        commandes_swappiness(cible, source, hors_demarrage),
+    )
 
 
 def commandes_arc(octets):

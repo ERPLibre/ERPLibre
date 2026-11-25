@@ -23,7 +23,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tokenize
 import unittest
 from unittest import mock
 
@@ -874,6 +873,241 @@ class TestVerdictMemoire(unittest.TestCase):
             [ech(mem=mem(), swap_in=200.0, swap_out=100.0)]
         )
         self.assertEqual(v["level"], "watch")
+
+
+SWAPS_ZRAM = (
+    "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"
+    "/dev/zram0                              partition\t8388604\t\t"
+    "614400\t\t100\n"
+)
+SWAPS_DISQUE = (
+    "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"
+    "/swap/fichier\\040exemple                 file\t\t8388604\t\t"
+    "614400\t\t-2\n"
+)
+
+
+class TestSwappinessZramEtSysctl(unittest.TestCase):
+    """Le conseil de swappiness suit le genre de swap et nomme le fichier
+    qui fixe la valeur au démarrage. Les fichiers sont inventés."""
+
+    SWAP = mem(swap_libre=8 * 1048576 - 600 * 1024)
+
+    def conseil(self, **kw):
+        _r, _v, c = niveau_memoire([ech(mem=self.SWAP)], **kw)
+        return [x for x in c.liste if x["id"] == "swappiness"]
+
+    def test_lire_swaps(self):
+        self.assertEqual(
+            hpa.lire_swaps(SWAPS_ZRAM),
+            [{"path": "/dev/zram0", "type": "zram"}],
+        )
+        self.assertEqual(
+            hpa.lire_swaps(SWAPS_DISQUE),
+            [{"path": "/swap/fichier\\040exemple", "type": "file"}],
+        )
+        self.assertEqual(hpa.lire_swaps(None), [])
+        self.assertEqual(hpa.lire_swaps("Filename Type\n/dev/sdz1 x\n"), [])
+
+    def test_valeur_sysctl(self):
+        texte = (
+            "# vm.swappiness = 1\n; autre\n-vm/swappiness = 30\n"
+            "vm.swappiness_bis = 2\nvm.swappiness=40\nsans_egal\n"
+        )
+        self.assertEqual(hpa.valeur_sysctl(texte, "vm.swappiness"), "40")
+        self.assertIsNone(hpa.valeur_sysctl("", "vm.swappiness"))
+        self.assertIsNone(hpa.valeur_sysctl(None, "vm.swappiness"))
+
+    def test_le_dernier_nom_par_ordre_lexical_l_emporte(self):
+        a = Arbre(self)
+        a.ecrire("/etc/sysctl.d/90-swappiness.conf", "vm.swappiness = 10\n")
+        a.ecrire("/etc/sysctl.d/99-zz-swap.conf", "vm.swappiness = 100\n")
+        a.ecrire("/usr/lib/sysctl.d/50-exemple.conf", "vm.swappiness = 60\n")
+        self.assertEqual(
+            hpa.source_sysctl(a.racine, "vm.swappiness"),
+            {"path": "/etc/sysctl.d/99-zz-swap.conf", "value": "100"},
+        )
+
+    def test_etc_masque_le_meme_nom_ailleurs(self):
+        a = Arbre(self)
+        a.ecrire("/etc/sysctl.d/70-exemple.conf", "kernel.exemple = 1\n")
+        a.ecrire("/usr/lib/sysctl.d/70-exemple.conf", "vm.swappiness = 5\n")
+        self.assertIsNone(hpa.source_sysctl(a.racine, "vm.swappiness"))
+
+    def test_sysctl_conf_relie_compte_a_son_nom(self):
+        a = Arbre(self)
+        a.ecrire("/etc/sysctl.conf", "vm.swappiness = 20\n")
+        a.lien("/etc/sysctl.d/99-sysctl.conf", "../sysctl.conf")
+        a.ecrire("/etc/sysctl.d/99-zz-swap.conf", "vm.swappiness = 100\n")
+        self.assertEqual(
+            hpa.source_sysctl(a.racine, "vm.swappiness")["path"],
+            "/etc/sysctl.d/99-zz-swap.conf",
+        )
+
+    def test_sans_systemd_sysctl_conf_seul_se_lit_en_dernier(self):
+        a = Arbre(self)
+        a.ecrire("/etc/sysctl.conf", "vm.swappiness = 20\n")
+        a.ecrire("/etc/sysctl.d/99-zz-swap.conf", "vm.swappiness = 100\n")
+        self.assertEqual(
+            hpa.source_sysctl(a.racine, "vm.swappiness"),
+            {"path": "/etc/sysctl.conf", "value": "20"},
+        )
+        self.assertIsNone(hpa.sysctl_hors_demarrage(a.racine, "vm.swappiness"))
+
+    def test_systemd_sysctl_ne_lit_pas_sysctl_conf_seul(self):
+        """systemd-sysctl applique sysctl.d sans /etc/sysctl.conf : le
+        fichier non relié reste hors démarrage, lu par sysctl --system."""
+        for binaire in hpa.BINAIRES_SYSTEMD_SYSCTL:
+            with self.subTest(binaire=binaire):
+                a = Arbre(self)
+                a.ecrire(binaire, "")
+                a.ecrire("/etc/sysctl.conf", "vm.swappiness = 30\n")
+                a.ecrire("/etc/sysctl.d/90-x.conf", "vm.swappiness = 60\n")
+                self.assertEqual(
+                    hpa.source_sysctl(a.racine, "vm.swappiness"),
+                    {"path": "/etc/sysctl.d/90-x.conf", "value": "60"},
+                )
+                self.assertEqual(
+                    hpa.sysctl_hors_demarrage(a.racine, "vm.swappiness"),
+                    {"path": "/etc/sysctl.conf", "value": "30"},
+                )
+
+    def test_systemd_sysctl_conf_relie_n_est_pas_hors_demarrage(self):
+        a = Arbre(self)
+        a.ecrire("/usr/lib/systemd/systemd-sysctl", "")
+        a.ecrire("/etc/sysctl.conf", "vm.swappiness = 20\n")
+        a.lien("/etc/sysctl.d/99-sysctl.conf", "../sysctl.conf")
+        self.assertEqual(
+            hpa.source_sysctl(a.racine, "vm.swappiness"),
+            {"path": "/etc/sysctl.conf", "value": "20"},
+        )
+        self.assertIsNone(hpa.sysctl_hors_demarrage(a.racine, "vm.swappiness"))
+
+    def test_un_lien_est_suivi_jusqu_au_fichier_reel(self):
+        a = Arbre(self)
+        a.ecrire("/etc/exemple/swap.conf", "vm.swappiness = 30\n")
+        a.lien("/etc/sysctl.d/80-swap.conf", "../exemple/swap.conf")
+        self.assertEqual(
+            hpa.source_sysctl(a.racine, "vm.swappiness")["path"],
+            "/etc/exemple/swap.conf",
+        )
+
+    def test_zram_ne_conseille_jamais_10(self):
+        conseil = self.conseil(
+            swappiness="10", swaps=[{"path": "/dev/zram0", "type": "zram"}]
+        )
+        self.assertEqual(len(conseil), 1)
+        self.assertEqual(conseil[0]["priority"], "low")
+        self.assertIn("sysctl -w vm.swappiness=100", conseil[0]["commands"])
+        self.assertFalse(
+            any(
+                "swappiness=10\n" in x or x.endswith("=10")
+                for x in conseil[0]["commands"]
+            )
+        )
+        self.assertIn("Swap memory", conseil[0]["text"])
+
+    def test_zram_a_60_ou_plus_rien_a_dire(self):
+        for valeur in ("60", "100", "150"):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(
+                    self.conseil(
+                        swappiness=valeur,
+                        swaps=[{"path": "/dev/zram0", "type": "zram"}],
+                    ),
+                    [],
+                )
+
+    def test_zram_et_disque_suivent_la_zram(self):
+        """Comme le menu Swap memory : une zram active suffit."""
+        swaps = [
+            {"path": "/dev/zram0", "type": "zram"},
+            {"path": "/dev/sdz2", "type": "partition"},
+        ]
+        self.assertEqual(self.conseil(swappiness="60", swaps=swaps), [])
+
+    def test_disque_sans_fichier_cree_99_zz(self):
+        conseil = self.conseil(
+            swappiness="60", swaps=[{"path": "/dev/sdz2", "type": "partition"}]
+        )
+        self.assertEqual(conseil[0]["priority"], "medium")
+        self.assertEqual(
+            conseil[0]["commands"],
+            [
+                "sysctl -w vm.swappiness=10",
+                "echo 'vm.swappiness = 10' > /etc/sysctl.d/99-zz-swap.conf",
+            ],
+        )
+        self.assertIn("No sysctl file sets it at boot", conseil[0]["text"])
+
+    def test_disque_modifie_le_fichier_de_etc_qui_la_fixe(self):
+        source = {"path": "/etc/sysctl.d/80-exemple.conf", "value": "60"}
+        conseil = self.conseil(swappiness="60", swappiness_source=source)
+        self.assertIn("/etc/sysctl.d/80-exemple.conf (60)", conseil[0]["text"])
+        derniere = conseil[0]["commands"][-1]
+        self.assertTrue(derniere.startswith("sed -i -E "))
+        self.assertTrue(derniere.endswith(" /etc/sysctl.d/80-exemple.conf"))
+        self.assertIn("/\\110/", derniere)
+
+    def test_sed_garde_le_tiret_et_les_espaces(self):
+        """sed réel sur un fichier d'exemple : « - vm.swappiness » compte
+        comme valeur_sysctl le lit, le « - » et l'espacement restent."""
+        if not shutil.which("sed"):
+            self.skipTest("sed absent")
+        a = Arbre(self)
+        a.ecrire(
+            "/etc/sysctl.d/80-a.conf",
+            "- vm.swappiness = 60\n# vm.swappiness = 1\n"
+            "vm.swappiness_bis = 2\n  vm/swappiness=60\n",
+        )
+        fichier = a.racine + "/etc/sysctl.d/80-a.conf"
+        subprocess.run(hpa.sed_swappiness(10, fichier), shell=True, check=True)
+        with open(fichier, encoding="utf-8") as f:
+            texte = f.read()
+        self.assertEqual(
+            texte,
+            "- vm.swappiness = 10\n# vm.swappiness = 1\n"
+            "vm.swappiness_bis = 2\n  vm/swappiness=10\n",
+        )
+        self.assertEqual(hpa.valeur_sysctl(texte, "vm.swappiness"), "10")
+
+    def test_sysctl_conf_hors_demarrage_modifie_aussi(self):
+        source = {"path": "/etc/sysctl.d/90-x.conf", "value": "60"}
+        hors = {"path": "/etc/sysctl.conf", "value": "30"}
+        conseil = self.conseil(
+            swappiness="60",
+            swappiness_source=source,
+            swappiness_outside_boot=hors,
+        )
+        self.assertIn("/etc/sysctl.d/90-x.conf (60)", conseil[0]["text"])
+        self.assertIn("only sysctl --system reads it", conseil[0]["text"])
+        commandes = conseil[0]["commands"]
+        self.assertEqual(len(commandes), 3)
+        self.assertTrue(commandes[1].endswith(" /etc/sysctl.d/90-x.conf"))
+        self.assertTrue(commandes[2].endswith(" /etc/sysctl.conf"))
+
+    def test_fichier_hors_de_etc_jamais_modifie(self):
+        source = {"path": "/usr/lib/sysctl.d/50-exemple.conf", "value": "60"}
+        conseil = self.conseil(swappiness="60", swappiness_source=source)
+        self.assertIn("50-exemple.conf", conseil[0]["text"])
+        self.assertTrue(
+            conseil[0]["commands"][-1].endswith(
+                "/etc/sysctl.d/99-zz-swap.conf"
+            )
+        )
+
+    def test_faits_hote_lit_swaps_et_source(self):
+        a = hote_complet(self)
+        a.ecrire("/proc/swaps", SWAPS_ZRAM)
+        a.ecrire("/etc/sysctl.d/99-zz-swap.conf", "vm.swappiness = 100\n")
+        faits_lus = hpa.faits_hote(
+            a.racine, FauxSysteme(), hpa.Blocs(a.racine)
+        )
+        self.assertEqual(faits_lus["swaps"][0]["type"], "zram")
+        self.assertEqual(
+            faits_lus["swappiness_source"]["path"],
+            "/etc/sysctl.d/99-zz-swap.conf",
+        )
 
 
 def arc_ech(c_max_gib, hit, dispo_gib=16):
@@ -2703,27 +2937,6 @@ class TestMemoireBornee(unittest.TestCase):
 # ----------------------------------------------------------------------- #
 # 46. Fichier unique, Python 3.7
 # ----------------------------------------------------------------------- #
-def imbrications_pep701(source):
-    """Chaînes imbriquées dans une f-string avec le même guillemet — légal
-    seulement depuis Python 3.12 (PEP 701)."""
-    fautes = []
-    pile = []
-    debut_f = getattr(tokenize, "FSTRING_START", None)
-    fin_f = getattr(tokenize, "FSTRING_END", None)
-    if debut_f is None:
-        return fautes
-    for jeton in tokenize.generate_tokens(io.StringIO(source).readline):
-        if jeton.type in (debut_f, tokenize.STRING):
-            guillemet = jeton.string.lstrip("rRbBuUfF")
-            if pile and any(guillemet.startswith(g) for g in pile):
-                fautes.append(jeton.start)
-            if jeton.type == debut_f:
-                pile.append(guillemet)
-        elif jeton.type == fin_f:
-            pile.pop()
-    return fautes
-
-
 STDLIB_37 = {
     "__future__",
     "argparse",
@@ -2749,25 +2962,6 @@ class TestFichierUnique(unittest.TestCase):
         with open(FICHIER, encoding="utf-8") as f:
             self.source = f.read()
         self.arbre = ast.parse(self.source)
-
-    def test_syntaxe_37(self):
-        ast.parse(self.source, feature_version=(3, 7))
-        self.assertEqual(imbrications_pep701(self.source), [])
-
-    def test_api_posterieures_a_37(self):
-        for motif in (
-            r"\.removeprefix\(",
-            r"\.removesuffix\(",
-            r"shlex\.join",
-            r"math\.prod",
-            r"cached_property",
-            r"functools\.cache\b",
-            r"zoneinfo",
-            r"importlib\.metadata",
-            r"""f["'][^"'\n]*\{[^}]*=\}""",
-        ):
-            with self.subTest(motif=motif):
-                self.assertIsNone(re.search(motif, self.source))
 
     def test_imports_de_la_bibliotheque_standard_seulement(self):
         modules = set()

@@ -17,8 +17,9 @@
 sudo ./script/odoo/update_module.py --module 'my_module_*' --db demo_db
 ```
 
-Aussi accessible depuis `make todo` : `Exécuter > Production`, qui lance
-d'abord la simulation et demande avant l'exécution réelle.
+Aussi accessible depuis `make todo` : `TODO › Exécuter › Production › Mise
+à jour`, qui lance d'abord la simulation et demande avant l'exécution
+réelle.
 
 Ce qu'il fait, dans l'ordre :
 
@@ -286,6 +287,12 @@ Root n'est nécessaire que pour devenir le compte de l'unité.
 ./script/odoo/health_check.py --local --json
 ```
 
+Il vérifie une instance Odoo, servie par systemd ou publiée à une URL. Ce
+n'est pas le **Bilan de santé** (Healthcheck) de TODO, entrée propre du
+menu principal (`TODO › Bilan de santé`), qui vérifie le checkout ERPLibre — dépôts, venvs, hooks —
+et ne touche à aucune instance. Dans `make todo` : `TODO › Exécuter ›
+Production › Santé et préchauffage`.
+
 `--url` (répétable ; un hôte nu veut dire `https://hote`) sonde à travers
 le proxy inverse ; `--local` (avec `--service`, sinon l'unité détectée)
 sonde l'adresse que donne la configuration de l'unité, avec `?db=` quand la
@@ -325,6 +332,10 @@ Un déploiement par défaut obtient un FAIL sur `db_manager` par `--url` :
 Odoo garde `list_db = True` quand la configuration ne le pose pas, et les
 gabarits nginx ne bloquent pas `/web/database`. Poser `list_db = False`, ou
 refuser `/web/database` dans nginx.
+
+Le conseil de `hsts` renvoie à `script/nginx/template_nginx_ssl_odoo_18.0.txt`,
+le gabarit nginx du dépôt pour Odoo 18, dont les blocs `location` envoient
+l'en-tête.
 
 Clés de `--json` (anglais, stables) : `tool`, `odoo_version`, `targets`
 (`kind`, `url`, `odoo_version`), `checks` (`id`, `target`, `status`,

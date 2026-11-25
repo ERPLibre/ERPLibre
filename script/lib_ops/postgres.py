@@ -94,6 +94,12 @@ REQUETE_DOSSIER = "SHOW data_directory"
 # installé par les paquets de la distribution.
 COMPTE_SYSTEME = "postgres"
 
+# Délai de connexion de libpq, en secondes : un serveur qui ne répond pas
+# rend la main par un refus net au lieu d'attendre le délai du
+# sous-processus. Sans effet sur une commande déjà connectée, comme un
+# pg_dump long. Un PGCONNECT_TIMEOUT non vide de l'environnement l'emporte.
+DELAI_CONNEXION = 10
+
 # `db_host` qui désignent ce même hôte ; une valeur commençant par `/` est
 # le dossier d'une socket locale.
 HOTES_LOCAUX = ("localhost", "127.0.0.1", "::1")
@@ -104,12 +110,23 @@ def _renseigne(valeur):
     return "" if valeur.lower() in VIDES else valeur
 
 
-def env_pg(config, lecture_seule=False, delai=120):
+def _delai_connexion(environ):
+    """PGCONNECT_TIMEOUT : celui de `environ` (os.environ par défaut)
+    quand il est renseigné, sinon DELAI_CONNEXION."""
+    environ = os.environ if environ is None else environ
+    return (environ.get("PGCONNECT_TIMEOUT") or "").strip() or str(
+        DELAI_CONNEXION
+    )
+
+
+def env_pg(config, lecture_seule=False, delai=120, environ=None):
     """Les variables à ajouter à l'environnement d'un outil PostgreSQL.
 
     `config` : la section [options] de la configuration Odoo. `PSQLRC` vide
-    écarte un ~/.psqlrc qui changerait la sortie. `lecture_seule` ajoute
-    `PGOPTIONS` (lecture seule, `statement_timeout` de `delai` secondes).
+    écarte un ~/.psqlrc qui changerait la sortie. `PGCONNECT_TIMEOUT` borne
+    la connexion (voir DELAI_CONNEXION ; `environ` remplace os.environ pour
+    les tests). `lecture_seule` ajoute `PGOPTIONS` (lecture seule,
+    `statement_timeout` de `delai` secondes).
     """
     variables = {}
     for cle, nom in CORRESPONDANCE:
@@ -117,6 +134,7 @@ def env_pg(config, lecture_seule=False, delai=120):
         if valeur:
             variables[nom] = valeur
     variables["PSQLRC"] = ""
+    variables["PGCONNECT_TIMEOUT"] = _delai_connexion(environ)
     if lecture_seule:
         variables["PGOPTIONS"] = (
             "-c default_transaction_read_only=on"
@@ -132,12 +150,17 @@ def hote_local(config):
     return not hote or hote.startswith("/") or hote in HOTES_LOCAUX
 
 
-def env_pg_local(config, delai=120):
+def env_pg_local(config, delai=120, environ=None):
     """Les variables d'une requête de lecture par le compte système du
     serveur, sur la socket locale : le port de la configuration, et son
     dossier de socket quand `db_host` en est un. Ni rôle ni mot de passe :
-    l'authentification est celle du compte (peer)."""
-    variables = {"PSQLRC": ""}
+    l'authentification est celle du compte (peer). `PGCONNECT_TIMEOUT` y
+    est toujours, valeur de `environ` comprise : l'appelant retire les PG*
+    hérités avant d'ajouter ces variables."""
+    variables = {
+        "PSQLRC": "",
+        "PGCONNECT_TIMEOUT": _delai_connexion(environ),
+    }
     port = _renseigne(config.get("db_port"))
     if port:
         variables["PGPORT"] = port

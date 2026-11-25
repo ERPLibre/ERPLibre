@@ -35,7 +35,6 @@ import sys
 import tempfile
 import threading
 import time
-import tokenize
 import unittest
 import zipfile
 from unittest import mock
@@ -2324,128 +2323,6 @@ class TestUneSeuleBase(Base):
                 self.assertEqual(bases, ["-d"])
                 self.assertEqual(argv[argv.index("-d") + 1], "demo_db")
                 self.assertIn("8090", argv)
-
-
-def imbrications_pep701(source):
-    """Positions des chaînes imbriquées dans une f-string avec le même
-    guillemet — légal seulement depuis Python 3.12 (PEP 701)."""
-    fautes = []
-    pile = []
-    debut_f = getattr(tokenize, "FSTRING_START", None)
-    fin_f = getattr(tokenize, "FSTRING_END", None)
-    if debut_f is None:
-        return fautes
-    for jeton in tokenize.generate_tokens(io.StringIO(source).readline):
-        if jeton.type in (debut_f, tokenize.STRING):
-            guillemet = jeton.string.lstrip("rRbBuUfF")
-            if pile and any(guillemet.startswith(g) for g in pile):
-                fautes.append(jeton.start)
-            if jeton.type == debut_f:
-                pile.append(guillemet)
-        elif jeton.type == fin_f:
-            pile.pop()
-    return fautes
-
-
-class TestPythonAncien(unittest.TestCase):
-    """Le programme se lance aussi par le python3 d'un serveur : rien
-    au-delà de Python 3.7."""
-
-    FICHIERS = [
-        os.path.join(RACINE, "script", "odoo", "update_module.py"),
-        os.path.join(RACINE, "script", "lib_ops", "systemd.py"),
-        os.path.join(RACINE, "script", "lib_ops", "odoo_instance.py"),
-        os.path.join(RACINE, "script", "lib_ops", "lock.py"),
-        os.path.join(RACINE, "script", "lib_ops", "report.py"),
-        os.path.join(RACINE, "script", "lib_ops", "service.py"),
-        os.path.join(RACINE, "script", "lib_ops", "postgres.py"),
-        os.path.join(RACINE, "script", "lib_ops", "retention.py"),
-        os.path.join(RACINE, "script", "database", "odoo_backup.py"),
-        os.path.join(RACINE, "script", "systemd", "install_backup_timer.py"),
-        os.path.join(RACINE, "script", "odoo", "log_check.py"),
-        os.path.join(RACINE, "script", "odoo", "mail_retry.py"),
-        os.path.join(RACINE, "script", "lib_ops", "journal.py"),
-        os.path.join(RACINE, "script", "lib_ops", "mail_diagnostic.py"),
-        os.path.join(RACINE, "script", "odoo", "health_check.py"),
-        os.path.join(RACINE, "script", "odoo", "warmup_http.py"),
-        os.path.join(RACINE, "script", "proxmox", "host_perf_audit.py"),
-        os.path.join(RACINE, "script", "lib_ops", "profil.py"),
-        os.path.join(RACINE, "script", "lib_ops", "credentials.py"),
-    ]
-
-    # API absentes de Python 3.7 : la syntaxe passe le garde, l'appel
-    # échoue à l'exécution.
-    API_RECENTES = (
-        "shlex.join",
-        ".removeprefix(",
-        ".removesuffix(",
-        "fromisocalendar",
-        "dirs_exist_ok",
-        "math.dist(",
-        "functools.cache(",
-        "BooleanOptionalAction",
-        "cached_property",
-    )
-
-    def lire(self, chemin):
-        with open(chemin, encoding="utf-8") as f:
-            return f.read()
-
-    def test_syntaxe_37(self):
-        import ast
-
-        for chemin in self.FICHIERS:
-            with self.subTest(fichier=os.path.basename(chemin)):
-                ast.parse(self.lire(chemin), feature_version=(3, 7))
-
-    def test_le_garde_37_voit_un_morse(self):
-        import ast
-
-        with self.assertRaises(SyntaxError):
-            ast.parse("(x := 1)", feature_version=(3, 7))
-
-    def test_aucune_imbrication_pep701(self):
-        for chemin in self.FICHIERS:
-            with self.subTest(fichier=os.path.basename(chemin)):
-                self.assertEqual(imbrications_pep701(self.lire(chemin)), [])
-
-    def test_le_garde_pep701_voit_une_imbrication(self):
-        if not hasattr(tokenize, "FSTRING_START"):
-            self.skipTest("tokenizer antérieur à 3.12")
-        self.assertTrue(imbrications_pep701('x = f"{d["k"]}"\n'))
-        self.assertEqual(imbrications_pep701("x = f\"{d['k']}\"\n"), [])
-        self.assertEqual(imbrications_pep701('x = f"""{d["k"]}"""\n'), [])
-
-    def test_aucune_api_posterieure_a_37(self):
-        for chemin in self.FICHIERS:
-            with self.subTest(fichier=os.path.basename(chemin)):
-                source = self.lire(chemin)
-                for api in self.API_RECENTES:
-                    self.assertNotIn(api, source)
-
-    def test_annotations_differees(self):
-        for chemin in self.FICHIERS:
-            with self.subTest(fichier=os.path.basename(chemin)):
-                self.assertIn(
-                    "from __future__ import annotations", self.lire(chemin)
-                )
-
-    def test_executable(self):
-        for chemin in (
-            self.FICHIERS[0],
-            os.path.join(RACINE, "script", "database", "odoo_backup.py"),
-            os.path.join(
-                RACINE, "script", "systemd", "install_backup_timer.py"
-            ),
-            os.path.join(RACINE, "script", "odoo", "log_check.py"),
-            os.path.join(RACINE, "script", "odoo", "mail_retry.py"),
-            os.path.join(RACINE, "script", "odoo", "health_check.py"),
-            os.path.join(RACINE, "script", "proxmox", "host_perf_audit.py"),
-        ):
-            with self.subTest(fichier=os.path.basename(chemin)):
-                self.assertTrue(os.access(chemin, os.X_OK))
-                with open(chemin, "rb") as f:
-                    self.assertEqual(f.read(2), b"#!")
 
 
 if __name__ == "__main__":

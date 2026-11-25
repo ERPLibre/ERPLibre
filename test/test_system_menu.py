@@ -318,6 +318,28 @@ class TestLeRapport(unittest.TestCase):
         self.assertFalse(existe)
 
 
+class TestLAuditDePerformance(unittest.TestCase):
+    """[10], ajouté en fin de menu : les entrées 1 à 9 gardent leur
+    numéro, et l'audit est celui du menu Production, profil compris."""
+
+    def test_entry_10_runs_the_production_audit(self):
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        with (
+            mock.patch.object(TODO, "_ops_perf_audit") as audit,
+            mock.patch("click.prompt", side_effect=["10", "0"]) as invite,
+            mock.patch("builtins.print"),
+        ):
+            todo.prompt_execute_system()
+        audit.assert_called_once_with()
+        menu = invite.call_args.args[0]
+        self.assertIn("[9] 💾 Mémoire Swap", menu)
+        self.assertIn(
+            "[10] ⏱  Audit de performance de ce poste (lecture seule)", menu
+        )
+
+
 class TestLesLibelles(unittest.TestCase):
     def test_every_category_warning_and_reason_is_translated(self):
         for cle in (

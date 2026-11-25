@@ -1202,15 +1202,11 @@ class TestProfil(Base):
         self.assertNotIn("profile", json.loads(self.sortie))
 
 
-class TestPython37(unittest.TestCase):
-    def test_r14_syntaxe(self):
-        racine = os.path.join(os.path.dirname(__file__), "..")
-        chemin = os.path.join(racine, "script", "odoo", "mail_retry.py")
-        with open(chemin, encoding="utf-8") as f:
-            source = f.read()
-        ast.parse(source, feature_version=(3, 7))
-        # Odoo 12 tourne sous Python 3.7 ; le script du shell se lit aussi
-        # en 3.6, sans rien qui dépende de l'interpréteur de l'instance.
+class TestPython36(unittest.TestCase):
+    def test_r14_script_du_shell(self):
+        """Le script envoyé au shell d'Odoo se lit en 3.6, sans rien qui
+        dépende de l'interpréteur de l'instance. Le fichier lui-même est
+        couvert par test/test_ops_py37.py."""
         ast.parse(mr.script_renvoi([1, 2]), feature_version=(3, 6))
 
 

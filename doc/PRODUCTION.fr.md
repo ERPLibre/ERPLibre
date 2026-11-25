@@ -394,7 +394,12 @@ de l'hôte` pour ce poste, et le menu Proxmox VE pour l'hyperviseur retenu.
 La cible se choisit d'abord, puis son profil d'hôte
 (`private/production/host/local.json` ou `host/pve-<cible>.json`) donne la
 durée par défaut et les autres réglages ; un hôte distant n'a pas le
-fichier, ses valeurs partent donc en options validées. Détails :
+fichier, ses valeurs partent donc en options validées. `TODO › Exécuter ›
+Système › Audit de performance de ce poste` lance le même audit de ce
+poste, avec le même profil ; à côté, `TODO › Exécuter › Système ›
+Diagnostic du système` décrit le poste à un instant, et `TODO › Exécuter ›
+Système › Mémoire Swap` applique les réglages du swap et de
+`vm.swappiness` que l'audit ne fait qu'afficher. Détails :
 [script/proxmox/README.fr.md](../script/proxmox/README.fr.md).
 
 # Postgresql

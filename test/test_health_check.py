@@ -16,6 +16,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import ssl
 import sys
 import tempfile
@@ -279,6 +280,17 @@ class TestRedirectionEtHsts(unittest.TestCase):
             hc.classer_hsts("max-age=31536000; includeSubDomains").statut,
             hc.OK,
         )
+
+    def test_hsts_cite_le_gabarit_nginx_du_depot(self):
+        """Le conseil renvoie au gabarit nginx d'Odoo 18 du dépôt, qui
+        pose l'en-tête : le chemin cité doit exister."""
+        conseil = hc.classer_hsts("").conseil()
+        trouve = re.search(r"script/nginx/\S+\.txt", conseil)
+        self.assertIsNotNone(trouve)
+        chemin = os.path.join(RACINE, trouve.group(0))
+        self.assertTrue(os.path.isfile(chemin), chemin)
+        with open(chemin, encoding="utf-8") as f:
+            self.assertIn("Strict-Transport-Security", f.read())
 
 
 class TestGestionnaireDeBases(unittest.TestCase):

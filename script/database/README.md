@@ -21,7 +21,10 @@ Run script to restore database:
 in Odoo's own zip format (`dump.sql`, `manifest.json`, `filestore/`), the
 one `/web/database/manager` restores as is. It also reports their age,
 test-restores them into a temporary database, and restores one into a new
-database. It needs neither the Odoo venv nor `list_db`.
+database. It needs neither the Odoo venv nor `list_db`. In `make todo`:
+`TODO › Execute › Production › Backups` (now, status, test restore,
+restore into a new database) and `TODO › Execute › Production › systemd
+timers` for the scheduled backup.
 
 ```bash
 ./script/database/odoo_backup.py --dry-run
@@ -107,6 +110,23 @@ the unit's account. A failure after `createdb` drops the new database and
 its partial filestore. Before starting Odoo on
 the copy, neutralize it (`odoo-bin neutralize`, from Odoo 16); its
 `database.uuid` is the source's.
+
+**Into a development checkout.** The zip has Odoo's own format, so
+`db_restore.py` restores it on a development machine: an `--image` that
+holds a `/` is a path, read as is and restored without a `_cache_` copy. A
+database already named like `-d` is dropped first.
+
+```bash
+./script/database/db_restore.py -d demo_copy --neutralize --image ~/Downloads/demo_db_2031-03-10_03h00m00s.zip
+./script/addons/update_prod_to_dev.sh demo_copy
+```
+
+`--neutralize` has Odoo neutralize the database while loading it (Odoo 16
+and later: crons and mail servers off); `update_prod_to_dev.sh` then
+installs the development modules (`test`/`test` account, outgoing mail,
+automatic backups and payment providers disabled). `TODO › Execute ›
+Database › Restore from backup (.zip)` asks the same questions for a zip
+placed in `image_db/`.
 
 **Off-site copy.** `--copy-to [user@]host:/path` (or an absolute path),
 disabled by default: `rsync -a --partial` over `ssh -o BatchMode=yes`, as

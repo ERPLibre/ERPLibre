@@ -383,7 +383,11 @@ VE menu for the remembered hypervisor. The target is chosen first, then
 its host profile (`private/production/host/local.json` or
 `host/pve-<target>.json`) gives the default duration and the other
 settings; a remote host does not have the file, so its values are sent as
-validated options. Details:
+validated options. `TODO › Execute › System › Performance audit of this
+machine` runs the same audit of this host, with the same profile; next to
+it, `TODO › Execute › System › System diagnostic` describes the machine at
+one instant, and `TODO › Execute › System › Swap memory` applies the swap
+and `vm.swappiness` settings that the audit only prints. Details:
 [script/proxmox/README.md](../script/proxmox/README.md).
 
 # Postgresql

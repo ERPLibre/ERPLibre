@@ -286,10 +286,27 @@ running container and VM, named from `/etc/pve`. A pool's disks are read
 from its own vdevs (`zpool status -P -L`): an idle backup HDD outside any
 pool never makes the answer "yes, buy SSD".
 
+**Swappiness.** The advice follows the swap in use, read from
+`/proc/swaps`. With a zram swap it recommends 100 when the value is under
+60, as `TODO › Execute › System › Swap memory` does; with a disk swap
+alone, used beyond 512 MiB, it recommends 10, which keeps the guests in RAM
+on a ZFS host. It names the `sysctl.d` file that sets the value at boot, in
+systemd's order — the last name wins, so `99-zz-swap.conf` overrides a
+`90-` file — and edits that file when it lies under `/etc`, otherwise
+creates `/etc/sysctl.d/99-zz-swap.conf`, the file Swap memory writes.
+systemd-sysctl never reads `/etc/sysctl.conf` unless a `sysctl.d` link
+leads to it: on such a host that file only counts for `sysctl --system`,
+which applies it last, so the audit names it apart and edits it as well. The
+audit measures over time and changes nothing; Swap memory applies the
+settings on the machine where TODO runs, and `TODO › Execute › System ›
+System diagnostic` describes that machine at one instant.
+
 It is a single file, standard library only, runnable by the `python3` of a
 host from Debian 10 on. Entry `[20]` of this menu sends it to the
 remembered host over `ssh -T` with the file on stdin, or runs it on this
-machine; `TODO › Execute › Production` also runs it locally. Ctrl-C stops
+machine; `TODO › Execute › Production › Host audit` and `TODO › Execute ›
+System › Performance audit of this machine` also run it locally, with the
+`local` host profile. Ctrl-C stops
 the measurement early and still prints the report when the script runs on
 the host itself; over ssh, a local Ctrl-C closes the connection and the
 report is lost. `--json` prints a document with stable keys, `--csv FILE`
@@ -339,10 +356,28 @@ marche, nommés d'après `/etc/pve`. Les disques d'un pool sont lus dans ses
 propres vdev (`zpool status -P -L`) : un HDD de sauvegarde oisif, hors de
 tout pool, ne fait jamais répondre « oui, des SSD ».
 
+**Swappiness.** Le conseil suit le swap en service, lu dans `/proc/swaps`.
+Avec une zram, il recommande 100 quand la valeur est sous 60, comme
+`TODO › Exécuter › Système › Mémoire Swap` ; avec un swap sur disque seul,
+utilisé au-delà de 512 Mio, il recommande 10, qui garde les invités en RAM
+sur un hôte ZFS. Il nomme le fichier de `sysctl.d` qui fixe la valeur au
+démarrage, dans l'ordre de systemd — le dernier nom l'emporte, donc
+`99-zz-swap.conf` écrase un fichier en `90-` — et modifie ce fichier quand
+il est sous `/etc`, sinon crée `/etc/sysctl.d/99-zz-swap.conf`, celui
+qu'écrit Mémoire Swap. systemd-sysctl ne lit jamais `/etc/sysctl.conf`
+sans lien de `sysctl.d` qui y mène : sur un tel hôte, ce fichier ne compte
+que pour `sysctl --system`, qui l'applique en dernier, et l'audit le nomme à
+part et le modifie aussi. L'audit mesure dans la durée et ne change rien ;
+Mémoire Swap applique les réglages sur le poste où tourne TODO, et
+`TODO › Exécuter › Système › Diagnostic du système` décrit ce poste à un
+instant.
+
 C'est un seul fichier, bibliothèque standard seulement, lançable par le
 `python3` d'un hôte dès Debian 10. L'entrée `[20]` de ce menu l'envoie à
 l'hôte retenu par `ssh -T`, le fichier sur stdin, ou le lance sur ce
-poste ; `TODO › Exécuter › Production` le lance aussi en local. Ctrl-C
+poste ; `TODO › Exécuter › Production › Audit de l'hôte` et `TODO ›
+Exécuter › Système › Audit de performance de ce poste` le lancent aussi en
+local, avec le profil d'hôte `local`. Ctrl-C
 arrête la mesure plus tôt et donne quand même le rapport quand le script
 tourne sur l'hôte lui-même ; par ssh, un Ctrl-C local ferme la connexion
 et le rapport est perdu. `--json` produit un document aux clés stables,

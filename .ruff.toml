@@ -35,6 +35,23 @@ extend-exclude = [
   "script/stream_deck/games",
 ]
 
+# Ces fichiers tournent aussi sous le python3 d'un serveur ou d'une image,
+# dès Python 3.7 : l'audit envoyé sur stdin à un hôte Debian 10, les outils
+# de production lancés par une unité systemd, warmup_http dans l'image
+# Docker. py37 interdit au formateur la syntaxe que 3.7 ne lit pas, comme
+# les « with » parenthésés. test/test_ops_py37.py vérifie que la liste
+# couvre chaque fichier que son garde ast lit, et réciproquement.
+[per-file-target-version]
+"script/proxmox/host_perf_audit.py" = "py37"
+"script/odoo/update_module.py" = "py37"
+"script/odoo/log_check.py" = "py37"
+"script/odoo/mail_retry.py" = "py37"
+"script/odoo/health_check.py" = "py37"
+"script/odoo/warmup_http.py" = "py37"
+"script/database/odoo_backup.py" = "py37"
+"script/systemd/install_backup_timer.py" = "py37"
+"script/lib_ops/*.py" = "py37"
+
 [lint]
 # Le tri des imports seul : le lint du dépôt reste décrit par .flake8.
 select = ["I"]

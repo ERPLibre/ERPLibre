@@ -25404,6 +25404,10 @@ TRANSLATIONS = {
         "fr": "🧹 Espace à récupérer",
         "en": "🧹 Space to reclaim",
     },
+    "Performance audit of this machine (read-only)": {
+        "fr": "⏱  Audit de performance de ce poste (lecture seule)",
+        "en": "⏱  Performance audit of this machine (read-only)",
+    },
     "Identity": {
         "fr": "Identité",
         "en": "Identity",
@@ -27943,9 +27947,9 @@ TRANSLATIONS = {
         "fr": "Certificat refusé : {reason}.",
         "en": "Certificate refused: {reason}.",
     },
-    'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block.': {
-        "fr": 'add_header Strict-Transport-Security "max-age=31536000" always; dans le bloc server de nginx.',
-        "en": 'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block.',
+    'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block (template: script/nginx/template_nginx_ssl_odoo_18.0.txt).': {
+        "fr": 'add_header Strict-Transport-Security "max-age=31536000" always; dans le bloc server de nginx (gabarit : script/nginx/template_nginx_ssl_odoo_18.0.txt).',
+        "en": 'add_header Strict-Transport-Security "max-age=31536000" always; in the nginx server block (template: script/nginx/template_nginx_ssl_odoo_18.0.txt).',
     },
     "Set list_db = False in the Odoo configuration, or deny /web/database in the proxy.": {
         "fr": "Poser list_db = False dans la configuration d'Odoo, ou refuser /web/database dans le proxy.",
