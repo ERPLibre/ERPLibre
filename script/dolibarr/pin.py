@@ -43,7 +43,6 @@ if new_path not in sys.path:
 from script.dolibarr import lib_dolibarr  # noqa: E402
 from script.erp_common import pin as common_pin  # noqa: E402
 from script.erp_common.pin import (  # noqa: E402,F401
-    HUB,
     image_ref,
     refreshed_image,
     split_image,

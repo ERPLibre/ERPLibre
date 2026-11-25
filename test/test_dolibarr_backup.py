@@ -8,7 +8,9 @@ elle, est vraiment écrite et relue. Ce qui se garde :
 - une sauvegarde porte la base, documents/, conf.php (sa clé d'instance
   chiffre des valeurs en base) et custom/, avec un manifeste ;
 - aucun mot de passe sur argv : il passe par l'environnement du vidage ;
-- un dossier que git pourrait commiter est refusé avant toute écriture.
+- un vidage qui échoue sort en 1 et ne laisse rien dans les sauvegardes ;
+- un dossier que git pourrait commiter est refusé avant toute écriture,
+  conf.php du dossier de travail compris.
 L'écriture atomique, les droits 0600 et 0700, le classement des archives
 et la question posée à git se vérifient dans test_erp_common_archive.
 """
@@ -171,6 +173,15 @@ class TestSecrets(Banc):
 
 
 class TestEchec(Banc):
+    def test_a_failed_dump_exits_1_and_leaves_nothing(self):
+        self.sys.echec.add("mariadb-dump")
+        code, _sortie = self.sauver()
+        self.assertEqual(code, 1)
+        dossier = self.archive().parent
+        self.assertEqual(
+            list(dossier.iterdir()) if dossier.exists() else [], []
+        )
+
     def test_an_unknown_instance_exits_2(self):
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
@@ -212,6 +223,14 @@ class TestGit(Banc):
         code, sortie = self.sauver("--dest", str(dest))
         self.assertEqual(code, 0, sortie)
         self.assertTrue((dest / "erp-20260927-081500.tar.gz").exists())
+
+    def test_ignoring_the_archive_alone_leaves_conf_php_exposed(self):
+        # Dolibarr passe conf.php comme membre du dossier de travail : un
+        # .gitignore qui ne vise que l'archive et son .part le laisse
+        # commitable.
+        dest = self.depot("*.tar.gz\n*.part\n")
+        refuses = backup.exposed(str(dest), "erp", "20260927-081500")
+        self.assertEqual([Path(p).name for p in refuses], ["conf.php"])
 
     def test_the_default_folder_of_the_checkout_is_ignored(self):
         dest = RACINE / backup.BACKUPS / "erp"

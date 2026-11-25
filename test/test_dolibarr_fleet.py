@@ -5,6 +5,7 @@
 
 Retirer défait ce que l'installation a posé, selon l'exécution. Ce qui se
 garde :
+- sans le nom retapé à --confirm, rien ne part ;
 - l'essai à blanc montre chaque étape sans rien toucher ;
 - chaque commande est rejouable (IF EXISTS, -f, rm -rf) ;
 - en développement conteneur, custom/ reste : c'est le code du
@@ -110,6 +111,16 @@ class TestConteneur(Banc):
                 "url": "http://127.0.0.1:8081",
             }
         }
+
+    def test_nothing_goes_without_the_name_retyped(self):
+        for mauvais in ("", "er"):
+            with self.subTest(mauvais=mauvais):
+                code, _s = self.lancer(
+                    "remove", "--instance", "erp", "--confirm", mauvais
+                )
+                self.assertEqual(code, 2)
+        self.assertEqual(self.sys.appels, [])
+        self.assertIn("erp", self.registre())
 
     def test_the_dry_run_shows_every_step_and_touches_nothing(self):
         code, sortie = self.lancer("remove", "--instance", "erp", "--dry-run")

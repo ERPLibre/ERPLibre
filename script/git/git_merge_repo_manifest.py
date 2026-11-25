@@ -283,9 +283,9 @@ def default_input_paths(
     version d'Odoo active, les versions installées, l'application mobile,
     le programme du deck, l'extension GNOME, les checkouts des ERP de
     `erp_sources`, les modules extra. `with_erps` nomme les ERP de cette
-    table dont le fragment entre d'office. Un fichier cité deux fois n'est gardé qu'à sa PREMIÈRE
-    place, et l'ordre est celui de la liste : lors de la fusion, le dernier
-    fichier qui définit un projet l'emporte.
+    table dont le fragment entre d'office. Un fichier cité deux fois n'est
+    gardé qu'à sa PREMIÈRE place, et l'ordre est celui de la liste : lors
+    de la fusion, le dernier fichier qui définit un projet l'emporte.
     """
     odoo_version = None
     if os.path.isfile(ODOO_VERSION_PATH):

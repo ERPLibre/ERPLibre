@@ -9,8 +9,9 @@ démarré, envoyé, interrogé. Ce qui se garde :
   Debian, php-fpm ailleurs ; nginx dans /usr/sbin ou /usr/bin) ;
 - un port déjà pris refuse le démarrage au lieu de laisser nginx échouer
   plus loin ;
-- l'état se lit dans les pid de PHP-FPM et de nginx ; un état inconnu
-  refuse le démarrage ;
+- l'état se lit dans les pid de PHP-FPM et de nginx : un seul des deux
+  vivant est « à moitié », un pid illisible est « inconnu », et un état
+  inconnu refuse le démarrage ;
 - la page de connexion confirme la version servie (« Login @ 24.0.1 »).
 Le port libre et le schéma d'état à quatre valeurs (lancée, arrêtée, à
 moitié, inconnue) se vérifient dans test_erp_common_process.
@@ -262,6 +263,21 @@ class TestStopStatus(Banc):
         code, sortie = self.lancer("status", "--instance", "erp")
         self.assertEqual(code, 0)
         self.assertIn(run_mod.t(run_mod.STATE_LABELS["stopped"]), sortie)
+
+    def test_half_running_is_not_reported_as_running(self):
+        self.lancer("start", "--instance", "erp")
+        fpm_pid = int((self.run_dir / "php-fpm.pid").read_text())
+        self.sys.vivants.discard(fpm_pid)
+        _code, sortie = self.lancer("status", "--instance", "erp")
+        self.assertIn(run_mod.t(run_mod.STATE_LABELS["half running"]), sortie)
+
+    def test_an_unreadable_pid_file_is_unknown_not_stopped(self):
+        # Un fichier pid présent mais illisible ne prouve rien : le dire
+        # « arrêtée » ferait relancer par-dessus un démon peut-être vivant.
+        (self.run_dir / "php-fpm.pid").write_text("pas un pid\n")
+        _code, sortie = self.lancer("status", "--instance", "erp")
+        self.assertIn(run_mod.t(run_mod.STATE_LABELS["unknown"]), sortie)
+        self.assertNotIn(run_mod.t(run_mod.STATE_LABELS["stopped"]), sortie)
 
     def test_fpm_reads_the_instance_ini_dir_only_when_it_has_one(self):
         # Xdebug de debug.py : un .ini propre à l'instance, ajouté au

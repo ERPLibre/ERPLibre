@@ -81,8 +81,8 @@ def registry_path(erp):
 
     Chemins, hôtes et URL d'une production sont des données de client, d'où
     private/, seul endroit du dépôt permis pour elles. Le registre décrit
-    une machine : une règle de private/.gitignore propre à chaque ERP
-    l'exclut du dépôt versionné.
+    une machine : l'ERP qui s'en sert doit avoir une règle de
+    private/.gitignore qui ignore ce chemin, sans quoi il serait commité.
     """
     return os.path.join("private", erp, "instances.json")
 

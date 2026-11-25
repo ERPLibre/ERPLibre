@@ -11,7 +11,8 @@ Ce qui se garde :
   install.lock absent, /install/ servi ou conf.php lisible de tous y sont
   des échecs ;
 - le code de production se juge contre l'archive du commit épinglé ;
-- un seul échec suffit pour que le code de sortie le dise.
+- un seul échec suffit pour que le code de sortie le dise ; des
+  avertissements seuls sortent en 0.
 La vérification de l'épinglage et l'affichage des résultats se vérifient
 dans test_erp_common_report.
 """
@@ -426,6 +427,12 @@ class TestCommande(Banc):
         )
         self.assertEqual(code, 1)
         self.assertIn("no answer", sortie)
+
+    def test_warnings_alone_are_success(self):
+        code, _s = self.lancer(
+            "--all", resultats=[doctor.Result("code", "warn", "1 file")]
+        )
+        self.assertEqual(code, 0)
 
     def test_an_unknown_instance_exits_2(self):
         code, _s = self.lancer("--instance", "nope")
