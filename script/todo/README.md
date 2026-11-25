@@ -44,7 +44,9 @@ boundary.
 | `qemu_manage.py` | lifecycle, disks, hardware, cleanup, addresses |
 | `qemu_access.py` | SSH, tunnels, consoles, Android emulator |
 | `proxmox_menu.py` | the same, on a REMOTE Proxmox VE host, plus its read-only performance audit (`script/proxmox/host_perf_audit.py`, sent over ssh) |
-| `ops_menu.py` | the Production menu for an instance run by systemd on this host: update its modules (`script/odoo/update_module.py`), back it up, check, test-restore or restore its backups (`script/database/odoo_backup.py`), install its scheduled backup (`script/systemd/install_backup_timer.py`), read its Odoo journal (`script/odoo/log_check.py`), list and resend its failed outgoing mails (`script/odoo/mail_retry.py`), check its health or a public URL (`script/odoo/health_check.py`), warm up its cache (`script/odoo/warmup_http.py --deep`), audit the performance of this host, read-only (`script/proxmox/host_perf_audit.py`) |
+| `ops_menu.py` | the Production menu for an instance run by systemd on this host: update its modules (`script/odoo/update_module.py`), back it up, check, test-restore or restore its backups (`script/database/odoo_backup.py`), install its scheduled backup (`script/systemd/install_backup_timer.py`), read its Odoo journal (`script/odoo/log_check.py`), list and resend its failed outgoing mails (`script/odoo/mail_retry.py`), check its health or a public URL (`script/odoo/health_check.py`), warm up its cache (`script/odoo/warmup_http.py --deep`), audit the performance of this host, read-only (`script/proxmox/host_perf_audit.py`). The root names the instance and its profile, then opens one submenu per subject; every command carries `--service` when the tool targets a unit and `--profile <absolute path>` |
+| `ops_settings.py` | the settings of the Production menu: the instance (remembered per checkout), the profile `private/production/<unit>.json` and the host profiles, the line-by-line editor, saving (check by this checkout's tools, retention preview, reinstall offer), KeePass secrets and their temporary 0600 file in a tmpfs, the command built from the profile, and `_ask_ui`, the "form or questions" choice shared with the QEMU deployment and the migration |
+| `ops_settings_form.py` | the Textual form of the profile, drawn from the catalogue of the tools' options, with no secret input |
 
 The two deployment forms — libvirt here, Proxmox over there — ask the same
 questions, so they share a foundation rather than each holding a copy:
@@ -61,4 +63,28 @@ resource offers, the name a VM would fall back to, and what a lock freezes.
 `test_todo_deploy_form_lib.py` fails if a form redefines a gesture the
 foundation already carries — that is what keeps the architecture from drifting
 back into two copies.
+
+## Production menu
+
+`TODO › Execute › Production` opens on a header that names the instance
+and its profile, then eight entries at most per screen:
+
+```text
+[1] Choose the instance          the systemd unit, remembered per checkout
+── Operate ──
+[2] Update                       update modules, simulate only
+[3] Backups                      now, status / test restore, restore
+[4] Journal and mail             Odoo journal / failed outgoing mail
+[5] Health and warm-up           this instance, public URLs, deep warm-up
+[6] Host audit                   audit of this machine, its settings
+── Configure ──
+[7] systemd timers               status and credentials, install or update, remove
+[8] Settings                     edit, show, check, KeePass secrets, delete /
+                                 host audit settings
+```
+
+`Production settings interface` in `TODO › Configuration` ([7], under the
+Production section) chooses how the settings are edited: ask each time,
+the Textual form, or line-by-line questions. Profile format and rules:
+[../../doc/PRODUCTION.md](../../doc/PRODUCTION.md).
 

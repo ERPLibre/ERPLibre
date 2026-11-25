@@ -31,6 +31,13 @@ DEFAULTS = {
     "qemu_deploy_progress": "cli",
     # Interface de la migration Odoo : "ask" / "tui" / "cli".
     "migration_ui": "ask",
+    # Interface des réglages de production (profil d'une instance) :
+    # "ask" / "tui" / "cli", comme le déploiement QEMU.
+    "ops_settings_ui": "ask",
+    # Instance de production visée, PAR CHECKOUT : {"<racine du checkout>":
+    # "<unité systemd>"}. Ce fichier est commun à tous les checkouts d'un
+    # compte, d'où la racine en clé.
+    "ops_service": {},
     # Balayage de découverte des serveurs LLM : connexions en vol. Sert
     # seulement quand il est INFÉRIEUR au nombre de sondes, le balayage
     # plafonnant à celui-ci — un /24 sur onze ports en compte 2 794. Monter

@@ -3617,15 +3617,20 @@ class ProxmoxMenuMixin:
         """Audit de performance en lecture seule, sur l'hôte retenu ou sur
         ce poste.
 
-        À distance, `script/proxmox/host_perf_audit.py` part sur le stdin
-        de `ssh -T` et s'exécute par `python3 -I -` : rien n'est copié sur
-        l'hôte, aucun `__pycache__` n'y est écrit, et `-I` empêche un
-        module du dossier courant distant de masquer la bibliothèque
-        standard. La durée, la saisie, le lancement et les messages sont
-        ceux du menu Production (`_ops_perf_*`)."""
-        secondes = self._ops_perf_duree()
-        if secondes is None:
-            return
+        La cible se choisit d'abord : son profil d'hôte
+        (`private/production/host/pve-<cible>.json`, ou `local.json` pour
+        ce poste) donne ensuite le défaut de la durée et les autres
+        réglages de l'audit. À distance, `script/proxmox/host_perf_audit.py`
+        part sur le stdin de `ssh -T` et s'exécute par `python3 -I -` :
+        rien n'est copié sur l'hôte, aucun `__pycache__` n'y est écrit, et
+        `-I` empêche un module du dossier courant distant de masquer la
+        bibliothèque standard. L'hôte n'a pas le profil : ses valeurs sont
+        développées en options explicites, validées ici. La saisie, le
+        lancement et les messages sont ceux du menu Production
+        (`_ops_perf_*`)."""
+        from script.lib_ops import profil
+        from script.todo import ops_settings
+
         hote = self._pve_host(ask=False)
         print(f"\n{t('Where should the audit run?')}")
         print(
@@ -3633,21 +3638,32 @@ class ProxmoxMenuMixin:
         )
         print(f"  [2] {t('On this machine')}")
         choix = input(t("Choice: ")).strip()
-        if choix == "1" and hote:
-            self._ops_perf_lancer(
-                self._pve_perf_argv(hote, secondes),
-                secondes,
-                runner=runner,
-                distant=True,
-            )
-        elif choix == "2":
-            self._ops_perf_local(secondes, runner=runner)
-        else:
+        if choix == "2":
+            self._ops_perf_audit(runner=runner)
+            return
+        if choix != "1" or not hote:
             print(t("Cancelled."))
+            return
+        doc = self._ops_profil_hote(ops_settings.slug_hote(hote["target"]))
+        defaut = (doc.get(ops_settings.GROUPE_HOTE) or {}).get("duration")
+        secondes, _saisie = self._ops_perf_duree(defaut)
+        if secondes is None:
+            return
+        try:
+            argv_audit = ops_settings.argv_audit(doc, duree=secondes)
+        except profil.ErreurProfil as err:
+            print(f"  ✗ {err.message(t)}")
+            return
+        self._ops_perf_lancer(
+            self._pve_perf_argv(hote, argv_audit),
+            secondes,
+            runner=runner,
+            distant=True,
+        )
 
     @staticmethod
-    def _pve_perf_argv(host, secondes):
-        """`ssh -T … python3 -I - --duration N` vers l'hôte retenu.
+    def _pve_perf_argv(host, argv_audit):
+        """`ssh -T … python3 -I - --duration N …` vers l'hôte retenu.
 
         `-T` : stdin porte le script, pas de terminal. ServerAliveInterval
         détecte une connexion morte pendant une longue mesure. Les deux
@@ -3655,11 +3671,14 @@ class ProxmoxMenuMixin:
         ssh lit ses options dans n'importe quel ordre avant la cible, et
         l'argv ne dépend d'aucune option précise de ssh_argv. Avec sudo,
         `sudo -n sh -c '…'` : sans `-n`, sudo lirait son mot de passe sur
-        stdin, c'est-à-dire dans le script. Seul le nombre de secondes,
-        déjà validé, entre dans la commande distante."""
+        stdin, c'est-à-dire dans le script. `argv_audit` ne porte que des
+        valeurs déjà validées (`ops_settings.argv_audit`), et chacune est
+        citée pour le shell distant."""
         from script.proxmox import proxmox_deploy as pve
 
-        distante = "python3 -I - --duration %d" % int(secondes)
+        distante = "python3 -I -"
+        if argv_audit:
+            distante += " " + " ".join(shlex.quote(a) for a in argv_audit)
         if host.get("sudo"):
             distante = "sudo -n sh -c " + shlex.quote(distante)
         argv = pve.ssh_argv(host, distante)

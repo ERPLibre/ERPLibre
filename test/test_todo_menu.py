@@ -403,6 +403,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         noms = {f.name for f in _mixin_files(TODO_DIR / "todo.py")}
         self.assertIn("qemu_menu.py", noms)
         self.assertIn("proxmox_menu.py", noms)
+        self.assertIn("ops_settings.py", noms)
 
     def test_the_qemu_column_carries_its_commands(self):
         noeud = self._noeud("QEMU/KVM")
@@ -736,39 +737,175 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestOpsMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Production, dont une entrée arrête un service.
-
-    Chaque entrée a sa méthode : la mise à jour réelle et la simulation
-    seule se distinguent par leur nom, si bien qu'un décalage du dispatch
-    — la vraie mise à jour sous le libellé de la simulation — change la
-    méthode atteinte et fait échouer la table. La table ne lit que le nom
-    de la méthode, pas ses arguments ; test_ops_menu.py rejoue en plus le
-    choix au clavier.
-    """
+    """La racine du menu Production : l'instance, puis un sous-menu par
+    thème. test_ops_menu.py rejoue en plus chaque chemin au clavier."""
 
     SOURCE = TODO_DIR / "ops_menu.py"
     ENTRY = "def prompt_execute_production(self):"
-    END = "def _ops_update_arguments(self):"
-    MINIMUM = 6
+    END = "def _ops_menu_update(self):"
+    MINIMUM = 7
+
+    EXPECTED = {
+        "Choose the instance": "_ops_choisir_instance",
+        "Update - modules of the instance": "_ops_menu_update",
+        "Backups - now, status, restore": "_ops_menu_backups",
+        "Journal and mail": "_ops_menu_journal_mail",
+        "Health and warm-up": "_ops_menu_health",
+        "Host audit - performance": "_ops_menu_host_audit",
+        "systemd timers": "_ops_menu_timers",
+        "Settings - every option": "_ops_menu_settings",
+    }
+
+
+class TestOpsUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
+    """La mise à jour réelle et la simulation seule se distinguent par le
+    nom de leur méthode : un décalage du dispatch — la vraie mise à jour
+    sous le libellé de la simulation — fait échouer la table."""
+
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def _ops_menu_update(self):"
+    END = "def _ops_menu_backups(self):"
+    MINIMUM = 1
 
     EXPECTED = {
         "Update modules": "_ops_update_modules",
         "Simulate only": "_ops_simulate_modules",
+    }
+
+
+class TestOpsBackupsMenuNumbering(MenuCoherence, unittest.TestCase):
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def _ops_menu_backups(self):"
+    END = "def _ops_menu_journal_mail(self):"
+    MINIMUM = 3
+
+    EXPECTED = {
         "Verified backup now": "_ops_backup_now",
         "Backup status": "_ops_backup_status",
         "Test restore of the latest backup": "_ops_test_restore",
         "Restore a backup into a new database": "_ops_restore_new_database",
-        "Install / remove the scheduled backup": "_ops_backup_timer",
+    }
+
+
+class TestOpsJournalMailMenuNumbering(MenuCoherence, unittest.TestCase):
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def _ops_menu_journal_mail(self):"
+    END = "def _ops_menu_health(self):"
+    MINIMUM = 4
+
+    EXPECTED = {
         "Odoo journal: errors since the last check": "_ops_log_since_last",
         "Odoo journal: errors of the last N hours": "_ops_log_last_hours",
         "Odoo journal: hourly report": "_ops_log_hourly",
         "Failed outgoing mail: list": "_ops_mail_list",
         "Failed outgoing mail: retry": "_ops_mail_retry",
+    }
+
+
+class TestOpsHealthMenuNumbering(MenuCoherence, unittest.TestCase):
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def _ops_menu_health(self):"
+    END = "def _ops_menu_host_audit(self):"
+    MINIMUM = 2
+
+    EXPECTED = {
         "Health check of this instance": "_ops_health_local",
         "Health check of a public URL": "_ops_health_url",
         "Warm up the cache (deep)": "_ops_warmup_deep",
-        "Host performance audit of this machine": "_ops_perf_audit",
     }
+
+
+class TestOpsHostAuditMenuNumbering(MenuCoherence, unittest.TestCase):
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def _ops_menu_host_audit(self):"
+    END = "def _ops_menu_timers(self):"
+    MINIMUM = 1
+
+    EXPECTED = {
+        "Host performance audit of this machine": "_ops_perf_audit",
+        "Audit settings of this machine": "_ops_settings_host_local",
+    }
+
+
+class TestOpsTimersMenuNumbering(MenuCoherence, unittest.TestCase):
+    """L'installation et le retrait de la minuterie sont deux entrées :
+    un décalage ne peut pas retirer ce qu'on voulait installer sans que la
+    table échoue."""
+
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def _ops_menu_timers(self):"
+    END = "def _ops_menu_settings(self):"
+    MINIMUM = 2
+
+    EXPECTED = {
+        "Timers of this instance": "_ops_timers_status",
+        "Install or update the scheduled backup": "_ops_backup_timer_install",
+        "Remove the scheduled backup": "_ops_backup_timer_remove",
+    }
+
+
+class TestOpsSettingsMenuNumbering(MenuCoherence, unittest.TestCase):
+    """« Supprimer le profil » est une entrée parmi d'autres : la table
+    garde qu'aucun décalage n'y envoie celui qui voulait l'afficher."""
+
+    SOURCE = TODO_DIR / "ops_menu.py"
+    ENTRY = "def _ops_menu_settings(self):"
+    END = "# -- Lancements"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "Edit the settings": "_ops_settings_edit",
+        "Show the profile": "_ops_settings_show",
+        "Check the profile": "_ops_settings_check",
+        "Secrets in KeePass": "_ops_settings_secrets",
+        "Delete the profile": "_ops_settings_delete",
+        "Host audit settings": "_ops_settings_host",
+    }
+
+
+class TestOpsMenusCourts(unittest.TestCase):
+    """Chaque écran du menu Production compte huit entrées au plus : les
+    sections regroupent, elles ne consomment pas de numéro, et chaque
+    sous-menu laisse son étiquette dans le fil d'Ariane."""
+
+    MENUS = (
+        "prompt_execute_production",
+        "_ops_menu_update",
+        "_ops_menu_backups",
+        "_ops_menu_journal_mail",
+        "_ops_menu_health",
+        "_ops_menu_host_audit",
+        "_ops_menu_timers",
+        "_ops_menu_settings",
+    )
+
+    def test_huit_entrees_au_plus(self):
+        arbre = ast.parse((TODO_DIR / "ops_menu.py").read_text("utf-8"))
+        corps = {
+            n.name: n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef)
+        }
+        for nom in self.MENUS:
+            with self.subTest(menu=nom):
+                entrees = [
+                    c
+                    for c in ast.walk(corps[nom])
+                    if isinstance(c, ast.Constant)
+                    and c.value == "prompt_description"
+                ]
+                self.assertGreater(len(entrees), 0)
+                self.assertLessEqual(len(entrees), 8)
+
+    def test_chaque_sous_menu_a_son_etiquette(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        for nom in self.MENUS:
+            with self.subTest(menu=nom):
+                self.assertIn(nom, CLASSE._MENU_LABELS)
 
 
 class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
@@ -2183,6 +2320,50 @@ class TestPremiereEntreeJoignable(unittest.TestCase):
         corps = self._repli("prompt_execute_code", "_GIT_HOOKS = (")
         self.assertIn("int_cmd = int(status)\n", corps)
         self.assertNotIn("int_cmd = int(status) - 1", corps)
+
+
+class TestConfigurationProduction(unittest.TestCase):
+    """La préférence des réglages de production arrive en [7], sous sa
+    section : Fork (5) et Reset (6) gardent leur numéro."""
+
+    def corps(self):
+        source = TODO_PY.read_text(encoding="utf-8")
+        debut = source.index("    def prompt_configuration(self):")
+        return source[debut : source.index("\n    def ", debut + 1)]
+
+    def test_les_numeros(self):
+        corps = self.corps()
+        attendus = {
+            "5": '"make todo"',
+            "6": "todo_prefs.reset()",
+            "7": 'self._pref_edit("ops_settings_ui")',
+        }
+        for numero, appel in attendus.items():
+            with self.subTest(numero=numero):
+                debut = corps.index(f'elif status == "{numero}":')
+                bornes = [
+                    i
+                    for i in (
+                        corps.find("elif status", debut + 1),
+                        corps.find("else:", debut),
+                    )
+                    if i > 0
+                ]
+                self.assertIn(appel, corps[debut : min(bornes)])
+        self.assertLess(
+            corps.index('t("Reset all preferences")'),
+            corps.index('t("Production")'),
+        )
+
+    def test_la_preference_existe(self):
+        from script.todo import todo_prefs
+        from script.todo.todo import TODO
+
+        self.assertEqual(todo_prefs.DEFAULTS["ops_settings_ui"], "ask")
+        self.assertEqual(
+            [v for v, _l in TODO._PREF_CHOICES["ops_settings_ui"][1]],
+            ["ask", "tui", "cli"],
+        )
 
 
 class TestMenuLabels(unittest.TestCase):

@@ -1512,7 +1512,9 @@ class TestNothingOnThatScreenCanHang(Base):
         import inspect
 
         source = inspect.getsource(TodoUpgrade.ask_ui)
-        self.assertIn("auto_ask.ask(", source)
+        # La question commune (`ops_settings.ask_ui`) lit la réponse par la
+        # fonction qu'on lui passe : c'est elle qui doit être temporisée.
+        self.assertIn("demander=auto_ask.ask", source)
         # L'APPEL, pas le mot : le commentaire du correctif nomme lui-même
         # ce qu'il remplace, et le chercher à l'aveugle se déclenche sur la
         # prose. Deuxième fois que ce piège se referme sur moi.

@@ -121,8 +121,11 @@ Après une relance vérifiée, l'outil vérifie la santé de l'instance locale
 la mise à jour), et `--warmup-deep` préchauffe d'abord les pages publiques
 et leurs paquets d'assets.
 
-Le même geste est accessible depuis `make todo` : `Exécuter > Production`.
-Options, ordre de détection et codes de sortie :
+`--warmup-deep` reste anonyme, aux réglages par défaut du préchauffage :
+le groupe `warmup` du profil (login, clé d'API, pages) ne s'y applique pas.
+
+Le même geste est accessible depuis `make todo` : `TODO › Exécuter ›
+Production › Mise à jour`. Options, ordre de détection et codes de sortie :
 [script/odoo/README.fr.md](../script/odoo/README.fr.md).
 
 ### Sauvegardes vérifiées
@@ -164,8 +167,72 @@ sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
 compte ; le côté distant n'a pas de rétention et grossit). Surveiller
 `--status` : il sort en code 1 quand le dernier succès date de plus de
 `--max-age` heures (26). Tout cela est aussi dans `make todo` :
-`Exécuter > Production`. Détails, règles de rétention et codes de sortie :
+`TODO › Exécuter › Production › Sauvegardes` et `› Minuteries systemd`.
+Détails, règles de rétention et codes de sortie :
 [script/database/README.fr.md](../script/database/README.fr.md).
+
+### Réglages par instance (profil)
+
+Chaque outil de production lit les réglages durables d'une instance dans
+un seul profil JSON, `private/production/<unité>.json` du checkout de
+l'outil (`--profile FICHIER` en nomme un autre). Il porte, par outil, les
+valeurs que sa ligne de commande recevrait : `instance` (la base,
+partagée), `update_module`, `backup`, `backup_timer`, `log_check`,
+`mail_retry`, `health_check` et `warmup`. L'audit de performance a un
+profil par hôte, `private/production/host/local.json` ou
+`host/pve-<cible>.json`. Le dossier n'est pas versionné
+(`private/.gitignore`), et le fichier ne porte aucun secret : un secret
+est une référence KeePass ou un chemin absolu.
+
+- La ligne de commande gagne toujours : `--profile-unset NOM` retire une
+  valeur, `--no-profile` ignore le fichier, `--profile-required` refuse de
+  tourner sans lui. `--no-profile` rend l'abréviation `--no` ambiguë :
+  écrire les options en entier.
+- Les chemins sont absolus ; la rétention garde au moins une sauvegarde
+  quotidienne et deux en tout, `--max-age` reste d'au plus 168 h ; un
+  motif de journal qui trouve n'importe quelle ligne d'erreur est refusé.
+- Sous root, un profil qui est un lien symbolique, inscriptible par son
+  groupe ou par tous, ou qui appartient à un autre compte, est refusé
+  (code 2).
+- Une valeur en conflit avec la ligne de commande (`--namespace` avec
+  `--file`) est écartée avec un ATTN, jamais une erreur.
+
+`TODO › Exécuter › Production › Réglages` l'édite, en formulaire Textual
+ou ligne par ligne (`Interface des réglages de production` dans
+`TODO › Configuration`), montre chaque valeur avec son défaut et son
+origine, le vérifie avec les outils de ce checkout avant d'enregistrer,
+annonce combien de sauvegardes un changement de rétention supprimerait,
+et propose de réinstaller une minuterie dont l'unité cite le profil quand
+une valeur fixée à l'installation change. Un enregistrement refusé revient
+à l'édition sans rien perdre ; retirer un secret ne supprime son entrée
+KeePass que sur demande, une fois le profil écrit.
+
+Chaque commande du menu porte `--service` quand l'outil vise une unité, et
+`--profile <chemin absolu>` : l'outil applique lui-même le profil, et la
+simulation liste les valeurs qui en viennent. Avant un geste qui écrit, la
+question nomme l'instance, la base et les valeurs du profil qui décident
+de ce qui est supprimé, copié ou ignoré ; l'exécution réelle porte
+`--profile-sha256`, refusé quand le profil a changé depuis la simulation.
+
+```text
+TODO › Exécuter › Production
+🏭 Instance : <unité> · profil : private/production/<unité>.json (n valeur(s))
+[1] Choisir l'instance
+── Exploiter ──
+[2] Mise à jour             mettre à jour, simuler seulement
+[3] Sauvegardes             maintenant, état, restauration d'essai,
+                            restauration dans une nouvelle base
+[4] Journal et courriels    erreurs d'Odoo (depuis la dernière lecture,
+                            dernières heures, par heure), courriels en échec
+                            (liste, renvoi)
+[5] Santé et préchauffage   cette instance, URL publiques, préchauffage
+[6] Audit de l'hôte         audit de ce poste, ses réglages
+── Configurer ──
+[7] Minuteries systemd      état et credentials, installer ou mettre à jour,
+                            retirer
+[8] Réglages                modifier, afficher, vérifier, secrets KeePass,
+                            supprimer, réglages de l'audit de l'hôte
+```
 
 ### Secrets et minuteries
 
@@ -173,7 +240,8 @@ Une unité planifiée reçoit ses secrets en credentials systemd, jamais sur
 une ligne de commande ni dans l'environnement. Le déployeur
 (`--credential NOM=CHEMIN` d'`install_backup_timer.py`) lit le fichier en
 root et le range selon la version de systemd, vérifiée avant toute
-écriture :
+écriture. Depuis le menu, todo vérifie lui-même cette version, sans sudo,
+avant de demander un secret :
 
 - 250 et plus, avec `systemd-creds` : chiffré par `systemd-creds encrypt
   --with-key=host` (le secret sur son entrée standard) dans
@@ -195,6 +263,17 @@ exception à « la ligne de commande gagne ». `warmup_http.py --deep` prend
 ainsi sa clé d'API du credential `warmup.api_key`, dit d'où vient la clé,
 et garde alors aussi le `login` du profil, même quand le profil ne porte
 qu'une référence KeePass.
+
+Un secret du profil vit dans KeePass, sous
+`ERPLibre/Production/<unité>/<nom>` : `TODO › Exécuter › Production ›
+Réglages › Secrets dans KeePass` le demande par une saisie masquée, jamais
+dans le formulaire Textual. Pour un lancement depuis le menu, todo
+l'écrit dans un fichier 0600 d'un tmpfs (`$XDG_RUNTIME_DIR`, sinon
+`/dev/shm` ; sans l'un ni l'autre, le secret est laissé de côté) et ne
+passe que son chemin. Le fichier est retiré à la fin du geste, Ctrl-C et
+reprise sous sudo compris, et les restes d'un todo qui ne tourne plus sont
+purgés à l'ouverture du menu Production. Sans fichier KeePass, todo demande s'il faut continuer sans le
+préchauffage authentifié, et l'outil écarte le `login`.
 
 La sauvegarde planifiée relit le profil de l'instance à chaque passage
 (« mode profil » : `--profile <chemin> --profile-required` dans
@@ -260,8 +339,8 @@ les plus anciens, des ids choisis, aucun — le défaut). Sans terminal,
 `--resend all | oldest N | ids LISTE` exige `--yes`. Codes de sortie : 0
 aucun échec ou tous les courriels choisis remis en file, 1 des échecs
 restent ou une partie de la sélection est ignorée, 2 refusé ou impossible.
-Les deux outils sont dans `make todo` : `Exécuter > Production`. Détails et
-matrice Odoo 12 à 18 :
+Les deux outils sont dans `make todo` : `TODO › Exécuter › Production ›
+Journal et courriels`. Détails et matrice Odoo 12 à 18 :
 [script/odoo/README.fr.md](../script/odoo/README.fr.md).
 
 ### Santé et préchauffage du cache
@@ -299,8 +378,9 @@ plusieurs workers. Avec `--login` et `--api-key-file` (une clé d'API Odoo
 lue dans un fichier, jamais sur la ligne de commande), il charge aussi
 menus et vues par des appels RPC en lecture seule. Il affiche un bilan et
 sort en 0, ou en 1 avec `--strict` quand une requête a échoué. Les trois
-gestes sont dans `make todo` : `Exécuter > Production`. Détails et matrice
-Odoo 12 à 18 : [script/odoo/README.fr.md](../script/odoo/README.fr.md).
+gestes sont dans `make todo` : `TODO › Exécuter › Production › Santé et
+préchauffage`. Détails et matrice Odoo 12 à 18 :
+[script/odoo/README.fr.md](../script/odoo/README.fr.md).
 
 ### Audit de performance de l'hôte
 
@@ -309,8 +389,12 @@ limite les performances de l'hôte — processeur, mémoire, disques, réseau,
 ZFS et, sous Proxmox VE, chaque invité — sur une durée choisie, et affiche
 un verdict par ressource, la réponse à « des disques SSD sont-ils
 justifiés ? » et les réglages à envisager sous forme de commandes, jamais
-exécutées. Il est dans `make todo` : `Exécuter > Production` pour ce poste,
-et le menu Proxmox VE pour l'hyperviseur retenu. Détails :
+exécutées. Il est dans `make todo` : `TODO › Exécuter › Production › Audit
+de l'hôte` pour ce poste, et le menu Proxmox VE pour l'hyperviseur retenu.
+La cible se choisit d'abord, puis son profil d'hôte
+(`private/production/host/local.json` ou `host/pve-<cible>.json`) donne la
+durée par défaut et les autres réglages ; un hôte distant n'a pas le
+fichier, ses valeurs partent donc en options validées. Détails :
 [script/proxmox/README.fr.md](../script/proxmox/README.fr.md).
 
 # Postgresql

@@ -528,26 +528,18 @@ class TodoUpgrade:
         « stats », which is never a stored default: it does nothing, so
         landing there every time would only be in the way.
         """
-        try:
-            from script.todo import todo_prefs
+        from script.todo.ops_settings import ask_ui
 
-            pref = todo_prefs.get("migration_ui")
-        except Exception:
-            pref = "ask"
-        if pref in ("tui", "cli"):
-            return pref
-        print(f"\n{t('Interface:')}")
-        print(f"  [1] {t('TUI form')} *")
-        print(f"  [2] {t('Classic questions (line by line)')}")
-        print(f"  [3] {t('Migration statistics (read-only)')}")
-        print(f"  [0] {t('Cancel')}")
-        print(f"  {t('(change the default in TODO > Configuration)')}")
         # `auto_ask` et non `input` : c'est la PREMIÈRE question posée
         # après l'activation de l'auto-exécution, et un input() nu y
         # arrêtait la migration avant même qu'elle ne commence. Méthode
         # statique, d'où l'appel direct plutôt que `self.ask`.
-        answer = auto_ask.ask(t("Choice (0-3, default 1): ")).strip()
-        return {"0": None, "2": "cli", "3": "stats"}.get(answer, "tui")
+        return ask_ui(
+            "migration_ui",
+            extras=(("stats", t("Migration statistics (read-only)")),),
+            annuler=True,
+            demander=auto_ask.ask,
+        )
 
     @staticmethod
     def database_from_command(cmd):

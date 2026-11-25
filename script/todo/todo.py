@@ -182,6 +182,7 @@ from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
 from script.todo.ops_menu import OpsMenuMixin
+from script.todo.ops_settings import OpsSettingsMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.python_menu import PythonMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -296,6 +297,7 @@ class TODO(
     StreamDeckMenuMixin,
     SystemMenuMixin,
     OpsMenuMixin,
+    OpsSettingsMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -1404,6 +1406,17 @@ class TODO(
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_execute_production": "Production",
+        "_ops_menu_update": "Update",
+        "_ops_menu_backups": "Backups",
+        "_ops_menu_journal_mail": "Journal and mail",
+        "_ops_menu_health": "Health and warm-up",
+        "_ops_menu_host_audit": "Host audit",
+        "_ops_menu_timers": "systemd timers",
+        "_ops_menu_settings": "Settings",
+        "_ops_reglages_groupes": "Edit settings",
+        "_ops_reglages_champs": "Fields",
+        "_ops_reglage_liste": "List",
+        "_ops_reglage_secret": "Secret",
         "prompt_configuration": "Configuration",
     }
 
@@ -1508,6 +1521,14 @@ class TODO(
         ),
         "migration_ui": (
             "Odoo migration interface",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
+        "ops_settings_ui": (
+            "Production settings interface",
             (
                 ("ask", "Ask every time"),
                 ("tui", "TUI form"),
@@ -1723,6 +1744,13 @@ class TODO(
                 {"prompt_description": t("Fork - Open TODO in a new tab")},
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
+                {"section": t("Production")},
+                {
+                    "prompt_description": (
+                        f"{t('Production settings interface')}  "
+                        f"({self._pref_label('ops_settings_ui')})"
+                    )
+                },
             ]
             status = click.prompt(self.fill_help_info(choices))
             print()
@@ -1743,6 +1771,8 @@ class TODO(
             elif status == "6":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
+            elif status == "7":
+                self._pref_edit("ops_settings_ui")
             else:
                 print(t("Command not found !"))
 

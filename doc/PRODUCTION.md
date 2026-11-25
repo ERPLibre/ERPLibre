@@ -121,8 +121,12 @@ After a verified restart, the tool checks the health of the local instance
 (see below; findings are warnings, never a failure of the update), and
 `--warmup-deep` first warms up the public pages and their asset bundles.
 
-The same is reachable from `make todo`: `Execute > Production`. Options,
-detection order and exit codes: [script/odoo/README.md](../script/odoo/README.md).
+`--warmup-deep` stays anonymous with the default warm-up settings: the
+profile group `warmup` (login, API key, pages) does not apply to it.
+
+The same is reachable from `make todo`: `TODO › Execute › Production ›
+Update`. Options, detection order and exit codes:
+[script/odoo/README.md](../script/odoo/README.md).
 
 ### Verified backups
 
@@ -161,9 +165,68 @@ sudo ./script/systemd/install_backup_timer.py --db DATABASE --uninstall
 `--copy-to` adds an off-site copy (rsync over ssh with the account's key;
 the remote side has no retention and grows). Monitor `--status`: it exits
 with code 1 when the last success is older than `--max-age` hours (26).
-All of it is also in `make todo`: `Execute > Production`. Details,
+All of it is also in `make todo`: `TODO › Execute › Production › Backups`
+and `› systemd timers`. Details,
 retention rules and exit codes:
 [script/database/README.md](../script/database/README.md).
+
+### Per-instance settings (profile)
+
+Every production tool reads the lasting settings of an instance from one
+JSON profile, `private/production/<unit>.json` of the tool's checkout
+(`--profile FILE` names another one). It holds, per tool, the values its
+command line would receive: `instance` (the database, shared),
+`update_module`, `backup`, `backup_timer`, `log_check`, `mail_retry`,
+`health_check` and `warmup`. The performance audit has a profile per
+host, `private/production/host/local.json` or `host/pve-<target>.json`.
+The directory is not versioned (`private/.gitignore`), and the file holds
+no secret: a secret is a KeePass reference or an absolute path.
+
+- The command line always wins: `--profile-unset NAME` drops one value,
+  `--no-profile` ignores the file, `--profile-required` refuses to run
+  without it. `--no-profile` makes the abbreviation `--no` ambiguous:
+  spell options in full.
+- Paths are absolute; the retention keeps at least one daily backup and
+  two in all, `--max-age` stays at most 168 h; a journal pattern that
+  matches any error line is refused.
+- Under root, a profile that is a symbolic link, writable by its group or
+  by all, or owned by another account, is refused (code 2).
+- A value in conflict with the command line (`--namespace` with `--file`)
+  is set aside with an ATTN, never an error.
+
+`TODO › Execute › Production › Settings` edits it, as a Textual form or
+line by line (`Production settings interface` in `TODO › Configuration`),
+shows each value with its default and origin, checks it with this
+checkout's tools before saving, previews how many backups a retention
+change would delete, and offers to reinstall a timer whose unit uses the
+profile when a value fixed at installation changes. A refused save returns
+to the editor with every change kept; removing a secret deletes its
+KeePass entry only when asked, once the profile is written.
+
+Each command of the menu carries `--service` when the tool targets a unit
+and `--profile <absolute path>`: the tool applies the profile itself, and
+the simulation lists the values that come from it. Before a gesture that
+writes, the question names the instance, the database and the profile
+values that decide what is deleted, copied or ignored; the real run
+carries `--profile-sha256`, refused when the profile changed since the
+simulation.
+
+```text
+TODO › Execute › Production
+🏭 Instance: <unit> · profile: private/production/<unit>.json (n value(s))
+[1] Choose the instance
+── Operate ──
+[2] Update              update, simulate only
+[3] Backups             now, status, test restore, restore into a new database
+[4] Journal and mail    Odoo errors (since the last check, last hours, per hour),
+                        failed outgoing mail (list, retry)
+[5] Health and warm-up  this instance, public URLs, deep warm-up
+[6] Host audit          audit of this machine, its settings
+── Configure ──
+[7] systemd timers      status and credentials, install or update, remove
+[8] Settings            edit, show, check, KeePass secrets, delete,
+                        host audit settings
+```
 
 ### Secrets and timers
 
@@ -171,7 +234,8 @@ A scheduled unit receives its secrets as systemd credentials, never on a
 command line nor in the environment. The deployer (`--credential
 NAME=PATH` of `install_backup_timer.py`) reads the file as root and
 stores it according to the systemd version, checked before anything is
-written:
+written. From the menu, todo checks this version itself, without sudo,
+before asking for a secret:
 
 - 250 and later, with `systemd-creds`: encrypted by `systemd-creds encrypt
   --with-key=host` (the secret on its standard input) into
@@ -192,6 +256,17 @@ exception to "the command line wins". `warmup_http.py --deep` takes its
 API key from the `warmup.api_key` credential this way, says where the key
 comes from, and then also keeps the profile's `login`, even when the
 profile only holds a KeePass reference.
+
+A secret of the profile lives in KeePass, under
+`ERPLibre/Production/<unit>/<name>`: `TODO › Execute › Production ›
+Settings › Secrets in KeePass` asks for it with a hidden prompt, never in
+the Textual form. For a run from the menu, todo writes it to a 0600 file
+of a tmpfs (`$XDG_RUNTIME_DIR`, else `/dev/shm`; without either, the
+secret is left out) and passes only its path. The file is removed when the
+gesture ends, Ctrl-C and the retry under sudo included, and the leftovers
+of a todo that no longer runs are purged when the Production menu opens. Without a KeePass file, todo asks
+whether to continue without the authenticated warm-up, and the tool sets
+the `login` aside.
 
 The scheduled backup reads the instance profile at each run ("profile
 mode": `--profile <path> --profile-required` in `ExecStart`) when its
@@ -254,7 +329,8 @@ the oldest batch, chosen ids, none — the default). Without a terminal,
 `--resend all | oldest N | ids LIST` needs `--yes`. Exit codes: 0 nothing
 failed or every chosen mail requeued, 1 failures left or part of the
 selection skipped, 2 refused or impossible. Both tools are in `make todo`:
-`Execute > Production`. Details and the Odoo 12 to 18 matrix:
+`TODO › Execute › Production › Journal and mail`. Details and the Odoo 12
+to 18 matrix:
 [script/odoo/README.md](../script/odoo/README.md).
 
 ### Health check and cache warm-up
@@ -291,8 +367,9 @@ reference, each `--repeat` (4) times at once to reach several workers. With
 `--login` and `--api-key-file` (an Odoo API key read from a file, never on
 the command line), it also loads menus and views through read-only RPC
 calls. It prints a summary and exits 0, or 1 with `--strict` when a request
-failed. All three are in `make todo`: `Execute > Production`. Details and
-the Odoo 12 to 18 matrix: [script/odoo/README.md](../script/odoo/README.md).
+failed. All three are in `make todo`: `TODO › Execute › Production ›
+Health and warm-up`. Details and the Odoo 12 to 18 matrix:
+[script/odoo/README.md](../script/odoo/README.md).
 
 ### Host performance audit
 
@@ -301,8 +378,12 @@ performance of the host — processor, memory, disks, network, ZFS and, on
 Proxmox VE, each guest — over a chosen duration, and prints a verdict per
 resource, the answer to "are SSD disks justified?" and the settings to
 consider as commands, never run. It is in `make todo`:
-`Execute > Production` for this host, and the Proxmox VE menu for the
-remembered hypervisor. Details:
+`TODO › Execute › Production › Host audit` for this host, and the Proxmox
+VE menu for the remembered hypervisor. The target is chosen first, then
+its host profile (`private/production/host/local.json` or
+`host/pve-<target>.json`) gives the default duration and the other
+settings; a remote host does not have the file, so its values are sent as
+validated options. Details:
 [script/proxmox/README.md](../script/proxmox/README.md).
 
 # Postgresql

@@ -1896,20 +1896,6 @@ class QemuDeployMixin:
             f"\n   {t('Without access to that hypervisor, nothing to do here.')}"
         )
 
-    def _qemu_ask_ui(self):
-        """Interface du déploiement : formulaire TUI ou invites en ligne.
-        La préférence peut trancher d'avance (menu Configuration) ; « ask »
-        pose la question."""
-        pref = todo_prefs.get("qemu_deploy_ui")
-        if pref in ("tui", "cli"):
-            return pref
-        print(f"\n{t('Interface:')}")
-        print(f"  [1] {t('TUI form')} *")
-        print(f"  [2] {t('Classic questions (line by line)')}")
-        print(f"  {t('(change the default in TODO > Configuration)')}")
-        sel = input(t("Choice (1-2, default 1): ")).strip()
-        return "cli" if sel == "2" else "tui"
-
     def _qemu_form_context(self, mod):
         """Données préchargées pour le formulaire TUI.
 
@@ -2062,7 +2048,7 @@ class QemuDeployMixin:
         self._qemu_check_libvirt_group()
         self._qemu_check_kvm()
 
-        if self._qemu_ask_ui() == "tui":
+        if self._ask_ui("qemu_deploy_ui") == "tui":
             spec = self._qemu_deploy_form(mod, dry_run)
             if spec is None:
                 return

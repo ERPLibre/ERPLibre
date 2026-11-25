@@ -45,7 +45,9 @@ frontière.
 | `qemu_manage.py` | cycle de vie, disques, matériel, nettoyage, adresses |
 | `qemu_access.py` | SSH, tunnels, consoles, émulateur Android |
 | `proxmox_menu.py` | la même chose, sur un hôte Proxmox VE DISTANT, plus son audit de performance en lecture seule (`script/proxmox/host_perf_audit.py`, envoyé par ssh) |
-| `ops_menu.py` | le menu Production d'une instance servie par systemd sur ce poste : mettre à jour ses modules (`script/odoo/update_module.py`), la sauvegarder, vérifier, essayer ou restaurer ses sauvegardes (`script/database/odoo_backup.py`), installer sa sauvegarde planifiée (`script/systemd/install_backup_timer.py`), lire son journal Odoo (`script/odoo/log_check.py`), lister et renvoyer ses courriels sortants en échec (`script/odoo/mail_retry.py`), vérifier sa santé ou celle d'une URL publique (`script/odoo/health_check.py`), préchauffer son cache (`script/odoo/warmup_http.py --deep`), auditer la performance de ce poste, en lecture seule (`script/proxmox/host_perf_audit.py`) |
+| `ops_menu.py` | le menu Production d'une instance servie par systemd sur ce poste : mettre à jour ses modules (`script/odoo/update_module.py`), la sauvegarder, vérifier, essayer ou restaurer ses sauvegardes (`script/database/odoo_backup.py`), installer sa sauvegarde planifiée (`script/systemd/install_backup_timer.py`), lire son journal Odoo (`script/odoo/log_check.py`), lister et renvoyer ses courriels sortants en échec (`script/odoo/mail_retry.py`), vérifier sa santé ou celle d'une URL publique (`script/odoo/health_check.py`), préchauffer son cache (`script/odoo/warmup_http.py --deep`), auditer la performance de ce poste, en lecture seule (`script/proxmox/host_perf_audit.py`). La racine nomme l'instance et son profil, puis ouvre un sous-menu par thème ; chaque commande porte `--service` quand l'outil vise une unité et `--profile <chemin absolu>` |
+| `ops_settings.py` | les réglages du menu Production : l'instance (mémorisée par checkout), le profil `private/production/<unité>.json` et les profils d'hôte, l'éditeur ligne par ligne, l'enregistrement (vérification par les outils de ce checkout, aperçu de rétention, proposition de réinstallation), les secrets KeePass et leur fichier 0600 temporaire dans un tmpfs, la commande construite depuis le profil, et `_ask_ui`, le choix « formulaire ou questions » partagé avec le déploiement QEMU et la migration |
+| `ops_settings_form.py` | le formulaire Textual du profil, tiré du catalogue des options des outils, sans aucune saisie de secret |
 
 Les deux formulaires de déploiement — libvirt ici, Proxmox ailleurs — posent
 les mêmes questions : ils partagent donc un socle au lieu d'en garder chacun
@@ -63,3 +65,29 @@ préréglages de chaque ressource, le nom auquel une VM retombe, et ce qu'un
 verrou fige. `test_todo_deploy_form_lib.py` échoue si un formulaire redit un
 geste que le socle porte déjà — c'est ce qui empêche l'architecture de
 retomber en deux copies.
+
+## Menu Production
+
+`TODO › Exécuter › Production` s'ouvre sur un en-tête qui nomme l'instance
+et son profil, puis huit entrées au plus par écran :
+
+```text
+[1] Choisir l'instance           l'unité systemd, mémorisée par checkout
+── Exploiter ──
+[2] Mise à jour                  mettre à jour des modules, simuler seulement
+[3] Sauvegardes                  maintenant, état / essai, restauration
+[4] Journal et courriels         journal d'Odoo / courriels sortants en échec
+[5] Santé et préchauffage        cette instance, URL publiques, préchauffage
+[6] Audit de l'hôte              audit de ce poste, ses réglages
+── Configurer ──
+[7] Minuteries systemd           état et credentials, installer ou mettre à
+                                 jour, retirer
+[8] Réglages                     modifier, afficher, vérifier, secrets
+                                 KeePass, supprimer / réglages de l'audit
+```
+
+`Interface des réglages de production` dans `TODO › Configuration` ([7],
+sous la section Production) choisit comment les réglages s'éditent :
+demander à chaque fois, le formulaire Textual, ou les questions ligne par
+ligne. Format et règles du profil :
+[../../doc/PRODUCTION.fr.md](../../doc/PRODUCTION.fr.md).

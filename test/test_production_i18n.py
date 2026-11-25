@@ -32,6 +32,8 @@ FICHIERS = (
     "script/odoo/warmup_http.py",
     "script/lib_ops/profil.py",
     "script/lib_ops/credentials.py",
+    "script/todo/ops_settings.py",
+    "script/todo/ops_settings_form.py",
 )
 
 

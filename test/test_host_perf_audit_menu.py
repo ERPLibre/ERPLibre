@@ -2,12 +2,15 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Le menu de l'audit de performance : la commande ssh construite, la durée
-validée avant tout envoi, les messages des codes de sortie, et le lancement
+"""Le menu de l'audit de performance : la cible choisie d'abord, son
+profil d'hôte développé en options validées et citées, la commande ssh
+construite, la durée validée avant tout envoi, les messages des codes de
+sortie, la commande et son code au journal de session, et le lancement
 local depuis le menu Production.
 
 Aucune commande n'est lancée : le lanceur est injecté et retient ce qu'il
-reçoit. Les préférences ne sont jamais lues (hôte placé en cache).
+reçoit. Les préférences ne sont jamais lues (hôte placé en cache) ; les
+profils d'hôte vivent dans le dossier temporaire de `profil_isole`.
 """
 
 import io
@@ -20,9 +23,15 @@ from unittest import mock
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
+# Importé par son dossier et non par `test.` : sous le python3 du système,
+# `test` est le paquet des tests de la bibliothèque standard.
+sys.path.insert(0, str(RACINE / "test"))
 sys.argv = ["todo.py"]
 
-from script.todo import ops_menu, todo_i18n  # noqa: E402
+from profil_isole import profil_isole  # noqa: E402
+
+from script.lib_ops import profil  # noqa: E402
+from script.todo import ops_menu, ops_settings, todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 AUDIT = str(RACINE / "script" / "proxmox" / "host_perf_audit.py")
@@ -31,7 +40,8 @@ _LANGUE = []
 
 def setUpModule():
     """Les messages sont vérifiés en anglais, quelle que soit la langue
-    du poste."""
+    du poste ; les profils d'hôte sont ceux d'un dossier temporaire."""
+    profil_isole()
     _LANGUE.append(todo_i18n._current_lang)
     todo_i18n._current_lang = "en"
 
@@ -88,7 +98,7 @@ def jouer(todo, reponses, lanceur):
 class TestAuditDistant(unittest.TestCase):
     def test_commande_ssh_exacte(self):
         lanceur = FauxLanceur()
-        affiche = jouer(todo_avec_hote(), ["10m", "1"], lanceur)
+        affiche = jouer(todo_avec_hote(), ["1", "10m"], lanceur)
         self.assertEqual(len(lanceur.appels), 1)
         appel = lanceur.appels[0]
         self.assertEqual(
@@ -127,7 +137,8 @@ class TestAuditDistant(unittest.TestCase):
                 )
                 with mock.patch.object(proxmox_deploy, "ssh_argv", faux):
                     argv = TODO._pve_perf_argv(
-                        {"target": "root@pve.example.org"}, 60
+                        {"target": "root@pve.example.org"},
+                        ["--duration", "60"],
                     )
                 self.assertEqual(
                     argv,
@@ -142,7 +153,7 @@ class TestAuditDistant(unittest.TestCase):
 
     def test_sudo_sans_mot_de_passe_et_port(self):
         lanceur = FauxLanceur()
-        jouer(todo_avec_hote(sudo="sudo ", port="2222"), ["10m", "1"], lanceur)
+        jouer(todo_avec_hote(sudo="sudo ", port="2222"), ["1", "10m"], lanceur)
         argv = lanceur.appels[0]["argv"]
         self.assertEqual(
             argv[-1], "sudo -n sh -c 'python3 -I - --duration 600'"
@@ -154,13 +165,13 @@ class TestAuditDistant(unittest.TestCase):
         for saisie in ("10m; touch /tmp/p", "0", "8d", "soon"):
             with self.subTest(saisie=saisie):
                 lanceur = FauxLanceur()
-                affiche = jouer(todo_avec_hote(), [saisie, "1"], lanceur)
+                affiche = jouer(todo_avec_hote(), ["1", saisie], lanceur)
                 self.assertEqual(lanceur.appels, [])
                 self.assertIn("duration refused", affiche)
 
     def test_duree_par_defaut(self):
         lanceur = FauxLanceur()
-        jouer(todo_avec_hote(), ["", "1"], lanceur)
+        jouer(todo_avec_hote(), ["1", ""], lanceur)
         self.assertTrue(lanceur.appels[0]["argv"][-1].endswith(" 60"))
 
     def test_messages_des_codes(self):
@@ -172,35 +183,115 @@ class TestAuditDistant(unittest.TestCase):
         ):
             with self.subTest(code=code):
                 affiche = jouer(
-                    todo_avec_hote(), ["10m", "1"], FauxLanceur(code)
+                    todo_avec_hote(), ["1", "10m"], FauxLanceur(code)
                 )
                 self.assertIn(attendu, affiche)
 
     def test_delai_et_ctrl_c(self):
         affiche = jouer(
             todo_avec_hote(),
-            ["10m", "1"],
+            ["1", "10m"],
             FauxLanceur(erreur=subprocess.TimeoutExpired("ssh", 900)),
         )
         self.assertIn("did not finish in time", affiche)
         affiche = jouer(
             todo_avec_hote(),
-            ["10m", "1"],
+            ["1", "10m"],
             FauxLanceur(erreur=KeyboardInterrupt()),
         )
         self.assertIn("without its report", affiche)
 
-    def test_choix_inconnu(self):
+    def test_choix_inconnu_avant_toute_duree(self):
+        """La cible se choisit d'abord : un choix inconnu ne demande
+        aucune durée (une seconde saisie lèverait StopIteration)."""
         lanceur = FauxLanceur()
-        affiche = jouer(todo_avec_hote(), ["10m", "9"], lanceur)
+        affiche = jouer(todo_avec_hote(), ["9"], lanceur)
         self.assertEqual(lanceur.appels, [])
         self.assertIn("Cancel", affiche)
+
+
+class TestProfilDHote(unittest.TestCase):
+    """Le profil `pve-<cible>` donne le défaut de la durée et les autres
+    réglages, développés en options validées : l'hôte n'a pas le
+    fichier."""
+
+    CIBLE = "root@pve.example.org"
+
+    def ecrire(self, valeurs):
+        chemin = ops_settings.chemin_hote(ops_settings.slug_hote(self.CIBLE))
+        profil.ecrire(
+            chemin,
+            {"version": 1, "host": self.CIBLE, profil.GROUPE_HOTE: valeurs},
+        )
+        self.addCleanup(os.unlink, chemin)
+        return chemin
+
+    def test_argv_developpe_depuis_le_profil(self):
+        self.ecrire(
+            {"duration": "10m", "interval": 2, "no_guests": True, "top": 5}
+        )
+        lanceur = FauxLanceur()
+        with mock.patch("builtins.input", side_effect=["1", ""]) as saisie:
+            with mock.patch("sys.stdout", io.StringIO()):
+                todo_avec_hote()._pve_perf_audit(runner=lanceur)
+        self.assertIn("default 10m", saisie.call_args.args[0])
+        distante = lanceur.appels[0]["argv"][-1]
+        self.assertTrue(distante.startswith("python3 -I - --duration 600"))
+        for morceau in ("--interval 2", "--no-guests", "--top 5"):
+            self.assertIn(morceau, distante)
+        self.assertNotIn("--profile", distante)
+        self.assertEqual(
+            lanceur.appels[0]["timeout"], 600 + ops_menu.MARGE_AUDIT_S
+        )
+
+    def test_duree_tapee_l_emporte(self):
+        self.ecrire({"duration": "10m", "top": 5})
+        lanceur = FauxLanceur()
+        jouer(todo_avec_hote(), ["1", "90"], lanceur)
+        distante = lanceur.appels[0]["argv"][-1]
+        self.assertTrue(distante.startswith("python3 -I - --duration 90 "))
+        self.assertIn("--top 5", distante)
+
+    def test_valeur_refusee_rien_n_est_envoye(self):
+        lanceur = FauxLanceur()
+        doc = {profil.GROUPE_HOTE: {"duration": "10m", "top": "5; reboot"}}
+        with mock.patch.object(ops_settings, "lire_hote", return_value=doc):
+            jouer(todo_avec_hote(), ["1", ""], lanceur)
+        self.assertEqual(lanceur.appels, [])
+
+    def test_chaque_valeur_est_citee(self):
+        faux = mock.Mock(return_value=["ssh", "cible", "r"])
+        from script.proxmox import proxmox_deploy
+
+        with mock.patch.object(proxmox_deploy, "ssh_argv", faux):
+            TODO._pve_perf_argv(
+                {"target": self.CIBLE}, ["--duration", "60", "--x", "a b"]
+            )
+        faux.assert_called_once_with(
+            {"target": self.CIBLE}, "python3 -I - --duration 60 --x 'a b'"
+        )
+
+
+class TestJournal(unittest.TestCase):
+    """M03 : le Popen de l'audit reste, sa commande et son code vont au
+    journal de session."""
+
+    def test_commande_puis_code(self):
+        with mock.patch.object(
+            ops_menu.execution, "_journaliser"
+        ) as journaliser:
+            jouer(todo_avec_hote(), ["1", "10m"], FauxLanceur(3))
+        textes = [appel.args[0] for appel in journaliser.call_args_list]
+        self.assertEqual(len(textes), 2)
+        self.assertIn("$ ssh -T", textes[0])
+        self.assertIn("< script/proxmox/host_perf_audit.py", textes[0])
+        self.assertEqual(textes[1], "[code 3]\n")
 
 
 class TestAuditLocal(unittest.TestCase):
     def test_depuis_le_menu_proxmox(self):
         lanceur = FauxLanceur()
-        jouer(todo_avec_hote(), ["", "2"], lanceur)
+        jouer(todo_avec_hote(), ["2", ""], lanceur)
         appel = lanceur.appels[0]
         self.assertEqual(
             appel["argv"], [sys.executable, AUDIT, "--duration", "60"]
@@ -229,10 +320,29 @@ class TestAuditLocal(unittest.TestCase):
     def test_ctrl_c_local(self):
         affiche = jouer(
             todo_avec_hote(),
-            ["", "2"],
+            ["2", ""],
             FauxLanceur(erreur=KeyboardInterrupt()),
         )
         self.assertIn("covers the samples", affiche)
+
+    def test_profil_local(self):
+        chemin = ops_settings.chemin_hote("local")
+        profil.ecrire(
+            chemin,
+            {
+                "version": 1,
+                "host": "local",
+                profil.GROUPE_HOTE: {"duration": 90},
+            },
+        )
+        self.addCleanup(os.unlink, chemin)
+        lanceur = FauxLanceur()
+        jouer(todo_avec_hote(), ["2", ""], lanceur)
+        appel = lanceur.appels[0]
+        self.assertEqual(
+            appel["argv"], [sys.executable, AUDIT, "--profile", chemin]
+        )
+        self.assertEqual(appel["timeout"], 90 + ops_menu.MARGE_AUDIT_S)
 
     def test_le_fichier_existe(self):
         self.assertTrue(os.path.isfile(ops_menu.HOST_PERF_AUDIT))

@@ -26419,10 +26419,6 @@ TRANSLATIONS = {
         "fr": "🏭 Production - Mettre à jour, sauvegarder, restaurer et surveiller une instance systemd",
         "en": "🏭 Production - Update, back up, restore and watch a systemd instance",
     },
-    "Production: an instance run by systemd on this host.": {
-        "fr": "Production : une instance servie par systemd sur ce poste.",
-        "en": "Production: an instance run by systemd on this host.",
-    },
     "Update modules - simulate, confirm, then run with sudo": {
         "fr": "Mettre à jour des modules - simuler, confirmer, puis exécuter avec sudo",
         "en": "Update modules - simulate, confirm, then run with sudo",
@@ -26454,10 +26450,6 @@ TRANSLATIONS = {
     "Run this update for real? The service stops meanwhile.": {
         "fr": "Exécuter cette mise à jour pour de vrai ? Le service s'arrête pendant ce temps.",
         "en": "Run this update for real? The service stops meanwhile.",
-    },
-    "The update ended with code": {
-        "fr": "La mise à jour s'est terminée avec le code",
-        "en": "The update ended with code",
     },
     "{host}:{port} still answers.": {
         "fr": "{host}:{port} répond encore.",
@@ -27324,10 +27316,6 @@ TRANSLATIONS = {
         "fr": "Retirer la sauvegarde planifiée ? Les sauvegardes restent.",
         "en": "Remove the scheduled backup? Backups are kept.",
     },
-    "Install the scheduled backup (daily at 03:00)?": {
-        "fr": "Installer la sauvegarde planifiée (chaque jour à 03:00) ?",
-        "en": "Install the scheduled backup (daily at 03:00)?",
-    },
     "Verified backup now - simulate, confirm, then run with sudo": {
         "fr": "Sauvegarde vérifiée maintenant - simuler, confirmer, puis exécuter avec sudo",
         "en": "Verified backup now - simulate, confirm, then run with sudo",
@@ -27343,10 +27331,6 @@ TRANSLATIONS = {
     "Restore a backup into a new database - simulate, confirm, then run with sudo": {
         "fr": "Restaurer une sauvegarde dans une nouvelle base - simuler, confirmer, puis exécuter avec sudo",
         "en": "Restore a backup into a new database - simulate, confirm, then run with sudo",
-    },
-    "Install / remove the scheduled backup - systemd timer, with sudo": {
-        "fr": "Installer / retirer la sauvegarde planifiée - minuterie systemd, avec sudo",
-        "en": "Install / remove the scheduled backup - systemd timer, with sudo",
     },
     "Cancelled: no file given.": {
         "fr": "Annulé : aucun fichier donné.",
@@ -27368,17 +27352,9 @@ TRANSLATIONS = {
         "fr": "Restaurer dans la nouvelle base {database} ?",
         "en": "Restore into the new database {database}?",
     },
-    "Install or remove the scheduled backup? [I/r] ": {
-        "fr": "Installer ou retirer la sauvegarde planifiée ? [I/r] ",
-        "en": "Install or remove the scheduled backup? [I/r] ",
-    },
     "The command ended with code": {
         "fr": "La commande s'est terminée avec le code",
         "en": "The command ended with code",
-    },
-    "The state is not readable; run it with sudo:": {
-        "fr": "L'état ne se lit pas ; le lancer avec sudo :",
-        "en": "The state is not readable; run it with sudo:",
     },
     "expected an integer >= 0: {value}": {
         "fr": "entier >= 0 attendu : {value}",
@@ -27921,10 +27897,6 @@ TRANSLATIONS = {
     "Number of hours [24]: ": {
         "fr": "Nombre d'heures [24] : ",
         "en": "Number of hours [24]: ",
-    },
-    "Number of days [7]: ": {
-        "fr": "Nombre de jours [7] : ",
-        "en": "Number of days [7]: ",
     },
     "Odoo journal: errors since the last check - read-only": {
         "fr": "Journal d'Odoo : erreurs depuis la dernière lecture - lecture seule",
@@ -28644,10 +28616,6 @@ TRANSLATIONS = {
         "fr": "Audit de performance de ce poste - lecture seule",
         "en": "Host performance audit of this machine - read-only",
     },
-    "Audit duration (90, 30s, 10m, 2h; default 60): ": {
-        "fr": "Durée de l'audit (90, 30s, 10m, 2h ; défaut 60) : ",
-        "en": "Audit duration (90, 30s, 10m, 2h; default 60): ",
-    },
     "Cancelled: duration refused (1 second to 7 days, e.g. 90, 10m, 1h30m).": {
         "fr": "Annulé : durée refusée (1 seconde à 7 jours, p. ex. 90, 10m, 1h30m).",
         "en": "Cancelled: duration refused (1 second to 7 days, e.g. 90, 10m, 1h30m).",
@@ -29191,6 +29159,572 @@ TRANSLATIONS = {
     "systemd credential": {
         "fr": "credential systemd",
         "en": "systemd credential",
+    },
+    # Production - réglages : écrans de todo (ops_settings, ops_settings_form)
+    "Length of the measurement: 90 (seconds), 30s, 10m, 2h, 1h30m; 1 second to 7 days.": {
+        "fr": "Durée de la mesure : 90 (secondes), 30s, 10m, 2h, 1h30m ; de 1 seconde à 7 jours.",
+        "en": "Length of the measurement: 90 (seconds), 30s, 10m, 2h, 1h30m; 1 second to 7 days.",
+    },
+    "Seconds between two samples; default 5, raised so that the number of samples stays bounded.": {
+        "fr": "Secondes entre deux échantillons ; 5 par défaut, relevé pour que le nombre d'échantillons reste borné.",
+        "en": "Seconds between two samples; default 5, raised so that the number of samples stays bounded.",
+    },
+    "Do not measure each container and VM.": {
+        "fr": "Ne pas mesurer chaque conteneur et chaque VM.",
+        "en": "Do not measure each container and VM.",
+    },
+    "Number of guests shown in the text report, busiest on the disks first.": {
+        "fr": "Nombre d'invités montrés dans le rapport texte, les plus actifs sur les disques d'abord.",
+        "en": "Number of guests shown in the text report, busiest on the disks first.",
+    },
+    "Show each external command run.": {
+        "fr": "Afficher chaque commande externe lancée.",
+        "en": "Show each external command run.",
+    },
+    "Anonymous warm-up with the default settings: the Deep warm-up group does not apply to it.": {
+        "fr": "Préchauffage anonyme aux réglages par défaut : le groupe Préchauffage approfondi ne s'y applique pas.",
+        "en": "Anonymous warm-up with the default settings: the Deep warm-up group does not apply to it.",
+    },
+    "Instance - shared by every tool": {
+        "fr": "Instance - commune à tous les outils",
+        "en": "Instance - shared by every tool",
+    },
+    "Verified backups": {
+        "fr": "Sauvegardes vérifiées",
+        "en": "Verified backups",
+    },
+    "Backup timer": {
+        "fr": "Minuterie de sauvegarde",
+        "en": "Backup timer",
+    },
+    "Odoo journal": {
+        "fr": "Journal d'Odoo",
+        "en": "Odoo journal",
+    },
+    "Outgoing mail": {
+        "fr": "Courriels sortants",
+        "en": "Outgoing mail",
+    },
+    "Health check": {
+        "fr": "Santé",
+        "en": "Health check",
+    },
+    "Deep warm-up": {
+        "fr": "Préchauffage approfondi",
+        "en": "Deep warm-up",
+    },
+    "Host audit": {
+        "fr": "Audit de l'hôte",
+        "en": "Host audit",
+    },
+    "(none)": {
+        "fr": "(aucun)",
+        "en": "(none)",
+    },
+    "Choice ({first}-{last}, default 1): ": {
+        "fr": "Choix ({first}-{last}, défaut 1) : ",
+        "en": "Choice ({first}-{last}, default 1): ",
+    },
+    "yes or no": {
+        "fr": "oui ou non",
+        "en": "yes or no",
+    },
+    "a value": {
+        "fr": "une valeur",
+        "en": "a value",
+    },
+    "a list": {
+        "fr": "une liste",
+        "en": "a list",
+    },
+    "Keep these retention settings?": {
+        "fr": "Garder ces réglages de rétention ?",
+        "en": "Keep these retention settings?",
+    },
+    "Reinstall the scheduled backup now?": {
+        "fr": "Réinstaller la sauvegarde planifiée maintenant ?",
+        "en": "Reinstall the scheduled backup now?",
+    },
+    "KeePass: {reference}": {
+        "fr": "KeePass : {reference}",
+        "en": "KeePass: {reference}",
+    },
+    "expected a number written with the digits 0 to 9": {
+        "fr": "un nombre écrit avec les chiffres 0 à 9 est attendu",
+        "en": "expected a number written with the digits 0 to 9",
+    },
+    "Instance:": {
+        "fr": "Instance :",
+        "en": "Instance:",
+    },
+    "profile:": {
+        "fr": "profil :",
+        "en": "profile:",
+    },
+    "Profile:": {
+        "fr": "Profil :",
+        "en": "Profile:",
+    },
+    "to choose": {
+        "fr": "à choisir",
+        "en": "to choose",
+    },
+    "No profile to check.": {
+        "fr": "Aucun profil à vérifier.",
+        "en": "No profile to check.",
+    },
+    "No profile to delete.": {
+        "fr": "Aucun profil à supprimer.",
+        "en": "No profile to delete.",
+    },
+    "Cancelled: nothing was deleted.": {
+        "fr": "Annulé : rien n'a été supprimé.",
+        "en": "Cancelled: nothing was deleted.",
+    },
+    "default:": {
+        "fr": "défaut :",
+        "en": "default:",
+    },
+    "Secret (not shown): ": {
+        "fr": "Secret (non affiché) : ",
+        "en": "Secret (not shown): ",
+    },
+    "Nothing to save.": {
+        "fr": "Rien à enregistrer.",
+        "en": "Nothing to save.",
+    },
+    "Retention preview unavailable: the database is detected at run time.": {
+        "fr": "Aperçu de la rétention indisponible : la base est détectée au lancement.",
+        "en": "Retention preview unavailable: the database is detected at run time.",
+    },
+    "No tmpfs: the secret was not written.": {
+        "fr": "Aucun tmpfs : le secret n'a pas été écrit.",
+        "en": "No tmpfs: the secret was not written.",
+    },
+    "Instance (systemd unit):": {
+        "fr": "Instance (unité systemd) :",
+        "en": "Instance (systemd unit):",
+    },
+    "{path} ({count} value(s))": {
+        "fr": "{path} ({count} valeur(s))",
+        "en": "{path} ({count} value(s))",
+    },
+    "No instance chosen: choose the instance first.": {
+        "fr": "Aucune instance choisie : choisissez d'abord l'instance.",
+        "en": "No instance chosen: choose the instance first.",
+    },
+    "Audit settings of which host?": {
+        "fr": "Réglages d'audit de quel hôte ?",
+        "en": "Audit settings of which host?",
+    },
+    "This machine": {
+        "fr": "Ce poste",
+        "en": "This machine",
+    },
+    "Options the profile does not set": {
+        "fr": "Options que le profil ne règle pas",
+        "en": "Options the profile does not set",
+    },
+    "Profile deleted:": {
+        "fr": "Profil supprimé :",
+        "en": "Profile deleted:",
+    },
+    "Secrets of the profile": {
+        "fr": "Secrets du profil",
+        "en": "Secrets of the profile",
+    },
+    "at installation": {
+        "fr": "à l'installation",
+        "en": "at installation",
+    },
+    "Save": {
+        "fr": "Enregistrer",
+        "en": "Save",
+    },
+    "Differences": {
+        "fr": "Différences",
+        "en": "Differences",
+    },
+    "Save the changes?": {
+        "fr": "Enregistrer les changements ?",
+        "en": "Save the changes?",
+    },
+    "Kind:": {
+        "fr": "Genre :",
+        "en": "Kind:",
+    },
+    "Value:": {
+        "fr": "Valeur :",
+        "en": "Value:",
+    },
+    "Pass {option} on each run?": {
+        "fr": "Passer {option} à chaque lancement ?",
+        "en": "Pass {option} on each run?",
+    },
+    "Type the secret - stored in KeePass when saving": {
+        "fr": "Saisir le secret - rangé dans KeePass à l'enregistrement",
+        "en": "Type the secret - stored in KeePass when saving",
+    },
+    "Path of a file holding the secret": {
+        "fr": "Chemin d'un fichier qui porte le secret",
+        "en": "Path of a file holding the secret",
+    },
+    "Remove the secret": {
+        "fr": "Retirer le secret",
+        "en": "Remove the secret",
+    },
+    "{count} backup(s) would be deleted at the next run.": {
+        "fr": "{count} sauvegarde(s) seraient supprimées au prochain passage.",
+        "en": "{count} backup(s) would be deleted at the next run.",
+    },
+    "Units that use this profile:": {
+        "fr": "Unités qui utilisent ce profil :",
+        "en": "Units that use this profile:",
+    },
+    "Nothing was written.": {
+        "fr": "Rien n'a été écrit.",
+        "en": "Nothing was written.",
+    },
+    "Profile saved:": {
+        "fr": "Profil enregistré :",
+        "en": "Profile saved:",
+    },
+    "No Odoo or ERPLibre unit on this host.": {
+        "fr": "Aucune unité Odoo ou ERPLibre sur cet hôte.",
+        "en": "No Odoo or ERPLibre unit on this host.",
+    },
+    "The unit runs another checkout: {path}": {
+        "fr": "L'unité fait tourner un autre checkout : {path}",
+        "en": "The unit runs another checkout: {path}",
+    },
+    "No KeePass file is configured (kdbx path in the configuration).": {
+        "fr": "Aucun fichier KeePass n'est configuré (chemin kdbx de la configuration).",
+        "en": "No KeePass file is configured (kdbx path in the configuration).",
+    },
+    "Continue without the authenticated warm-up?": {
+        "fr": "Continuer sans le préchauffage authentifié ?",
+        "en": "Continue without the authenticated warm-up?",
+    },
+    "The Proxmox host": {
+        "fr": "L'hôte Proxmox",
+        "en": "The Proxmox host",
+    },
+    "Textual is not available: line-by-line questions.": {
+        "fr": "Textual n'est pas disponible : questions ligne par ligne.",
+        "en": "Textual is not available: line-by-line questions.",
+    },
+    "Every tool accepts the profile.": {
+        "fr": "Chaque outil accepte le profil.",
+        "en": "Every tool accepts the profile.",
+    },
+    "code": {
+        "fr": "code",
+        "en": "code",
+    },
+    "secret": {
+        "fr": "secret",
+        "en": "secret",
+    },
+    "Applies at the next installation of the timer.": {
+        "fr": "S'applique à la prochaine installation de la minuterie.",
+        "en": "Applies at the next installation of the timer.",
+    },
+    "New value (Enter = keep, - = default): ": {
+        "fr": "Nouvelle valeur (Entrée = garder, - = défaut) : ",
+        "en": "New value (Enter = keep, - = default): ",
+    },
+    "Add an element": {
+        "fr": "Ajouter un élément",
+        "en": "Add an element",
+    },
+    "Remove element n": {
+        "fr": "Retirer l'élément n",
+        "en": "Remove element n",
+    },
+    "Clear the list": {
+        "fr": "Vider la liste",
+        "en": "Clear the list",
+    },
+    "Secret": {
+        "fr": "Secret",
+        "en": "Secret",
+    },
+    "removed (unknown key):": {
+        "fr": "retirée (clé inconnue) :",
+        "en": "removed (unknown key):",
+    },
+    "KeePass entry to set:": {
+        "fr": "Entrée KeePass à définir :",
+        "en": "KeePass entry to set:",
+    },
+    "KeePass entry to delete:": {
+        "fr": "Entrée KeePass à supprimer :",
+        "en": "KeePass entry to delete:",
+    },
+    "The tools refuse this profile: nothing was written.": {
+        "fr": "Les outils refusent ce profil : rien n'a été écrit.",
+        "en": "The tools refuse this profile: nothing was written.",
+    },
+    "{units} keep a copy taken at installation: reinstall to apply the change.": {
+        "fr": "{units} gardent une copie prise à l'installation : réinstallez pour appliquer le changement.",
+        "en": "{units} keep a copy taken at installation: reinstall to apply the change.",
+    },
+    "Number or unit name (empty = keep {service}): ": {
+        "fr": "Numéro ou nom d'unité (vide = garder {service}) : ",
+        "en": "Number or unit name (empty = keep {service}): ",
+    },
+    "A secret of the profile is not reachable:": {
+        "fr": "Un secret du profil n'est pas joignable :",
+        "en": "A secret of the profile is not reachable:",
+    },
+    "unknown key {key}: removed when saving": {
+        "fr": "clé inconnue {key} : retirée à l'enregistrement",
+        "en": "unknown key {key}: removed when saving",
+    },
+    "Refused: {units} use this profile. Remove the scheduled backup first (systemd timers).": {
+        "fr": "Refusé : {units} utilisent ce profil. Retirez d'abord la sauvegarde planifiée (minuteries systemd).",
+        "en": "Refused: {units} use this profile. Remove the scheduled backup first (systemd timers).",
+    },
+    "Type {service} to delete its profile: ": {
+        "fr": "Tapez {service} pour supprimer son profil : ",
+        "en": "Type {service} to delete its profile: ",
+    },
+    "(empty)": {
+        "fr": "(vide)",
+        "en": "(empty)",
+    },
+    "Element to add: ": {
+        "fr": "Élément à ajouter : ",
+        "en": "Element to add: ",
+    },
+    "Absolute path of the file: ": {
+        "fr": "Chemin absolu du fichier : ",
+        "en": "Absolute path of the file: ",
+    },
+    "Also delete the entry from KeePass?": {
+        "fr": "Supprimer aussi l'entrée du coffre KeePass ?",
+        "en": "Also delete the entry from KeePass?",
+    },
+    "{path} is not readable without sudo: retention preview unavailable.": {
+        "fr": "{path} n'est pas lisible sans sudo : aperçu de la rétention indisponible.",
+        "en": "{path} is not readable without sudo: retention preview unavailable.",
+    },
+    "Invalid unit name.": {
+        "fr": "Nom d'unité invalide.",
+        "en": "Invalid unit name.",
+    },
+    "{service} is not a unit of this host: its profile can still be edited.": {
+        "fr": "{service} n'est pas une unité de cet hôte : son profil reste modifiable.",
+        "en": "{service} is not a unit of this host: its profile can still be edited.",
+    },
+    "Expected the absolute path of an existing file, not a link.": {
+        "fr": "Le chemin absolu d'un fichier existant est attendu, pas un lien.",
+        "en": "Expected the absolute path of an existing file, not a link.",
+    },
+    "{unit} runs another checkout ({path}): it was checked with this checkout's tools.": {
+        "fr": "{unit} fait tourner un autre checkout ({path}) : la vérification s'est faite avec les outils de ce checkout.",
+        "en": "{unit} runs another checkout ({path}): it was checked with this checkout's tools.",
+    },
+    "KeePass refused:": {
+        "fr": "KeePass a refusé :",
+        "en": "KeePass refused:",
+    },
+    "Number of the element: ": {
+        "fr": "Numéro de l'élément : ",
+        "en": "Number of the element: ",
+    },
+    "Production settings": {
+        "fr": "Réglages de production",
+        "en": "Production settings",
+    },
+    "in KeePass ✓": {
+        "fr": "dans KeePass ✓",
+        "en": "in KeePass ✓",
+    },
+    "absent from KeePass": {
+        "fr": "absent de KeePass",
+        "en": "absent from KeePass",
+    },
+    "in KeePass, vault not opened": {
+        "fr": "dans KeePass, coffre non ouvert",
+        "en": "in KeePass, vault not opened",
+    },
+    "file given by its path": {
+        "fr": "fichier donné par son chemin",
+        "en": "file given by its path",
+    },
+    "Default value": {
+        "fr": "Valeur par défaut",
+        "en": "Default value",
+    },
+    "Fix the errors first.": {
+        "fr": "Corrigez d'abord les erreurs.",
+        "en": "Fix the errors first.",
+    },
+    "Set after closing": {
+        "fr": "Définir après fermeture",
+        "en": "Set after closing",
+    },
+    "Remove": {
+        "fr": "Retirer",
+        "en": "Remove",
+    },
+    "Production settings interface": {
+        "fr": "Interface des réglages de production",
+        "en": "Production settings interface",
+    },
+    # Production - menu en sous-menus, minuteries, invites tirées du profil (ops_menu)
+    "Choose the instance - {service}": {
+        "fr": "Choisir l'instance - {service}",
+        "en": "Choose the instance - {service}",
+    },
+    "Operate": {
+        "fr": "Exploiter",
+        "en": "Operate",
+    },
+    "Update - modules of the instance": {
+        "fr": "Mise à jour - modules de l'instance",
+        "en": "Update - modules of the instance",
+    },
+    "Backups - now, status, restore": {
+        "fr": "Sauvegardes - maintenant, état, restauration",
+        "en": "Backups - now, status, restore",
+    },
+    "Journal and mail - Odoo errors, failed outgoing mail": {
+        "fr": "Journal et courriels - erreurs d'Odoo, courriels sortants en échec",
+        "en": "Journal and mail - Odoo errors, failed outgoing mail",
+    },
+    "Health and warm-up": {
+        "fr": "Santé et préchauffage",
+        "en": "Health and warm-up",
+    },
+    "Host audit - performance, read-only": {
+        "fr": "Audit de l'hôte - performance, lecture seule",
+        "en": "Host audit - performance, read-only",
+    },
+    "Configure": {
+        "fr": "Configurer",
+        "en": "Configure",
+    },
+    "systemd timers": {
+        "fr": "Minuteries systemd",
+        "en": "systemd timers",
+    },
+    "Settings - every option of every tool": {
+        "fr": "Réglages - chaque option de chaque outil",
+        "en": "Settings - every option of every tool",
+    },
+    "Now": {
+        "fr": "Maintenant",
+        "en": "Now",
+    },
+    "Audit settings of this machine - duration, interval, guests": {
+        "fr": "Réglages de l'audit de ce poste - durée, intervalle, invités",
+        "en": "Audit settings of this machine - duration, interval, guests",
+    },
+    "Timers of this instance - read-only, credentials": {
+        "fr": "Minuteries de cette instance - lecture seule, credentials",
+        "en": "Timers of this instance - read-only, credentials",
+    },
+    "Install or update the scheduled backup - simulate, confirm, then run with sudo": {
+        "fr": "Installer ou mettre à jour la sauvegarde planifiée - simuler, confirmer, puis exécuter avec sudo",
+        "en": "Install or update the scheduled backup - simulate, confirm, then run with sudo",
+    },
+    "Remove the scheduled backup - backups are kept": {
+        "fr": "Retirer la sauvegarde planifiée - les sauvegardes sont gardées",
+        "en": "Remove the scheduled backup - backups are kept",
+    },
+    "Profile of {service}": {
+        "fr": "Profil de {service}",
+        "en": "Profile of {service}",
+    },
+    "Edit the settings": {
+        "fr": "Modifier les réglages",
+        "en": "Edit the settings",
+    },
+    "Show the profile - value, default, origin, excluded options": {
+        "fr": "Afficher le profil - valeur, défaut, origine, options exclues",
+        "en": "Show the profile - value, default, origin, excluded options",
+    },
+    "Check the profile with this checkout's tools": {
+        "fr": "Vérifier le profil avec les outils de ce checkout",
+        "en": "Check the profile with this checkout's tools",
+    },
+    "Secrets in KeePass": {
+        "fr": "Secrets dans KeePass",
+        "en": "Secrets in KeePass",
+    },
+    "Delete the profile": {
+        "fr": "Supprimer le profil",
+        "en": "Delete the profile",
+    },
+    "This host": {
+        "fr": "Cet hôte",
+        "en": "This host",
+    },
+    "Host audit settings - this machine or the Proxmox host": {
+        "fr": "Réglages de l'audit de l'hôte - ce poste ou l'hôte Proxmox",
+        "en": "Host audit settings - this machine or the Proxmox host",
+    },
+    "Instance: {service} · database: {database}": {
+        "fr": "Instance : {service} · base : {database}",
+        "en": "Instance: {service} · database: {database}",
+    },
+    "systemd {version} cannot encrypt credentials: {names} would be stored in clear, readable by root only. Continue?": {
+        "fr": "systemd {version} ne sait pas chiffrer les credentials : {names} serait rangé en clair, lisible par root seul. Continuer ?",
+        "en": "systemd {version} cannot encrypt credentials: {names} would be stored in clear, readable by root only. Continue?",
+    },
+    "Database (empty = {database} from the profile): ": {
+        "fr": "Base de données (vide = {database} du profil) : ",
+        "en": "Database (empty = {database} from the profile): ",
+    },
+    "uses this profile": {
+        "fr": "utilise ce profil",
+        "en": "uses this profile",
+    },
+    "encrypted": {
+        "fr": "chiffré",
+        "en": "encrypted",
+    },
+    "stored in clear, readable by root only": {
+        "fr": "rangé en clair, lisible par root seul",
+        "en": "stored in clear, readable by root only",
+    },
+    "Install or update the scheduled backup ({calendar})?": {
+        "fr": "Installer ou mettre à jour la sauvegarde planifiée ({calendar}) ?",
+        "en": "Install or update the scheduled backup ({calendar})?",
+    },
+    "Number of days [{days}]: ": {
+        "fr": "Nombre de jours [{days}] : ",
+        "en": "Number of days [{days}]: ",
+    },
+    "Use the profile URLs ({urls})?": {
+        "fr": "Utiliser les URL du profil ({urls}) ?",
+        "en": "Use the profile URLs ({urls})?",
+    },
+    "Audit duration (90, 30s, 10m, 2h; default {default}): ": {
+        "fr": "Durée de l'audit (90, 30s, 10m, 2h ; défaut {default}) : ",
+        "en": "Audit duration (90, 30s, 10m, 2h; default {default}): ",
+    },
+    "No such number in the list.": {
+        "fr": "Aucun numéro de la liste ne correspond.",
+        "en": "No such number in the list.",
+    },
+    "Back to the form?": {
+        "fr": "Revenir au formulaire ?",
+        "en": "Back to the form?",
+    },
+    "typed, stored in KeePass when saving": {
+        "fr": "saisi, rangé dans KeePass à l'enregistrement",
+        "en": "typed, stored in KeePass when saving",
+    },
+    "The profile was not written, but KeePass already holds the new secret: {refs}": {
+        "fr": "Le profil n'est pas écrit, mais KeePass porte déjà le nouveau secret : {refs}",
+        "en": "The profile was not written, but KeePass already holds the new secret: {refs}",
+    },
+    "Profile saved, but KeePass kept {refs}:": {
+        "fr": "Profil enregistré, mais KeePass a gardé {refs} :",
+        "en": "Profile saved, but KeePass kept {refs}:",
     },
 }
 
