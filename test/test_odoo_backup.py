@@ -16,6 +16,10 @@ réel est éprouvé à part (`TestSousLeCompte`).
 
 Données inventées : base `demo_db`, compte `demo`, unité
 `erplibre_demo.service`, copie vers `backup.example.org`.
+
+Les profils de production se lisent d'un dossier temporaire : `setUpModule`
+arme la couture `profil.RACINE_PROFILS` par `profil_isole()`, et tout accès
+au vrai `private/production` fait échouer le module.
 """
 
 import contextlib
@@ -36,8 +40,18 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from profil_isole import profil_isole  # noqa: E402
+
 from script.database import odoo_backup as ob  # noqa: E402
-from script.lib_ops import lock, postgres, report, retention  # noqa: E402
+from script.lib_ops import (  # noqa: E402
+    lock,
+    postgres,
+    profil,
+    report,
+    retention,
+)
 
 DUMP = b"-- dump\nCREATE TABLE x ();\n-- PostgreSQL database dump complete\n"
 FAITS = {
@@ -57,6 +71,10 @@ COPIE = "backup@backup.example.org:/srv/backups"
 RE_NOM = re.compile(r"^demo_db_\d{4}-\d{2}-\d{2}_\d{2}h\d{2}m\d{2}s\.zip$")
 # 2031-03-10 03:00:00, heure locale.
 HORLOGE = datetime.datetime(2031, 3, 10, 3, 0, 0).timestamp()
+
+
+def setUpModule():
+    profil_isole()
 
 
 def ecrire(chemin, texte=""):
@@ -1509,6 +1527,375 @@ class TestDescripteurs(Base):
         self.assertEqual(self.lancer(), ob.CODE_ECHEC)
         self.assertEqual(self.zips(), [])
         self.assertIn(self.filestore, self.sortie)
+
+
+def retention_affichee(daily, weekly, monthly, recent):
+    """La ligne de rétention de la simulation, dans la langue courante."""
+    return ob.t(
+        "retention: {daily} daily, {weekly} weekly, {monthly} monthly,"
+        " everything from the last {recent} day(s)"
+    ).format(daily=daily, weekly=weekly, monthly=monthly, recent=recent)
+
+
+class FauxSystemeDevine(FauxSysteme):
+    """Le même théâtre, où `systemctl list-units` connaît l'unité de
+    démonstration, seule active : elle se devine sans `--service`."""
+
+    def lanceur(self, argv, timeout=60):
+        if argv[:2] == ["systemctl", "list-units"]:
+            self.appels.append(("systemctl", list(argv)))
+            return 0, "erplibre_demo.service loaded active running Odoo\n"
+        return super().lanceur(argv, timeout)
+
+
+def champ_base(base, origine):
+    """Le motif de la seule ligne du champ Database qui porte `base
+    (origine)`, ancré au début et à la fin de la ligne."""
+    return re.compile(
+        r"^  "
+        + re.escape(ob.t("Database"))
+        + r" +"
+        + re.escape(f"{base} ({origine})")
+        + r"$",
+        re.M,
+    )
+
+
+class TestProfil(Base):
+    """Le groupe `backup` du profil de l'instance : valeurs appliquées et
+    affichées, la ligne de commande qui gagne, les options exclues, les
+    règles du profil, `--status`, `--no-profile` et `--profile-unset`."""
+
+    SERVICE = "erplibre_demo.service"
+
+    def profil(self, groupes, dossier=None):
+        """Écrit un profil (version 1) dans `dossier`, par défaut celui
+        des profils du module, et rend son chemin ; il est retiré à la fin
+        du test."""
+        doc = {"version": 1, "service": self.SERVICE}
+        doc.update(groupes)
+        chemin = os.path.join(
+            dossier or profil.racine_profils(), self.SERVICE + ".json"
+        )
+        ecrire(chemin, json.dumps(doc))
+        os.chmod(chemin, 0o644)
+        self.addCleanup(os.remove, chemin)
+        return chemin
+
+    def analyser(self, argv):
+        """`ob.analyser(argv)` ; un refus rend son code de sortie."""
+        erreurs = io.StringIO()
+        with contextlib.redirect_stderr(erreurs):
+            try:
+                return ob.analyser(argv)
+            except SystemExit as err:
+                self.erreurs = erreurs.getvalue()
+                return err.code
+
+    def test_valeurs_appliquees_et_affichees_avant_la_simulation(self):
+        self.profil(
+            {
+                "instance": {"db": "demo_db"},
+                "backup": {
+                    "keep_daily": 10,
+                    "keep_monthly": 3,
+                    "copy_to": COPIE,
+                },
+            }
+        )
+        self.assertEqual(self.lancer("--dry-run"), ob.CODE_OK, self.sortie)
+        self.assertIn(
+            retention_affichee(10, ob.GARDE_HEBDO, 3, ob.GARDE_RECENTS),
+            self.sortie,
+        )
+        self.assertIn("rsync -a --partial", self.sortie)
+        self.assertIn(COPIE, self.sortie)
+        chemin = os.path.join(profil.racine_profils(), self.SERVICE + ".json")
+        self.assertIn(chemin, self.sortie)
+        for ligne in ("--keep-daily 10", "--keep-monthly 3", "--db demo_db"):
+            self.assertIn(ligne, self.sortie)
+        # Les valeurs du profil précèdent les commandes simulées.
+        self.assertLess(
+            self.sortie.index("--keep-daily 10"),
+            self.sortie.index("(simulation)"),
+        )
+        self.assertNotIn("[ATTN]", self.sortie)
+        # Le champ Database lui-même, ancré : la ligne de détail
+        # `--db demo_db (profile)` ne le satisfait pas.
+        self.assertRegex(self.sortie, champ_base("demo_db", ob.t("profile")))
+        self.assertEqual(
+            self.lancer("--dry-run", "--db", "demo_db"),
+            ob.CODE_OK,
+            self.sortie,
+        )
+        self.assertRegex(self.sortie, champ_base("demo_db", "--db"))
+
+    def test_origine_des_valeurs(self):
+        chemin = self.profil(
+            {"backup": {"keep_daily": 10, "dest": "/srv/sauvegardes"}}
+        )
+        args = self.analyser(
+            ["--service", "erplibre_demo", "--keep-weekly", "2"]
+        )
+        self.assertEqual(args.profil.chemin, chemin)
+        self.assertEqual(args.keep_daily, 10)
+        self.assertEqual(args.dest, "/srv/sauvegardes")
+        self.assertEqual(args.keep_weekly, 2)
+        self.assertEqual(args.profil.origine("keep_daily"), "profil")
+        self.assertEqual(args.profil.origine("keep_weekly"), "cli")
+        self.assertEqual(args.profil.origine("keep_monthly"), "defaut")
+        self.assertEqual(args.keep_monthly, ob.GARDE_MENSUEL)
+
+    def test_la_ligne_de_commande_gagne(self):
+        self.profil({"backup": {"keep_daily": 10, "copy_to": COPIE}})
+        self.assertEqual(
+            self.lancer("--dry-run", "--keep-daily", "3"), ob.CODE_OK
+        )
+        self.assertIn(
+            retention_affichee(
+                3, ob.GARDE_HEBDO, ob.GARDE_MENSUEL, ob.GARDE_RECENTS
+            ),
+            self.sortie,
+        )
+        self.assertNotIn("--keep-daily 10", self.sortie)
+        self.assertIn("[ATTN]", self.sortie)
+        args = self.analyser(
+            ["--service", "erplibre_demo", "--keep-daily", "3"]
+        )
+        self.assertEqual(args.keep_daily, 3)
+        self.assertEqual(
+            [e.dest for e in args.profil.ecartees], ["keep_daily"]
+        )
+        self.assertEqual(args.copy_to, COPIE)
+
+    def test_zero_refuse_dans_le_profil_accepte_sur_la_cli(self):
+        self.profil({"backup": {"keep_daily": 0}})
+        self.assertEqual(self.analyser(["--service", "erplibre_demo"]), 2)
+        self.assertIn("backup.keep_daily", self.erreurs)
+        args = self.analyser(
+            ["--service", "erplibre_demo", "--keep-daily", "0"]
+        )
+        self.assertEqual(args.keep_daily, 0)
+
+    def test_regles_du_profil(self):
+        for groupe, cle in (
+            ({"max_age": 200}, "backup.max_age"),
+            ({"dest": "sauvegardes"}, "backup.dest"),
+            ({"state_dir": "etat"}, "backup.state_dir"),
+            ({"copy_to": "pas une copie"}, "backup.copy_to"),
+            ({"keep_daily": "dix"}, "backup.keep_daily"),
+        ):
+            with self.subTest(cle=cle):
+                chemin = self.profil({"backup": groupe})
+                self.assertEqual(
+                    self.analyser(["--service", "erplibre_demo"]), 2
+                )
+                self.assertIn(cle, self.erreurs)
+                os.remove(chemin)
+                self._cleanups.pop()
+
+    def test_options_exclues_ignorees(self):
+        self.profil(
+            {
+                "backup": {
+                    "status": True,
+                    "test_restore": True,
+                    "force_space": True,
+                    "file": "/srv/x.zip",
+                    "into": "autre_db",
+                    "dry_run": True,
+                    "user": "root",
+                    "service": "odoo-exemple.service",
+                    "couleur": "rouge",
+                },
+                "update_module": {"timeout": 5},
+            }
+        )
+        args = self.analyser(["--service", "erplibre_demo"])
+        self.assertFalse(args.status or args.test_restore or args.restore)
+        self.assertFalse(args.force_space or args.dry_run)
+        self.assertIsNone(args.file)
+        self.assertIsNone(args.into)
+        self.assertIsNone(args.user)
+        self.assertEqual(args.service, self.SERVICE)
+        self.assertEqual(args.profil.valeurs, {})
+        self.assertEqual(
+            sorted(e.dest for e in args.profil.ecartees),
+            sorted(
+                [
+                    "status",
+                    "test_restore",
+                    "force_space",
+                    "file",
+                    "into",
+                    "dry_run",
+                    "user",
+                    "service",
+                ]
+            ),
+        )
+        # Une clé inconnue du groupe est signalée ; le groupe d'un autre
+        # outil est ignoré sans message.
+        self.assertEqual(args.profil.inconnues, ["backup.couleur"])
+        # Le mode par défaut reste la sauvegarde, en simulation ici.
+        self.assertEqual(self.lancer("--dry-run"), ob.CODE_OK)
+        self.assertEqual(self.sortie.count("[ATTN]"), 9, self.sortie)
+        self.assertEqual(self.outils().count("pg_dump"), 0)
+
+    def test_valider_apres_le_profil(self):
+        """`valider` voit les valeurs posées par le profil : il est appelé
+        après la pose, jamais avant."""
+        self.profil({"backup": {"keep_daily": 10}})
+        vues = []
+        valider = ob.valider
+
+        def espion(parser, args):
+            vues.append(args.keep_daily)
+            return valider(parser, args)
+
+        with mock.patch.object(ob, "valider", espion):
+            args = self.analyser(["--service", "erplibre_demo"])
+        self.assertEqual(args.keep_daily, 10)
+        self.assertEqual(vues, [10])
+
+    def test_file_et_into_jamais_du_profil(self):
+        # `file` et `into` ne viennent jamais du profil : --restore les
+        # exige toujours sur la ligne de commande.
+        self.profil({"backup": {"file": "/srv/x.zip", "into": "autre_db"}})
+        self.assertEqual(
+            self.analyser(["--service", "erplibre_demo", "--restore"]), 2
+        )
+        self.assertEqual(
+            self.analyser(["--service", "erplibre_demo", "--into", "x"]), 2
+        )
+
+    def test_status_liste_toutes_les_bases_malgre_db(self):
+        self.profil(
+            {"instance": {"db": "demo_db"}, "backup": {"max_age": 100}}
+        )
+        for base in ("demo_db", "autre_db"):
+            ecrire(
+                os.path.join(self.etat, base, "state.json"),
+                json.dumps({"last_success": {"time": HORLOGE - 50 * 3600}}),
+            )
+        sortie, erreurs = io.StringIO(), io.StringIO()
+        rapport = report.Rapport(flux=sortie, erreurs=erreurs, couleur=False)
+        code = ob.main(
+            [
+                "--status",
+                "--service",
+                "erplibre_demo",
+                "--state-dir",
+                self.etat,
+            ],
+            self.systeme,
+            rapport,
+        )
+        self.sortie = sortie.getvalue()
+        # max_age (100 h) vient du profil : 50 h restent dans la borne.
+        self.assertEqual(code, ob.CODE_OK, self.sortie)
+        self.assertIn("demo_db", self.sortie)
+        self.assertIn("autre_db", self.sortie)
+        self.assertIn("--max-age 100", self.sortie)
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertEqual(self.systeme.appels, [])
+
+    def test_status_avec_profile_explicite(self):
+        chemin = self.profil({"backup": {"state_dir": self.etat}})
+        ecrire(
+            os.path.join(self.etat, "demo_db", "state.json"),
+            json.dumps({"last_success": {"time": HORLOGE - 3600}}),
+        )
+        args = self.analyser(["--status", "--profile", chemin])
+        self.assertEqual(args.state_dir, self.etat)
+        # Sous --status, le service du profil n'est pas posé.
+        self.assertIsNone(args.service)
+        rapport = report.Rapport(
+            flux=io.StringIO(), erreurs=io.StringIO(), couleur=False
+        )
+        code = ob.main(
+            ["--status", "--profile", chemin], self.systeme, rapport
+        )
+        self.assertEqual(code, ob.CODE_OK)
+        self.assertEqual(self.systeme.appels, [])
+
+    def test_profile_explicite_pose_le_service(self):
+        ailleurs = os.path.join(self.bac, "ailleurs")
+        os.makedirs(ailleurs)
+        chemin = self.profil({}, dossier=ailleurs)
+        args = self.analyser(["--profile", chemin, "--dry-run"])
+        self.assertEqual(args.service, self.SERVICE)
+        self.assertEqual(args.profil.origine("service"), "profil")
+
+    def test_no_profile(self):
+        self.profil({"backup": {"keep_daily": 10}})
+        self.assertEqual(self.lancer("--dry-run", "--no-profile"), ob.CODE_OK)
+        self.assertIn(
+            retention_affichee(
+                ob.GARDE_QUOTIDIEN,
+                ob.GARDE_HEBDO,
+                ob.GARDE_MENSUEL,
+                ob.GARDE_RECENTS,
+            ),
+            self.sortie,
+        )
+        self.assertNotIn("--keep-daily 10", self.sortie)
+        args = self.analyser(["--service", "erplibre_demo", "--no-profile"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.keep_daily, ob.GARDE_QUOTIDIEN)
+
+    def test_profile_unset(self):
+        self.profil({"backup": {"keep_daily": 10, "keep_weekly": 2}})
+        args = self.analyser(
+            ["--service", "erplibre_demo", "--profile-unset", "keep-daily"]
+        )
+        self.assertEqual(args.keep_daily, ob.GARDE_QUOTIDIEN)
+        self.assertEqual(args.keep_weekly, 2)
+        self.assertEqual(
+            self.analyser(
+                ["--service", "erplibre_demo", "--profile-unset", "file"]
+            ),
+            2,
+        )
+
+    def test_profil_absent_et_requis(self):
+        args = self.analyser(["--service", "erplibre_demo"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.keep_daily, ob.GARDE_QUOTIDIEN)
+        self.assertEqual(
+            self.analyser(
+                ["--service", "erplibre_demo", "--profile-required"]
+            ),
+            2,
+        )
+
+    def test_analyser_seul_ne_devine_jamais(self):
+        self.profil({"backup": {"keep_daily": 10}})
+        with mock.patch.object(
+            profil.systemd, "deviner_unite", side_effect=AssertionError
+        ):
+            args = self.analyser(["--dry-run"])
+        self.assertFalse(args.profil.actif)
+
+    def test_unite_devinee_une_seule_fois(self):
+        self.profil({"backup": {"keep_daily": 10}})
+        systeme = FauxSystemeDevine(self.bac, self.verrous)
+        os.makedirs(systeme.dossier_pg, exist_ok=True)
+        sortie, erreurs = io.StringIO(), io.StringIO()
+        rapport = report.Rapport(flux=sortie, erreurs=erreurs, couleur=False)
+        code = ob.main(
+            ["--dest", self.dest, "--state-dir", self.etat, "--dry-run"],
+            systeme,
+            rapport,
+        )
+        self.assertEqual(code, ob.CODE_OK, sortie.getvalue())
+        self.assertIn("--keep-daily 10", sortie.getvalue())
+        listes = [
+            argv
+            for nom, argv in systeme.appels
+            if nom == "systemctl" and argv[1] == "list-units"
+        ]
+        self.assertEqual(len(listes), 1)
 
 
 class TestSousLeCompte(unittest.TestCase):

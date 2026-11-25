@@ -29,11 +29,21 @@ from unittest import mock
 
 RACINE_DEPOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE_DEPOT)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from profil_isole import profil_isole  # noqa: E402
+
+from script.lib_ops import profil  # noqa: E402
 from script.proxmox import host_perf_audit as hpa  # noqa: E402
 
 FICHIER = os.path.join(RACINE_DEPOT, "script", "proxmox", "host_perf_audit.py")
 GIB = 2**30
+
+
+def setUpModule():
+    """Les profils de ce module vivent sous un dossier temporaire : le vrai
+    `private/production` n'est jamais lu ni écrit."""
+    profil_isole()
 
 
 # ----------------------------------------------------------------------- #
@@ -2727,6 +2737,7 @@ STDLIB_37 = {
     "shlex",
     "shutil",
     "socket",
+    "stat",
     "subprocess",
     "sys",
     "time",
@@ -2796,6 +2807,456 @@ class TestFichierUnique(unittest.TestCase):
         self.assertTrue(self.source.startswith("#!/usr/bin/env python3\n"))
         self.assertIn("TechnoLibre", self.source.splitlines()[1])
         self.assertTrue(os.access(FICHIER, os.X_OK))
+
+
+# ----------------------------------------------------------------------- #
+# Profil d'hôte : --profile, lecteur interne, parité avec lib_ops/profil
+# ----------------------------------------------------------------------- #
+PROFIL_COMPLET = {
+    "version": 1,
+    "host": "local",
+    "host_perf_audit": {
+        "duration": "10m",
+        "interval": 2.5,
+        "no_guests": True,
+        "top": 3,
+        "verbose": False,
+    },
+}
+
+# Les `dest` propres à l'audit : celles que la parité compare.
+DESTS_AUDIT = sorted(
+    action.dest
+    for action in hpa.construire_parseur()._actions
+    if action.dest not in ("help", "profile")
+)
+
+
+class ProfilCase(unittest.TestCase):
+    def setUp(self):
+        # Sous la couture armée par setUpModule : jamais le vrai dossier.
+        self.dossier = tempfile.mkdtemp(
+            prefix="host-", dir=profil.racine_profils()
+        )
+        self.addCleanup(shutil.rmtree, self.dossier, True)
+
+    def ecrire(self, doc, nom="local.json", mode=0o644):
+        chemin = os.path.join(self.dossier, nom)
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(doc if isinstance(doc, str) else json.dumps(doc))
+        os.chmod(chemin, mode)
+        return chemin
+
+    def lire(self, argv):
+        """(args, stderr) de `lire_arguments(argv)`."""
+        erreur = io.StringIO()
+        with mock.patch("sys.stderr", erreur):
+            args = hpa.lire_arguments(argv)
+        return args, erreur.getvalue()
+
+    def refus(self, argv):
+        """Le message d'un refus en code 2."""
+        erreur = io.StringIO()
+        with mock.patch("sys.stderr", erreur):
+            with self.assertRaises(SystemExit) as fin:
+                hpa.lire_arguments(argv)
+        self.assertEqual(fin.exception.code, 2)
+        return erreur.getvalue()
+
+
+class TestProfil(ProfilCase):
+    def test_valeurs_du_profil_appliquees(self):
+        chemin = self.ecrire(PROFIL_COMPLET)
+        args, _e = self.lire(["--profile", chemin])
+        self.assertEqual(args.duration, 600)
+        self.assertEqual(args.interval, 2.5)
+        self.assertIs(args.no_guests, True)
+        self.assertEqual(args.top, 3)
+        self.assertIs(args.verbose, False)
+        self.assertEqual(args.profil["path"], chemin)
+        self.assertEqual(
+            args.profil["values"],
+            [
+                ("--duration", "10m"),
+                ("--interval", 2.5),
+                ("--no-guests", True),
+                ("--top", 3),
+                ("--verbose", False),
+            ],
+        )
+        self.assertEqual(args.profil["warnings"], [])
+
+    def test_nombres_en_texte_ou_en_json(self):
+        chemin = self.ecrire(
+            {"version": 1, "host_perf_audit": {"duration": 90, "top": "4"}}
+        )
+        args, _e = self.lire(["--profile", chemin])
+        self.assertEqual((args.duration, args.top), (90, 4))
+
+    def test_la_ligne_de_commande_gagne(self):
+        chemin = self.ecrire(PROFIL_COMPLET)
+        args, _e = self.lire(
+            ["--duration", "30", "--profile", chemin, "--top=5"]
+        )
+        self.assertEqual((args.duration, args.top), (30, 5))
+        self.assertEqual(args.interval, 2.5)
+        self.assertIn(
+            "--duration: the command line wins over the profile",
+            args.profil["warnings"],
+        )
+        self.assertNotIn(
+            "--top", [option for option, _b in args.profil["values"]]
+        )
+
+    def test_valeur_remplacee_non_validee(self):
+        """Une valeur que la ligne de commande remplace n'est pas
+        convertie : elle ne peut pas faire échouer la commande."""
+        chemin = self.ecrire({"version": 1, "host_perf_audit": {"top": 0}})
+        args, _e = self.lire(["--profile", chemin, "--top", "2"])
+        self.assertEqual(args.top, 2)
+
+    def test_options_exclues_ignorees(self):
+        chemin = self.ecrire(
+            {
+                "version": 1,
+                "host_perf_audit": {
+                    "json": True,
+                    "csv": "/var/tmp/exemple.csv",
+                    "root": "/srv/arbre",
+                },
+            }
+        )
+        args, _e = self.lire(["--profile", chemin])
+        self.assertIs(args.json, False)
+        self.assertIsNone(args.csv)
+        self.assertEqual(args.root, "")
+        self.assertEqual(args.profil["values"], [])
+        for cle in ("json", "csv", "root"):
+            with self.subTest(cle=cle):
+                self.assertTrue(
+                    any(
+                        texte.startswith(
+                            "host_perf_audit.%s is not a profile setting" % cle
+                        )
+                        for texte in args.profil["warnings"]
+                    )
+                )
+
+    def test_cle_inconnue_signalee_puis_ignoree(self):
+        chemin = self.ecrire(
+            {
+                "version": 1,
+                "host": "local",
+                "host_perf_audit": {"duree": "10m", "top": 2},
+                "host_perf_audti": {"top": 9},
+                "backup": {"keep_daily": 10},
+                "instance": {"db": "exemple_db"},
+            }
+        )
+        args, _e = self.lire(["--profile", chemin])
+        self.assertEqual(args.top, 2)
+        self.assertEqual(args.duration, 60)
+        self.assertEqual(
+            args.profil["warnings"],
+            [
+                "unknown key host_perf_audti, ignored",
+                "unknown key host_perf_audit.duree, ignored",
+            ],
+        )
+
+    def test_refus_inscriptible_par_tous(self):
+        chemin = self.ecrire(PROFIL_COMPLET, mode=0o646)
+        self.assertIn(
+            "writable by every account", self.refus(["--profile", chemin])
+        )
+
+    def test_refus_lien_symbolique(self):
+        cible = self.ecrire(PROFIL_COMPLET)
+        lien = os.path.join(self.dossier, "lien.json")
+        os.symlink(cible, lien)
+        self.assertIn("symbolic link refused", self.refus(["--profile", lien]))
+
+    def test_refus_caractere_de_controle_sans_citer_la_valeur(self):
+        chemin = self.ecrire(
+            {"version": 1, "host_perf_audit": {"duration": "10m\x1b[2J"}}
+        )
+        message = self.refus(["--profile", chemin])
+        self.assertIn("host_perf_audit.duration: control character", message)
+        self.assertNotIn("10m", message)
+        chemin = self.ecrire({"version": 1, "host": "lo\ncal"}, "hote.json")
+        self.assertIn(
+            "host: control character", self.refus(["--profile", chemin])
+        )
+
+    def test_refus_du_document(self):
+        for nom, contenu, attendu in (
+            ("recent", {"version": 2}, "newer ERPLibre (version 2)"),
+            ("sans_version", {"host_perf_audit": {}}, "invalid version"),
+            ("version_bool", {"version": True}, "invalid version"),
+            ("liste", "[1]", "a JSON object is expected"),
+            ("json", "{version: 1}", "invalid JSON"),
+            ("nan", '{"version": 1, "x": NaN}', "invalid JSON"),
+            (
+                "groupe",
+                {"version": 1, "host_perf_audit": [1]},
+                "host_perf_audit: a group is a JSON object",
+            ),
+            ("absent", None, "file not found"),
+        ):
+            with self.subTest(nom=nom):
+                chemin = os.path.join(self.dossier, nom + ".json")
+                if contenu is not None:
+                    chemin = self.ecrire(contenu, nom + ".json")
+                message = self.refus(["--profile", chemin])
+                self.assertIn("Profile %s: " % chemin, message)
+                self.assertIn(attendu, message)
+
+    def test_refus_valeur_invalide_nomme_la_cle(self):
+        for doc, attendu in (
+            ({"top": 0}, "host_perf_audit.top: expected at least 1"),
+            ({"duration": "1d"}, "host_perf_audit.duration: "),
+            ({"interval": "vite"}, "host_perf_audit.interval: invalid value"),
+            ({"no_guests": "yes"}, "host_perf_audit.no_guests: expected true"),
+            ({"top": [3]}, "host_perf_audit.top: expected a string"),
+            ({"top": True}, "host_perf_audit.top: expected a string"),
+        ):
+            with self.subTest(doc=doc):
+                chemin = self.ecrire({"version": 1, "host_perf_audit": doc})
+                self.assertIn(attendu, self.refus(["--profile", chemin]))
+
+    def test_trop_gros(self):
+        chemin = self.ecrire(
+            '{"version": 1, "host": "%s"}' % ("a" * hpa.PROFIL_TAILLE_MAX)
+        )
+        self.assertIn("larger than 256 KiB", self.refus(["--profile", chemin]))
+
+    def test_sans_profile_aucun_profil(self):
+        """Aucune découverte : un `host/local.json` sous la racine des
+        profils n'est pas lu sans `--profile`, et l'audit n'a pas de
+        `--no-profile`."""
+        dossier = os.path.join(profil.racine_profils(), "host")
+        os.makedirs(dossier, exist_ok=True)
+        self.addCleanup(shutil.rmtree, dossier, True)
+        with open(os.path.join(dossier, "local.json"), "w") as f:
+            json.dump(PROFIL_COMPLET, f)
+        args, erreur = self.lire([])
+        self.assertIsNone(args.profil)
+        self.assertEqual((args.duration, args.top), (60, 8))
+        self.assertEqual(erreur, "")
+        self.assertEqual(hpa.lignes_profil(args.profil), [])
+        self.assertIn("unrecognized arguments", self.refus(["--no-profile"]))
+        self.assertIn(
+            "unrecognized arguments", self.refus(["--profile-unset", "top"])
+        )
+
+    def test_profile_vide(self):
+        args, _e = self.lire(["--profile", ""])
+        self.assertIsNone(args.profil)
+
+    def test_aide_et_erreur_passent_avant_le_profil(self):
+        """Une pré-passe en échec saute le profil : l'aide s'imprime même
+        avec un profil refusé, et une erreur de la ligne de commande sort
+        une seule fois, sous le message d'argparse."""
+        chemin = self.ecrire(PROFIL_COMPLET, mode=0o646)
+        sortie = io.StringIO()
+        with mock.patch("sys.stdout", sortie):
+            with self.assertRaises(SystemExit) as fin:
+                hpa.lire_arguments(["--profile", chemin, "--help"])
+        self.assertEqual(fin.exception.code, 0)
+        self.assertIn("--profile FILE", sortie.getvalue())
+        message = self.refus(["--profile", chemin, "--top", "0"])
+        self.assertIn("argument --top", message)
+        self.assertNotIn("Profile", message)
+        self.assertEqual(message.count("error:"), 1)
+
+    def test_parseur_rendu_intact(self):
+        parseur = hpa.construire_parseur()
+        chemin = self.ecrire(PROFIL_COMPLET)
+        avant = [(a.dest, a.default) for a in parseur._actions]
+        with mock.patch("sys.stderr", io.StringIO()):
+            hpa._appliquer_profil(parseur, ["--profile", chemin])
+        self.assertEqual(
+            [(a.dest, a.default) for a in parseur._actions], avant
+        )
+        self.assertNotIn("error", parseur.__dict__)
+        self.assertNotIn("exit", parseur.__dict__)
+
+    def test_lignes_profil(self):
+        chemin = self.ecrire(
+            {
+                "version": 1,
+                "host_perf_audit": {
+                    "duration": "10m",
+                    "no_guests": True,
+                    "verbose": False,
+                    "x": 1,
+                },
+            }
+        )
+        args, _e = self.lire(["--profile", chemin])
+        self.assertEqual(
+            hpa.lignes_profil(args.profil),
+            [
+                "Profile: %s - 3 value(s)" % chemin,
+                "  --duration 10m (profile)",
+                "  --no-guests (profile)",
+                "  --verbose false (profile)",
+                "Warning: unknown key host_perf_audit.x, ignored",
+            ],
+        )
+
+
+class TestProfilDansMain(ProfilCase):
+    def test_origine_annoncee_et_valeurs_mesurees(self):
+        a = hote_complet(self)
+        chemin = self.ecrire(
+            {
+                "version": 1,
+                "host": "local",
+                "host_perf_audit": {
+                    "duration": 20,
+                    "interval": 10,
+                    "no_guests": True,
+                    "top": 99,
+                    "unknown": 1,
+                },
+            }
+        )
+        code, sortie, erreur, _s = lancer_main(
+            self, a, ["--profile", chemin, "--json", "--top", "1"]
+        )
+        self.assertEqual(code, 0, erreur)
+        self.assertIn("Profile: %s - 3 value(s)" % chemin, erreur)
+        self.assertIn("  --duration 20 (profile)", erreur)
+        self.assertIn("  --interval 10 (profile)", erreur)
+        self.assertIn("  --no-guests (profile)", erreur)
+        self.assertIn("Warning: --top: the command line wins", erreur)
+        self.assertIn("Warning: unknown key host_perf_audit.unknown", erreur)
+        # Les annonces précèdent la mesure.
+        self.assertLess(erreur.index("Profile:"), erreur.index("Measuring"))
+        donnees = json.loads(sortie)
+        self.assertEqual(donnees["interval_s"], 10.0)
+        self.assertEqual(donnees["guests_skipped"], "disabled")
+        self.assertIn(
+            "settings from the profile %s: --duration, --interval,"
+            " --no-guests" % chemin,
+            donnees["notes"],
+        )
+
+    def test_profil_refuse_code_2_sans_mesure(self):
+        a = hote_complet(self)
+        chemin = self.ecrire({"version": 9})
+        with mock.patch("sys.stderr", io.StringIO()) as erreur:
+            code, _o, _e, systeme = lancer_main(
+                self, a, ["--profile", chemin], compteurs=False
+            )
+        self.assertEqual(code, 2)
+        self.assertEqual(systeme.dormis, [])
+        self.assertIn("newer ERPLibre", erreur.getvalue())
+
+
+class TestParite(ProfilCase):
+    """Le lecteur interne et `lib_ops/profil` donnent les mêmes valeurs aux
+    `dest` de l'audit, et refusent les mêmes profils en code 2."""
+
+    def par_lib(self, argv):
+        parseur = hpa.construire_parseur()
+        with mock.patch("sys.stderr", io.StringIO()):
+            args, _application = profil.analyser(
+                parseur,
+                argv,
+                profil.GROUPE_HOTE,
+                lambda texte: texte,
+                profil.RACINE,
+                utilise_service=profil.outil("host_perf_audit").avec_service,
+            )
+        return {dest: getattr(args, dest) for dest in DESTS_AUDIT}
+
+    def par_audit(self, argv):
+        args, _e = self.lire(argv)
+        return {dest: getattr(args, dest) for dest in DESTS_AUDIT}
+
+    def test_memes_valeurs(self):
+        docs = (
+            PROFIL_COMPLET,
+            {"version": 1, "host": "pve-exemple"},
+            {
+                "version": 1,
+                "host_perf_audit": {
+                    "duration": 90,
+                    "top": "4",
+                    "no_guests": False,
+                    "verbose": True,
+                    "json": True,
+                    "inconnue": 1,
+                },
+                "backup": {"keep_daily": 3},
+            },
+        )
+        argvs = (
+            [],
+            ["--top", "5"],
+            ["--duration", "30", "--json", "--no-guests"],
+            ["--interval", "1", "-v", "--csv", "/var/tmp/exemple.csv"],
+        )
+        for i, doc in enumerate(docs):
+            chemin = self.ecrire(doc, "doc%d.json" % i)
+            for argv in argvs:
+                argv = ["--profile", chemin] + argv
+                with self.subTest(doc=i, argv=argv):
+                    self.assertEqual(self.par_audit(argv), self.par_lib(argv))
+        self.assertEqual(self.par_audit([]), self.par_lib([]))
+
+    def test_memes_refus(self):
+        cas = (
+            ({"version": 2}, 0o644),
+            ({"version": 1, "host_perf_audit": {"top": 0}}, 0o644),
+            ({"version": 1, "host_perf_audit": {"no_guests": 1}}, 0o644),
+            ({"version": 1, "host_perf_audit": {"duration": "x"}}, 0o644),
+            ({"version": 1, "host_perf_audit": {"top": "\x07"}}, 0o644),
+            ({"version": 1, "host_perf_audit": []}, 0o644),
+            ("[]", 0o644),
+            (PROFIL_COMPLET, 0o646),
+        )
+        for i, (doc, mode) in enumerate(cas):
+            chemin = self.ecrire(doc, "refus%d.json" % i, mode)
+            with self.subTest(cas=i):
+                self.refus(["--profile", chemin])
+                with self.assertRaises(SystemExit) as fin:
+                    self.par_lib(["--profile", chemin])
+                self.assertEqual(fin.exception.code, 2)
+        cible = self.ecrire(PROFIL_COMPLET, "cible.json")
+        lien = os.path.join(self.dossier, "lien.json")
+        os.symlink(cible, lien)
+        self.refus(["--profile", lien])
+        with self.assertRaises(SystemExit) as fin:
+            self.par_lib(["--profile", lien])
+        self.assertEqual(fin.exception.code, 2)
+
+    def test_tables_alignees_sur_la_bibliotheque(self):
+        self.assertEqual(
+            hpa.PROFIL_CHAMPS, tuple(profil.CHAMPS[profil.GROUPE_HOTE])
+        )
+        self.assertEqual(hpa.PROFIL_GROUPE, profil.GROUPE_HOTE)
+        self.assertEqual(hpa.PROFIL_GROUPES, tuple(profil.CHAMPS))
+        self.assertEqual(hpa.PROFIL_CLES_DOCUMENT, profil.CLES_DOCUMENT)
+        self.assertEqual(hpa.PROFIL_VERSION, profil.VERSION)
+        self.assertEqual(hpa.PROFIL_TAILLE_MAX, profil.TAILLE_MAX)
+        self.assertEqual(hpa.RE_CONTROLE.pattern, profil.RE_CONTROLE.pattern)
+        # Toute option du parser est classée, et les exclues le sont aussi
+        # dans la bibliothèque.
+        parseur = hpa.construire_parseur()
+        for action in parseur._actions:
+            with self.subTest(dest=action.dest):
+                classe = profil.classer(profil.GROUPE_HOTE, action.dest)
+                if action.dest in hpa.PROFIL_CHAMPS:
+                    self.assertEqual(classe, "F")
+                else:
+                    self.assertIn(action.dest, hpa.PROFIL_EXCLUES)
+                    self.assertEqual(classe, "X")
+        self.assertLessEqual(
+            set(hpa.PROFIL_EXCLUES), {a.dest for a in parseur._actions}
+        )
 
 
 if __name__ == "__main__":

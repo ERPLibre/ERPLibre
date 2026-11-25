@@ -17,6 +17,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -27,7 +28,19 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from profil_isole import profil_isole  # noqa: E402
+
+from script.lib_ops import profil  # noqa: E402
 from script.odoo import mail_retry as mr  # noqa: E402
+
+
+def setUpModule():
+    # Les profils de production de ce module vivent dans un dossier
+    # temporaire ; le vrai `private/production` reste intouché.
+    profil_isole()
+
 
 UNITE = "erplibre_demo.service"
 T0 = 1772366400
@@ -929,6 +942,264 @@ class TestInterruptionEtImprevu(Base):
         self.assertIn("pas un nombre", self.erreurs)
         self.assertEqual(self.lancer("--json"), mr.CODE_REFUS)
         self.assertEqual(json.loads(self.sortie), {"exit_code": 2})
+
+
+def champ_base(base, origine):
+    """Le motif de la seule ligne du champ Database qui porte `base
+    (origine)`, ancré : la ligne de détail `--db base (profile)` ne le
+    satisfait pas."""
+    return re.compile(
+        r"^  "
+        + re.escape(mr.t("Database"))
+        + r" +"
+        + re.escape(f"{base} ({origine})")
+        + r"$",
+        re.M,
+    )
+
+
+class TestProfil(Base):
+    """Le profil JSON de l'instance (groupe `mail_retry`, alias
+    `instance.db`) : valeurs appliquées et montrées, la ligne de commande
+    gagne, les options exclues ne s'y persistent pas."""
+
+    DOC = {
+        "version": 1,
+        "service": UNITE,
+        "instance": {"db": "exemple_db"},
+        "mail_retry": {"days": 14, "timeout": 120},
+    }
+
+    def ecrire_profil(self, doc=None, groupe=None):
+        doc = json.loads(json.dumps(self.DOC if doc is None else doc))
+        if groupe is not None:
+            doc["mail_retry"].update(groupe)
+        chemin = os.path.join(profil.RACINE_PROFILS, f"{UNITE}.json")
+        with open(chemin, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        os.chmod(chemin, 0o644)
+        self.addCleanup(os.remove, chemin)
+        return chemin
+
+    def ligne(self, option, valeur):
+        return mr.t("{option} {value} (profile)").format(
+            option=option, value=valeur
+        )
+
+    def test_construire_parseur_sans_analyse(self):
+        parser = mr.construire_parseur()
+        dests = {action.dest for action in parser._actions}
+        self.assertTrue({"days", "timeout", "verbose", "db"} <= dests)
+        self.assertNotIn("profile", dests)
+        args = parser.parse_args(["--list", "--resend", "all"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as fin:
+                mr.valider(parser, args)
+        self.assertEqual(fin.exception.code, 2)
+
+    def test_valeurs_appliquees_et_montrees(self):
+        self.ecrire_profil()
+        args = mr.analyser(["--service", UNITE])
+        self.assertEqual((args.days, args.timeout), (14, 120))
+        self.assertEqual(args.db, "exemple_db")
+        self.assertEqual(args.profil.origine("days"), "profil")
+        self.assertEqual(args.profil.origine("verbose"), "defaut")
+        self.lancer("--list")
+        self.assertIn(
+            "interval '14 days'", self.systeme.requetes[-1]["argv"][-1]
+        )
+        self.assertIn(self.ligne("--days", 14), self.sortie)
+        self.assertEqual(
+            self.lancer("--dry-run", "--resend", "all", "--yes"),
+            mr.CODE_RESTE,
+            self.erreurs,
+        )
+        # `--resend` renvoie ce que liste `--days` : la fenêtre du profil
+        # est écartée, le défaut s'applique.
+        self.assertIn(
+            f"interval '{mr.JOURS_PAR_DEFAUT} days'",
+            self.systeme.requetes[-1]["argv"][-1],
+        )
+        self.assertNotIn(self.ligne("--days", 14), self.sortie)
+        self.assertIn(
+            mr.t("{option} from the profile ignored: {reason}").format(
+                option="--days",
+                reason=mr.t(
+                    "--resend selects from the list: give --days explicitly"
+                ),
+            ),
+            self.sortie,
+        )
+        self.assertIn(mr.t("Profile"), self.sortie)
+        for option, valeur in (
+            ("--timeout", 120),
+            ("--db", "exemple_db"),
+        ):
+            self.assertIn(self.ligne(option, valeur), self.sortie)
+        # En simulation, les valeurs du profil précèdent les commandes.
+        self.assertLess(
+            self.sortie.index(self.ligne("--timeout", 120)),
+            self.sortie.index("(simulation)"),
+        )
+        self.assertEqual(self.systeme.shells, [])
+
+    def test_champ_base_dit_son_origine(self):
+        """Le champ Database dit « profile » pour une base du profil, et
+        `--db` pour une base tapée ; la ligne de détail du profil ne
+        suffit pas à le satisfaire."""
+        self.ecrire_profil()
+        self.lancer("--list")
+        self.assertRegex(
+            self.sortie, champ_base("exemple_db", mr.t("profile"))
+        )
+        self.lancer("--list", "--db", "base_essai")
+        self.assertRegex(self.sortie, champ_base("base_essai", "--db"))
+
+    def test_delai_du_profil_pour_le_shell(self):
+        self.ecrire_profil()
+        self.assertEqual(
+            self.lancer("--resend", "ids", "7404", "--yes"), mr.CODE_OK
+        )
+        self.assertEqual(self.systeme.shells[-1]["delai"], 120)
+
+    def test_la_ligne_de_commande_gagne(self):
+        self.ecrire_profil()
+        args = mr.analyser(["--service", UNITE, "--days", "7"])
+        self.assertEqual((args.days, args.timeout), (7, 120))
+        self.assertEqual(args.profil.origine("days"), "cli")
+        self.lancer("--days", "7", "--db", "base_essai")
+        self.assertIn(
+            "interval '7 days'", self.systeme.requetes[-1]["argv"][-1]
+        )
+        self.assertNotIn(self.ligne("--days", 14), self.sortie)
+        self.assertIn(
+            mr.t("{option}: the command line wins over the profile").format(
+                option="--days"
+            ),
+            self.sortie,
+        )
+        self.assertIn("base_essai", self.sortie)
+
+    def test_no_profile_et_profile_unset(self):
+        self.ecrire_profil()
+        args = mr.analyser(["--service", UNITE, "--no-profile"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual((args.days, args.timeout), (30, mr.DELAI_SHELL))
+        self.assertIsNone(args.db)
+        self.lancer("--no-profile")
+        self.assertNotIn(mr.t("Profile"), self.sortie)
+        self.assertIn(
+            "interval '30 days'", self.systeme.requetes[-1]["argv"][-1]
+        )
+        args = mr.analyser(["--service", UNITE, "--profile-unset", "days"])
+        self.assertEqual((args.days, args.timeout), (30, 120))
+
+    def test_options_exclues_jamais_appliquees(self):
+        # Vie privée, objet, sécurité, mode, format : aucune ne s'applique
+        # depuis le profil, chacune est écartée avec un ATTN.
+        exclues = {
+            "details": True,
+            "resend": ["all"],
+            "yes": True,
+            "list": True,
+            "dry_run": True,
+            "json": True,
+            "user": "autre",
+        }
+        self.ecrire_profil(groupe=exclues)
+        args = mr.analyser(["--service", UNITE])
+        self.assertFalse(args.details or args.yes or args.list)
+        self.assertFalse(args.dry_run or args.json)
+        self.assertIsNone(args.resend)
+        self.assertIsNone(args.user)
+        self.assertEqual(
+            sorted(e.dest for e in args.profil.ecartees), sorted(exclues)
+        )
+        self.assertNotIn("details", args.profil.valeurs)
+        # `yes` du profil ne confirme pas un `--resend` tapé.
+        self.assertEqual(self.lancer("--resend", "all"), mr.CODE_RESTE)
+        self.assertEqual(self.systeme.shells, [])
+        self.assertNotIn("jean.dupont", self.sortie)
+        self.assertIn(
+            mr.t("{key} is not a profile setting ({reason}), ignored").format(
+                key="mail_retry.details",
+                reason=mr.t(profil.RAISONS["vie_privee"]),
+            ),
+            self.sortie,
+        )
+
+    def test_cle_inconnue_et_alias_dans_son_groupe(self):
+        self.ecrire_profil(groupe={"db": "autre_db", "jours": 3})
+        args = mr.analyser(["--service", UNITE])
+        self.assertEqual(args.db, "exemple_db")
+        self.assertEqual(
+            args.profil.inconnues, ["mail_retry.db", "mail_retry.jours"]
+        )
+        self.lancer()
+        for cle in ("mail_retry.db", "mail_retry.jours"):
+            self.assertIn(
+                mr.t("unknown key {key}, ignored").format(key=cle),
+                self.sortie,
+            )
+
+    def test_valeur_invalide_refusee_en_code_2(self):
+        chemin = self.ecrire_profil(groupe={"days": 0})
+        erreurs = io.StringIO()
+        with contextlib.redirect_stderr(erreurs):
+            with self.assertRaises(SystemExit) as fin:
+                mr.main(
+                    ["--service", UNITE], self.systeme, None, io.StringIO()
+                )
+        self.assertEqual(fin.exception.code, 2)
+        self.assertIn(chemin, erreurs.getvalue())
+        self.assertIn("mail_retry.days", erreurs.getvalue())
+        self.assertEqual(self.systeme.requetes, [])
+
+    def test_profile_explicite_nomme_le_service(self):
+        chemin = self.ecrire_profil()
+        flux, erreurs = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stderr(erreurs):
+            code = mr.main(["--profile", chemin], self.systeme, None, flux)
+        self.assertEqual(code, mr.CODE_RESTE, erreurs.getvalue())
+        show = [
+            a for a in self.systeme.appels if a[:2] == ["systemctl", "show"]
+        ]
+        self.assertTrue(show)
+        self.assertTrue(all(UNITE in a for a in show))
+        self.assertIn(
+            "interval '14 days'", self.systeme.requetes[-1]["argv"][-1]
+        )
+
+    def test_json_porte_le_profil_et_avertit_sur_stderr(self):
+        chemin = self.ecrire_profil(groupe={"details": True})
+        code = self.lancer("--json")
+        donnees = json.loads(self.sortie)
+        self.assertEqual(donnees["exit_code"], code)
+        self.assertEqual(list(donnees)[-2:], ["profile", "exit_code"])
+        self.assertEqual(donnees["profile"]["path"], chemin)
+        self.assertEqual(
+            donnees["profile"]["values"],
+            {"--days": 14, "--timeout": 120, "--db": "exemple_db"},
+        )
+        self.assertEqual(
+            [i["key"] for i in donnees["profile"]["ignored"]],
+            ["mail_retry.details"],
+        )
+        self.assertNotIn("jean.dupont", self.sortie)
+        self.assertIn("[ATTN]", self.erreurs)
+        self.assertIn("mail_retry.details", self.erreurs)
+
+    def test_json_sans_liste_porte_le_profil(self):
+        self.ecrire_profil()
+        self.systeme.psql = (2, "", "connexion refusée")
+        code = self.lancer("--json")
+        self.assertEqual(code, mr.CODE_REFUS)
+        donnees = json.loads(self.sortie)
+        self.assertEqual(list(donnees), ["profile", "exit_code"])
+
+    def test_json_sans_profil_sans_cle(self):
+        _code = self.lancer("--json")
+        self.assertNotIn("profile", json.loads(self.sortie))
 
 
 class TestPython37(unittest.TestCase):

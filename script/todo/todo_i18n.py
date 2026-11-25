@@ -28721,6 +28721,334 @@ TRANSLATIONS = {
         "fr": "{name} (nom invalide : le journal par défaut est lu)",
         "en": "{name} (invalid name: the default journal is read)",
     },
+    # Production - réglages (ops_settings, lib_ops/profil, credentials)
+    "Chosen by the menu entry or the command line at each run": {
+        "fr": "Choisi par l'entrée du menu ou la ligne de commande à chaque lancement",
+        "en": "Chosen by the menu entry or the command line at each run",
+    },
+    "The object of the action (modules, file, target database), asked each time": {
+        "fr": "L'objet du geste (modules, fichier, base cible), demandé à chaque fois",
+        "en": "The object of the action (modules, file, target database), asked each time",
+    },
+    "Bypasses a safeguard: never persisted": {
+        "fr": "Contourne un garde-fou : ne se persiste jamais",
+        "en": "Bypasses a safeguard: never persisted",
+    },
+    "Shows personal data: asked at each run": {
+        "fr": "Montre des données personnelles : demandé à chaque lancement",
+        "en": "Shows personal data: asked at each run",
+    },
+    "Output format set by the caller": {
+        "fr": "Format de sortie imposé par l'appelant",
+        "en": "Output format set by the caller",
+    },
+    "Names the instance or is detected from it": {
+        "fr": "Nomme l'instance ou en est détecté",
+        "en": "Names the instance or is detected from it",
+    },
+    "Default mode of the warm-up, run by run.sh, never configured": {
+        "fr": "Mode par défaut du préchauffage, lancé par run.sh, jamais configuré",
+        "en": "Default mode of the warm-up, run by run.sh, never configured",
+    },
+    "Test option": {
+        "fr": "Option de test",
+        "en": "Test option",
+    },
+    "Profile option": {
+        "fr": "Option du profil",
+        "en": "Profile option",
+    },
+    "Secret passed by todo, never written": {
+        "fr": "Secret passé par todo, jamais écrit",
+        "en": "Secret passed by todo, never written",
+    },
+    "Shows the help": {
+        "fr": "Affiche l'aide",
+        "en": "Shows the help",
+    },
+    "Narrows a read-only measurement": {
+        "fr": "Restreint une mesure en lecture seule",
+        "en": "Narrows a read-only measurement",
+    },
+    "--namespace cannot be combined with --file": {
+        "fr": "--namespace ne se combine pas avec --file",
+        "en": "--namespace cannot be combined with --file",
+    },
+    "--status lists every database": {
+        "fr": "--status liste toutes les bases",
+        "en": "--status lists every database",
+    },
+    "control character in a key or a value": {
+        "fr": "caractère de contrôle dans une clé ou une valeur",
+        "en": "control character in a key or a value",
+    },
+    "invalid choice: {value} (choose from {choices})": {
+        "fr": "choix invalide : {value} (parmi {choices})",
+        "en": "invalid choice: {value} (choose from {choices})",
+    },
+    "expected a string or a number": {
+        "fr": "une chaîne ou un nombre est attendu",
+        "en": "expected a string or a number",
+    },
+    "expected an absolute path: {value}": {
+        "fr": "un chemin absolu est attendu : {value}",
+        "en": "expected an absolute path: {value}",
+    },
+    "the keep_* settings must keep at least {minimum} backups in all: {total}": {
+        "fr": "les réglages keep_* doivent garder au moins {minimum} sauvegardes en tout : {total}",
+        "en": "the keep_* settings must keep at least {minimum} backups in all: {total}",
+    },
+    "larger than {size} KiB": {
+        "fr": "plus de {size} Kio",
+        "en": "larger than {size} KiB",
+    },
+    "a JSON object is expected": {
+        "fr": "un objet JSON est attendu",
+        "en": "a JSON object is expected",
+    },
+    "invalid version: {version}": {
+        "fr": "version invalide : {version}",
+        "en": "invalid version: {version}",
+    },
+    "profile written by a newer ERPLibre (version {version})": {
+        "fr": "profil écrit par un ERPLibre plus récent (version {version})",
+        "en": "profile written by a newer ERPLibre (version {version})",
+    },
+    "the service {service} does not match the file name": {
+        "fr": "le service {service} ne correspond pas au nom du fichier",
+        "en": "the service {service} does not match the file name",
+    },
+    "the service is missing": {
+        "fr": "le service manque",
+        "en": "the service is missing",
+    },
+    "Profile": {
+        "fr": "Profil",
+        "en": "Profile",
+    },
+    "invalid value: {value}": {
+        "fr": "valeur invalide : {value}",
+        "en": "invalid value: {value}",
+    },
+    "invalid value (not shown)": {
+        "fr": "valeur invalide (non affichée)",
+        "en": "invalid value (not shown)",
+    },
+    "a secret is a KeePass reference (kdbx) or an absolute file path": {
+        "fr": "un secret est une référence KeePass (kdbx) ou le chemin absolu d'un fichier",
+        "en": "a secret is a KeePass reference (kdbx) or an absolute file path",
+    },
+    "expected true or false": {
+        "fr": "true ou false est attendu",
+        "en": "expected true or false",
+    },
+    "expected a list": {
+        "fr": "une liste est attendue",
+        "en": "expected a list",
+    },
+    "expected {minimum} or more in a profile: {value}": {
+        "fr": "{minimum} ou plus est attendu dans un profil : {value}",
+        "en": "expected {minimum} or more in a profile: {value}",
+    },
+    "expected {maximum} or less in a profile: {value}": {
+        "fr": "{maximum} ou moins est attendu dans un profil : {value}",
+        "en": "expected {maximum} or less in a profile: {value}",
+    },
+    "file not found": {
+        "fr": "fichier introuvable",
+        "en": "file not found",
+    },
+    "cannot read: {error}": {
+        "fr": "lecture impossible : {error}",
+        "en": "cannot read: {error}",
+    },
+    "not a regular file": {
+        "fr": "pas un fichier régulier",
+        "en": "not a regular file",
+    },
+    "writable by every account: refused": {
+        "fr": "inscriptible par tous les comptes : refusé",
+        "en": "writable by every account: refused",
+    },
+    "not UTF-8": {
+        "fr": "pas en UTF-8",
+        "en": "not UTF-8",
+    },
+    "invalid JSON: {error}": {
+        "fr": "JSON invalide : {error}",
+        "en": "invalid JSON: {error}",
+    },
+    "a group is a JSON object": {
+        "fr": "un groupe est un objet JSON",
+        "en": "a group is a JSON object",
+    },
+    "unknown key": {
+        "fr": "clé inconnue",
+        "en": "unknown key",
+    },
+    "modified elsewhere: reload it": {
+        "fr": "modifié ailleurs : rechargez-le",
+        "en": "modified elsewhere: reload it",
+    },
+    "Profile (JSON) of the instance; default: private/production/<service>.json of this checkout.": {
+        "fr": "Profil (JSON) de l'instance ; par défaut : private/production/<service>.json de ce checkout.",
+        "en": "Profile (JSON) of the instance; default: private/production/<service>.json of this checkout.",
+    },
+    "Read no profile.": {
+        "fr": "Ne lire aucun profil.",
+        "en": "Read no profile.",
+    },
+    "Ignore this setting of the profile (e.g. keep-daily); repeatable.": {
+        "fr": "Ignorer ce réglage du profil (ex. keep-daily) ; répétable.",
+        "en": "Ignore this setting of the profile (e.g. keep-daily); repeatable.",
+    },
+    "Fail (code 2) when no profile is found.": {
+        "fr": "Échouer (code 2) si aucun profil n'est trouvé.",
+        "en": "Fail (code 2) when no profile is found.",
+    },
+    "Expected SHA-256 of the profile: refuse if it changed since the simulation.": {
+        "fr": "SHA-256 attendu du profil : refuser s'il a changé depuis la simulation.",
+        "en": "Expected SHA-256 of the profile: refuse if it changed since the simulation.",
+    },
+    "profile changed since the simulation": {
+        "fr": "le profil a changé depuis la simulation",
+        "en": "profile changed since the simulation",
+    },
+    "{option}: removed by --profile-unset": {
+        "fr": "{option} : retiré par --profile-unset",
+        "en": "{option}: removed by --profile-unset",
+    },
+    "{option} from the profile ignored: {other} is on the command line": {
+        "fr": "{option} du profil ignoré : {other} est sur la ligne de commande",
+        "en": "{option} from the profile ignored: {other} is on the command line",
+    },
+    "{option} from the profile ignored: {reason}": {
+        "fr": "{option} du profil ignoré : {reason}",
+        "en": "{option} from the profile ignored: {reason}",
+    },
+    "expected at least one value": {
+        "fr": "au moins une valeur est attendue",
+        "en": "expected at least one value",
+    },
+    "symbolic link refused": {
+        "fr": "lien symbolique refusé",
+        "en": "symbolic link refused",
+    },
+    "writable by its group: refused under root": {
+        "fr": "inscriptible par son groupe : refusé sous root",
+        "en": "writable by its group: refused under root",
+    },
+    "its directory is writable by its group or by every account: refused under root": {
+        "fr": "son dossier est inscriptible par son groupe ou par tous les comptes : refusé sous root",
+        "en": "its directory is writable by its group or by every account: refused under root",
+    },
+    "owned by uid {uid}: refused under root": {
+        "fr": "appartient à l'uid {uid} : refusé sous root",
+        "en": "owned by uid {uid}: refused under root",
+    },
+    "outside {root}: refused under root": {
+        "fr": "hors de {root} : refusé sous root",
+        "en": "outside {root}: refused under root",
+    },
+    "expected 64 hexadecimal characters": {
+        "fr": "64 caractères hexadécimaux sont attendus",
+        "en": "expected 64 hexadecimal characters",
+    },
+    "{path} — {count} value(s)": {
+        "fr": "{path} — {count} valeur(s)",
+        "en": "{path} — {count} value(s)",
+    },
+    "Profile {path}: {error}": {
+        "fr": "Profil {path} : {error}",
+        "en": "Profile {path}: {error}",
+    },
+    "No profile found, and --profile-required is given.": {
+        "fr": "Aucun profil trouvé, et --profile-required est donné.",
+        "en": "No profile found, and --profile-required is given.",
+    },
+    "{count} value(s) of {option} from the profile replaced by the command line": {
+        "fr": "{count} valeur(s) de {option} du profil remplacée(s) par la ligne de commande",
+        "en": "{count} value(s) of {option} from the profile replaced by the command line",
+    },
+    "{option}: the command line wins over the profile": {
+        "fr": "{option} : la ligne de commande l'emporte sur le profil",
+        "en": "{option}: the command line wins over the profile",
+    },
+    "{option}: the secret is in KeePass, not reachable here; ignored": {
+        "fr": "{option} : le secret est dans KeePass, non joignable ici ; ignoré",
+        "en": "{option}: the secret is in KeePass, not reachable here; ignored",
+    },
+    "{option} from the profile ignored: {dependency} is not available here": {
+        "fr": "{option} du profil ignoré : {dependency} n'est pas disponible ici",
+        "en": "{option} from the profile ignored: {dependency} is not available here",
+    },
+    "pattern too broad: it matches every log line": {
+        "fr": "motif trop large : il trouve toutes les lignes du journal",
+        "en": "pattern too broad: it matches every log line",
+    },
+    "unknown key {key}, ignored": {
+        "fr": "clé inconnue {key}, ignorée",
+        "en": "unknown key {key}, ignored",
+    },
+    "Profile {path}: {key}: {error}": {
+        "fr": "Profil {path} : {key} : {error}",
+        "en": "Profile {path}: {key}: {error}",
+    },
+    "--service {service} differs from the profile service {profile}": {
+        "fr": "--service {service} diffère du service du profil {profile}",
+        "en": "--service {service} differs from the profile service {profile}",
+    },
+    "{key} is not a profile setting ({reason}), ignored": {
+        "fr": "{key} n'est pas un réglage de profil ({reason}), ignoré",
+        "en": "{key} is not a profile setting ({reason}), ignored",
+    },
+    "unknown setting for --profile-unset: {name}": {
+        "fr": "réglage inconnu pour --profile-unset : {name}",
+        "en": "unknown setting for --profile-unset: {name}",
+    },
+    "{option} (profile)": {
+        "fr": "{option} (profil)",
+        "en": "{option} (profile)",
+    },
+    "{option} {value} (profile)": {
+        "fr": "{option} {value} (profil)",
+        "en": "{option} {value} (profile)",
+    },
+    # Production - préchauffage : aides du mode par défaut (warmup_http)
+    "Odoo configuration file, as run.sh resolved it.": {
+        "fr": "Fichier de configuration d'Odoo, tel que run.sh l'a résolu.",
+        "en": "Odoo configuration file, as run.sh resolved it.",
+    },
+    "Database to warm up; default: the one of the configuration.": {
+        "fr": "Base à préchauffer ; par défaut : celle de la configuration.",
+        "en": "Database to warm up; default: the one of the configuration.",
+    },
+    "Odoo execution log, read for the listening address as a last resort.": {
+        "fr": "Journal d'exécution d'Odoo, lu en dernier recours pour"
+        " l'adresse d'écoute.",
+        "en": "Odoo execution log, read for the listening address as a last"
+        " resort.",
+    },
+    "Seconds to wait for the first answer; default: {n}.": {
+        "fr": "Secondes d'attente de la première réponse ; par défaut : {n}.",
+        "en": "Seconds to wait for the first answer; default: {n}.",
+    },
+    "Without --deep: print nothing.": {
+        "fr": "Sans --deep : ne rien afficher.",
+        "en": "Without --deep: print nothing.",
+    },
+    "Odoo arguments, after --: read for the port and the workers.": {
+        "fr": "Arguments d'Odoo, après -- : lus pour le port et les workers.",
+        "en": "Odoo arguments, after --: read for the port and the workers.",
+    },
+    "--resend selects from the list: give --days explicitly": {
+        "fr": "--resend choisit dans la liste : donnez --days explicitement",
+        "en": "--resend selects from the list: give --days explicitly",
+    },
+    "Profile {path}: {error}; this account ignores it.": {
+        "fr": "Profil {path} : {error} ; ce compte l'ignore.",
+        "en": "Profile {path}: {error}; this account ignores it.",
+    },
 }
 
 

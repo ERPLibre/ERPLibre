@@ -100,6 +100,17 @@ une restauration en échec est supprimée.
 (mot de passe masqué) ; il n'écrit rien, ne prend aucun verrou et ne
 demande pas root.
 
+Le profil
+---------
+Les réglages persistants de l'instance (`--dest`, `--state-dir`, `keep_*`,
+`--copy-to`, `--max-age`, `--timeout`, `--verbose`, et `db` du groupe
+`instance`) se lisent du groupe `backup` du profil JSON de l'instance
+(voir `lib_ops/profil.py`) : `--profile FICHIER`, sinon
+`private/production/<service>.json` de ce checkout. La ligne de commande
+gagne toujours ; `--no-profile` coupe le profil, `--profile-unset NOM`
+en retire une valeur. Sous `--status`, aucune unité n'est devinée, et la
+base du profil est écartée : l'état de chaque base est listé.
+
 Bibliothèque standard seulement, sans syntaxe postérieure à Python 3.7 :
 le programme se lance aussi par le python3 d'un serveur de production.
 """
@@ -133,9 +144,11 @@ from script.lib_ops import (  # noqa: E402
     lock,
     odoo_instance,
     postgres,
+    profil,
     report,
     retention,
     service,
+    systemd,
 )
 
 try:
@@ -149,6 +162,9 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 RACINE = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 )
+
+# Groupe du profil de production (voir lib_ops/profil.py).
+GROUPE = "backup"
 
 CODE_OK = 0
 CODE_ECHEC = 1
@@ -2236,7 +2252,13 @@ def _rappels(cible, rapport, nouvelle, manifeste_lu):
 def detecter(args, systeme, racine=RACINE, base_exigee=True):
     """L'instance et sa Cible. Refus sur ce qui manque."""
     plan = types.SimpleNamespace()
-    props = service.detecter_unite(args.service, systeme, racine, plan)
+    props = service.detecter_unite(
+        args.service,
+        systeme,
+        racine,
+        plan,
+        devinee=getattr(getattr(args, "profil", None), "unite_devinee", None),
+    )
     service.detecter_compte_et_dossier(args.user, systeme, plan, props)
     config = service.detecter_config(args.odoo_conf, plan)
     try:
@@ -2250,17 +2272,26 @@ def detecter(args, systeme, racine=RACINE, base_exigee=True):
     return cible
 
 
-def afficher_cible(cible, rapport):
+def afficher_cible(cible, rapport, application=None):
+    """Les champs de l'instance détectée, puis ceux du profil appliqué
+    (`application`, l'`Application` de `args.profil`) : en-tête, une ligne
+    par valeur, un ATTN par clé inconnue ou valeur écartée. Une base venue
+    du profil le dit au lieu de `--db`."""
     rapport.champ(t("Service"), cible.unite)
     rapport.champ(t("Account"), cible.utilisateur)
     rapport.champ(t("Odoo config"), cible.config_path)
     if cible.base:
-        rapport.champ(t("Database"), f"{cible.base} ({cible.origine_base})")
+        origine_base = profil.origine_affichee(
+            application, "db", cible.origine_base, t
+        )
+        rapport.champ(t("Database"), f"{cible.base} ({origine_base})")
     rapport.champ(
         t("Data dir"), f"{cible.data_dir} ({cible.origine_data_dir})"
     )
     if cible.base:
         rapport.champ(t("Destination"), cible.dossier)
+    if application is not None:
+        profil.afficher(application, rapport, t)
 
 
 def simuler_sauvegarde(cible, systeme, rapport, a_creer, args):
@@ -2380,7 +2411,10 @@ def _type_copie(valeur):
     return valeur
 
 
-def analyser(argv=None):
+def construire_parseur():
+    """Le parser de l'outil, sans analyse ni effet de bord ; les aides
+    sont traduites dans la langue courante. Les méta-options du profil
+    s'ajoutent dans `analyser`."""
     types_ = service.types_argparse(t)
     parser = argparse.ArgumentParser(
         description=t(
@@ -2527,7 +2561,12 @@ def analyser(argv=None):
         action="store_true",
         help=t("Show each system command on stderr."),
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def valider(parser, args):
+    """Les contrôles d'après analyse, sur les valeurs finales (ligne de
+    commande et profil) ; un refus sort par `parser.error`, code 2."""
     if args.restore and not (args.file and args.into):
         parser.error(t("--restore requires --file and --into."))
     if args.into and not args.restore:
@@ -2536,6 +2575,25 @@ def analyser(argv=None):
         parser.error(
             t("--file is only used with --restore or --test-restore.")
         )
+
+
+def analyser(argv=None, lanceur=None):
+    """`argv` analysé avec le profil de l'instance, puis validé.
+
+    `lanceur` (celui de systemctl) permet de deviner l'unité qui nomme le
+    profil quand ni `--service` ni `--profile` ne la donnent ; sans lui,
+    aucune unité n'est devinée. `args.profil` porte l'`Application`."""
+    parser = construire_parseur()
+    args, _application = profil.analyser(
+        parser,
+        argv,
+        GROUPE,
+        t,
+        RACINE,
+        lanceur=lanceur,
+        utilise_service=profil.outil(GROUPE).avec_service,
+    )
+    valider(parser, args)
     return args
 
 
@@ -2560,10 +2618,13 @@ def _proteger_signaux():
 
 
 def main(argv=None, systeme=None, rapport=None):
-    args = analyser(argv)
+    args = analyser(
+        argv, lanceur=systeme.lanceur if systeme else systemd.lancer
+    )
     systeme = systeme or Systeme(verbeux=args.verbose)
     rapport = rapport or report.Rapport()
     if args.status:
+        profil.afficher(args.profil, rapport, t)
         return afficher_etat(
             os.path.abspath(args.state_dir),
             args.db,
@@ -2586,7 +2647,7 @@ def main(argv=None, systeme=None, rapport=None):
         return CODE_REFUS
     except KeyboardInterrupt:
         return CODE_INTERROMPU
-    afficher_cible(cible, rapport)
+    afficher_cible(cible, rapport, args.profil)
     if not args.dry_run and not cible.interrogeable:
         rapport.erreur(
             t(

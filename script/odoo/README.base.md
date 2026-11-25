@@ -93,6 +93,30 @@ restore decided by a person.
 The update log goes to `--log-dir` (default `/var/log/erplibre`, falling
 back to the temporary directory).
 
+**Profile.** The lasting settings of an instance come from its production
+profile: `--profile FILE`, else `private/production/<unit>.json` of this
+checkout (the unit given by `--service`, else the detected one). The tool
+reads its group `update_module` (`timeout`, `start_wait`, `ignore_error`,
+`log_dir`, `warmup_deep`, `verbose`), plus `instance.db`, `backup.dest` and
+`backup.state_dir`. Paths must be absolute, and an `ignore_error` pattern
+that matches any error line or any traceback title (`ValueError: …`) is
+refused (code 2). The command line wins over every value,
+`--profile-unset NAME` drops one, `--no-profile` ignores the file. A
+profile found through the unit that this account cannot open is ignored
+with an ATTN; given by `--profile`, or with `--profile-required`, it is
+refused. The modules, the unit, the account, the configuration,
+`--force`, `--no-backup` and `--dry-run` are never read from it: such a
+key is ignored with an ATTN. The plan lists each value taken from the
+profile, one line per `--ignore-error` pattern, before any simulated
+command.
+
+`--no-profile` makes the abbreviation `--no` ambiguous: argparse refuses
+it, so spell `--no-backup` in full.
+
+`--warmup-deep` stays anonymous and uses the default settings of the
+warm-up: it does not read the profile group `warmup` (login, API key,
+pages), and the health check does not read `health_check.timeout`.
+
 ## log_check.py
 
 ```bash
@@ -140,6 +164,19 @@ outdated VAPID push subscriptions, plus `--ignore REGEX` (searched in the
 header line and the final exception, never in traceback frames). Only
 `ERROR` and `CRITICAL` are "to review". Times are local. `--json` prints a
 summary with stable English keys; `update_module.py` uses the same parser.
+
+**Profile.** The `log_check` group of a production profile
+(`private/production/<unit>.json`, or `--profile FILE`) gives the defaults of
+`--namespace`, `--days`, `--ignore`, `--state-dir` (absolute path),
+`--full-trace`, `--top`, `--timeout` and `--verbose`. The profile of the
+unit named by `--service`, or of the detected unit, is read; `--file` reads
+no unit profile, and sets aside the `namespace` of an explicit one. The
+command line always wins: an `--ignore` typed replaces the profile patterns
+instead of adding to them. `--no-profile` ignores the profile,
+`--profile-unset top` drops one value. The window, `--file`, `--until` and
+`--json` are never read from a profile. The text report names the profile
+and lists each value it took, marked "(profile)"; `--json` adds a `profile`
+key (`path`, `values`, `ignored`) and prints the warnings on stderr.
 
 It never writes anything but its state file and reads no database. Root is
 not required when the account belongs to `systemd-journal` (or `adm`);
@@ -194,6 +231,24 @@ the queue. No SQL write is ever made. `--dry-run` shows the selection and
 the exact command and script. Beyond `--timeout`, the shell's whole process
 group is stopped; a commit may have happened just before, so the tool says
 the outcome is unknown and the list must be read again.
+
+**Profile.** `--days`, `--timeout`, `--verbose` and the database can come
+from the instance's JSON profile, `private/production/<service>.json`
+(group `mail_retry`, database in `instance.db`), or from `--profile FILE`;
+the command line always wins, `--profile-unset days` drops one value and
+`--no-profile` ignores the file. `--details`, `--resend`, `--yes`,
+`--list`, `--dry-run` and `--json` are never read from it: a profile key
+naming one of them is ignored with an ATTN. With `--resend`, the profile's
+`days` is set aside: a resend selects from the list of the default window
+or of a `--days` typed on the command line. The text output lists each value
+taken from the profile (`--days 14 (profile)`) before any command; `--json`
+adds a `"profile"` key (path, raw values, ignored keys) and prints the
+warnings on stderr.
+
+```json
+{"version": 1, "service": "odoo-exemple.service",
+ "instance": {"db": "exemple_db"}, "mail_retry": {"days": 14}}
+```
 
 Root is only needed to become the unit's account.
 
@@ -265,6 +320,19 @@ templates do not block `/web/database`. Set `list_db = False`, or deny
 `url`, `odoo_version`), `checks` (`id`, `target`, `status`, `message`,
 `hint`, `data`), `summary` (`ok`, `attn`, `fail`, `skip`), `exit_code`.
 
+**Profile.** The `health_check` group of a production profile gives
+`--url` (a list), `--mail-domain`, `--dkim-selector`, `--timeout` and
+`--verbose`. With `--local`, the profile of the unit named by `--service`,
+or of the detected unit, is read; without `--local`, only `--profile FILE`
+brings one, whose URLs are probed without naming a service. A
+`dkim_selector` without an effective `mail_domain` is set aside with an
+ATTN. The command line always wins: a `--url` typed replaces the whole list
+of the profile. `--no-profile` ignores the profile, `--profile-unset url`
+drops one value. `--local`, `--service` and `--json` are never read from a
+profile. The text report names the profile and lists each value it took,
+marked "(profile)", before the first probe; `--json` adds a `profile` key
+(`path`, `values`, `ignored`) and prints the warnings on stderr.
+
 | Code | Meaning |
 |------|---------|
 | 0 | no FAIL (ATTN are listed) |
@@ -309,6 +377,26 @@ an `http://` URL on another host is refused (code 2). The target is
 `<loc>` that is neither an absolute URL nor a path starting with `/` is
 ignored: only its path is sent, to the target.
 
+**Profile** (`--deep` only). The `warmup` group of a production profile
+(`private/production/<unit>.json`, or `--profile FILE`) gives the defaults
+of `--timeout`, `--max-pages`, `--repeat`, `--login`, `--api-key-file`
+(absolute path; a KeePass reference `{"kdbx": …}` is never read by the
+tool), `--models` (commas, as on the command line) and `--strict`; the
+database comes from `instance.db`. The profile of the unit is read with
+`--local` only: named by `--service`, or the detected unit, guessed once
+for both the profile and the target. With an explicit `--profile` and
+`--local`, the unit is the profile's `service`; `--url` and the
+default-mode address read no unit profile. `--login` and
+`--api-key-file` go together: one without the other is set aside, as is
+`--login` when the API key is a KeePass reference. The target (`--url`, `--local`),
+`--service` and the options of the default mode (`-c`, `--log`,
+`--quiet`, Odoo arguments) never come from a profile. The command line
+always wins, `--profile-unset repeat` drops one value, `--no-profile`
+ignores the file. A line `🔧 profile: <path> (<n>)` comes first, then
+each value taken, marked "(profile)", and one `[ATTN]` per value set
+aside. **The default mode (the one of `run.sh`) never reads a profile**:
+it stays silent and always exits 0, even next to an invalid profile.
+
 A request fails on no answer or a code ≥ 500, and on a JSON-RPC error; a
 4xx is counted apart as "not public". No request, the default-mode probe
 included, goes through the proxy of the environment (`http_proxy`).
@@ -317,7 +405,7 @@ included, goes through the proxy of the environment (`http_proxy`).
 |------|---------|
 | 0 | done, failures included |
 | 1 | with `--strict`, at least one failure |
-| 2 | invalid option, unreadable key file, no database with `--login` |
+| 2 | invalid option, unreadable key file, no database with `--login`, invalid profile |
 | 130 | interrupted |
 
 ### Odoo 12 to 18 (health check, warm-up)
@@ -424,6 +512,31 @@ restauration décidée par une personne.
 Le journal de la mise à jour va dans `--log-dir` (par défaut
 `/var/log/erplibre`, avec repli sur le dossier temporaire).
 
+**Profil.** Les réglages durables d'une instance viennent de son profil de
+production : `--profile FICHIER`, sinon `private/production/<unité>.json`
+de ce checkout (l'unité de `--service`, sinon celle qui est détectée).
+L'outil lit son groupe `update_module` (`timeout`, `start_wait`,
+`ignore_error`, `log_dir`, `warmup_deep`, `verbose`), plus `instance.db`,
+`backup.dest` et `backup.state_dir`. Les chemins doivent être absolus, et
+un motif `ignore_error` qui trouve n'importe quelle ligne d'erreur ou
+n'importe quel titre de trace (`ValueError: …`) est refusé (code 2). La
+ligne de commande l'emporte sur chaque valeur, `--profile-unset NOM` en
+retire une, `--no-profile` ignore le fichier. Un profil trouvé par l'unité
+que ce compte ne peut pas ouvrir est ignoré avec un ATTN ; donné par
+`--profile`, ou avec `--profile-required`, il est refusé. Les
+modules, l'unité, le compte, la configuration, `--force`, `--no-backup` et
+`--dry-run` ne s'y lisent jamais : une telle clé est ignorée avec un ATTN.
+Le plan liste chaque valeur venue du profil, un motif `--ignore-error` par
+ligne, avant toute commande simulée.
+
+`--no-profile` rend l'abréviation `--no` ambiguë : argparse la refuse, il
+faut écrire `--no-backup` en entier.
+
+`--warmup-deep` reste anonyme et prend les réglages par défaut du
+préchauffage : il ne lit pas le groupe `warmup` du profil (identifiant, clé
+d'API, pages), et la vérification de santé ne lit pas
+`health_check.timeout`.
+
 ## log_check.py
 
 ```bash
@@ -477,6 +590,20 @@ l'exception finale, jamais dans les cadres de la trace). Seuls `ERROR` et
 `CRITICAL` sont « à revoir ». Les heures sont locales. `--json` donne un
 résumé aux clés anglaises stables ; `update_module.py` emploie le même
 analyseur.
+
+**Profil.** Le groupe `log_check` d'un profil de production
+(`private/production/<unité>.json`, ou `--profile FICHIER`) donne les
+valeurs par défaut de `--namespace`, `--days`, `--ignore`, `--state-dir`
+(chemin absolu), `--full-trace`, `--top`, `--timeout` et `--verbose`. Le
+profil lu est celui de l'unité nommée par `--service` ou de l'unité
+détectée ; `--file` ne lit aucun profil d'unité et écarte le `namespace`
+d'un profil explicite. La ligne de commande gagne toujours : un `--ignore`
+tapé remplace les motifs du profil au lieu de s'y ajouter. `--no-profile`
+ignore le profil, `--profile-unset top` en retire une valeur. La fenêtre,
+`--file`, `--until` et `--json` ne viennent jamais d'un profil. Le rapport
+texte nomme le profil et liste chaque valeur reprise, marquée « (profil) » ;
+`--json` ajoute une clé `profile` (`path`, `values`, `ignored`) et écrit les
+avertissements sur stderr.
 
 Il n'écrit rien d'autre que son fichier d'état et ne lit aucune base. Root
 n'est pas exigé quand le compte est membre de `systemd-journal` (ou `adm`) ;
@@ -535,6 +662,24 @@ file. Aucune écriture SQL n'est jamais faite. `--dry-run` montre la
 sélection, la commande et le script exacts. Au-delà de `--timeout`, tout le
 groupe de processus du shell est arrêté ; une validation a pu précéder
 l'arrêt, l'outil dit donc que l'issue est inconnue et qu'il faut relister.
+
+**Profil.** `--days`, `--timeout`, `--verbose` et la base peuvent venir du
+profil JSON de l'instance, `private/production/<service>.json` (groupe
+`mail_retry`, base dans `instance.db`), ou de `--profile FICHIER` ; la ligne
+de commande gagne toujours, `--profile-unset days` retire une valeur et
+`--no-profile` ignore le fichier. `--details`, `--resend`, `--yes`,
+`--list`, `--dry-run` et `--json` n'y sont jamais lus : une clé du profil
+qui en nomme un est ignorée avec un ATTN. Avec `--resend`, le `days` du
+profil est écarté : un renvoi choisit dans la liste de la fenêtre par
+défaut ou d'un `--days` tapé sur la ligne de commande. La sortie texte liste chaque
+valeur tirée du profil (`--days 14 (profile)`) avant toute commande ;
+`--json` ajoute une clé `"profile"` (chemin, valeurs brutes, clés ignorées)
+et écrit les avertissements sur stderr.
+
+```json
+{"version": 1, "service": "odoo-exemple.service",
+ "instance": {"db": "exemple_db"}, "mail_retry": {"days": 14}}
+```
 
 Root n'est nécessaire que pour devenir le compte de l'unité.
 
@@ -609,6 +754,20 @@ Clés de `--json` (anglais, stables) : `tool`, `odoo_version`, `targets`
 `message`, `hint`, `data`), `summary` (`ok`, `attn`, `fail`, `skip`),
 `exit_code`.
 
+**Profil.** Le groupe `health_check` d'un profil de production donne
+`--url` (une liste), `--mail-domain`, `--dkim-selector`, `--timeout` et
+`--verbose`. Avec `--local`, le profil lu est celui de l'unité que nomme
+`--service`, ou de l'unité détectée ; sans `--local`, seul `--profile
+FICHIER` en apporte un, dont les URL sont sondées sans nommer de service.
+Un `dkim_selector` sans `mail_domain` effectif est écarté avec un ATTN. La
+ligne de commande gagne toujours : une `--url` tapée remplace toute la
+liste du profil. `--no-profile` ignore le profil, `--profile-unset url` en
+retire une valeur. `--local`, `--service` et `--json` ne viennent jamais
+d'un profil. Le rapport texte nomme le profil et liste chaque valeur qu'il
+en a prise, marquée « (profil) », avant la première sonde ; `--json` ajoute
+une clé `profile` (`path`, `values`, `ignored`) et écrit les
+avertissements sur stderr.
+
 | Code | Sens |
 |------|------|
 | 0 | aucun FAIL (les ATTN sont listés) |
@@ -654,6 +813,28 @@ cible est `--url`, `--local` (unité détectée) ou l'adresse du mode par
 défaut. Un `<loc>` du sitemap qui n'est ni une URL absolue ni un chemin
 commençant par `/` est ignoré : seul son chemin part, vers la cible.
 
+**Profil** (`--deep` seulement). Le groupe `warmup` d'un profil de
+production (`private/production/<unité>.json`, ou `--profile FICHIER`)
+donne les valeurs par défaut de `--timeout`, `--max-pages`, `--repeat`,
+`--login`, `--api-key-file` (chemin absolu ; une référence KeePass
+`{"kdbx": …}` n'est jamais lue par l'outil), `--models` (virgules, comme
+sur la ligne de commande) et `--strict` ; la base vient de `instance.db`.
+Le profil de l'unité n'est lu qu'avec `--local` : celle que nomme
+`--service`, ou l'unité détectée, devinée une seule fois pour le profil
+et pour la cible. Avec un `--profile` explicite et `--local`, l'unité est
+le `service` du profil ; `--url` et l'adresse du mode par défaut ne lisent
+aucun profil d'unité. `--login` et `--api-key-file` vont ensemble : l'un
+sans l'autre est écarté, comme `--login` quand la clé d'API est une
+référence KeePass. La cible (`--url`, `--local`), `--service` et les options
+du mode par défaut (`-c`, `--log`, `--quiet`, arguments d'Odoo) ne
+viennent jamais d'un profil. La ligne de commande gagne toujours,
+`--profile-unset repeat` retire une valeur, `--no-profile` ignore le
+fichier. Une ligne `🔧 profile: <chemin> (<n>)` vient d'abord, puis
+chaque valeur retenue, marquée « (profil) », et un `[ATTN]` par valeur
+écartée. **Le mode par défaut (celui de `run.sh`) ne lit jamais de
+profil** : il reste muet et rend toujours 0, même à côté d'un profil
+invalide.
+
 Une requête échoue sur une absence de réponse ou un code ≥ 500, et sur une
 erreur JSON-RPC ; un 4xx est compté à part (« non public »). Aucune
 requête, la sonde du mode par défaut comprise, ne passe par le proxy de
@@ -663,7 +844,7 @@ l'environnement (`http_proxy`).
 |------|------|
 | 0 | fait, échecs compris |
 | 1 | avec `--strict`, au moins un échec |
-| 2 | option invalide, fichier de clé illisible, pas de base avec `--login` |
+| 2 | option invalide, fichier de clé illisible, pas de base avec `--login`, profil invalide |
 | 130 | interrompu |
 
 ### Odoo 12 à 18 (santé, préchauffage)

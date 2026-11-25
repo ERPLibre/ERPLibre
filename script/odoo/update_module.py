@@ -85,6 +85,17 @@ Codes de sortie : 0 réussi ; 1 mise à jour en échec, service relancé ;
 `--dry-run` fait toute la détection, affiche les commandes exactes, et
 n'arrête, n'écrit ni ne démarre rien ; il ne demande ni root ni verrou.
 
+Les réglages durables d'une instance viennent de son profil de production
+(`lib_ops/profil.py`, groupe `update_module`, plus `instance.db`,
+`backup.dest` et `backup.state_dir`) : `--profile FICHIER`, sinon
+`private/production/<unité>.json` de ce checkout. La ligne de commande
+l'emporte sur chaque valeur, `--no-profile` l'ignore. Les modules, l'unité,
+le compte, la configuration, `--force`, `--no-backup` et `--dry-run` ne
+s'y lisent jamais. `--warmup-deep` reste anonyme, aux réglages par défaut
+du préchauffage : il ne lit pas le groupe `warmup` du profil. Avec
+`--no-profile`, l'abréviation `--no` devient ambiguë et argparse la
+refuse.
+
 Bibliothèque standard seulement, sans syntaxe postérieure à Python 3.7 :
 le programme se lance aussi par le python3 d'un serveur de production.
 """
@@ -113,6 +124,7 @@ from script.lib_ops import (  # noqa: E402
     journal,
     lock,
     odoo_instance,
+    profil,
     report,
     service,
     systemd,
@@ -136,6 +148,10 @@ CODE_ECHEC = 1
 CODE_REFUS = 2
 CODE_VERROU = 75
 CODE_INTERROMPU = 130
+
+# Groupe des réglages de cet outil dans un profil de production
+# (`lib_ops/profil.py`).
+GROUPE = "update_module"
 
 DELAI_MISE_A_JOUR = 1800
 DELAI_DEMARRAGE = 90
@@ -579,7 +595,12 @@ def preparer_journal(plan):
     return plan.journal
 
 
-def afficher_plan(plan, rapport):
+def afficher_plan(plan, rapport, args=None):
+    """Le plan détecté, puis le profil : une ligne par valeur venue du
+    profil, un motif `--ignore-error` par ligne, un ATTN par clé inconnue
+    ou valeur écartée. Une base venue du profil le dit au lieu de
+    `--db`."""
+    application = getattr(args, "profil", None)
     detecte = (
         "" if plan.origine_unite == "--service" else " " + t("(detected)")
     )
@@ -598,7 +619,10 @@ def afficher_plan(plan, rapport):
     rapport.champ(
         t("Odoo config"), f"{plan.config_path} ({plan.origine_config})"
     )
-    rapport.champ(t("Database"), f"{plan.base} ({plan.origine_base})")
+    origine_base = profil.origine_affichee(
+        application, "db", plan.origine_base, t
+    )
+    rapport.champ(t("Database"), f"{plan.base} ({origine_base})")
     rapport.champ(t("Address"), f"{plan.hote}:{plan.port}")
     rapport.champ(t("Modules"), ", ".join(plan.modules))
     if plan.sauvegarde:
@@ -616,6 +640,8 @@ def afficher_plan(plan, rapport):
     else:
         rapport.champ(t("Backup"), t("none (--no-backup)"))
     rapport.champ(t("Log"), plan.journal)
+    if application is not None:
+        profil.afficher(application, rapport, t)
     for motif in plan.motifs_vides:
         rapport.attn(
             t("No module matches the pattern {pattern}.").format(pattern=motif)
@@ -1108,7 +1134,9 @@ def _type_regex(valeur):
         )
 
 
-def analyser(argv=None):
+def construire_parseur():
+    """Le parser de la ligne de commande, sans rien analyser ni lancer :
+    le catalogue des réglages en tire les métadonnées des options."""
     parser = argparse.ArgumentParser(
         description=t(
             "Update installed Odoo modules of an instance run by systemd:"
@@ -1220,15 +1248,45 @@ def analyser(argv=None):
         action="store_true",
         help=t("Show each system command on stderr."),
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def valider(parser, args):
+    """Contrôles d'après analyse, profil déjà posé : aplatit
+    `args.modules` et refuse `all` mêlé à d'autres modules (code 2, par
+    `parser.error`)."""
     args.modules = [m for groupe in args.modules for m in groupe]
     if "all" in args.modules and len(args.modules) > 1:
         parser.error(t("'all' cannot be combined with other modules."))
+
+
+def analyser(argv=None, lanceur=None):
+    """Analyse `argv` avec le profil de l'instance, puis le valide.
+
+    Sans `lanceur`, l'unité n'est jamais devinée pour trouver le profil :
+    seuls `--profile` et `--service` le désignent. `args.profil` porte ce
+    que le profil a posé ou écarté."""
+    parser = construire_parseur()
+    args, _application = profil.analyser(
+        parser,
+        argv,
+        GROUPE,
+        t,
+        RACINE,
+        lanceur=lanceur,
+        utilise_service=profil.outil(GROUPE).avec_service,
+    )
+    valider(parser, args)
     return args
 
 
 def main(argv=None, systeme=None, rapport=None):
-    args = analyser(argv)
+    # Le système se construit après l'analyse (`--verbose`) : la devinette
+    # de l'unité du profil passe alors par le lanceur par défaut.
+    args = analyser(
+        argv,
+        lanceur=systeme.lanceur if systeme is not None else systemd.lancer,
+    )
     systeme = systeme or Systeme(verbeux=args.verbose)
     rapport = rapport or report.Rapport()
     rapport.texte(
@@ -1243,7 +1301,7 @@ def main(argv=None, systeme=None, rapport=None):
         return CODE_REFUS
     except KeyboardInterrupt:
         return CODE_INTERROMPU
-    afficher_plan(plan, rapport)
+    afficher_plan(plan, rapport, args)
     if args.dry_run:
         simuler(plan, rapport, args)
         return CODE_OK

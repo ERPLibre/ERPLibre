@@ -47,11 +47,25 @@ une barre oblique inverse ou un point-virgule est mis entre guillemets
 doubles. Un caractère de contrôle refuse : un saut de ligne ajouterait
 une directive à l'unité.
 
+Les options se lisent aussi dans le profil de production de l'instance
+(`lib_ops/profil.py`, groupe `backup_timer`) : `--on-calendar`,
+`--randomized-delay` et `--verbose` dans ce groupe ; `--db` dans
+`instance` ; `--dest`, `--state-dir`, `--keep-*` et `--copy-to` dans
+`backup`, les réglages de l'outil de sauvegarde. La ligne de commande
+gagne toujours, `--no-profile` coupe le profil. Les valeurs retenues de
+`instance` et de `backup` s'écrivent dans `ExecStart` comme si elles
+avaient été tapées. Quand l'outil du checkout retenu applique lui-même le
+profil (lecture statique de son texte), `ExecStart` se termine par
+`--no-profile` : la sauvegarde planifiée ne découvre pas par `--service`
+un profil que l'installation ne lui a pas donné, et un profil illisible
+par le compte, ou devenu invalide, ne l'arrête pas.
+
 `--uninstall` arrête et désactive la minuterie, arrête le service, retire
 les trois fichiers et recharge systemd ; les sauvegardes, l'état et le
-fichier du verrou restent. `--dry-run` affiche les deux unités et les commandes, sans rien
-écrire. Root est exigé, sauf `--dry-run`. `--root DIR` préfixe tous les
-chemins écrits (un test y met un dossier temporaire).
+fichier du verrou restent. `--dry-run` affiche les valeurs du profil,
+les deux unités et les commandes, sans rien écrire. Root est exigé, sauf
+`--dry-run`. `--root DIR` préfixe tous les chemins écrits (un test y met
+un dossier temporaire).
 
 Codes de sortie : 0 réussi ; 1 systemctl ou systemd-tmpfiles en échec ;
 2 refusé avant tout changement.
@@ -75,7 +89,13 @@ sys.path.append(
 )
 
 from script.database import odoo_backup  # noqa: E402
-from script.lib_ops import lock, report, service, systemd  # noqa: E402
+from script.lib_ops import (  # noqa: E402
+    lock,
+    profil,
+    report,
+    service,
+    systemd,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -93,6 +113,10 @@ CODE_OK = 0
 CODE_ECHEC = 1
 CODE_REFUS = 2
 
+# Groupe des réglages de cet outil dans un profil de production
+# (`lib_ops/profil.py`).
+GROUPE = "backup_timer"
+
 DOSSIER_UNITES = "/etc/systemd/system"
 DOSSIER_TMPFILES = "/etc/tmpfiles.d"
 MARQUE = (
@@ -105,6 +129,9 @@ DELAI_ALEATOIRE = "30min"
 # sauvegardes.
 ANCIENNES = ("odoo-backup.timer",)
 OUTIL = os.path.join("script", "database", "odoo_backup.py")
+# Texte que porte un outil qui applique le profil, et accepte donc ses
+# méta-options (`--no-profile`) : elles viennent de `lib_ops/profil.py`.
+MARQUE_PROFIL = "profil.analyser("
 PYTHON_SYSTEME = "/usr/bin/python3"
 MODE_UNITE = 0o644
 
@@ -124,6 +151,37 @@ def citer(argument):
         echappe = argument.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{echappe}"'
     return argument
+
+
+def _montrer(valeur):
+    """`valeur` telle qu'un message d'erreur peut la citer : entre
+    apostrophes et échappée si elle porte un caractère de contrôle."""
+    return repr(valeur) if RE_CONTROLE.search(valeur) else valeur
+
+
+def type_calendrier(valeur):
+    """Type argparse de `--on-calendar` : la forme de `RE_CALENDRIER`, sans
+    caractère de contrôle. Le profil passe par le même contrôle ;
+    `systemd-analyze calendar` tranche ensuite à l'installation."""
+    if RE_CONTROLE.search(valeur) or not RE_CALENDRIER.fullmatch(valeur):
+        raise argparse.ArgumentTypeError(
+            t("Invalid OnCalendar value: {value}").format(
+                value=_montrer(valeur)
+            )
+        )
+    return valeur
+
+
+def type_delai(valeur):
+    """Type argparse de `--randomized-delay` : la forme de `RE_DUREE`, sans
+    caractère de contrôle."""
+    if RE_CONTROLE.search(valeur) or not RE_DUREE.fullmatch(valeur):
+        raise argparse.ArgumentTypeError(
+            t("Invalid RandomizedDelaySec value: {value}").format(
+                value=_montrer(valeur)
+            )
+        )
+    return valeur
 
 
 def ligne_execstart(argv):
@@ -237,8 +295,23 @@ def choisir_checkout(wd, existe=os.path.isfile):
     return checkout, python
 
 
-def argv_outil(args, plan, checkout, python):
-    """La commande de sauvegarde, arguments explicites."""
+def outil_lit_le_profil(checkout):
+    """True si l'outil de `checkout` applique le profil de production
+    (`MARQUE_PROFIL` dans son texte). Lecture statique, rien n'est
+    exécuté ; un outil illisible ou antérieur au profil rend False, et ne
+    reçoit pas une option qu'il refuserait."""
+    try:
+        with open(
+            os.path.join(checkout, OUTIL), encoding="utf-8", errors="replace"
+        ) as fichier:
+            return MARQUE_PROFIL in fichier.read()
+    except OSError:
+        return False
+
+
+def argv_outil(args, plan, checkout, python, sans_profil=False):
+    """La commande de sauvegarde, arguments explicites. `sans_profil`
+    ajoute `--no-profile` : toutes les valeurs sont déjà écrites."""
     argv = [
         python,
         os.path.join(checkout, OUTIL),
@@ -265,6 +338,8 @@ def argv_outil(args, plan, checkout, python):
     ]
     if args.copy_to:
         argv += ["--copy-to", args.copy_to]
+    if sans_profil:
+        argv.append("--no-profile")
     return argv
 
 
@@ -452,7 +527,9 @@ def preparer(args, plan, systeme, rapport):
         raise service.Refus(
             service.N_("Unknown account: {user}"), user=plan.utilisateur
         )
-    argv = argv_outil(args, plan, checkout, python)
+    argv = argv_outil(
+        args, plan, checkout, python, outil_lit_le_profil(checkout)
+    )
     try:
         ligne_execstart(argv)
     except ValueError as err:
@@ -657,7 +734,9 @@ def desinstaller(args, base, systeme, rapport):
     return code
 
 
-def analyser(argv=None):
+def construire_parseur():
+    """Le parser de la ligne de commande, sans rien analyser ni lancer :
+    le catalogue des réglages en tire les métadonnées des options."""
     types_ = service.types_argparse(t)
     parser = argparse.ArgumentParser(
         description=t(
@@ -747,6 +826,7 @@ def analyser(argv=None):
     )
     parser.add_argument(
         "--on-calendar",
+        type=type_calendrier,
         default=CALENDRIER,
         help=t("When the backup runs (OnCalendar); default: {value}.").format(
             value=CALENDRIER
@@ -754,6 +834,7 @@ def analyser(argv=None):
     )
     parser.add_argument(
         "--randomized-delay",
+        type=type_delai,
         default=DELAI_ALEATOIRE,
         help=t("RandomizedDelaySec of the timer; default: {value}.").format(
             value=DELAI_ALEATOIRE
@@ -775,17 +856,51 @@ def analyser(argv=None):
         action="store_true",
         help=t("Show each system command on stderr."),
     )
-    return parser.parse_args(argv)
+    return parser
+
+
+def valider(parser, args):
+    """Contrôles d'après analyse, profil déjà posé ; refus par
+    `parser.error` (code 2). Aucun aujourd'hui : les types de
+    `--on-calendar` et `--randomized-delay` refusent déjà une forme
+    invalide, et le reste se vérifie à l'installation."""
+    return None
+
+
+def analyser(argv=None, lanceur=None):
+    """Analyse `argv` avec le profil de l'instance, puis le valide.
+
+    Sans `lanceur`, l'unité n'est jamais devinée pour trouver le profil :
+    seuls `--profile` et `--service` le désignent. `args.profil` porte ce
+    que le profil a posé ou écarté."""
+    parser = construire_parseur()
+    args, _application = profil.analyser(
+        parser,
+        argv,
+        GROUPE,
+        t,
+        RACINE,
+        lanceur=lanceur,
+        utilise_service=profil.outil(GROUPE).avec_service,
+    )
+    valider(parser, args)
+    return args
 
 
 def main(argv=None, systeme=None, rapport=None):
-    args = analyser(argv)
+    # Le système se construit après l'analyse (`--verbose`, `--root`) : la
+    # devinette de l'unité du profil passe alors par le lanceur par défaut.
+    args = analyser(
+        argv,
+        lanceur=systeme.lanceur if systeme is not None else systemd.lancer,
+    )
     systeme = systeme or Systeme(verbeux=args.verbose, racine=args.root)
     rapport = rapport or report.Rapport()
     if systeme.euid() != 0 and not args.dry_run:
         rapport.erreur(t("Root is required (sudo), except with --dry-run."))
         return CODE_REFUS
     if args.uninstall and args.db:
+        profil.afficher(args.profil, rapport, t)
         return desinstaller(args, args.db, systeme, rapport)
     plan = types.SimpleNamespace()
     try:
@@ -793,10 +908,16 @@ def main(argv=None, systeme=None, rapport=None):
     except service.Refus as err:
         rapport.erreur(err.message(t))
         return CODE_REFUS
+    origine_base = profil.origine_affichee(
+        args.profil, "db", plan.origine_base, t
+    )
     rapport.champ(t("Service"), plan.unite)
     rapport.champ(t("Account"), plan.utilisateur)
     rapport.champ(t("Odoo config"), plan.config_path)
-    rapport.champ(t("Database"), f"{plan.base} ({plan.origine_base})")
+    rapport.champ(t("Database"), f"{plan.base} ({origine_base})")
+    # Avant les unités et les commandes simulées : ce qui vient du profil
+    # se lit avant ce qu'il produit.
+    profil.afficher(args.profil, rapport, t)
     if args.uninstall:
         return desinstaller(args, plan.base, systeme, rapport)
     return installer(args, plan, systeme, rapport)

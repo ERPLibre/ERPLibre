@@ -119,6 +119,33 @@ son `known_hosts`. Une copie en échec garde la sauvegarde locale, est notée
 et finit en code 1. La rétention ne s'applique pas côté distant : il
 grossit.
 
+**Profil.** Les réglages durables d'une instance vivent dans son profil
+JSON, groupe `backup` : `dest`, `state_dir` (chemins absolus), `keep_daily`
+(au moins 1), `keep_weekly`, `keep_monthly`, `keep_recent_days` (au moins 2
+à eux tous, le défaut de l'outil comptant pour une valeur que la ligne de
+commande remplace), `copy_to`, `max_age` (au plus 168), `timeout`, `verbose`, et
+`db` du groupe partagé `instance`. Le fichier est `--profile FICHIER`,
+sinon `private/production/<service>.json` de ce checkout, le service étant
+`--service` ou l'unité devinée ; pas de fichier, pas de profil. La ligne de
+commande gagne toujours ; `--no-profile` ne lit aucun profil,
+`--profile-unset NOM` (ex. `keep-daily`) en retire une valeur,
+`--profile-required` échoue (code 2) sans profil. Les modes, `--file`,
+`--into`, `--service`, `--odoo-conf`, `--user`, `--force-space` et
+`--dry-run` ne se lisent jamais d'un profil : une telle clé est ignorée
+avec un avertissement. `--status` ne devine aucune unité et écarte la `db`
+du profil : il liste toujours chaque base. Les valeurs du profil
+s'affichent sous l'instance détectée, avant les commandes simulées.
+
+```json
+{
+  "version": 1,
+  "service": "odoo-exemple.service",
+  "instance": {"db": "exemple_db"},
+  "backup": {"dest": "/srv/sauvegardes", "keep_daily": 10,
+             "copy_to": "sauvegarde@backup.example.org:/srv/hors-site"}
+}
+```
+
 **Limites d'envoi.** Une sauvegarde envoyée par `/web/database/manager`
 passe par la limite de taille de requête du mandataire inverse
 (`client_max_body_size` pour nginx) et par la limite de durée de requête
@@ -135,4 +162,20 @@ restaurer sur le serveur avec `--restore`.
 
 La sauvegarde planifiée s'installe par
 `script/systemd/install_backup_timer.py`, voir
-[doc/PRODUCTION.fr.md](../../doc/PRODUCTION.fr.md).
+[doc/PRODUCTION.fr.md](../../doc/PRODUCTION.fr.md). Il lit le même
+profil : son propre groupe `backup_timer` (`on_calendar`,
+`randomized_delay`, `verbose`), plus `dest`, `state_dir`, les réglages
+`keep_*` et `copy_to` de `backup`, et `db` d'`instance`. `--on-calendar`
+et `--randomized-delay` refusent une valeur mal formée dès l'analyse
+(code 2), qu'elle vienne de la ligne de commande ou du profil ;
+`systemd-analyze calendar` vérifie encore le calendrier à l'installation.
+La ligne de commande gagne toujours, et les mêmes méta-options
+s'appliquent (`--profile`, `--no-profile`, `--profile-unset`,
+`--profile-required`). `--uninstall`, `--service`, `--odoo-conf`,
+`--user`, `--root` et `--dry-run` ne se lisent jamais d'un profil. Les
+valeurs retenues s'écrivent dans `ExecStart` comme si elles avaient été
+tapées, et s'affichent avant les unités et les commandes simulées. Quand
+l'outil du checkout retenu applique le profil (lecture statique, rien
+n'est exécuté), `ExecStart` se termine par `--no-profile` : la sauvegarde
+planifiée ne découvre jamais un profil qu'on ne lui a pas donné, et un
+profil illisible par son compte, ou devenu invalide, ne l'arrête pas.

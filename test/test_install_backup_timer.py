@@ -10,13 +10,18 @@ systemd-analyze, systemd-tmpfiles et `runuser … test` sont joués par
 remplacés. Aucun systemctl réel n'est lancé,
 aucun fichier n'est écrit sous /etc.
 
+Les profils de production se lisent dans un dossier temporaire
+(`profil_isole`) : le vrai `private/production` n'est jamais touché.
+
 Données inventées : base `demo_db`, compte `demo`, unité
 `erplibre_demo.service`.
 """
 
 import contextlib
 import io
+import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -29,6 +34,37 @@ from unittest import mock  # noqa: E402
 
 from script.lib_ops import report  # noqa: E402
 from script.systemd import install_backup_timer as ibt  # noqa: E402
+
+PROFILS = None
+
+
+def de_profil(option, valeur):
+    """La ligne qui montre une valeur venue du profil, dans la langue
+    courante."""
+    return ibt.t("{option} {value} (profile)").format(
+        option=option, value=valeur
+    )
+
+
+def champ_base(base, origine):
+    """Le motif de la seule ligne du champ Database qui porte `base
+    (origine)`, ancré au début et à la fin de la ligne."""
+    return re.compile(
+        r"^  "
+        + re.escape(ibt.t("Database"))
+        + r" +"
+        + re.escape(f"{base} ({origine})")
+        + r"$",
+        re.M,
+    )
+
+
+def setUpModule():
+    global PROFILS
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from profil_isole import profil_isole
+
+    PROFILS = profil_isole()
 
 
 def ecrire(chemin, texte=""):
@@ -53,6 +89,8 @@ class FauxSysteme(ibt.Systeme):
         # Chemins que le compte ne peut pas lire ni exécuter (`runuser …
         # test`).
         self.inaccessibles = set()
+        # Sortie de `systemctl list-units` ; None : réponse par défaut.
+        self.liste_unites = None
         self.wd = os.path.join(bac, "odoo")
         self.proprietes = {
             "LoadState": "loaded",
@@ -68,6 +106,8 @@ class FauxSysteme(ibt.Systeme):
 
     def lanceur(self, argv, timeout=60):
         self.appels.append(" ".join(argv))
+        if argv[:2] == ["systemctl", "list-units"] and self.liste_unites:
+            return 0, self.liste_unites
         if argv[:2] == ["systemctl", "show"]:
             noms = [argv[i + 1] for i, a in enumerate(argv) if a == "-p"]
             if argv[-1] != "erplibre_demo.service":
@@ -310,13 +350,15 @@ class TestInstallation(Base):
         )
         self.assertEqual(os.listdir(self.unites), [])
         self.systeme.calendrier_code = 0
-        self.assertEqual(
-            self.lancer("--on-calendar", "daily\nExecStartPre=/bin/x"),
-            ibt.CODE_REFUS,
-        )
-        self.assertEqual(
-            self.lancer("--randomized-delay", "1h;x"), ibt.CODE_REFUS
-        )
+        # Une forme invalide est refusée par le type argparse, code 2.
+        for options in (
+            ("--on-calendar", "daily\nExecStartPre=/bin/x"),
+            ("--randomized-delay", "1h;x"),
+        ):
+            with self.subTest(options=options):
+                with self.assertRaises(SystemExit) as refus:
+                    self.lancer(*options)
+                self.assertEqual(refus.exception.code, ibt.CODE_REFUS)
         self.assertEqual(os.listdir(self.unites), [])
 
     def test_dossier_existant_non_inscriptible(self):
@@ -376,6 +418,28 @@ class TestUniteComplete(Base):
         self.assertEqual(os.stat(etat).st_mode & 0o777, 0o755)
         commun = os.path.join(self.racine, "srv", "etat")
         self.assertEqual(os.stat(commun).st_mode & 0o777, 0o755)
+
+    def test_outil_qui_lit_le_profil_recoit_no_profile(self):
+        """Un outil qui applique le profil reçoit `--no-profile` en fin
+        d'ExecStart : toutes les valeurs y sont écrites, la sauvegarde
+        planifiée ne découvre aucun profil par `--service`. Un outil
+        antérieur (le faux outil vide) ne le reçoit pas."""
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertNotIn("--no-profile", self.execstart())
+        ecrire(
+            os.path.join(self.systeme.wd, ibt.OUTIL),
+            "args = profil.analyser(parser, argv)\n",
+        )
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertTrue(
+            self.execstart().endswith(" --keep-recent-days 2 --no-profile"),
+            self.execstart(),
+        )
+        # L'outil réel de ce checkout applique le profil.
+        self.assertTrue(ibt.outil_lit_le_profil(ibt.RACINE))
+        self.assertFalse(
+            ibt.outil_lit_le_profil(os.path.join(self.bac, "absent"))
+        )
 
     def test_sans_venv_python_du_systeme(self):
         os.remove(
@@ -489,6 +553,310 @@ class TestVerrouEtAcces(Base):
         self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK)
         self.assertFalse(self.a_appele("runuser"))
         self.assertIn("[ATTN]", self.sortie)
+
+
+class TestTypes(unittest.TestCase):
+    """Types argparse de `--on-calendar` et `--randomized-delay`."""
+
+    def test_calendrier(self):
+        for valeur in ("*-*-* 03:00:00", "daily", "Mon..Fri 02:30"):
+            self.assertEqual(ibt.type_calendrier(valeur), valeur)
+        for valeur in ("", "daily;x", "daily\nExecStartPre=/bin/x", "$x"):
+            with self.subTest(valeur=valeur):
+                with self.assertRaises(ibt.argparse.ArgumentTypeError) as err:
+                    ibt.type_calendrier(valeur)
+                self.assertNotIn("\n", str(err.exception))
+
+    def test_delai(self):
+        for valeur in ("30min", "1h 30min", "0", "90"):
+            self.assertEqual(ibt.type_delai(valeur), valeur)
+        for valeur in ("", "1h;x", "min", "5m\n"):
+            with self.subTest(valeur=valeur):
+                with self.assertRaises(ibt.argparse.ArgumentTypeError):
+                    ibt.type_delai(valeur)
+
+    def test_defauts_acceptes(self):
+        args = ibt.analyser(["--dry-run", "--no-profile"])
+        self.assertEqual(args.on_calendar, ibt.CALENDRIER)
+        self.assertEqual(args.randomized_delay, ibt.DELAI_ALEATOIRE)
+
+
+class TestProfil(Base):
+    """Profil de production `erplibre_demo.service.json`, trouvé par
+    `--service` dans le dossier temporaire des profils, ou nommé par
+    `--profile`."""
+
+    def setUp(self):
+        super().setUp()
+        self.profil = os.path.join(PROFILS, "erplibre_demo.service.json")
+        self.addCleanup(self._retirer)
+
+    def _retirer(self):
+        if os.path.lexists(self.profil):
+            os.remove(self.profil)
+
+    def poser(self, **groupes):
+        doc = {"version": 1, "service": "erplibre_demo.service"}
+        doc.update(groupes)
+        with open(self.profil, "w", encoding="utf-8") as fichier:
+            json.dump(doc, fichier)
+        os.chmod(self.profil, 0o644)
+        return self.profil
+
+    def refus(self, *argv):
+        """Le code de sortie et stderr d'une analyse refusée."""
+        erreurs = io.StringIO()
+        with contextlib.redirect_stderr(erreurs):
+            with self.assertRaises(SystemExit) as sortie:
+                ibt.analyser(list(argv))
+        return sortie.exception.code, erreurs.getvalue()
+
+    def test_valeurs_du_profil_appliquees_et_affichees(self):
+        self.poser(
+            backup={
+                "keep_daily": 10,
+                "copy_to": "sauvegarde@backup.example.org:/srv/hors-site",
+            },
+            backup_timer={
+                "on_calendar": "*-*-* 02:30:00",
+                "randomized_delay": "10min",
+            },
+        )
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs)
+        self.assertIn(self.profil, self.sortie)
+        for ligne in (
+            de_profil("--keep-daily", "10"),
+            de_profil("--on-calendar", "*-*-* 02:30:00"),
+            de_profil("--randomized-delay", "10min"),
+            de_profil(
+                "--copy-to", "sauvegarde@backup.example.org:/srv/hors-site"
+            ),
+            "OnCalendar=*-*-* 02:30:00",
+            "RandomizedDelaySec=10min",
+            "--keep-daily 10 --keep-weekly 4",
+            "--copy-to sauvegarde@backup.example.org:/srv/hors-site",
+        ):
+            self.assertIn(ligne, self.sortie)
+        # Les valeurs du profil précèdent les unités et les commandes.
+        self.assertLess(
+            self.sortie.index(de_profil("--keep-daily", "10")),
+            self.sortie.index("[Timer]"),
+        )
+        self.assertEqual(os.listdir(self.unites), [])
+
+    def test_installation_ecrit_les_valeurs_du_profil(self):
+        self.poser(
+            backup={"keep_weekly": 8},
+            backup_timer={"on_calendar": "*-*-* 01:15:00"},
+        )
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.assertIn("--keep-weekly 8", self.lire(self.service))
+        self.assertIn(
+            "\nOnCalendar=*-*-* 01:15:00\n", self.lire(self.minuterie)
+        )
+
+    def test_la_ligne_de_commande_gagne(self):
+        self.poser(
+            backup={"keep_daily": 10, "dest": "/srv/profil"},
+            backup_timer={"on_calendar": "*-*-* 02:30:00"},
+        )
+        self.assertEqual(
+            self.lancer("--dry-run", "--keep-daily", "3"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        self.assertIn("--keep-daily 3 --keep-weekly", self.sortie)
+        self.assertNotIn("--keep-daily 10", self.sortie)
+        self.assertNotIn("/srv/profil", self.sortie.replace(self.profil, ""))
+        self.assertIn(
+            de_profil("--on-calendar", "*-*-* 02:30:00"), self.sortie
+        )
+        self.assertIn(
+            ibt.t("{option}: the command line wins over the profile").format(
+                option="--keep-daily"
+            ),
+            self.sortie,
+        )
+        args = ibt.analyser(
+            ["--service", "erplibre_demo", "--keep-daily", "3"]
+        )
+        self.assertEqual(args.keep_daily, 3)
+        self.assertEqual(args.profil.origine("keep_daily"), "cli")
+        self.assertEqual(args.profil.origine("on_calendar"), "profil")
+        self.assertEqual(args.profil.origine("keep_weekly"), "defaut")
+
+    def test_options_exclues_ignorees(self):
+        self.poser(
+            backup_timer={
+                "uninstall": True,
+                "dry_run": True,
+                "root": "/srv/ailleurs",
+                "user": "autre",
+                "service": "odoo-exemple.service",
+                "keep_daily": 10,
+                "db": "exemple_db",
+            }
+        )
+        args = ibt.analyser(["--service", "erplibre_demo"])
+        self.assertFalse(args.uninstall)
+        self.assertFalse(args.dry_run)
+        self.assertEqual(args.root, "/")
+        self.assertIsNone(args.user)
+        self.assertEqual(args.service, "erplibre_demo.service")
+        # Une `dest` aliasée n'est pas une clé de son propre groupe.
+        self.assertEqual(args.keep_daily, 7)
+        self.assertIsNone(args.db)
+        self.assertEqual(
+            sorted(e.dest for e in args.profil.ecartees),
+            ["dry_run", "root", "service", "uninstall", "user"],
+        )
+        self.assertEqual(
+            sorted(args.profil.inconnues),
+            ["backup_timer.db", "backup_timer.keep_daily"],
+        )
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs)
+        self.assertIn(
+            ibt.t("unknown key {key}, ignored").format(key="backup_timer.db"),
+            self.sortie,
+        )
+        self.assertIn("[ATTN]", self.sortie)
+        self.assertFalse(self.a_appele("systemctl disable"))
+
+    def test_base_du_profil(self):
+        self.poser(instance={"db": "demo_db"})
+        self.assertEqual(self.lancer("--dry-run"), ibt.CODE_OK, self.erreurs)
+        # Le champ Database lui-même, ancré : la ligne de détail
+        # `--db demo_db (profile)` ne le satisfait pas.
+        self.assertRegex(self.sortie, champ_base("demo_db", ibt.t("profile")))
+        self.assertIn(de_profil("--db", "demo_db"), self.sortie)
+        self.assertEqual(
+            self.lancer("--dry-run", "--db", "demo_db"),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        self.assertRegex(self.sortie, champ_base("demo_db", "--db"))
+
+    def test_sans_profil(self):
+        self.poser(backup={"keep_daily": 10})
+        self.assertEqual(
+            self.lancer("--dry-run", "--no-profile"), ibt.CODE_OK, self.erreurs
+        )
+        self.assertNotIn(self.profil, self.sortie)
+        self.assertNotIn(de_profil("--keep-daily", "10"), self.sortie)
+        self.assertIn("--keep-daily 7", self.sortie)
+        args = ibt.analyser(["--service", "erplibre_demo", "--no-profile"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.profil.origine("keep_daily"), "defaut")
+
+    def test_profile_unset(self):
+        self.poser(backup={"keep_daily": 10, "keep_weekly": 8})
+        args = ibt.analyser(
+            ["--service", "erplibre_demo", "--profile-unset", "keep-daily"]
+        )
+        self.assertEqual(args.keep_daily, 7)
+        self.assertEqual(args.keep_weekly, 8)
+
+    def test_profil_explicite_nomme_le_service(self):
+        # Le nom du fichier est celui du service qu'il porte.
+        ailleurs = os.path.join(
+            self.bac, "ailleurs", "erplibre_demo.service.json"
+        )
+        os.makedirs(os.path.dirname(ailleurs))
+        with open(ailleurs, "w", encoding="utf-8") as fichier:
+            json.dump(
+                {
+                    "version": 1,
+                    "service": "erplibre_demo.service",
+                    "backup": {"dest": "/srv/profil", "keep_daily": 5},
+                },
+                fichier,
+            )
+        argv = ["--profile", ailleurs, "--root", self.racine, "--dry-run"]
+        rapport = report.Rapport(
+            flux=io.StringIO(), erreurs=io.StringIO(), couleur=False
+        )
+        with contextlib.redirect_stdout(rapport.flux):
+            code = ibt.main(argv, self.systeme, rapport)
+        sortie = rapport.flux.getvalue()
+        self.assertEqual(code, ibt.CODE_OK, sortie)
+        self.assertIn("--service erplibre_demo.service --db demo_db", sortie)
+        self.assertIn("--dest /srv/profil", sortie)
+        self.assertIn("--keep-daily 5 --keep-weekly", sortie)
+        self.assertFalse(self.a_appele("systemctl list-units"))
+
+    def test_unite_devinee_une_seule_fois(self):
+        self.systeme.liste_unites = (
+            "erplibre_demo.service loaded active running Odoo\n"
+        )
+        self.poser(backup={"keep_daily": 6})
+        argv = ["--root", self.racine, "--dry-run"]
+        rapport = report.Rapport(
+            flux=io.StringIO(), erreurs=io.StringIO(), couleur=False
+        )
+        with contextlib.redirect_stdout(rapport.flux):
+            code = ibt.main(argv, self.systeme, rapport)
+        sortie = rapport.flux.getvalue()
+        self.assertEqual(code, ibt.CODE_OK, sortie)
+        self.assertIn(de_profil("--keep-daily", "6"), sortie)
+        listes = [
+            a
+            for a in self.systeme.appels
+            if a.startswith("systemctl list-units")
+        ]
+        self.assertEqual(len(listes), 1)
+
+    def test_analyser_seul_ne_devine_jamais(self):
+        self.systeme.liste_unites = (
+            "erplibre_demo.service loaded active running Odoo\n"
+        )
+        self.poser(backup={"keep_daily": 6})
+        args = ibt.analyser(["--dry-run"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(self.systeme.appels, [])
+
+    def test_valeurs_invalides_du_profil_refusees(self):
+        for groupes, cle in (
+            ({"backup_timer": {"on_calendar": "daily;x"}}, "on_calendar"),
+            (
+                {"backup_timer": {"randomized_delay": "1h;x"}},
+                "randomized_delay",
+            ),
+            (
+                {"backup_timer": {"on_calendar": "daily\nExecStartPre=x"}},
+                "on_calendar",
+            ),
+            ({"backup": {"dest": "relatif"}}, "dest"),
+            ({"backup": {"keep_daily": 0}}, "keep_daily"),
+            ({"backup": {"keep_daily": "sept"}}, "keep_daily"),
+        ):
+            with self.subTest(cle=cle, groupes=groupes):
+                self.poser(**groupes)
+                code, erreurs = self.refus("--service", "erplibre_demo")
+                self.assertEqual(code, ibt.CODE_REFUS)
+                self.assertIn(self.profil, erreurs)
+                self.assertIn(cle, erreurs)
+                self.assertNotIn("ExecStartPre", erreurs)
+
+    def test_cli_valide_malgre_un_profil_en_conflit(self):
+        # La ligne de commande remplace la valeur : le profil n'est même
+        # pas converti pour elle.
+        self.poser(backup={"keep_daily": 0})
+        args = ibt.analyser(
+            ["--service", "erplibre_demo", "--keep-daily", "0"]
+        )
+        self.assertEqual(args.keep_daily, 0)
+
+    def test_retrait_par_la_base_du_profil(self):
+        self.assertEqual(self.lancer(), ibt.CODE_OK, self.erreurs)
+        self.poser(instance={"db": "demo_db"})
+        self.systeme.appels.clear()
+        self.assertEqual(
+            self.lancer("--uninstall", "--profile", self.profil),
+            ibt.CODE_OK,
+            self.erreurs,
+        )
+        self.assertEqual(os.listdir(self.unites), [])
+        self.assertIn(de_profil("--db", "demo_db"), self.sortie)
 
 
 class TestCitation(unittest.TestCase):

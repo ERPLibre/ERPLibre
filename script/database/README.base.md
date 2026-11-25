@@ -145,6 +145,33 @@ the unit's account, so its ssh key and `known_hosts` are used. A failed
 copy keeps the local backup, is recorded, and ends with code 1. Retention
 does not apply on the remote side: it keeps growing.
 
+**Profile.** The lasting settings of an instance live in its JSON profile,
+group `backup`: `dest`, `state_dir` (absolute paths), `keep_daily` (at
+least 1), `keep_weekly`, `keep_monthly`, `keep_recent_days` (together at
+least 2, counting the tool's default for a value the command line
+replaces), `copy_to`, `max_age` (at most 168), `timeout`, `verbose`, and
+`db` from the shared group `instance`. The file is `--profile FILE`, else
+`private/production/<service>.json` of this checkout, the service being
+`--service` or the guessed unit; no file means no profile. The command
+line always wins; `--no-profile` reads no profile, `--profile-unset NAME`
+(e.g. `keep-daily`) drops one value, `--profile-required` fails (code 2)
+without one. The modes, `--file`, `--into`, `--service`, `--odoo-conf`,
+`--user`, `--force-space` and `--dry-run` are never read from a profile:
+such a key is ignored with a warning. `--status` guesses no unit and
+ignores the profile's `db`, so it still lists every database. The
+profile's values are listed under the detected instance, before the
+simulated commands.
+
+```json
+{
+  "version": 1,
+  "service": "odoo-exemple.service",
+  "instance": {"db": "exemple_db"},
+  "backup": {"dest": "/srv/sauvegardes", "keep_daily": 10,
+             "copy_to": "sauvegarde@backup.example.org:/srv/hors-site"}
+}
+```
+
 **Upload limits.** A backup uploaded through `/web/database/manager` goes
 through the reverse proxy's request size limit (`client_max_body_size` for
 nginx) and Odoo's request time limit (`limit_time_real`, with workers): for
@@ -159,7 +186,22 @@ a large database, restore it on the server with `--restore`.
 | 130 | interrupted; the partial file is removed |
 
 The scheduled backup is installed by `script/systemd/install_backup_timer.py`,
-see [doc/PRODUCTION.md](../../doc/PRODUCTION.md).
+see [doc/PRODUCTION.md](../../doc/PRODUCTION.md). It reads the same
+profile: its own group `backup_timer` (`on_calendar`, `randomized_delay`,
+`verbose`), plus `dest`, `state_dir`, the `keep_*` settings and `copy_to`
+from `backup`, and `db` from `instance`. `--on-calendar` and
+`--randomized-delay` refuse a malformed value at parsing (code 2), from
+the command line or the profile; `systemd-analyze calendar` still checks
+the calendar at installation. The command line always wins, and the same
+meta-options apply (`--profile`, `--no-profile`, `--profile-unset`,
+`--profile-required`). `--uninstall`, `--service`, `--odoo-conf`,
+`--user`, `--root` and `--dry-run` are never read from a profile. The
+retained values are written into `ExecStart` as if typed, and listed
+before the units and the simulated commands. When the tool of the
+retained checkout applies profiles (read statically, nothing is run),
+`ExecStart` ends with `--no-profile`: the scheduled backup never
+discovers a profile it was not given, and a profile its account cannot
+read, or that became invalid, does not stop it.
 
 <!-- [fr] -->
 **Détection.** Comme pour `script/odoo/update_module.py` : l'unité
@@ -250,6 +292,33 @@ son `known_hosts`. Une copie en échec garde la sauvegarde locale, est notée
 et finit en code 1. La rétention ne s'applique pas côté distant : il
 grossit.
 
+**Profil.** Les réglages durables d'une instance vivent dans son profil
+JSON, groupe `backup` : `dest`, `state_dir` (chemins absolus), `keep_daily`
+(au moins 1), `keep_weekly`, `keep_monthly`, `keep_recent_days` (au moins 2
+à eux tous, le défaut de l'outil comptant pour une valeur que la ligne de
+commande remplace), `copy_to`, `max_age` (au plus 168), `timeout`, `verbose`, et
+`db` du groupe partagé `instance`. Le fichier est `--profile FICHIER`,
+sinon `private/production/<service>.json` de ce checkout, le service étant
+`--service` ou l'unité devinée ; pas de fichier, pas de profil. La ligne de
+commande gagne toujours ; `--no-profile` ne lit aucun profil,
+`--profile-unset NOM` (ex. `keep-daily`) en retire une valeur,
+`--profile-required` échoue (code 2) sans profil. Les modes, `--file`,
+`--into`, `--service`, `--odoo-conf`, `--user`, `--force-space` et
+`--dry-run` ne se lisent jamais d'un profil : une telle clé est ignorée
+avec un avertissement. `--status` ne devine aucune unité et écarte la `db`
+du profil : il liste toujours chaque base. Les valeurs du profil
+s'affichent sous l'instance détectée, avant les commandes simulées.
+
+```json
+{
+  "version": 1,
+  "service": "odoo-exemple.service",
+  "instance": {"db": "exemple_db"},
+  "backup": {"dest": "/srv/sauvegardes", "keep_daily": 10,
+             "copy_to": "sauvegarde@backup.example.org:/srv/hors-site"}
+}
+```
+
 **Limites d'envoi.** Une sauvegarde envoyée par `/web/database/manager`
 passe par la limite de taille de requête du mandataire inverse
 (`client_max_body_size` pour nginx) et par la limite de durée de requête
@@ -266,4 +335,20 @@ restaurer sur le serveur avec `--restore`.
 
 La sauvegarde planifiée s'installe par
 `script/systemd/install_backup_timer.py`, voir
-[doc/PRODUCTION.fr.md](../../doc/PRODUCTION.fr.md).
+[doc/PRODUCTION.fr.md](../../doc/PRODUCTION.fr.md). Il lit le même
+profil : son propre groupe `backup_timer` (`on_calendar`,
+`randomized_delay`, `verbose`), plus `dest`, `state_dir`, les réglages
+`keep_*` et `copy_to` de `backup`, et `db` d'`instance`. `--on-calendar`
+et `--randomized-delay` refusent une valeur mal formée dès l'analyse
+(code 2), qu'elle vienne de la ligne de commande ou du profil ;
+`systemd-analyze calendar` vérifie encore le calendrier à l'installation.
+La ligne de commande gagne toujours, et les mêmes méta-options
+s'appliquent (`--profile`, `--no-profile`, `--profile-unset`,
+`--profile-required`). `--uninstall`, `--service`, `--odoo-conf`,
+`--user`, `--root` et `--dry-run` ne se lisent jamais d'un profil. Les
+valeurs retenues s'écrivent dans `ExecStart` comme si elles avaient été
+tapées, et s'affichent avant les unités et les commandes simulées. Quand
+l'outil du checkout retenu applique le profil (lecture statique, rien
+n'est exécuté), `ExecStart` se termine par `--no-profile` : la sauvegarde
+planifiée ne découvre jamais un profil qu'on ne lui a pas donné, et un
+profil illisible par son compte, ou devenu invalide, ne l'arrête pas.

@@ -39,11 +39,21 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fake_odoo_http import FauxOdoo  # noqa: E402
+from profil_isole import profil_isole  # noqa: E402
 
+from script.lib_ops import profil  # noqa: E402
 from script.odoo import health_check  # noqa: E402
 from script.odoo import warmup_http as warmup  # noqa: E402
 
 RUN_SH = Path(__file__).resolve().parent.parent / "run.sh"
+
+# Dossier temporaire des profils, armé pour tout le module.
+PROFILS = None
+
+
+def setUpModule():
+    global PROFILS
+    PROFILS = profil_isole()
 
 
 class TestWhereItKnocks(unittest.TestCase):
@@ -1278,6 +1288,386 @@ class TestDeepTargets(unittest.TestCase):
         self.assertEqual(self.jouer(argv, serveur=serveur), 0, self.erreurs)
         self.assertEqual(self.chemins[:2], ["/web/login?db=base1"] * 2)
         self.assertIn("/page-a", self.chemins)
+
+
+def ecrire_profil(nom, doc, dossier=None):
+    """Écrit le profil `doc` sous `<dossier>/<nom>.json` (le dossier des
+    profils du module par défaut) et rend son chemin absolu."""
+    chemin = os.path.join(dossier or PROFILS, f"{nom}.json")
+    with open(chemin, "w", encoding="utf-8") as f:
+        json.dump(doc, f)
+    os.chmod(chemin, 0o644)
+    return chemin
+
+
+def profil_warmup(**reglages):
+    instance = reglages.pop("instance", None)
+    doc = {"version": 1, "service": "odoo-exemple.service"}
+    if instance is not None:
+        doc["instance"] = instance
+    doc["warmup"] = reglages
+    return doc
+
+
+class TestDeepProfile(unittest.TestCase):
+    """Le profil de l'instance, groupe `warmup`, dans le mode profond
+    seulement : la ligne de commande gagne, les options du mode par défaut
+    et de la cible n'en viennent jamais, et la ligne `🔧 profile:` dit ce
+    qui en vient."""
+
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.dossier = d.name
+        self.cle = os.path.join(self.dossier, "cle")
+        with open(self.cle, "w") as f:
+            f.write("cle-secrete-1234\n")
+        os.chmod(self.cle, 0o600)
+        self.addCleanup(self.retirer_profils)
+
+    def retirer_profils(self):
+        for nom in os.listdir(PROFILS):
+            os.unlink(os.path.join(PROFILS, nom))
+
+    def analyser(self, argv, lanceur=None):
+        """`analyser_profond` silencieux : (args, restes), ou le code de
+        sortie et stderr sur un refus."""
+        erreurs = io.StringIO()
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(erreurs),
+        ):
+            try:
+                return warmup.analyser_profond(argv, lanceur=lanceur)
+            except SystemExit as sortie:
+                self.erreurs = erreurs.getvalue()
+                return sortie.code
+
+    jouer = TestDeepCommandLine.jouer
+
+    def test_a_profile_value_is_applied(self):
+        chemin = ecrire_profil(
+            "odoo-exemple.service",
+            profil_warmup(
+                instance={"db": "base1"},
+                repeat=1,
+                max_pages=3,
+                models="res.partner,res.users",
+                strict=True,
+                timeout=7,
+            ),
+        )
+        args, restes = self.analyser(
+            ["--deep", "--url", "https://www.example.org", "--profile", chemin]
+        )
+        self.assertEqual(restes, [])
+        self.assertEqual(args.repeat, 1)
+        self.assertEqual(args.max_pages, 3)
+        self.assertEqual(args.models, ("res.partner", "res.users"))
+        self.assertIs(args.strict, True)
+        self.assertEqual(args.timeout, 7.0)
+        self.assertEqual(args.database, "base1")
+        self.assertEqual(args.profil.origine("repeat"), "profil")
+        self.assertEqual(args.profil.origine("database"), "profil")
+        self.assertEqual(args.profil.origine("login"), "defaut")
+        # `--url` ne vise aucune unité : le service du profil n'est pas posé.
+        self.assertIsNone(args.service)
+
+    def test_the_profile_drives_the_run_and_is_shown(self):
+        chemin = ecrire_profil(
+            "odoo-exemple.service",
+            profil_warmup(instance={"db": "base1"}, repeat=1),
+        )
+        code = self.jouer(["--deep", "--url", "URL", "--profile", chemin])
+        self.assertEqual(code, 0, self.erreurs)
+        self.assertEqual(self.chemins[0], "/web/login?db=base1")
+        # La sonde, puis une seule voie : `--repeat 1` vient du profil (4
+        # voies par défaut ouvriraient cinq fois la page de connexion).
+        self.assertEqual(self.chemins.count("/web/login?db=base1"), 2)
+        self.assertIn(f"🔧 profile: {chemin} (2)", self.sortie)
+        ligne = warmup.t("{option} {value} (profile)")
+        self.assertIn(ligne.format(option="--repeat", value=1), self.sortie)
+        self.assertIn(
+            ligne.format(option="--database", value="base1"), self.sortie
+        )
+        self.assertLess(
+            self.sortie.index("🔧 profile:"),
+            self.sortie.index("🔥 warmup --deep:"),
+        )
+
+    def test_the_command_line_wins(self):
+        chemin = ecrire_profil(
+            "odoo-exemple.service",
+            profil_warmup(instance={"db": "base1"}, repeat=1),
+        )
+        args, _restes = self.analyser(
+            [
+                "--deep",
+                "--url",
+                "https://www.example.org",
+                "--profile",
+                chemin,
+                "--repeat",
+                "3",
+                "-d",
+                "exemple_db",
+            ]
+        )
+        self.assertEqual(args.repeat, 3)
+        self.assertEqual(args.database, "exemple_db")
+        self.assertEqual(args.profil.origine("repeat"), "cli")
+        self.assertEqual(
+            {e.dest for e in args.profil.ecartees}, {"repeat", "database"}
+        )
+        self.assertEqual(args.profil.valeurs, {})
+
+    def test_excluded_and_unknown_keys_are_ignored(self):
+        """La cible (`url`, `local`), l'unité (`service`) et les options du
+        mode par défaut ne viennent jamais du profil : écartées avec un
+        ATTN, comme une clé inconnue."""
+        chemin = ecrire_profil(
+            "odoo-exemple.service",
+            profil_warmup(
+                url="https://www.example.org",
+                local=True,
+                service="odoo-autre.service",
+                quiet=True,
+                config="/srv/exemple/config.conf",
+                deep=False,
+                cle_inventee=1,
+            ),
+        )
+        args, _restes = self.analyser(["--deep", "--profile", chemin])
+        self.assertIsNone(args.url)
+        self.assertIs(args.local, False)
+        self.assertIsNone(args.service)
+        self.assertIs(args.quiet, False)
+        self.assertIsNone(args.config)
+        self.assertIs(args.deep, True)
+        self.assertEqual(args.profil.valeurs, {})
+        self.assertEqual(
+            {e.dest for e in args.profil.ecartees},
+            {"url", "local", "service", "quiet", "config", "deep"},
+        )
+        self.assertEqual(args.profil.inconnues, ["warmup.cle_inventee"])
+        with mock.patch.object(warmup, "sonder", return_value=False):
+            code = self.jouer(["--deep", "--url", "URL", "--profile", chemin])
+        self.assertEqual(code, 0, self.erreurs)
+        self.assertEqual(self.sortie.count("[ATTN]"), 7, self.sortie)
+        self.assertIn(f"🔧 profile: {chemin} (0)", self.sortie)
+
+    def test_no_profile_and_discovery(self):
+        """Découvert par `--service` (normalisé) avec `--local`, coupé par
+        `--no-profile`, retiré clé par clé par `--profile-unset`."""
+        ecrire_profil("odoo-exemple.service", profil_warmup(repeat=1))
+        base = ["--deep", "--local", "--service", "odoo-exemple"]
+        args, _restes = self.analyser(base)
+        self.assertTrue(args.profil.actif)
+        self.assertEqual(args.repeat, 1)
+        args, _restes = self.analyser(base + ["--no-profile"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.repeat, warmup.REPETITIONS)
+        args, _restes = self.analyser(base + ["--profile-unset", "repeat"])
+        self.assertEqual(args.repeat, warmup.REPETITIONS)
+        self.assertEqual(args.profil.origine("repeat"), "defaut")
+        # Aucun profil pour cette unité : rien, sans message ni erreur.
+        args, _restes = self.analyser(
+            ["--deep", "--local", "--service", "odoo-autre"]
+        )
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(
+            self.analyser(
+                ["--deep", "--local", "--service", "odoo-autre"]
+                + ["--profile-required"]
+            ),
+            2,
+        )
+
+    def test_the_unit_is_guessed_with_local_only(self):
+        """Sans `--service`, le profil n'est cherché par l'unité devinée
+        qu'avec `--local` et un lanceur ; `--url` n'appelle rien."""
+        lanceur = mock.Mock(side_effect=AssertionError("systemctl"))
+        args, _restes = self.analyser(
+            ["--deep", "--url", "https://www.example.org"], lanceur
+        )
+        self.assertFalse(args.profil.actif)
+        lanceur.assert_not_called()
+        args, _restes = self.analyser(["--deep", "--local"])
+        self.assertFalse(args.profil.actif)
+        ecrire_profil("odoo-exemple.service", profil_warmup(repeat=1))
+        with mock.patch.object(
+            profil.systemd,
+            "deviner_unite",
+            return_value=("odoo-exemple.service", "workdir"),
+        ) as deviner:
+            args, _restes = self.analyser(["--deep", "--local"], lanceur)
+        deviner.assert_called_once()
+        self.assertEqual(
+            args.profil.unite_devinee, ("odoo-exemple.service", "workdir")
+        )
+        self.assertEqual(args.repeat, 1)
+
+    def test_the_guessed_unit_is_not_guessed_twice(self):
+        systeme = FauxSystemeLocal(self.dossier)
+        with open(os.path.join(self.dossier, "config.conf"), "w") as f:
+            f.write("[options]\nhttp_port = 8069\ndb_name = base1\n")
+        args, _restes = self.analyser(["--deep", "--local"])
+        args.profil.unite_devinee = ("odoo-exemple.service", "workdir")
+        self.assertEqual(
+            warmup._cible_profonde(args, systeme),
+            ("http://127.0.0.1:8069", "base1"),
+        )
+        self.assertEqual(len(systeme.appels), 1)
+        self.assertEqual(systeme.appels[0][:2], ["systemctl", "show"])
+        self.assertIn("odoo-exemple.service", systeme.appels[0])
+
+    def test_local_takes_the_service_of_an_explicit_profile(self):
+        chemin = ecrire_profil("odoo-exemple.service", profil_warmup(repeat=1))
+        args, _restes = self.analyser(
+            ["--deep", "--local", "--profile", chemin]
+        )
+        self.assertEqual(args.service, "odoo-exemple.service")
+        # Sans `--local`, le service n'est pas posé : `valider` refuserait
+        # « --service requires --local ».
+        args, _restes = self.analyser(["--deep", "--profile", chemin])
+        self.assertIsNone(args.service)
+        # Un `--service` qui diverge du profil est refusé.
+        self.assertEqual(
+            self.analyser(
+                ["--deep", "--local", "--service", "odoo-autre"]
+                + ["--profile", chemin]
+            ),
+            2,
+        )
+
+    def test_login_needs_a_reachable_key(self):
+        """`login` dépend de `api_key_file` : sans clé joignable ici (absente
+        du profil, ou dans KeePass), il est écarté, sans refus."""
+        for reglages in (
+            {"login": "warmup-bot"},
+            {
+                "login": "warmup-bot",
+                "api_key_file": {"kdbx": "ERPLibre/Production/x/y"},
+            },
+        ):
+            with self.subTest(reglages=reglages):
+                chemin = ecrire_profil(
+                    "odoo-exemple.service", profil_warmup(**reglages)
+                )
+                with mock.patch.dict(os.environ):
+                    os.environ.pop("CREDENTIALS_DIRECTORY", None)
+                    args, _restes = self.analyser(
+                        ["--deep", "--profile", chemin]
+                    )
+                self.assertIsNone(args.login)
+                self.assertIsNone(args.api_key_file)
+                self.assertIn("login", {e.dest for e in args.profil.ecartees})
+        chemin = ecrire_profil(
+            "odoo-exemple.service",
+            profil_warmup(login="warmup-bot", api_key_file=self.cle),
+        )
+        args, _restes = self.analyser(["--deep", "--profile", chemin])
+        self.assertEqual(args.login, "warmup-bot")
+        self.assertEqual(args.api_key_file, self.cle)
+
+    def test_invalid_profile_values_are_refused_without_echo(self):
+        for reglages in (
+            {"api_key_file": "relatif/cle"},
+            {"repeat": 99},
+            {"models": "Bad Model"},
+            {"strict": "oui"},
+        ):
+            with self.subTest(reglages=reglages):
+                chemin = ecrire_profil(
+                    "odoo-exemple.service", profil_warmup(**reglages)
+                )
+                self.assertEqual(
+                    self.analyser(["--deep", "--profile", chemin]), 2
+                )
+                self.assertIn(chemin, self.erreurs)
+        self.assertNotIn("relatif/cle", self.erreurs)
+
+    def test_valider_refuses_with_code_2(self):
+        """Les refus d'appariement sortent de `valider`, avant tout
+        réseau : `analyser_profond` seul les voit."""
+        base = ["--deep", "--url", "https://www.example.org"]
+        for options in (
+            ["--login", "admin"],
+            ["--api-key-file", "/nonexistent/cle"],
+            ["--service", "odoo-exemple"],
+        ):
+            with self.subTest(options=options):
+                self.assertEqual(self.analyser(base + options), 2)
+        with mock.patch.object(warmup, "valider") as valider:
+            self.analyser(base)
+        valider.assert_called_once()
+
+    def test_the_default_mode_never_reads_a_profile(self):
+        """Un profil invalide à côté ne change rien au mode de `run.sh` :
+        muet, code 0, la bibliothèque du profil jamais appelée."""
+        chemin = os.path.join(PROFILS, "odoo-exemple.service.json")
+        with open(chemin, "w") as f:
+            f.write("{pas du json")
+        refus = mock.Mock(side_effect=AssertionError("profile read"))
+        sortie, erreurs = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(warmup, "sonder", lambda *a, **k: True),
+            mock.patch.object(profil, "analyser", refus),
+            mock.patch.object(profil, "lire", refus),
+            mock.patch.object(warmup, "analyser_profond", refus),
+            contextlib.redirect_stdout(sortie),
+            contextlib.redirect_stderr(erreurs),
+        ):
+            for argv in (
+                ["--quiet"],
+                ["--quiet", "--service", "odoo-exemple"],
+                ["--quiet", "--profile", chemin, "--profile-required"],
+                ["--quiet", "--", "--deep", "--profile", chemin],
+            ):
+                with self.subTest(argv=argv):
+                    self.assertEqual(warmup.main(argv), 0)
+        self.assertEqual(sortie.getvalue() + erreurs.getvalue(), "")
+        refus.assert_not_called()
+
+    def test_the_default_mode_does_not_import_the_library(self):
+        import subprocess
+
+        racine = str(Path(__file__).resolve().parent.parent)
+        code = (
+            "import sys\n"
+            "from script.odoo import warmup_http as w\n"
+            "w.sonder = lambda *a, **k: True\n"
+            "assert w.main(['--quiet']) == 0\n"
+            "print('script.lib_ops.profil' in sys.modules)\n"
+        )
+        fin = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=racine,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(fin.returncode, 0, fin.stderr)
+        self.assertEqual(fin.stdout.strip(), "False")
+
+    def test_the_parser_is_built_without_side_effect(self):
+        """`construire_parseur` ne lance rien ; chaque option a son aide et
+        sa place dans les tables du profil."""
+        import subprocess
+
+        interdit = mock.Mock(side_effect=AssertionError("process"))
+        with (
+            mock.patch.object(subprocess, "Popen", interdit),
+            mock.patch.object(subprocess, "run", interdit),
+            mock.patch.object(os, "system", interdit),
+        ):
+            parser = warmup.construire_parseur()
+        for action in parser._actions:
+            with self.subTest(dest=action.dest):
+                self.assertTrue(action.help)
+                self.assertIsNotNone(profil.classer("warmup", action.dest))
+        self.assertFalse(parser.allow_abbrev)
+        self.assertEqual(profil.outil("warmup").entree, "analyser_profond")
 
 
 if __name__ == "__main__":

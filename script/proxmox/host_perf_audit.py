@@ -42,9 +42,22 @@ terminal : par `ssh -T`, elle garde la connexion vivante, et un processus
 distant dont le client est parti reçoit EPIPE à l'écriture suivante et
 s'arrête.
 
+Profil d'hôte
+-------------
+`--profile FICHIER` lit les réglages de la mesure (durée, intervalle,
+invités, nombre d'invités affichés, verbosité) dans un profil JSON
+`{"version": 1, "host": ..., "host_perf_audit": {...}}`. Aucun profil
+n'est cherché sans cette option : un hôte distant n'a pas le fichier, le
+menu y développe le profil en arguments explicites. Le lecteur suit les
+règles de `script/lib_ops/profil.py` sans l'importer : la ligne de
+commande gagne, une clé inconnue est signalée puis ignorée, un fichier
+inscriptible par tous, un lien symbolique ou un caractère de contrôle est
+refusé.
+
 Codes de sortie : 0 audit mené à terme (y compris interrompu par Ctrl-C,
 même sans échantillon) ; 2 impossible (pas un `/proc` Linux, arguments,
-CSV non inscriptible) ; 130 Ctrl-C avant le début de la mesure.
+profil refusé, CSV non inscriptible) ; 130 Ctrl-C avant le début de la
+mesure.
 
 L'option cachée `--root DOSSIER` préfixe chaque chemin lu (`/proc`, `/sys`,
 `/etc/pve`, `/dev`, `/run`) : elle sert aux tests, qui bâtissent une
@@ -64,6 +77,7 @@ import re
 import shlex
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -3069,6 +3083,303 @@ def _type_positif(texte):
     return valeur
 
 
+# ----------------------------------------------------------------------- #
+# Profil d'hôte : les règles de script/lib_ops/profil.py, sans l'importer
+# ----------------------------------------------------------------------- #
+PROFIL_VERSION = 1
+PROFIL_GROUPE = OUTIL
+PROFIL_TAILLE_MAX = 256 * 1024
+# Clés de premier niveau qui ne sont pas des groupes, puis les groupes de
+# tous les outils : ceux des autres outils sont ignorés sans message. Un
+# test les compare aux tables de lib_ops/profil.
+PROFIL_CLES_DOCUMENT = ("version", "service", "host")
+PROFIL_GROUPES = (
+    "instance",
+    "update_module",
+    "backup",
+    "backup_timer",
+    "log_check",
+    "mail_retry",
+    "health_check",
+    "warmup",
+    PROFIL_GROUPE,
+)
+# Les champs du groupe, dans l'ordre du catalogue, et les options exclues
+# avec leur raison : une sortie se choisit à chaque lancement, `--root` ne
+# sert qu'aux tests.
+PROFIL_CHAMPS = ("duration", "interval", "no_guests", "top", "verbose")
+PROFIL_EXCLUES = {
+    "csv": "output format set by the caller",
+    "json": "output format set by the caller",
+    "root": "test option",
+    "help": "shows the help",
+    "profile": "profile option",
+}
+RE_CONTROLE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+class ProfilRefuse(Exception):
+    """Un profil refusé ; `cle` nomme l'endroit en cause (`groupe.cle`),
+    jamais la valeur, ou vaut ""."""
+
+    def __init__(self, message, cle=""):
+        super().__init__(message)
+        self.cle = cle
+
+
+class _PrepasseEchouee(Exception):
+    """La pré-passe a rencontré l'aide, une erreur ou une sortie."""
+
+
+def _refuser_constante(nom):
+    raise ValueError("%s is not a JSON number" % nom)
+
+
+def _sans_controle(valeur, cle=""):
+    """Lève ProfilRefuse sur un caractère de contrôle dans une clé, une
+    chaîne ou un élément de liste ; `cle` nomme l'endroit."""
+    if isinstance(valeur, str):
+        if RE_CONTROLE.search(valeur):
+            raise ProfilRefuse("control character in a key or a value", cle)
+    elif isinstance(valeur, dict):
+        for nom, sous_valeur in valeur.items():
+            if RE_CONTROLE.search(nom):
+                raise ProfilRefuse(
+                    "control character in a key or a value", cle
+                )
+            _sans_controle(sous_valeur, "%s.%s" % (cle, nom) if cle else nom)
+    elif isinstance(valeur, list):
+        for element in valeur:
+            _sans_controle(element, cle)
+
+
+def lire_profil(chemin):
+    """Le document JSON du profil d'hôte `chemin`.
+
+    Lève ProfilRefuse pour : un lien symbolique en dernier composant
+    (`O_NOFOLLOW`), un fichier non régulier ou inscriptible par tous, plus
+    de `PROFIL_TAILLE_MAX` octets, autre chose qu'un objet JSON, un
+    caractère de contrôle, une `version` absente ou plus récente que
+    `PROFIL_VERSION`, un groupe qui n'est pas un objet. Le champ `host`
+    n'est pas contrôlé : il nomme l'hôte pour le lecteur du fichier."""
+    try:
+        fd = os.open(
+            chemin,
+            os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+        )
+    except FileNotFoundError:
+        raise ProfilRefuse("file not found")
+    except OSError as err:
+        if os.path.islink(chemin):
+            raise ProfilRefuse("symbolic link refused")
+        raise ProfilRefuse("cannot read: %s" % err.strerror)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ProfilRefuse("not a regular file")
+        if info.st_mode & stat.S_IWOTH:
+            raise ProfilRefuse("writable by every account: refused")
+        morceaux, taille = [], 0
+        while taille <= PROFIL_TAILLE_MAX:
+            bloc = os.read(fd, 65536)
+            if not bloc:
+                break
+            morceaux.append(bloc)
+            taille += len(bloc)
+    finally:
+        os.close(fd)
+    if taille > PROFIL_TAILLE_MAX:
+        raise ProfilRefuse("larger than %d KiB" % (PROFIL_TAILLE_MAX // 1024))
+    try:
+        doc = json.loads(
+            b"".join(morceaux).decode("utf-8"),
+            parse_constant=_refuser_constante,
+        )
+    except ValueError as err:
+        raise ProfilRefuse("invalid JSON: %s" % err)
+    if not isinstance(doc, dict):
+        raise ProfilRefuse("a JSON object is expected")
+    _sans_controle(doc)
+    version = doc.get("version")
+    if (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version < 1
+    ):
+        raise ProfilRefuse("invalid version: %s" % (version,), "version")
+    if version > PROFIL_VERSION:
+        raise ProfilRefuse(
+            "profile written by a newer ERPLibre (version %d)" % version,
+            "version",
+        )
+    for groupe in PROFIL_GROUPES:
+        if groupe in doc and not isinstance(doc[groupe], dict):
+            raise ProfilRefuse("a group is a JSON object", groupe)
+    return doc
+
+
+def _prepasse(parseur, argv):
+    """Le namespace des seules options présentes dans `argv`, défauts
+    suspendus et sorties muettes, ou None si argparse aurait imprimé ou
+    quitté (aide, valeur invalide) : la passe finale le refera, une seule
+    fois. Le parseur est rendu intact dans tous les cas."""
+    defauts = [(action, action.default) for action in parseur._actions]
+    defauts_parseur = parseur._defaults
+    remplaces = {
+        nom: parseur.__dict__.get(nom)
+        for nom in ("error", "exit", "_print_message")
+    }
+
+    def refuser(*_args, **_kwargs):
+        raise _PrepasseEchouee()
+
+    try:
+        for action, _defaut in defauts:
+            action.default = argparse.SUPPRESS
+        parseur._defaults = {}
+        parseur.error = refuser
+        parseur.exit = refuser
+        parseur._print_message = lambda *_args, **_kwargs: None
+        try:
+            return parseur.parse_known_args(argv)[0]
+        except (Exception, SystemExit):
+            return None
+    finally:
+        for action, defaut in defauts:
+            action.default = defaut
+        parseur._defaults = defauts_parseur
+        for nom, valeur in remplaces.items():
+            if valeur is None:
+                parseur.__dict__.pop(nom, None)
+            else:
+                parseur.__dict__[nom] = valeur
+
+
+def _convertir_profil(action, cle, brut):
+    """La valeur `brut` du profil convertie comme argparse le ferait de la
+    ligne de commande : un booléen JSON pour un drapeau, sinon le `type` de
+    l'action appliqué à `str(brut)`. Lève ProfilRefuse."""
+    if isinstance(action, argparse._StoreTrueAction):
+        if not isinstance(brut, bool):
+            raise ProfilRefuse("expected true or false", cle)
+        return brut
+    if isinstance(brut, bool) or not isinstance(brut, (str, int, float)):
+        raise ProfilRefuse("expected a string or a number", cle)
+    texte = str(brut)
+    try:
+        return action.type(texte) if callable(action.type) else texte
+    except argparse.ArgumentTypeError as err:
+        raise ProfilRefuse(str(err), cle)
+    except (TypeError, ValueError):
+        raise ProfilRefuse("invalid value: %s" % texte, cle)
+
+
+def _collecter_profil(parseur, doc, presents):
+    """(retenues, avertissements) : `retenues` liste `(dest, option, brut,
+    converti)` des champs du profil absents de la ligne de commande, dans
+    l'ordre de `PROFIL_CHAMPS` ; une clé inconnue, une option exclue ou
+    une valeur que la ligne de commande remplace donne un avertissement."""
+    actions = {action.dest: action for action in parseur._actions}
+    avertissements = [
+        "unknown key %s, ignored" % nom
+        for nom in doc
+        if nom not in PROFIL_CLES_DOCUMENT and nom not in PROFIL_GROUPES
+    ]
+    groupe = doc.get(PROFIL_GROUPE) or {}
+    for cle in groupe:
+        ici = "%s.%s" % (PROFIL_GROUPE, cle)
+        if cle in PROFIL_EXCLUES:
+            avertissements.append(
+                "%s is not a profile setting (%s), ignored"
+                % (ici, PROFIL_EXCLUES[cle])
+            )
+        elif cle not in PROFIL_CHAMPS:
+            avertissements.append("unknown key %s, ignored" % ici)
+    retenues = []
+    for cle in PROFIL_CHAMPS:
+        if cle not in groupe:
+            continue
+        action = actions[cle]
+        option = max(action.option_strings, key=len)
+        if cle in presents:
+            avertissements.append(
+                "%s: the command line wins over the profile" % option
+            )
+            continue
+        ici = "%s.%s" % (PROFIL_GROUPE, cle)
+        converti = _convertir_profil(action, ici, groupe[cle])
+        retenues.append((cle, option, groupe[cle], converti))
+    return retenues, avertissements
+
+
+def _appliquer_profil(parseur, argv):
+    """`argv` analysé par `parseur`, puis complété par le profil d'hôte de
+    `--profile`.
+
+    Une pré-passe silencieuse trouve les options présentes et le profil ;
+    son échec (aide, valeur invalide) saute le profil. La passe finale
+    garde les défauts normaux, puis chaque valeur retenue du profil est
+    posée par `setattr` : la ligne de commande gagne toujours.
+    `args.profil` vaut None sans profil, sinon `{"path", "values"
+    [(option, brut)], "warnings"}`. Un profil refusé sort par
+    `parseur.error` (code 2)."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    pre = _prepasse(parseur, argv)
+    chemin = getattr(pre, "profile", None) if pre is not None else None
+    retenues, avertissements = [], []
+    if chemin:
+        chemin = os.path.abspath(chemin)
+        try:
+            doc = lire_profil(chemin)
+            retenues, avertissements = _collecter_profil(
+                parseur, doc, frozenset(vars(pre))
+            )
+        except ProfilRefuse as err:
+            parseur.error(
+                "Profile %s: %s%s"
+                % (chemin, err.cle + ": " if err.cle else "", err)
+            )
+    args = parseur.parse_args(argv)
+    for dest, _option, _brut, converti in retenues:
+        setattr(args, dest, converti)
+    args.profil = None
+    if chemin:
+        args.profil = {
+            "path": chemin,
+            "values": [(option, brut) for _d, option, brut, _c in retenues],
+            "warnings": avertissements,
+        }
+    return args
+
+
+def lire_arguments(argv=None):
+    """Les arguments de l'audit : `argv` (`sys.argv[1:]` par défaut) par
+    `construire_parseur()`, complétés par le profil d'hôte de `--profile`
+    (voir `_appliquer_profil`). SystemExit sur l'aide ou une erreur."""
+    return _appliquer_profil(construire_parseur(), argv)
+
+
+def lignes_profil(profil):
+    """Les lignes qui annoncent le profil sur stderr : l'en-tête, une ligne
+    par valeur retenue (`--duration 600 (profile)`), un avertissement par
+    clé ignorée. Aucune sans profil."""
+    if not profil:
+        return []
+    lignes = [
+        "Profile: %s - %d value(s)" % (profil["path"], len(profil["values"]))
+    ]
+    for option, brut in profil["values"]:
+        if brut is True:
+            lignes.append("  %s (profile)" % option)
+        else:
+            lignes.append(
+                "  %s %s (profile)"
+                % (option, "false" if brut is False else brut)
+            )
+    lignes.extend("Warning: " + texte for texte in profil["warnings"])
+    return lignes
+
+
 def construire_parseur():
     parseur = argparse.ArgumentParser(
         prog="host_perf_audit.py",
@@ -3131,6 +3442,14 @@ def construire_parseur():
         "--verbose",
         action="store_true",
         help="show each external command run",
+    )
+    parseur.add_argument(
+        "--profile",
+        metavar="FILE",
+        help="read the measurement settings (duration, interval, guests,"
+        " top, verbose) from this host profile (JSON), for example"
+        " private/production/host/local.json; the command line wins over"
+        " it. No profile is read without this option",
     )
     parseur.add_argument("--root", default="", help=argparse.SUPPRESS)
     return parseur
@@ -3291,11 +3610,12 @@ def _publier(args, resultat, faits, sortie, csv_complet=True):
 
 
 def _main(argv, systeme, sortie, erreur, priorite_basse):
-    parseur = construire_parseur()
     try:
-        args = parseur.parse_args(argv)
+        args = lire_arguments(argv)
     except SystemExit as fin:
         return fin.code if isinstance(fin.code, int) else 2
+    for ligne in lignes_profil(args.profil):
+        print(ligne, file=erreur)
     racine = args.root
     systeme = systeme or Systeme(bavard=args.verbose, erreur=erreur)
     intervalle, note_intervalle = choisir_intervalle(
@@ -3309,6 +3629,16 @@ def _main(argv, systeme, sortie, erreur, priorite_basse):
         )
         return 2
     notes = []
+    if args.profil:
+        # Le rapport garde la trace des réglages qui ne viennent pas de la
+        # ligne de commande.
+        notes.append(
+            "settings from the profile %s: %s"
+            % (
+                args.profil["path"],
+                ", ".join(o for o, _b in args.profil["values"]) or "none",
+            )
+        )
     if note_intervalle:
         notes.append(note_intervalle)
         print("Note: " + note_intervalle, file=erreur)

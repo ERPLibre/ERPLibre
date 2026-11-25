@@ -59,6 +59,17 @@ Le certificat n'est jugé que par `tls_certificate` : les autres requêtes
 HTTPS ne le vérifient pas, pour qu'un certificat refusé donne un FAIL et
 laisse les autres vérifications répondre.
 
+Le profil
+---------
+Le groupe `health_check` du profil de l'instance (`lib_ops/profil`) donne
+`url` (liste), `mail_domain`, `dkim_selector`, `timeout` et `verbose` ;
+la ligne de commande gagne toujours, et un `--url` tapé remplace toute la
+liste du profil. Il est trouvé par `--profile`, sinon par l'unité de
+`--local` (`--service` ou devinée). Avec `--profile` sans `--local`, ses
+URL sont sondées et aucun service n'est posé. `local`, `service` et
+`json` n'en viennent jamais. Le profil lu s'affiche sous le titre ; en
+`--json`, la clé `profile` le porte et ses ATTN vont sur stderr.
+
 Sortie : une ligne par vérification, puis `OK n · ATTN n · FAIL n · SKIP
 n`. `--json` rend des clés stables, en anglais, jamais traduites.
 
@@ -93,7 +104,13 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
-from script.lib_ops import odoo_instance, report, service  # noqa: E402
+from script.lib_ops import (  # noqa: E402
+    odoo_instance,
+    profil,
+    report,
+    service,
+    systemd,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -377,12 +394,16 @@ def cible_locale(hote, port, base=None, list_db=None, unite=""):
     )
 
 
-def detecter_locale(explicite, systeme):
+def detecter_locale(explicite, systeme, devinee=None):
     """La cible de l'unité `explicite` ou détectée : adresse, base et
-    `list_db` lus dans sa configuration. Refus sur ce qui manque, dont une
+    `list_db` lus dans sa configuration. `devinee` est l'unité `(nom,
+    raison)` que la lecture du profil a déjà devinée : systemctl n'est pas
+    interrogé une seconde fois. Refus sur ce qui manque, dont une
     configuration illisible (conseil sudo)."""
     plan = types.SimpleNamespace()
-    props = service.detecter_unite(explicite, systeme, RACINE, plan)
+    props = service.detecter_unite(
+        explicite, systeme, RACINE, plan, devinee=devinee
+    )
     service.detecter_compte_et_dossier(None, systeme, plan, props)
     config = service.detecter_config(None, plan)
     hote, port = odoo_instance.adresse_http(plan.execstart, config)
@@ -1400,13 +1421,22 @@ def _titre(cible):
     return titre
 
 
-def ecrire_texte(rapport, cibles, sections, courriel, domaine):
+def ecrire_entete(rapport, application=None):
+    """Le titre daté, puis le profil lu (en-tête, une ligne par valeur, un
+    ATTN par avertissement), avant toute sonde."""
     rapport.texte(
         "{} — {}".format(
             t("Odoo health check"),
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         )
     )
+    if application is not None:
+        profil.afficher(application, rapport, t)
+
+
+def ecrire_texte(rapport, cibles, sections, courriel, domaine):
+    """Une étape par cible, puis le courriel, le bilan et ce qui est à
+    revoir. Le titre est déjà écrit par `ecrire_entete`."""
     rapport.total = len(cibles) + (1 if courriel else 0)
     for cible, resultats in zip(cibles, sections):
         rapport.etape(_titre(cible))
@@ -1433,9 +1463,11 @@ def ecrire_texte(rapport, cibles, sections, courriel, domaine):
         )
 
 
-def resume_json(cibles, resultats, code):
+def resume_json(cibles, resultats, code, application=None):
+    """Le résumé JSON, clés stables en anglais. La clé `profile` n'y est
+    que si un profil a été lu."""
     versions = [c.version for c in cibles if c.version]
-    return {
+    resume = {
         "tool": "health_check",
         "odoo_version": versions[0] if versions else None,
         "targets": [
@@ -1446,11 +1478,22 @@ def resume_json(cibles, resultats, code):
         "summary": compter(resultats),
         "exit_code": code,
     }
+    _ajouter_profil(resume, application)
+    return resume
+
+
+def _ajouter_profil(resume, application):
+    """Pose `resume["profile"]` (chemin, valeurs brutes par option,
+    valeurs ignorées) quand `application` est un profil lu."""
+    bloc = application.json() if application is not None else None
+    if bloc is not None:
+        resume["profile"] = bloc
 
 
 # --- Programme -------------------------------------------------------------
 
 TYPES = service.types_argparse(t)
+GROUPE = "health_check"
 
 
 def _type_url(valeur):
@@ -1486,7 +1529,9 @@ def _type_delai(valeur):
     return nombre
 
 
-def analyser(argv=None):
+def construire_parseur():
+    """Le parser seul, aides dans la langue courante : ni analyse, ni
+    effet de bord."""
     parser = argparse.ArgumentParser(
         description=t(
             "Check that an Odoo instance answers and exposes nothing it"
@@ -1551,21 +1596,65 @@ def analyser(argv=None):
         action="store_true",
         help=t("Show each system command on stderr."),
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def valider(parser, args):
+    """Les contrôles d'après analyse, profil déjà posé ; un refus sort par
+    `parser.error` (code 2)."""
     if not args.url and not args.local:
         parser.error(t("Give --url URL, --local, or both."))
     if args.service and not args.local:
         parser.error(t("--service requires --local."))
     if args.dkim_selector and not args.mail_domain:
         parser.error(t("--dkim-selector requires --mail-domain."))
+
+
+def analyser(argv=None, lanceur=None):
+    """Les arguments, profil appliqué (`args.profil`). Le profil n'est
+    deviné par l'unité qu'avec `lanceur` et `--local` ; sans `--local`,
+    `--profile` donne les URL sans nommer de service."""
+    parser = construire_parseur()
+    args, _application = profil.analyser(
+        parser,
+        argv,
+        GROUPE,
+        t,
+        RACINE,
+        lanceur=lanceur,
+        utilise_service=profil.outil(GROUPE).avec_service,
+    )
+    valider(parser, args)
     return args
 
 
+def _avertir(application):
+    """Les avertissements du profil en ATTN sur stderr (sortie JSON)."""
+    if application is None:
+        return
+    rapport = report.Rapport(flux=sys.stderr)
+    for ligne in application.avertissements(t):
+        rapport.attn(ligne)
+
+
 def executer(args, systeme, flux):
+    application = getattr(args, "profil", None)
+    rapport = None
+    if args.json:
+        _avertir(application)
+    else:
+        rapport = report.Rapport(flux=flux)
+        ecrire_entete(rapport, application)
     cibles = list(args.url)
     try:
         if args.local:
-            cibles.append(detecter_locale(args.service, systeme))
+            cibles.append(
+                detecter_locale(
+                    args.service,
+                    systeme,
+                    devinee=getattr(application, "unite_devinee", None),
+                )
+            )
     except Refus as err:
         return _refuser(args, flux, err.message(t))
     sections = []
@@ -1582,35 +1671,36 @@ def executer(args, systeme, flux):
     if args.json:
         print(
             json.dumps(
-                resume_json(cibles, tous, code), ensure_ascii=False, indent=2
+                resume_json(cibles, tous, code, application),
+                ensure_ascii=False,
+                indent=2,
             ),
             file=flux,
         )
         return code
-    rapport = report.Rapport(flux=flux)
     ecrire_texte(rapport, cibles, sections, courriel, args.mail_domain)
     return code
 
 
 def _refuser(args, flux, message):
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "tool": "health_check",
-                    "exit_code": CODE_REFUS,
-                    "error": message,
-                },
-                ensure_ascii=False,
-            ),
-            file=flux,
-        )
+        resume = {
+            "tool": "health_check",
+            "exit_code": CODE_REFUS,
+            "error": message,
+        }
+        _ajouter_profil(resume, getattr(args, "profil", None))
+        print(json.dumps(resume, ensure_ascii=False), file=flux)
     print(f"❌ {message}", file=sys.stderr)
     return CODE_REFUS
 
 
 def main(argv=None, systeme=None, flux=None):
-    args = analyser(argv)
+    # Le système réel se construit après l'analyse (`--verbose`) : la
+    # devinette du profil passe alors par `systemd.lancer`.
+    args = analyser(
+        argv, lanceur=systeme.lanceur if systeme else systemd.lancer
+    )
     systeme = systeme or Systeme(verbeux=args.verbose)
     flux = flux or sys.stdout
     try:

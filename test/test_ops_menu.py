@@ -23,10 +23,22 @@ from unittest import mock
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
+# Importé par son dossier et non par `test.` : sous le python3 du système,
+# `test` est le paquet des tests de la bibliothèque standard.
+sys.path.insert(0, str(RACINE / "test"))
 sys.argv = ["todo.py"]
+
+from profil_isole import profil_isole  # noqa: E402
 
 from script.todo import ops_menu  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+
+
+def setUpModule():
+    # Les outils que le menu construit ne lisent jamais le vrai dossier des
+    # profils : la couture vise un dossier temporaire, une garde refuse le
+    # vrai.
+    profil_isole()
 
 
 class FauxExecute:

@@ -2,13 +2,15 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""script/odoo/log_check.py : sources, fenêtres, état, droits, rapport.
+"""script/odoo/log_check.py : sources, fenêtres, état, droits, rapport,
+profil.
 
 Aucun journalctl ni systemctl réel n'est lancé : `FauxSysteme` répond à
 systemctl depuis une table et rend une sortie de journalctl fabriquée,
 ligne à ligne, avec le code et le stderr demandés. L'état vit dans un
-dossier temporaire. Données inventées : unité `erplibre_demo.service`,
-base `base_essai`, adresses sous example.org.
+dossier temporaire, les profils aussi (`profil_isole`). Données
+inventées : unité `erplibre_demo.service`, base `base_essai`, adresses
+sous example.org.
 """
 
 import contextlib
@@ -27,7 +29,19 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+from script.lib_ops import profil  # noqa: E402
 from script.odoo import log_check as lc  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from profil_isole import profil_isole  # noqa: E402
+
+
+def setUpModule():
+    # Les profils de ce module vivent dans un dossier temporaire ; le vrai
+    # dossier des profils n'est jamais lu ni écrit.
+    profil_isole()
+
 
 UNITE = "erplibre_demo.service"
 # 2026-03-01 12:00:00, heure locale.
@@ -1024,6 +1038,235 @@ class TestLectureSeule(Base):
         self.assertEqual(lignes[0], "a")
         self.assertEqual(len(lignes[1]), lc.journal.LIGNE_MAX)
         self.assertEqual(lignes[2:], ["b", "fin"])
+
+
+class TestProfil(Base):
+    """Le profil de production du groupe `log_check` : valeurs reprises,
+    ligne de commande gagnante, exclusions, affichage, `--no-profile`."""
+
+    def ecrire_profil(self, reglages, dossier=None, **document):
+        """Écrit `<dossier>/<UNITE>.json` (racine des profils par défaut)
+        avec `reglages` dans le groupe `log_check` ; rend son chemin."""
+        dossier = dossier or profil.RACINE_PROFILS
+        chemin = os.path.join(dossier, UNITE + ".json")
+        doc = {"version": 1, "service": UNITE, "log_check": reglages}
+        doc.update(document)
+        if not os.path.exists(chemin):
+            self.addCleanup(os.remove, chemin)
+        with open(chemin, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        return chemin
+
+    @staticmethod
+    def ligne_profil(option, valeur):
+        """La ligne du rapport qui montre une valeur reprise du profil."""
+        return lc.t("{option} {value} (profile)").format(
+            option=option, value=valeur
+        )
+
+    def analyser(self, *options):
+        return lc.analyser(list(options), lanceur=self.systeme.lanceur)
+
+    def test_valeurs_du_profil_appliquees(self):
+        etat = os.path.join(self.bac, "etat_profil")
+        self.ecrire_profil(
+            {"top": 3, "days": 14, "state_dir": etat, "full_trace": True}
+        )
+        args = self.analyser("--service", UNITE)
+        self.assertEqual((args.top, args.days), (3, 14))
+        self.assertEqual(args.state_dir, etat)
+        self.assertTrue(args.full_trace)
+        self.assertEqual(args.profil.origine("top"), "profil")
+        self.assertEqual(args.profil.origine("timeout"), "defaut")
+        self.assertEqual(args.timeout, lc.DELAI_LECTURE)
+
+    def test_la_ligne_de_commande_gagne(self):
+        self.ecrire_profil({"top": 3, "ignore": ["x_demo", "autre_bruit"]})
+        args = self.analyser(
+            "--service", UNITE, "--top", "5", "--ignore", "seul_motif"
+        )
+        self.assertEqual(args.top, 5)
+        self.assertEqual(args.profil.origine("top"), "cli")
+        self.assertEqual([m.pattern for m in args.ignore], ["seul_motif"])
+        self.assertEqual(args.profil.origine("ignore"), "cli")
+        self.assertNotIn("ignore", args.profil.valeurs)
+
+    def test_motif_ignore_du_profil_compte_a_part(self):
+        self.ecrire_profil({"ignore": ["x_demo"]})
+        self.journal([ERREUR])
+        self.assertEqual(self.lancer("--last", "2"), lc.CODE_RIEN)
+        self.assertIn(self.ligne_profil("--ignore", "x_demo"), self.sortie)
+        self.assertEqual(
+            self.lancer("--last", "2", "--no-profile"), lc.CODE_A_REVOIR
+        )
+        self.assertNotIn(self.ligne_profil("--ignore", "x_demo"), self.sortie)
+
+    def test_rapport_texte_nomme_le_profil(self):
+        chemin = self.ecrire_profil({"top": 3, "days": 9})
+        self.journal(TRACE)
+        self.lancer("--last", "2")
+        self.assertIn(lc.t("Profile"), self.sortie)
+        self.assertIn(chemin, self.sortie)
+        self.assertIn(self.ligne_profil("--top", "3"), self.sortie)
+        self.assertIn(self.ligne_profil("--days", "9"), self.sortie)
+        # L'en-tête du profil précède les sections du rapport.
+        self.assertLess(
+            self.sortie.index(self.ligne_profil("--top", "3")),
+            self.sortie.index(lc.t("Window")),
+        )
+
+    def test_options_exclues_ignorees_avec_attn(self):
+        self.ecrire_profil(
+            {
+                "top": 4,
+                "since_last": True,
+                "json": True,
+                "file": "/srv/journal/odoo.log",
+                "until": "2026-03-01",
+                "service": "autre.service",
+            }
+        )
+        args = self.analyser("--service", UNITE, "--last", "2")
+        self.assertEqual(args.top, 4)
+        self.assertFalse(args.since_last)
+        self.assertFalse(args.json)
+        self.assertIsNone(args.file)
+        self.assertIsNone(args.until)
+        self.assertEqual(args.service, UNITE)
+        ecartees = {e.dest for e in args.profil.ecartees}
+        self.assertEqual(
+            ecartees, {"since_last", "json", "file", "until", "service"}
+        )
+        self.journal(TRACE)
+        self.lancer("--last", "2")
+        self.assertIn("log_check.since_last", self.sortie)
+        self.assertIn("log_check.json", self.sortie)
+
+    def test_cle_inconnue_signalee(self):
+        self.ecrire_profil({"top": 3, "jours": 2})
+        args = self.analyser("--service", UNITE)
+        self.assertEqual(args.top, 3)
+        self.assertIn("log_check.jours", args.profil.inconnues)
+
+    def test_namespace_du_profil_ecarte_avec_file(self):
+        journal_odoo = os.path.join(self.bac, "odoo.log")
+        with open(journal_odoo, "w") as f:
+            f.write(entete("ERROR", "boom", heure="11:30:00") + "\n")
+        dossier = os.path.join(self.bac, "profils")
+        os.makedirs(dossier)
+        chemin = self.ecrire_profil(
+            {"namespace": "ns_essai", "top": 2}, dossier=dossier
+        )
+        args = self.analyser("--profile", chemin, "--file", journal_odoo)
+        self.assertIsNone(args.namespace)
+        self.assertEqual(args.top, 2)
+        # `--file` ne vise aucune unité : le service du profil n'est pas
+        # posé, et la lecture du fichier n'appelle aucun systemctl.
+        self.assertIsNone(args.service)
+        self.assertIn("namespace", {e.dest for e in args.profil.ecartees})
+        self.assertEqual(self.systeme.appels, [])
+
+    def test_file_ne_cherche_aucun_profil_d_unite(self):
+        self.ecrire_profil({"top": 2})
+        journal_odoo = os.path.join(self.bac, "odoo.log")
+        with open(journal_odoo, "w") as f:
+            f.write(entete("ERROR", "boom", heure="11:30:00") + "\n")
+        args = self.analyser("--file", journal_odoo)
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.top, lc.TOP_PAR_DEFAUT)
+        self.assertEqual(self.systeme.appels, [])
+
+    def test_profile_explicite_pose_le_service(self):
+        dossier = os.path.join(self.bac, "profils")
+        os.makedirs(dossier)
+        chemin = self.ecrire_profil({"top": 2}, dossier=dossier)
+        args = lc.analyser(["--profile", chemin])
+        self.assertEqual(args.service, UNITE)
+        self.assertEqual(args.top, 2)
+        self.assertEqual(self.systeme.appels, [])
+
+    def test_unite_devinee_une_seule_fois(self):
+        self.ecrire_profil({"top": 2})
+        self.journal(TRACE)
+        self.lancer("--last", "2", service=False)
+        self.assertIn(self.ligne_profil("--top", "2"), self.sortie)
+        listes = [
+            a
+            for a in self.systeme.appels
+            if a[:2] == ["systemctl", "list-units"]
+        ]
+        self.assertEqual(len(listes), 1)
+
+    def test_sans_lanceur_aucune_devinette(self):
+        self.ecrire_profil({"top": 2})
+        args = lc.analyser([])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.top, lc.TOP_PAR_DEFAUT)
+
+    def test_no_profile(self):
+        self.ecrire_profil({"top": 3})
+        args = self.analyser("--service", UNITE, "--no-profile")
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.top, lc.TOP_PAR_DEFAUT)
+        self.assertEqual(args.profil.origine("top"), "defaut")
+
+    def test_profile_unset(self):
+        self.ecrire_profil({"top": 3, "days": 9})
+        args = self.analyser("--service", UNITE, "--profile-unset", "top")
+        self.assertEqual(args.top, lc.TOP_PAR_DEFAUT)
+        self.assertEqual(args.days, 9)
+
+    def test_json_porte_la_cle_profile_et_attn_sur_stderr(self):
+        chemin = self.ecrire_profil({"top": 3, "since_last": True})
+        self.journal(TRACE)
+        code, donnees = self.json("--last", "2")
+        self.assertEqual(code, lc.CODE_A_REVOIR)
+        self.assertEqual(donnees["profile"]["path"], chemin)
+        self.assertEqual(donnees["profile"]["values"], {"--top": 3})
+        (ignoree,) = donnees["profile"]["ignored"]
+        self.assertEqual(ignoree["key"], "log_check.since_last")
+        self.assertIn("log_check.since_last", self.erreurs)
+        self.assertNotIn(lc.t("Profile"), self.sortie)
+
+    def test_json_sans_profil_sans_cle(self):
+        self.journal(TRACE)
+        code, donnees = self.json("--last", "2")
+        self.assertNotIn("profile", donnees)
+
+    def test_json_refus_porte_la_cle_profile(self):
+        self.ecrire_profil({"top": 3})
+        self.systeme.code, self.systeme.stderr = 127, "No such file"
+        code, donnees = self.json("--last", "2")
+        self.assertEqual(code, lc.CODE_REFUS)
+        self.assertEqual(donnees["profile"]["values"], {"--top": 3})
+
+    def test_valeur_invalide_du_profil_refusee(self):
+        for reglages, cle in (
+            ({"days": 0}, "log_check.days"),
+            ({"ignore": [".*"]}, "log_check.ignore"),
+            ({"state_dir": "etat_relatif"}, "log_check.state_dir"),
+            ({"namespace": "pas valide!"}, "log_check.namespace"),
+        ):
+            with self.subTest(reglages=reglages):
+                self.ecrire_profil(reglages)
+                erreurs = io.StringIO()
+                with contextlib.redirect_stderr(erreurs):
+                    with self.assertRaises(SystemExit) as fin:
+                        self.analyser("--service", UNITE)
+                self.assertEqual(fin.exception.code, 2)
+                self.assertIn(cle, erreurs.getvalue())
+
+    def test_valider_apres_la_pose(self):
+        self.ecrire_profil({"top": 3})
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as fin:
+                self.analyser("--service", UNITE, "--until", "2026-03-01")
+        self.assertEqual(fin.exception.code, 2)
+
+    def test_construire_parseur_sans_analyse(self):
+        parser = lc.construire_parseur()
+        self.assertEqual(parser.parse_args([]).days, lc.JOURS_PAR_DEFAUT)
+        self.assertNotIn("--profile", parser._option_string_actions)
 
 
 class TestPython37(unittest.TestCase):

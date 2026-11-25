@@ -64,6 +64,18 @@ regarder), bruit connu et motifs `--ignore` comptés à part. Seuls ERROR
 et CRITICAL sont « à revoir ». `--json` rend le résumé de
 `lib_ops.journal.resume_json`, aux clés anglaises jamais traduites.
 
+Le profil
+---------
+Les réglages du groupe `log_check` d'un profil de production
+(`lib_ops.profil`) servent de valeurs par défaut : `--namespace`,
+`--days`, `--ignore`, `--state-dir`, `--full-trace`, `--top`,
+`--timeout`, `--verbose`. Le profil est `--profile FICHIER`, sinon celui
+de l'unité (`--service` ou unité devinée) ; `--file` ne cherche aucun
+profil d'unité et écarte le `namespace` du profil. La ligne de commande
+gagne toujours, `--no-profile` coupe le profil. Le rapport texte nomme
+le profil et liste chaque valeur reprise ; `--json` ajoute la clé
+`profile` et écrit les avertissements sur stderr.
+
 Codes de sortie : 0 rien à revoir ; 1 quelque chose à revoir ; 2 lecture
 impossible (droits, unité, fichier, options) ; 130 interrompu.
 
@@ -99,6 +111,7 @@ from script.lib_ops import (  # noqa: E402
     journal,
     mail_diagnostic,
     odoo_instance,
+    profil,
     report,
     service,
     systemd,
@@ -120,6 +133,9 @@ CODE_RIEN = 0
 CODE_A_REVOIR = 1
 CODE_REFUS = 2
 CODE_INTERROMPU = 130
+
+# Groupe des réglages de cet outil dans un profil (`lib_ops.profil`).
+GROUPE = "log_check"
 
 ETAT_PAR_DEFAUT = "/var/lib/erplibre-logcheck"
 FENETRE_PAR_DEFAUT = 24
@@ -336,7 +352,13 @@ def determiner_source(args, systeme):
         source.chemin = os.path.abspath(args.file)
         return source
     plan = types.SimpleNamespace()
-    props = service.detecter_unite(args.service, systeme, RACINE, plan)
+    props = service.detecter_unite(
+        args.service,
+        systeme,
+        RACINE,
+        plan,
+        devinee=getattr(_application(args), "unite_devinee", None),
+    )
     source.unite = plan.unite
     if args.namespace:
         source.namespace = args.namespace
@@ -720,6 +742,9 @@ def _entete(rapport, args, source, fenetre, lecture):
     if source.kind == "file" and source.unite:
         origine = f"{source.unite} ({source.chemin})"
     rapport.texte(t("Odoo journal: {source}").format(source=origine))
+    application = _application(args)
+    if application is not None:
+        profil.afficher(application, rapport, t)
     if source.kind == "journal" and source.namespace:
         rapport.champ(t("Journal namespace"), source.namespace)
     if fenetre.mode == "since-last":
@@ -849,7 +874,9 @@ def _type_jours(valeur):
     return nombre
 
 
-def analyser(argv=None):
+def construire_parseur():
+    """Le parser de l'outil, sans analyse ni effet de bord : `analyser`
+    l'emploie, et todo en tire le catalogue des réglages."""
     parser = argparse.ArgumentParser(
         description=t(
             "Read the journal of an Odoo instance: tracebacks, errors,"
@@ -963,25 +990,73 @@ def analyser(argv=None):
         action="store_true",
         help=t("Show each system command on stderr."),
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def valider(parser, args):
+    """Les contrôles d'après analyse, valeurs du profil posées : un refus
+    sort par `parser.error` (code 2)."""
     if args.until and not args.since:
         parser.error(t("--until requires --since."))
     if args.namespace and args.file:
         parser.error(t("--namespace cannot be combined with --file."))
+
+
+def analyser(argv=None, lanceur=None):
+    """Les options de `argv`, profil appliqué (`args.profil`).
+
+    `lanceur` permet de deviner l'unité qui nomme le profil quand
+    `--service` et `--file` manquent ; sans lui, seul un `--service` ou un
+    `--profile` explicite en trouve un."""
+    parser = construire_parseur()
+    args, _application = profil.analyser(
+        parser,
+        argv,
+        GROUPE,
+        t,
+        RACINE,
+        lanceur=lanceur,
+        utilise_service=profil.outil(GROUPE).avec_service,
+    )
+    valider(parser, args)
     return args
 
 
-def _json_echec(code, message):
-    return json.dumps(
-        {"version": 1, "exit_code": code, "error": message},
-        ensure_ascii=False,
-    )
+def _application(args):
+    """L'`Application` du profil posée par `analyser`, ou None."""
+    return getattr(args, "profil", None)
+
+
+def _profil_json(args):
+    """La clé `"profile"` de la sortie JSON, ou None sans profil."""
+    application = _application(args)
+    return application.json() if application is not None else None
+
+
+def _avertir_profil(args):
+    """En `--json`, les ATTN du profil vont sur stderr : stdout ne porte
+    que le JSON."""
+    application = _application(args)
+    if application is None or not application.actif:
+        return
+    erreurs = report.Rapport(flux=sys.stderr, couleur=None)
+    for ligne in application.avertissements(t):
+        erreurs.attn(ligne)
+
+
+def _json_echec(code, message, profil_json=None):
+    donnees = {"version": 1, "exit_code": code, "error": message}
+    if profil_json is not None:
+        donnees["profile"] = profil_json
+    return json.dumps(donnees, ensure_ascii=False)
 
 
 def executer(args, systeme, flux):
     rapport = report.Rapport(
         flux=io.StringIO() if args.json else flux, couleur=None
     )
+    if args.json:
+        _avertir_profil(args)
     try:
         source = determiner_source(args, systeme)
         fenetre = calculer_fenetre(args, systeme.maintenant())
@@ -1029,6 +1104,9 @@ def executer(args, systeme, flux):
             code=code,
             version=source.version,
         )
+        profil_json = _profil_json(args)
+        if profil_json is not None:
+            resume["profile"] = profil_json
         print(json.dumps(resume, ensure_ascii=False, indent=2), file=flux)
         return code
     ecrire_texte(rapport, args, source, fenetre, lecture, etat_ecrit)
@@ -1037,13 +1115,17 @@ def executer(args, systeme, flux):
 
 def _refuser(args, flux, message):
     if args.json:
-        print(_json_echec(CODE_REFUS, message), file=flux)
+        print(_json_echec(CODE_REFUS, message, _profil_json(args)), file=flux)
     print(f"❌ {message}", file=sys.stderr)
     return CODE_REFUS
 
 
 def main(argv=None, systeme=None, flux=None):
-    args = analyser(argv)
+    # Le système d'un test sert aussi à deviner l'unité du profil ; sinon il
+    # n'est construit qu'après l'analyse, qui donne `--verbose`.
+    args = analyser(
+        argv, lanceur=systeme.lanceur if systeme else systemd.lancer
+    )
     systeme = systeme or Systeme(verbeux=args.verbose)
     try:
         return executer(args, systeme, flux or sys.stdout)

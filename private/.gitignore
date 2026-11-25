@@ -28,3 +28,9 @@ sms/
 # fabricant et modèle, points de montage, venvs. Ils décrivent UNE machine et
 # n'ont rien à faire dans un dépôt dont le distant est public.
 diagnostic/
+
+# Profils des outils de production (TODO › Exécution › Production) : la
+# configuration d'UNE installation, qui nomme ses services, ses hôtes, ses
+# bases et ses cibles de sauvegarde. Rien de cela n'est partageable, et le
+# distant de ce dépôt est public.
+production/

@@ -29,8 +29,19 @@ sys.path.insert(0, RACINE)
 sys.path.insert(0, os.path.join(RACINE, "test"))
 
 from fake_odoo_http import FauxOdoo  # noqa: E402
+from profil_isole import profil_isole  # noqa: E402
 
 from script.odoo import health_check as hc  # noqa: E402
+
+DOSSIER_PROFILS = None
+
+
+def setUpModule():
+    """Les profils de tout le module vivent dans un dossier temporaire ;
+    le vrai `private/production` n'est jamais touché."""
+    global DOSSIER_PROFILS
+    DOSSIER_PROFILS = profil_isole()
+
 
 MAINTENANT = hc.epoque_expiration("Jan  1 00:00:00 2030 GMT")
 VERSION_18 = (
@@ -1077,6 +1088,260 @@ class TestModeLocal(unittest.TestCase):
             self.assertRaises(SystemExit),
         ):
             hc.analyser(["--url", "example.org", "--service", "x"])
+
+
+def ecrire_profil(cas, groupe, service="odoo-exemple.service", dossier=None):
+    """Écrit `<dossier>/<service>.json` (version 1, groupe `health_check`
+    = `groupe`), retiré à la fin du test `cas` ; rend son chemin."""
+    chemin = os.path.join(dossier or DOSSIER_PROFILS, f"{service}.json")
+    doc = {"version": 1, "service": service, "health_check": groupe}
+    with open(chemin, "w", encoding="utf-8") as fichier:
+        json.dump(doc, fichier)
+    os.chmod(chemin, 0o644)
+    cas.addCleanup(os.remove, chemin)
+    return chemin
+
+
+def analyser_muet(argv, **options):
+    """`hc.analyser(argv)`, stderr avalé."""
+    with contextlib.redirect_stderr(io.StringIO()):
+        return hc.analyser(argv, **options)
+
+
+class TestProfil(unittest.TestCase):
+    """Le groupe `health_check` du profil : valeurs posées, ligne de
+    commande gagnante, options exclues, origine affichée."""
+
+    def test_valeurs_du_profil_appliquees(self):
+        chemin = ecrire_profil(
+            self,
+            {
+                "url": ["example.org", "http://example.net:8069"],
+                "mail_domain": "example.org",
+                "dkim_selector": "s1",
+                "timeout": 4,
+            },
+        )
+        args = analyser_muet(["--profile", chemin])
+        self.assertEqual(
+            [c.url for c in args.url],
+            ["https://example.org", "http://example.net:8069"],
+        )
+        self.assertEqual(args.mail_domain, "example.org")
+        self.assertEqual(args.dkim_selector, "s1")
+        self.assertEqual(args.timeout, 4.0)
+        self.assertEqual(args.profil.origine("timeout"), "profil")
+        self.assertEqual(args.profil.origine("verbose"), "defaut")
+        # Sans --local, aucun service n'est posé : valider refuserait
+        # « --service requires --local ».
+        self.assertIsNone(args.service)
+        self.assertFalse(args.local)
+
+    def test_la_ligne_de_commande_gagne(self):
+        chemin = ecrire_profil(
+            self, {"url": ["example.org", "example.com"], "timeout": 4}
+        )
+        args = analyser_muet(
+            ["--profile", chemin, "--url", "example.net", "--timeout", "7"]
+        )
+        self.assertEqual([c.url for c in args.url], ["https://example.net"])
+        self.assertEqual(args.timeout, 7.0)
+        self.assertEqual(args.profil.origine("url"), "cli")
+        self.assertEqual(args.profil.origine("timeout"), "cli")
+        raisons = {e.cle: e.raison for e in args.profil.ecartees}
+        self.assertEqual(
+            raisons,
+            {"health_check.url": "cli", "health_check.timeout": "cli"},
+        )
+        avertissements = "\n".join(args.profil.avertissements(hc.t))
+        self.assertIn("2", avertissements)
+        self.assertIn("--url", avertissements)
+
+    def test_options_exclues_ignorees(self):
+        chemin = ecrire_profil(
+            self,
+            {
+                "url": ["example.org"],
+                "local": True,
+                "service": "odoo-autre.service",
+                "json": True,
+            },
+        )
+        args = analyser_muet(["--profile", chemin])
+        self.assertFalse(args.local)
+        self.assertFalse(args.json)
+        self.assertIsNone(args.service)
+        self.assertEqual(
+            sorted(e.cle for e in args.profil.ecartees),
+            [
+                "health_check.json",
+                "health_check.local",
+                "health_check.service",
+            ],
+        )
+        self.assertEqual({e.raison for e in args.profil.ecartees}, {"exclue"})
+
+    def test_dkim_sans_domaine_ecarte_sans_refus(self):
+        """`dkim_selector` dépend de `mail_domain` : sans lui, il est
+        écarté avec un ATTN, et valider ne refuse pas."""
+        chemin = ecrire_profil(
+            self,
+            {
+                "url": ["example.org"],
+                "mail_domain": "example.org",
+                "dkim_selector": "s1",
+            },
+        )
+        args = analyser_muet(
+            ["--profile", chemin, "--profile-unset", "mail-domain"]
+        )
+        self.assertIsNone(args.mail_domain)
+        self.assertIsNone(args.dkim_selector)
+        raisons = {e.cle: e.raison for e in args.profil.ecartees}
+        self.assertEqual(raisons["health_check.dkim_selector"], "dependance")
+
+    def test_no_profile(self):
+        ecrire_profil(self, {"url": ["example.org"]})
+        args = analyser_muet(
+            ["--local", "--service", "odoo-exemple", "--no-profile"]
+        )
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.url, [])
+        args = analyser_muet(["--local", "--service", "odoo-exemple"])
+        self.assertTrue(args.profil.actif)
+        self.assertEqual([c.url for c in args.url], ["https://example.org"])
+
+    def test_profile_et_local_posent_le_service(self):
+        chemin = ecrire_profil(self, {"timeout": 4})
+        args = analyser_muet(["--profile", chemin, "--local"])
+        self.assertEqual(args.service, "odoo-exemple.service")
+        self.assertEqual(args.timeout, 4.0)
+
+    def test_valeur_invalide_rend_2(self):
+        chemin = ecrire_profil(self, {"url": ["ftp://example.org"]})
+        erreurs = io.StringIO()
+        with (
+            contextlib.redirect_stderr(erreurs),
+            self.assertRaises(SystemExit) as fin,
+        ):
+            hc.analyser(["--profile", chemin])
+        self.assertEqual(fin.exception.code, 2)
+        self.assertIn("health_check.url", erreurs.getvalue())
+
+    def test_sans_url_ni_local_refuse_apres_le_profil(self):
+        """valider voit les valeurs posées : un profil sans URL, sans
+        --local, laisse le refus d'usage."""
+        chemin = ecrire_profil(self, {"timeout": 4})
+        with (
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit) as fin,
+        ):
+            hc.analyser(["--profile", chemin])
+        self.assertEqual(fin.exception.code, 2)
+
+    def test_texte_affiche_l_origine_avant_les_sondes(self):
+        with FauxOdoo(routes_saines()) as serveur:
+            chemin = ecrire_profil(self, {"url": [serveur.url], "inconnue": 1})
+            sortie = io.StringIO()
+            systeme = FauxSysteme()
+            with contextlib.redirect_stderr(io.StringIO()):
+                code = hc.main(
+                    ["--profile", chemin], systeme=systeme, flux=sortie
+                )
+        texte = sortie.getvalue()
+        self.assertEqual(code, hc.CODE_OK, texte)
+        ligne = hc.t("{option} {value} (profile)").format(
+            option="--url", value=serveur.url
+        )
+        self.assertIn(chemin, texte)
+        self.assertIn(ligne, texte)
+        self.assertIn("health_check.inconnue", texte)
+        self.assertLess(texte.index(ligne), texte.index("▶"))
+        self.assertFalse([a for a in systeme.appels if a[:1] == ["systemctl"]])
+
+    def test_json_porte_la_cle_profile_et_attn_sur_stderr(self):
+        with FauxOdoo(routes_saines()) as serveur:
+            chemin = ecrire_profil(
+                self, {"url": [serveur.url], "timeout": 4, "json": True}
+            )
+            sortie, erreurs = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stderr(erreurs):
+                hc.main(
+                    ["--profile", chemin, "--json"],
+                    systeme=FauxSysteme(),
+                    flux=sortie,
+                )
+        resume = json.loads(sortie.getvalue())
+        self.assertEqual(resume["profile"]["path"], chemin)
+        self.assertEqual(
+            resume["profile"]["values"],
+            {"--url": [serveur.url], "--timeout": 4},
+        )
+        self.assertEqual(
+            resume["profile"]["ignored"],
+            [
+                {
+                    "key": "health_check.json",
+                    "option": "--json",
+                    "reason": "exclue",
+                }
+            ],
+        )
+        self.assertIn("[ATTN]", erreurs.getvalue())
+        self.assertIn("health_check.json", erreurs.getvalue())
+
+
+class TestProfilDevine(unittest.TestCase):
+    """`--local` sans `--service` : le profil de l'unité devinée, qui
+    sert aussi à la détection sans second appel à systemctl."""
+
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.wd = d.name
+        with open(os.path.join(self.wd, "run.sh"), "w") as f:
+            f.write("#!/bin/bash\n")
+
+    def systeme(self):
+        class Devinette(FauxSysteme):
+            def lanceur(self, argv, timeout=60):
+                if argv[:2] == ["systemctl", "list-units"]:
+                    self.appels.append(list(argv))
+                    return 0, (
+                        "odoo-exemple.service loaded active running Odoo\n"
+                    )
+                return super().lanceur(argv, timeout)
+
+        systeme = Devinette()
+        systeme.wd = self.wd
+        return systeme
+
+    def test_unite_devinee_reprise(self):
+        ecrire_profil(self, {"timeout": 4})
+        systeme = self.systeme()
+        with FauxOdoo(routes_saines()) as serveur:
+            with open(os.path.join(self.wd, "config.conf"), "w") as f:
+                f.write(
+                    f"[options]\nhttp_port = {serveur.port}\n"
+                    "db_name = exemple_db\nlist_db = False\n"
+                )
+            sortie = io.StringIO()
+            with contextlib.redirect_stderr(io.StringIO()):
+                code = hc.main(
+                    ["--local", "--json"], systeme=systeme, flux=sortie
+                )
+        self.assertEqual(code, hc.CODE_OK, sortie.getvalue())
+        resume = json.loads(sortie.getvalue())
+        self.assertEqual(resume["profile"]["values"], {"--timeout": 4})
+        self.assertEqual(resume["targets"][0]["kind"], "local")
+        listes = [a for a in systeme.appels if a[1:2] == ["list-units"]]
+        self.assertEqual(len(listes), 1)
+
+    def test_analyser_seul_ne_devine_pas(self):
+        ecrire_profil(self, {"timeout": 4})
+        args = analyser_muet(["--local"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.timeout, hc.DELAI_PAR_DEFAUT)
 
 
 class TestMessages(unittest.TestCase):

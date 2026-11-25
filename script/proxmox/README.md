@@ -162,12 +162,32 @@ report is lost. `--json` prints a document with stable keys, `--csv FILE`
 keeps the raw samples; a write error on it (full disk) disables the file,
 not the audit. Each one-time command (`zpool`, `zfs`, `smartctl`) is
 abandoned after 20 s, even when stuck on a suspended pool, and `smartctl`
-leaves a disk in standby asleep. Exit codes: 0 audit done, 2 could not run, 130
-interrupted before measuring.
+leaves a disk in standby asleep. Exit codes: 0 audit done, 2 could not run
+(arguments, refused profile), 130 interrupted before measuring.
+
+**Host profile.** `--profile FILE` reads the measurement settings —
+`duration`, `interval`, `no_guests`, `top`, `verbose` — from a JSON
+profile, one per host, distinct from the instance profiles:
+`private/production/host/local.json` for this machine,
+`private/production/host/pve-<target>.json` for a remote host (characters
+outside `[A-Za-z0-9_.@-]` become `_`; the prefix keeps a host alias named
+`local` apart). Its content is
+`{"version": 1, "host": "<local|target>", "host_perf_audit": {...}}`.
+Without `--profile`, no profile is looked for: a remote host does not have
+the file, and a run over ssh receives explicit arguments. The command line always wins over the
+profile; `--csv`, `--json` and `--root` are not profile settings. An unknown
+key is reported on stderr and ignored. A profile writable by every account,
+a symbolic link, a control character, a version newer than 1 or a value
+the option itself would refuse ends with code 2. The values taken from the
+profile are announced on stderr before the measurement
+(`--duration 600 (profile)`) and noted in the report. The file stays a
+single file: it applies the rules of `script/lib_ops/profil.py` without
+importing it.
 
 ```bash
 ./script/proxmox/host_perf_audit.py --duration 10m
 sudo ./script/proxmox/host_perf_audit.py --duration 24h --csv /var/tmp/perf.csv
+./script/proxmox/host_perf_audit.py --profile private/production/host/local.json --top 3
 ssh -T root@pve.example.org python3 -I - --duration 2h < script/proxmox/host_perf_audit.py
 ```
 

@@ -77,6 +77,12 @@ une option inconnue (code 2).
    https, ou en http vers la boucle locale : une cible http:// sur un
    autre hôte est refusée (code 2).
 
+Le profil de l'instance (`script/lib_ops/profil.py`, groupe `warmup`)
+ne vaut que pour le mode profond : `analyser_profond` le lit, la ligne de
+commande gagne, et une ligne `🔧 profile:` le dit. Le mode par défaut ne
+le lit jamais et n'importe même pas la bibliothèque : `run.sh` ne se
+configure pas.
+
 Une requête échoue sur une absence de réponse ou un code ≥ 500, et sur
 une erreur JSON-RPC ; un code 4xx est compté à part (« non public »).
 Codes de sortie : 0, même avec des échecs ; 1 avec `--strict` s'il y en
@@ -92,9 +98,11 @@ import stat
 import sys
 import time
 
-sys.path.append(
-    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# Le checkout de l'outil, jamais le cwd : il nomme le dossier des profils.
+RACINE = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 )
+sys.path.append(RACINE)
 
 from script.analyse import lib_analyse  # noqa: E402
 
@@ -126,6 +134,9 @@ CORPS_PAGE_MAX = 4 * 1024 * 1024
 BLOC = 64 * 1024
 CODE_USAGE = 2
 CODE_STRICT = 1
+
+# Le groupe du profil que lit le mode profond.
+GROUPE = "warmup"
 
 RE_ASSET = re.compile(
     r"""(?:src|href)=["'](/web/(?:assets|content)/[^"']+)["']"""
@@ -835,7 +846,12 @@ def _cible_profonde(args, systeme=None):
     """(url de base, base) du mode profond : `--url`, `--local` (l'unité
     systemd, détectée par `systeme` — un health_check.Systeme par défaut —
     comme health_check.py), sinon l'adresse du mode par défaut. Lève
-    ValueError (message traduit) sur une cible impossible."""
+    ValueError (message traduit) sur une cible impossible.
+
+    Sans `--service`, l'unité que la lecture du profil a déjà devinée
+    (`args.profil.unite_devinee`) est reprise comme unité nommée : la
+    détection ne relance pas `systemctl` pour la deviner une seconde
+    fois."""
     from script.odoo import health_check
 
     if args.url:
@@ -857,6 +873,9 @@ def _cible_profonde(args, systeme=None):
             raise ValueError(
                 t("invalid service name: {name}").format(name=args.service)
             )
+        devinee = getattr(getattr(args, "profil", None), "unite_devinee", None)
+        if unite is None and devinee:
+            unite = devinee[0]
         try:
             cible = health_check.detecter_locale(
                 unite, systeme or health_check.Systeme()
@@ -892,8 +911,25 @@ def chiffree_ou_locale(base_url):
         return False
 
 
+def afficher_profil(application):
+    """La ligne `🔧 profile: <chemin> (<n>)`, puis une ligne par valeur
+    retenue (`--repeat 2 (profile)`) et un ATTN par clé inconnue ou valeur
+    écartée. Rien sans profil actif."""
+    if application is None or not application.actif:
+        return
+    print(
+        f"🔧 profile: {application.chemin} ({len(application.valeurs)})",
+        flush=True,
+    )
+    for ligne in application.details(t):
+        print(f"   {ligne}", flush=True)
+    for ligne in application.avertissements(t):
+        print("⚠ [ATTN] " + ligne, flush=True)
+
+
 def principal_profond(args, restes, systeme=None):
-    """Le mode profond depuis la ligne de commande : rend le code de
+    """Le mode profond depuis la ligne de commande, `args` venant
+    d'`analyser_profond` (profil posé, `valider` passé) : rend le code de
     sortie (voir l'en-tête). `systeme` sert la détection de `--local`."""
     if restes:
         return _refus(
@@ -901,10 +937,7 @@ def principal_profond(args, restes, systeme=None):
                 options=" ".join(restes)
             )
         )
-    if bool(args.login) != bool(args.api_key_file):
-        return _refus(t("--login and --api-key-file go together."))
-    if args.service and not args.local:
-        return _refus(t("--service requires --local."))
+    afficher_profil(getattr(args, "profil", None))
     cle = None
     if args.api_key_file:
         try:
@@ -968,29 +1001,49 @@ def _avant_double_tiret(argv):
     return argv[: argv.index("--")] if "--" in argv else argv
 
 
-def main(argv=None, systeme=None):
-    """Toujours rendre 0 hors du mode profond : personne ne doit lire ce
-    code de retour. `systeme` (health_check.Systeme) ne sert qu'à
-    `--deep --local`.
+def construire_parseur():
+    """Le parser des deux modes, seul : rien n'est analysé ni lancé.
 
-    La sonde tourne en arrière-plan d'un `run.sh` qui, lui, rapporte
-    l'état d'Odoo. Un code non nul finirait dans un journal et ferait
-    croire à une panne du serveur. Le mode profond (`--deep`, avant tout
-    `--`) a ses propres codes : voir l'en-tête.
-    """
+    `argparse` est importé ici, comme tout ce que le mode par défaut
+    n'utilise pas, pour que la sonde de `run.sh` démarre vite.
+    `allow_abbrev=False` : sans lui, un argument d'Odoo qui commence comme
+    une de nos options (`--lo` pour `--log` et `--login`) serait pris pour
+    elle, ou ambigu."""
     import argparse
 
-    # `allow_abbrev=False` : sans lui, un argument d'Odoo qui commence
-    # comme une de nos options (`--lo` pour `--log` et `--login`) serait
-    # pris pour elle, ou ambigu.
     parser = argparse.ArgumentParser(
         description="Warm up the HTTP registry.", allow_abbrev=False
     )
-    parser.add_argument("-c", "--config")
-    parser.add_argument("-d", "--database")
-    parser.add_argument("--log")
-    parser.add_argument("--timeout", type=float, default=DELAI_TOTAL)
-    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "-c",
+        "--config",
+        help=t("Odoo configuration file, as run.sh resolved it."),
+    )
+    parser.add_argument(
+        "-d",
+        "--database",
+        help=t("Database to warm up; default: the one of the configuration."),
+    )
+    parser.add_argument(
+        "--log",
+        help=t(
+            "Odoo execution log, read for the listening address as a last"
+            " resort."
+        ),
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=DELAI_TOTAL,
+        help=t("Seconds to wait for the first answer; default: {n}.").format(
+            n=int(DELAI_TOTAL)
+        ),
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help=t("Without --deep: print nothing."),
+    )
     parser.add_argument(
         "--deep",
         action="store_true",
@@ -1050,24 +1103,90 @@ def main(argv=None, systeme=None):
         action="store_true",
         help=t("With --deep: exit 1 when a request failed."),
     )
-    parser.add_argument("odoo_args", nargs="*")
+    parser.add_argument(
+        "odoo_args",
+        nargs="*",
+        help=t("Odoo arguments, after --: read for the port and the workers."),
+    )
+    return parser
+
+
+def valider(parser, args):
+    """Les refus du mode profond sur les valeurs finales, profil posé :
+    `parser.error`, donc code 2 (`CODE_USAGE`). Les options inconnues
+    (`restes`) se refusent dans `principal_profond`."""
+    if bool(args.login) != bool(args.api_key_file):
+        parser.error(t("--login and --api-key-file go together."))
+    if args.service and not args.local:
+        parser.error(t("--service requires --local."))
+
+
+def analyser_profond(argv=None, lanceur=None):
+    """La ligne de commande du mode profond, profil du groupe `warmup`
+    appliqué : rend `(args, restes)`, `args.profil` décrivant le profil.
+
+    `parse_known_args` : les options inconnues restent dans `restes`. Le
+    profil n'est cherché par l'unité devinée qu'avec `--local` et un
+    `lanceur` (celui de `main`) ; `--url` et l'adresse du mode par défaut
+    ne visent aucune unité. Une erreur d'usage ou de profil sort par
+    SystemExit (code 2). La bibliothèque du profil n'est importée qu'ici :
+    le mode par défaut ne la charge jamais."""
+    from script.lib_ops import profil
+
+    parser = construire_parseur()
+    args, restes, _application = profil.analyser(
+        parser,
+        argv,
+        GROUPE,
+        t,
+        RACINE,
+        lanceur=lanceur,
+        utilise_service=profil.outil(GROUPE).avec_service,
+        connus=True,
+    )
+    valider(parser, args)
+    return args, restes
+
+
+def _main_profond(liste, systeme):
+    """Le mode profond de `main` : son propre code de sortie."""
+    from script.lib_ops import systemd
+
+    lanceur = systeme.lanceur if systeme is not None else systemd.lancer
+    try:
+        args, restes = analyser_profond(liste, lanceur=lanceur)
+    except SystemExit as sortie:
+        return sortie.code or 0
+    try:
+        return principal_profond(args, restes, systeme)
+    except KeyboardInterrupt:
+        print(t("Interrupted."), file=sys.stderr)
+        return 130
+
+
+def main(argv=None, systeme=None):
+    """Toujours rendre 0 hors du mode profond : personne ne doit lire ce
+    code de retour. `systeme` (health_check.Systeme) ne sert qu'à
+    `--deep --local`.
+
+    La sonde tourne en arrière-plan d'un `run.sh` qui, lui, rapporte
+    l'état d'Odoo. Un code non nul finirait dans un journal et ferait
+    croire à une panne du serveur. Le mode profond (`--deep`, avant tout
+    `--`) a ses propres codes et son profil : voir l'en-tête. Le mode par
+    défaut ne lit jamais de profil.
+    """
     liste = list(sys.argv[1:] if argv is None else argv)
-    profond = "--deep" in _avant_double_tiret(liste)
+    if "--deep" in _avant_double_tiret(liste):
+        return _main_profond(liste, systeme)
+    parser = construire_parseur()
     # `parse_known_args` et non `parse_args` : les arguments d'Odoo nous
     # traversent, et l'un d'eux ressemblera un jour à une option qu'on ne
     # connaît pas. Une valeur invalide fait sortir argparse par SystemExit :
-    # hors du mode profond, ce serait rompre la seule promesse qui compte
-    # ici — ne jamais gêner.
+    # ce serait rompre la seule promesse qui compte ici — ne jamais gêner.
     try:
         args, restes = parser.parse_known_args(liste)
-    except SystemExit as sortie:
-        return (sortie.code or 0) if profond else 0
-    if args.deep:
-        try:
-            return principal_profond(args, restes, systeme)
-        except KeyboardInterrupt:
-            print(t("Interrupted."), file=sys.stderr)
-            return 130
+    except SystemExit:
+        return 0
     args.odoo_args = list(args.odoo_args) + list(restes)
 
     try:

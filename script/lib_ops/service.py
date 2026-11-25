@@ -326,12 +326,18 @@ def _attendre(pid):
             continue
 
 
-def detecter_unite(explicite, systeme, racine, plan):
+def detecter_unite(explicite, systeme, racine, plan, devinee=None):
     """Nomme l'unité dans `plan` (`unite`, `origine_unite`) et rend ses
-    propriétés `systemctl show`."""
+    propriétés `systemctl show`.
+
+    `devinee` est le `(nom, raison)` que la lecture du profil a déjà tiré
+    de `systemd.deviner_unite` : il est repris tel quel, sans second appel
+    à systemctl, et l'origine reste `workdir` ou `active`."""
     lanceur = systeme.lanceur
     if explicite:
         plan.unite, plan.origine_unite = explicite, "--service"
+    elif devinee:
+        plan.unite, plan.origine_unite = devinee
     else:
         try:
             plan.unite, plan.origine_unite = systemd.deviner_unite(
@@ -447,9 +453,17 @@ def detecter_base(explicite, plan, config):
 
 def detecter_instance(args, systeme, racine, plan):
     """Unité, compte, dossier, configuration et base, dans `plan`, depuis
-    `args.service`, `args.user`, `args.odoo_conf` et `args.db`. Rend la
+    `args.service`, `args.user`, `args.odoo_conf` et `args.db`, et de
+    l'unité déjà devinée par le profil (`args.profil`). Rend la
     configuration lue."""
-    props = detecter_unite(args.service, systeme, racine, plan)
+    application = getattr(args, "profil", None)
+    props = detecter_unite(
+        args.service,
+        systeme,
+        racine,
+        plan,
+        devinee=getattr(application, "unite_devinee", None),
+    )
     detecter_compte_et_dossier(args.user, systeme, plan, props)
     config = detecter_config(args.odoo_conf, plan)
     detecter_base(args.db, plan, config)

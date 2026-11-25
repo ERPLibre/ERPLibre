@@ -44,11 +44,23 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.lib_ops import lock, report, service  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from profil_isole import profil_isole  # noqa: E402
+
+from script.lib_ops import lock, profil, report, service  # noqa: E402
 from script.odoo import health_check, warmup_http  # noqa: E402
 from script.odoo import update_module as um  # noqa: E402
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def setUpModule():
+    # Aucun test de ce module ne lit ni n'écrit le vrai
+    # private/production : la couture des profils vise un dossier
+    # temporaire pour tout le module.
+    profil_isole()
+
 
 LIGNE_ERREUR = (
     "2026-01-31 12:00:00,123 4242 ERROR demo_db odoo.modules.loading:"
@@ -1415,6 +1427,358 @@ class TestDetection(Base):
         self.assertFalse(self.a_appele("requete "))
 
 
+def champ_base(base, origine):
+    """Le motif de la seule ligne du champ Database qui porte `base
+    (origine)`, ancré au début et à la fin de la ligne."""
+    return re.compile(
+        r"^  "
+        + re.escape(um.t("Database"))
+        + r" +"
+        + re.escape(f"{base} ({origine})")
+        + r"$",
+        re.M,
+    )
+
+
+class TestProfil(Base):
+    """Le profil de production de l'instance : valeurs posées, ligne de
+    commande gagnante, options exclues, affichage dans le plan."""
+
+    NOM = "erplibre_demo.service"
+
+    def setUp(self):
+        super().setUp()
+        self.profils = os.path.join(self.tmp, "production")
+        os.makedirs(self.profils)
+        rustine = mock.patch.object(profil, "RACINE_PROFILS", self.profils)
+        rustine.start()
+        self.addCleanup(rustine.stop)
+
+    def profil(self, groupes, nom=NOM, dossier=None):
+        """Écrit `<dossier>/<nom>.json` (0644) et rend son chemin."""
+        doc = {"version": 1, "service": nom}
+        doc.update(groupes)
+        chemin = os.path.join(dossier or self.profils, nom + ".json")
+        ecrire(chemin, json.dumps(doc))
+        os.chmod(chemin, 0o644)
+        return chemin
+
+    def analyser(self, *options):
+        argv = ["--module", "base", "--service", "erplibre_demo"]
+        return um.analyser(argv + list(options))
+
+    def refus(self, argv):
+        """Le code de sortie et stderr d'une analyse qui refuse."""
+        erreurs = io.StringIO()
+        with contextlib.redirect_stderr(erreurs):
+            with self.assertRaises(SystemExit) as ctx:
+                um.analyser(argv)
+        return ctx.exception.code, erreurs.getvalue()
+
+    def test_valeurs_du_profil_posees(self):
+        self.profil(
+            {
+                "update_module": {
+                    "timeout": 77,
+                    "warmup_deep": True,
+                    "ignore_error": ["^odoo\\.addons\\.exemple_bruit"],
+                    "log_dir": "/srv/journaux",
+                }
+            }
+        )
+        args = self.analyser()
+        self.assertTrue(args.profil.actif)
+        self.assertEqual(args.timeout, 77)
+        self.assertTrue(args.warmup_deep)
+        self.assertEqual(args.log_dir, "/srv/journaux")
+        self.assertEqual(
+            [m.pattern for m in args.ignore_error],
+            ["^odoo\\.addons\\.exemple_bruit"],
+        )
+        self.assertEqual(args.profil.origine("timeout"), "profil")
+        self.assertEqual(args.profil.origine("start_wait"), "defaut")
+        self.assertEqual(args.start_wait, um.DELAI_DEMARRAGE)
+        self.assertEqual(args.modules, ["base"])
+
+    def test_alias_lus_dans_les_autres_groupes(self):
+        self.profil(
+            {
+                "instance": {"db": "exemple_db"},
+                "backup": {
+                    "dest": "/srv/sauvegardes",
+                    "state_dir": "/srv/etat",
+                    "keep_daily": 10,
+                },
+            }
+        )
+        args = self.analyser()
+        self.assertEqual(args.db, "exemple_db")
+        self.assertEqual(args.backup_dest, "/srv/sauvegardes")
+        self.assertEqual(args.state_dir, "/srv/etat")
+        self.assertFalse(hasattr(args, "keep_daily"))
+
+    def test_la_ligne_de_commande_gagne(self):
+        self.profil(
+            {
+                "instance": {"db": "exemple_db"},
+                "update_module": {
+                    "timeout": 77,
+                    "ignore_error": ["^exemple_a", "^exemple_b"],
+                },
+            }
+        )
+        args = self.analyser(
+            "--timeout",
+            "99",
+            "--ignore-error",
+            "^exemple_c",
+            "--db",
+            "demo_db",
+        )
+        self.assertEqual(args.timeout, 99)
+        self.assertEqual(args.db, "demo_db")
+        self.assertEqual(
+            [m.pattern for m in args.ignore_error], ["^exemple_c"]
+        )
+        for dest in ("timeout", "ignore_error", "db"):
+            with self.subTest(dest=dest):
+                self.assertEqual(args.profil.origine(dest), "cli")
+        self.assertEqual(
+            sorted(e.dest for e in args.profil.ecartees),
+            ["db", "ignore_error", "timeout"],
+        )
+        avertissements = "\n".join(args.profil.avertissements(um.t))
+        self.assertIn(
+            um.t(
+                "{count} value(s) of {option} from the profile replaced by"
+                " the command line"
+            ).format(count=2, option="--ignore-error"),
+            avertissements,
+        )
+
+    def test_options_exclues_ignorees(self):
+        self.profil(
+            {
+                "update_module": {
+                    "modules": ["exemple_module"],
+                    "service": "odoo-exemple.service",
+                    "odoo_conf": "/srv/exemple/odoo.conf",
+                    "user": "exemple",
+                    "no_backup": True,
+                    "force": True,
+                    "dry_run": True,
+                    "db": "exemple_db",
+                    "timeout": 77,
+                }
+            }
+        )
+        args = self.analyser()
+        self.assertEqual(args.modules, ["base"])
+        self.assertEqual(args.service, "erplibre_demo.service")
+        self.assertIsNone(args.odoo_conf)
+        self.assertIsNone(args.user)
+        self.assertFalse(args.no_backup)
+        self.assertFalse(args.force)
+        self.assertFalse(args.dry_run)
+        # Une dest aliasée n'est pas une clé de son propre groupe.
+        self.assertIsNone(args.db)
+        self.assertEqual(args.profil.inconnues, ["update_module.db"])
+        self.assertEqual(
+            sorted(e.dest for e in args.profil.ecartees),
+            sorted(
+                [
+                    "modules",
+                    "service",
+                    "odoo_conf",
+                    "user",
+                    "no_backup",
+                    "force",
+                    "dry_run",
+                ]
+            ),
+        )
+        self.assertEqual({e.raison for e in args.profil.ecartees}, {"exclue"})
+        self.assertEqual(args.timeout, 77)
+
+    def test_options_exclues_annoncees_et_sans_effet_dans_le_plan(self):
+        self.profil({"update_module": {"no_backup": True, "force": True}})
+        # Le port répond encore après l'arrêt : sans `--force` effectif, la
+        # mise à jour est refusée, et la sauvegarde reste prévue au plan.
+        self.systeme.port_apres_arret = True
+        self.assertEqual(self.lancer(), um.CODE_ECHEC)
+        self.assertIn("update_module.no_backup", self.sortie)
+        self.assertIn("update_module.force", self.sortie)
+        self.assertNotIn(um.t("none (--no-backup)"), self.sortie)
+
+    def test_plan_simule_montre_l_origine_profil(self):
+        self.profil(
+            {
+                "instance": {"db": "demo_db"},
+                "update_module": {
+                    "timeout": 77,
+                    "warmup_deep": True,
+                    "ignore_error": ["^exemple_a", "^exemple_b"],
+                },
+            }
+        )
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_OK, self.erreurs)
+        chemin = os.path.join(self.profils, self.NOM + ".json")
+        self.assertIn(um.t("Profile"), self.sortie)
+        self.assertIn(
+            um.t("{path} — {count} value(s)").format(path=chemin, count=4),
+            self.sortie,
+        )
+        lignes = [
+            um.t("{option} {value} (profile)").format(option=o, value=v)
+            for o, v in (
+                ("--timeout", 77),
+                ("--ignore-error", "^exemple_a"),
+                ("--ignore-error", "^exemple_b"),
+                ("--db", "demo_db"),
+            )
+        ]
+        lignes.append(
+            um.t("{option} (profile)").format(option="--warmup-deep")
+        )
+        for ligne in lignes:
+            with self.subTest(ligne=ligne):
+                self.assertIn(ligne, self.sortie)
+                # Les valeurs du profil précèdent les commandes simulées.
+                self.assertLess(
+                    self.sortie.index(ligne),
+                    self.sortie.index("(simulation)"),
+                )
+        # Le champ Database lui-même, ancré : la ligne de détail
+        # `--db demo_db (profile)` ne le satisfait pas.
+        self.assertRegex(self.sortie, champ_base("demo_db", um.t("profile")))
+        self.assertEqual(
+            self.lancer("--dry-run", "--db", "demo_db"),
+            um.CODE_OK,
+            self.erreurs,
+        )
+        self.assertRegex(self.sortie, champ_base("demo_db", "--db"))
+        self.assertIn(
+            um.t("deep cache warm-up of {url}").format(
+                url="http://127.0.0.1:10000"
+            ),
+            self.sortie,
+        )
+        # Le préchauffage du profil s'annonce, la simulation n'arrête rien.
+        self.assertFalse(self.a_appele("systemctl stop"))
+
+    def test_sans_profil_rien_n_est_affiche(self):
+        self.assertEqual(self.lancer("--dry-run"), um.CODE_OK, self.erreurs)
+        self.assertNotIn(um.t("Profile"), self.sortie)
+
+    def test_no_profile(self):
+        self.profil({"update_module": {"timeout": 77}})
+        args = self.analyser("--no-profile")
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.timeout, um.DELAI_MISE_A_JOUR)
+        self.assertEqual(self.lancer("--dry-run", "--no-profile"), um.CODE_OK)
+        self.assertNotIn(um.t("Profile"), self.sortie)
+
+    def test_no_abrege_est_ambigu(self):
+        code, erreurs = self.refus(["--module", "base", "--no"])
+        self.assertEqual(code, 2)
+        self.assertIn("--no-backup", erreurs)
+        self.assertIn("--no-profile", erreurs)
+
+    def test_profile_explicite_pose_le_service(self):
+        ailleurs = os.path.join(self.tmp, "ailleurs")
+        chemin = self.profil(
+            {"update_module": {"timeout": 77}},
+            nom="odoo-exemple.service",
+            dossier=ailleurs,
+        )
+        args = um.analyser(["--module", "base", "--profile", chemin])
+        self.assertEqual(args.service, "odoo-exemple.service")
+        self.assertEqual(args.timeout, 77)
+        code, erreurs = self.refus(
+            ["--module", "base", "--profile", chemin, "--service", "autre"]
+        )
+        self.assertEqual(code, 2)
+
+    def test_profil_invalide_refuse_code_2(self):
+        for groupe, attendu in (
+            ({"update_module": {"log_dir": "journaux"}}, "log_dir"),
+            ({"update_module": {"timeout": "abc"}}, "timeout"),
+            ({"update_module": {"ignore_error": [".*"]}}, "ignore_error"),
+            ({"update_module": {"warmup_deep": "oui"}}, "warmup_deep"),
+            ({"backup": {"dest": "sauvegardes"}}, "backup.dest"),
+        ):
+            with self.subTest(attendu=attendu):
+                self.profil(groupe)
+                code, erreurs = self.refus(
+                    ["--module", "base", "--service", "erplibre_demo"]
+                )
+                self.assertEqual(code, 2)
+                self.assertIn(attendu, erreurs)
+
+    def test_profil_invalide_n_arrete_rien(self):
+        self.profil({"update_module": {"timeout": 0}})
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                self.lancer()
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertEqual(self.systeme.appels, [])
+
+    def test_valider_apres_la_pose(self):
+        self.profil({"update_module": {"timeout": 77}})
+        code, erreurs = self.refus(
+            ["--module", "all", "--module", "base", "--service", "x"]
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("'all'", erreurs)
+
+    def test_unite_devinee_une_seule_fois(self):
+        self.systeme.liste_unites = (
+            "erplibre_demo.service loaded active running demo\n"
+        )
+        self.profil({"update_module": {"timeout": 77}})
+        sortie = io.StringIO()
+        code = um.main(
+            ["--module", "my_module_*", "--dry-run", "--no-backup"],
+            self.systeme,
+            report.Rapport(flux=sortie, erreurs=io.StringIO()),
+        )
+        self.assertEqual(code, um.CODE_OK)
+        self.assertIn(
+            um.t("{option} {value} (profile)").format(
+                option="--timeout", value=77
+            ),
+            sortie.getvalue(),
+        )
+        self.assertEqual(
+            sum(
+                a.startswith("systemctl list-units")
+                for a in self.systeme.appels
+            ),
+            1,
+        )
+
+    def test_sans_lanceur_aucune_devinette(self):
+        self.systeme.liste_unites = (
+            "erplibre_demo.service loaded active running demo\n"
+        )
+        self.profil({"update_module": {"timeout": 77}})
+        with mock.patch.object(
+            um.systemd, "lancer", side_effect=AssertionError("lancer")
+        ):
+            args = um.analyser(["--module", "base"])
+        self.assertFalse(args.profil.actif)
+        self.assertEqual(args.timeout, um.DELAI_MISE_A_JOUR)
+
+    def test_construire_parseur_sans_effet(self):
+        with mock.patch.object(
+            um.systemd, "lancer", side_effect=AssertionError("lancer")
+        ):
+            parser = um.construire_parseur()
+        dests = {a.dest for a in parser._actions}
+        self.assertNotIn("profile", dests)
+        self.assertIn("ignore_error", dests)
+
+
 class TestLancerLong(unittest.TestCase):
     """Le vrai lanceur, sur un python qui dort : délai et interruption."""
 
@@ -1605,7 +1969,9 @@ def attendre_disparition(pid, delai):
             with open(f"/proc/{pid}/stat") as f:
                 if f.read().rsplit(")", 1)[1].split()[0] == "Z":
                     return True
-        except FileNotFoundError:
+        # Un processus qui disparaît entre l'ouverture et la lecture de son
+        # `stat` lève ProcessLookupError (ESRCH) plutôt que FileNotFoundError.
+        except (FileNotFoundError, ProcessLookupError):
             return True
         time.sleep(0.1)
     return False
@@ -2003,6 +2369,7 @@ class TestPythonAncien(unittest.TestCase):
         os.path.join(RACINE, "script", "odoo", "health_check.py"),
         os.path.join(RACINE, "script", "odoo", "warmup_http.py"),
         os.path.join(RACINE, "script", "proxmox", "host_perf_audit.py"),
+        os.path.join(RACINE, "script", "lib_ops", "profil.py"),
     ]
 
     # API absentes de Python 3.7 : la syntaxe passe le garde, l'appel
@@ -2015,6 +2382,8 @@ class TestPythonAncien(unittest.TestCase):
         "dirs_exist_ok",
         "math.dist(",
         "functools.cache(",
+        "BooleanOptionalAction",
+        "cached_property",
     )
 
     def lire(self, chemin):

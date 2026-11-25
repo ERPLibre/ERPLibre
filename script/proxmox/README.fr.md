@@ -165,11 +165,32 @@ et le rapport est perdu. `--json` produit un document aux clés stables,
 fois (`zpool`, `zfs`, `smartctl`) est abandonnée après 20 s, même bloquée
 sur un pool suspendu, et `smartctl` laisse dormir un disque en veille.
 Codes de sortie : 0 audit
-fait, 2 impossible, 130 interrompu avant la mesure.
+fait, 2 impossible (arguments, profil refusé), 130 interrompu avant la
+mesure.
+
+**Profil d'hôte.** `--profile FICHIER` lit les réglages de la mesure —
+`duration`, `interval`, `no_guests`, `top`, `verbose` — dans un profil JSON,
+un par hôte, distinct des profils d'instance :
+`private/production/host/local.json` pour ce poste,
+`private/production/host/pve-<cible>.json` pour un hôte distant (les
+caractères hors de `[A-Za-z0-9_.@-]` deviennent `_` ; le préfixe sépare un
+alias d'hôte nommé `local`). Son contenu est
+`{"version": 1, "host": "<local|cible>", "host_perf_audit": {...}}`. Sans
+`--profile`, aucun profil n'est cherché : un hôte distant n'a pas le
+fichier, et un lancement par ssh reçoit des arguments explicites. La ligne de commande gagne toujours sur le
+profil ; `--csv`, `--json` et `--root` ne sont pas des réglages du profil.
+Une clé inconnue est signalée sur stderr puis ignorée. Un profil
+inscriptible par tous, un lien symbolique, un caractère de contrôle, une
+version plus récente que 1 ou une valeur que l'option refuserait elle-même
+finit en code 2. Les valeurs prises du profil sont annoncées sur stderr
+avant la mesure (`--duration 600 (profile)`) et notées dans le rapport. Le
+fichier reste unique : il applique les règles de `script/lib_ops/profil.py`
+sans l'importer.
 
 ```bash
 ./script/proxmox/host_perf_audit.py --duration 10m
 sudo ./script/proxmox/host_perf_audit.py --duration 24h --csv /var/tmp/perf.csv
+./script/proxmox/host_perf_audit.py --profile private/production/host/local.json --top 3
 ssh -T root@pve.example.org python3 -I - --duration 2h < script/proxmox/host_perf_audit.py
 ```
 

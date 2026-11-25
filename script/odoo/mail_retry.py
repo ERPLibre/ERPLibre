@@ -56,6 +56,13 @@ sélection ignorée (déjà renvoyée, supprimée, ou absente de la liste) ;
 2 refusé ou impossible (détection, droits, psql, shell sans réponse) ;
 130 interrompu.
 
+Profil : `--days`, `--timeout`, `--verbose` et la base (`instance.db`)
+se lisent aussi dans le profil JSON de l'instance (`lib_ops.profil`,
+groupe `mail_retry`) ; la ligne de commande gagne toujours, et
+`--no-profile` l'ignore. `--details`, `--resend`, `--yes`, `--list`,
+`--dry-run` et `--json` ne s'y persistent jamais : ils se choisissent à
+chaque lancement.
+
 Root n'est nécessaire que pour devenir le compte de l'unité : lancé sous
 ce compte, le programme n'en demande pas. `--dry-run` montre la sélection
 et les commandes exactes sans rien écrire ; sans accès à la base, il
@@ -83,7 +90,13 @@ sys.path.append(
 )
 
 from script.database import odoo_backup  # noqa: E402
-from script.lib_ops import mail_diagnostic, report, service  # noqa: E402
+from script.lib_ops import (  # noqa: E402
+    mail_diagnostic,
+    profil,
+    report,
+    service,
+    systemd,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -96,6 +109,8 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 RACINE = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 )
+# Groupe du profil de l'instance que lit cet outil.
+GROUPE = "mail_retry"
 
 CODE_OK = 0
 CODE_RESTE = 1
@@ -670,7 +685,9 @@ def _type_jours(valeur):
     return nombre
 
 
-def analyser(argv=None):
+def construire_parseur():
+    """Le parser de l'outil, sans rien analyser ni lancer : todo le lit
+    pour le catalogue des réglages, aides dans la langue courante."""
     parser = argparse.ArgumentParser(
         description=t(
             "List the failed outgoing mails of an Odoo instance (read-only),"
@@ -755,7 +772,13 @@ def analyser(argv=None):
         action="store_true",
         help=t("Show each system command on stderr."),
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def valider(parser, args):
+    """Les contrôles d'après analyse, profil posé : `args.selection`
+    reçoit la sélection lue de `--resend`, ou None. Un refus sort par
+    `parser.error`, code 2."""
     args.selection = None
     if args.resend:
         try:
@@ -768,11 +791,41 @@ def analyser(argv=None):
             )
     if args.list and args.resend:
         parser.error(t("--list cannot be combined with --resend."))
+
+
+def analyser(argv=None, lanceur=None):
+    """`argv` analysé avec le profil de l'instance, puis validé. Sans
+    `lanceur`, aucune unité n'est devinée pour trouver le profil : seuls
+    `--service` et `--profile` le nomment."""
+    parser = construire_parseur()
+    args, _application = profil.analyser(
+        parser,
+        argv,
+        GROUPE,
+        t,
+        RACINE,
+        lanceur=lanceur,
+        utilise_service=profil.outil(GROUPE).avec_service,
+    )
+    valider(parser, args)
     return args
 
 
+def avec_profil(sortie, args, code):
+    """`sortie` (OrderedDict) complétée de la clé `"profile"`, présente
+    seulement quand un profil est lu, puis de `"exit_code"`, en dernier."""
+    application = getattr(args, "profil", None)
+    cle = application.json() if application is not None else None
+    if cle is not None:
+        sortie["profile"] = cle
+    sortie["exit_code"] = code
+    return sortie
+
+
 def resume_json(args, plan, echecs, donnees, renvoi, code):
-    return collections.OrderedDict(
+    """La sortie `--json` : la liste, le renvoi, la clé `"profile"` quand
+    un profil est lu, puis le code de sortie."""
+    resume = collections.OrderedDict(
         (
             ("database", plan.base),
             ("days", args.days),
@@ -809,9 +862,9 @@ def resume_json(args, plan, echecs, donnees, renvoi, code):
             ("counts", donnees.get("counts") or {}),
             ("batch_size", donnees.get("batch_size")),
             ("resend", renvoi),
-            ("exit_code", code),
         )
     )
+    return avec_profil(resume, args, code)
 
 
 def _simuler_sans_acces(plan, cible, rapport, sql):
@@ -846,7 +899,13 @@ def lister(args, systeme, rapport):
     cible = odoo_backup.preparer_cible(plan, config, None, None, systeme)
     rapport.champ(t("Service"), plan.unite)
     rapport.champ(t("Account"), plan.utilisateur)
-    rapport.champ(t("Database"), f"{plan.base} ({plan.origine_base})")
+    application = getattr(args, "profil", None)
+    origine_base = profil.origine_affichee(
+        application, "db", plan.origine_base, t
+    )
+    rapport.champ(t("Database"), f"{plan.base} ({origine_base})")
+    if application is not None:
+        profil.afficher(application, rapport, t)
     sql = requete_liste(args.days)
     odoo_bin = os.path.join(plan.wd, "odoo_bin.sh")
     if args.selection and not systeme.existe(odoo_bin):
@@ -971,11 +1030,19 @@ def demander_oui(systeme, question):
 
 
 def main(argv=None, systeme=None, rapport=None, flux=None):
-    args = analyser(argv)
+    args = analyser(
+        argv, lanceur=systeme.lanceur if systeme else systemd.lancer
+    )
     flux = flux or sys.stdout
     systeme = systeme or Systeme(verbeux=args.verbose)
     if rapport is None:
         rapport = report.Rapport(flux=io.StringIO() if args.json else flux)
+    if args.json:
+        # En JSON, le rapport texte est jeté : les avertissements du
+        # profil vont sur stderr, le profil lui-même dans la clé "profile".
+        sur_stderr = report.Rapport(flux=sys.stderr)
+        for ligne in args.profil.avertissements(t):
+            sur_stderr.attn(ligne)
     try:
         code, etat = executer(args, systeme, rapport)
     except KeyboardInterrupt:
@@ -990,9 +1057,8 @@ def main(argv=None, systeme=None, rapport=None, flux=None):
         return CODE_REFUS
     if args.json:
         if etat is None:
-            print(
-                json.dumps({"exit_code": code}, ensure_ascii=False), file=flux
-            )
+            sortie = avec_profil(collections.OrderedDict(), args, code)
+            print(json.dumps(sortie, ensure_ascii=False), file=flux)
         else:
             print(
                 json.dumps(
