@@ -215,6 +215,21 @@ class VpnVaultBootstrap(unittest.TestCase):
         mode = stat.S_IMODE(os.stat(self.target).st_mode)
         self.assertEqual(mode, 0o600, oct(mode))
 
+    def test_a_caller_that_already_asked_skips_the_create_question(self):
+        """L'appelant vient de demander « en créer un ? » : seul le chemin
+        se demande encore."""
+        questions = []
+
+        def ask(question):
+            questions.append(question)
+            return self.target
+
+        with patch("getpass.getpass", return_value=MASTER):
+            path = self.vault.ensure_vault(ask=ask, confirm_create=False)
+        self.assertEqual(path, self.target)
+        self.assertTrue(os.path.exists(self.target))
+        self.assertEqual(len(questions), 1)
+
     def test_refusing_creates_nothing(self):
         path = self.vault.ensure_vault(ask=self._answers(self.target, "n"))
         self.assertEqual(path, "")

@@ -43,6 +43,7 @@ organisation, 409 pour un dépôt ou une pull request) : les appels
 import argparse
 import os
 import re
+import shlex
 import sys
 import urllib.parse
 
@@ -144,6 +145,81 @@ def jeton(forge, environ=None, coffre=None):
         if valeur:
             return valeur, "coffre"
     return "", ""
+
+
+# Les chemins et le compte système de l'installateur du dépôt
+# (script/forgejo/install_forgejo.sh).
+FORGEJO_BIN = "/usr/local/bin/forgejo"
+FORGEJO_CONF = "/etc/forgejo/app.ini"
+FORGEJO_UTILISATEUR = "git"
+PORTEES = ("write:organization", "write:repository", "write:user")
+
+
+def commande_jeton_cli(compte, nom, portees=PORTEES):
+    """La commande à lancer sur l'hôte de la forge pour créer le jeton
+    `nom` du compte `compte` par la CLI d'administration de Forgejo.
+
+    « sudo -n » : sans droit sudo sans mot de passe, elle échoue au lieu
+    d'attendre une saisie que personne ne verrait. « --raw » ne rend que la
+    valeur du jeton."""
+    argv = [
+        "sudo",
+        "-n",
+        "-u",
+        FORGEJO_UTILISATEUR,
+        FORGEJO_BIN,
+        "admin",
+        "user",
+        "generate-access-token",
+        "--username",
+        compte,
+        "--token-name",
+        nom,
+        "--scopes",
+        ",".join(portees),
+        "--raw",
+        "--config",
+        FORGEJO_CONF,
+    ]
+    return " ".join(shlex.quote(a) for a in argv)
+
+
+def creer_jeton_par_ssh(cible, compte, nom, portees=PORTEES, lancer=None):
+    """(jeton, "") créé sur l'hôte `cible` (« utilisateur@hôte ») par SSH,
+    ou ("", motif). La valeur est la dernière ligne de la sortie ; elle
+    n'est ni affichée ni journalisée. `lancer` remplace subprocess.run."""
+    import subprocess
+
+    lancer = lancer or subprocess.run
+    try:
+        fini = lancer(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=15",
+                # Un hôte jamais contacté est accepté et retenu ; une clé
+                # d'hôte qui a changé reste refusée.
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                cible,
+                commande_jeton_cli(compte, nom, portees),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return "", f"ssh {cible}: {exc}"
+    if fini.returncode:
+        erreur = (fini.stderr or "").strip().splitlines()
+        return "", (erreur[-1] if erreur else f"code {fini.returncode}")
+    lignes = [l.strip() for l in (fini.stdout or "").splitlines() if l.strip()]
+    valeur = lignes[-1] if lignes else ""
+    if not jeton_valide(valeur):
+        return "", "the command returned no token"
+    return valeur, ""
 
 
 def organisations_requises(proprietaires):

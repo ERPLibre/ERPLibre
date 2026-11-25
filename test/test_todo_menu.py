@@ -1813,6 +1813,8 @@ class TestGitForgeToken(unittest.TestCase):
             fc, "ClientForgejo", Client
         ), self.mock.patch.object(
             self.menu.click, "confirm", side_effect=[True, True]
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", return_value="paste"
         ), self.mock.patch(
             "getpass.getpass", return_value="bon"
         ), self.mock.patch(
@@ -1822,6 +1824,216 @@ class TestGitForgeToken(unittest.TestCase):
         self.assertIsNotNone(client)
         self.assertEqual(tentatives, ["perime", "bon"])
         self.assertEqual(ranges, [("f.invalid:3000", "bon")])
+
+    def _obtenir(
+        self,
+        prompts,
+        getpass_valeurs=(),
+        confirms=(),
+        web="http://forge.invalid:3000",
+    ):
+        with self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=list(prompts)
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ), self.mock.patch(
+            "getpass.getpass", side_effect=list(getpass_valeurs)
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            return self.obj._git_forge_obtenir_jeton(web)
+
+    def test_pasting_is_the_default(self):
+        with self.mock.patch.object(
+            self.menu.click, "prompt", return_value="paste"
+        ) as prompt, self.mock.patch(
+            "getpass.getpass", return_value=" colle "
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            jeton = self.obj._git_forge_obtenir_jeton(
+                "http://forge.invalid:3000"
+            )
+        self.assertEqual(jeton, "colle")
+        self.assertEqual(prompt.call_args.kwargs["default"], "paste")
+
+    def test_a_token_created_on_the_host_by_ssh(self):
+        fc = self.menu.forgejo_client
+        with self.mock.patch.object(
+            fc, "creer_jeton_par_ssh", return_value=("neuf", "")
+        ) as creer:
+            jeton = self._obtenir(
+                ["ssh", "erplibre@forge.invalid", "erplibre"]
+            )
+        self.assertEqual(jeton, "neuf")
+        cible, compte, nom = creer.call_args.args
+        self.assertEqual(
+            (cible, compte), ("erplibre@forge.invalid", "erplibre")
+        )
+        self.assertTrue(nom.startswith("erplibre-todo-"))
+
+    def test_the_ssh_target_defaults_to_the_forge_host(self):
+        fc = self.menu.forgejo_client
+        with self.mock.patch.object(
+            fc,
+            "creer_jeton_par_ssh",
+            return_value=("", "sudo: a password is required"),
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=["ssh", "x", "y"]
+        ) as prompt, self.mock.patch(
+            "builtins.print"
+        ):
+            self.assertEqual(
+                self.obj._git_forge_obtenir_jeton("http://forge.invalid:3000"),
+                "",
+            )
+        self.assertEqual(
+            prompt.call_args_list[1].kwargs["default"],
+            "erplibre@forge.invalid",
+        )
+
+    def test_a_token_created_with_the_account_password(self):
+        fc = self.menu.forgejo_client
+        crees = []
+
+        class Client:
+            def __init__(self, web, identifiants=None, jeton_api=None):
+                self.identifiants = identifiants
+
+            def creer_jeton(self, nom, portees):
+                crees.append((self.identifiants, tuple(portees)))
+                return "par-api"
+
+        with self.mock.patch.object(fc, "ClientForgejo", Client):
+            jeton = self._obtenir(
+                ["password", "moi"], ["secret"], web="https://forge.invalid"
+            )
+        self.assertEqual(jeton, "par-api")
+        self.assertEqual(crees, [(("moi", "secret"), fc.PORTEES)])
+
+    def test_the_password_over_plain_http_needs_its_own_consent(self):
+        """Consentir à envoyer le jeton en clair ne couvre pas le mot de
+        passe du compte : une seconde question, non par défaut."""
+        fc = self.menu.forgejo_client
+        with self.mock.patch.object(fc, "ClientForgejo") as fabrique:
+            self.assertEqual(self._obtenir(["password"], confirms=[False]), "")
+        fabrique.assert_not_called()
+
+    def test_an_empty_account_cancels(self):
+        fc = self.menu.forgejo_client
+        with self.mock.patch.object(fc, "ClientForgejo") as fabrique:
+            self.assertEqual(
+                self._obtenir(
+                    ["password", ""], ["x"], web="https://forge.invalid"
+                ),
+                "",
+            )
+        fabrique.assert_not_called()
+
+    def test_a_missing_vault_can_be_created_then_holds_the_token(self):
+        essais = []
+
+        def ranger(forge, jeton):
+            essais.append(forge)
+            return len(essais) > 1
+
+        self.obj._git_forge_ranger_jeton = ranger
+        self.obj._git_forge_creer_coffre = lambda: True
+        fc = self.menu.forgejo_client
+
+        class Client:
+            def __init__(self, web, jeton_api=None):
+                pass
+
+            def version(self):
+                return "1"
+
+            def identite(self):
+                return "moi"
+
+        with self.mock.patch.dict(
+            "os.environ", {}, clear=False
+        ), self.mock.patch.object(
+            fc, "jeton", return_value=("", "")
+        ), self.mock.patch.object(
+            fc, "ClientForgejo", Client
+        ), self.mock.patch.object(
+            type(self.obj), "_git_forge_obtenir_jeton", return_value="neuf"
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", return_value=True
+        ), self.mock.patch(
+            "builtins.print"
+        ) as imprime:
+            self.assertIsNotNone(
+                self.obj._git_forge_client("https://f.invalid")
+            )
+        self.assertEqual(len(essais), 2)
+        sortie = " ".join(str(a) for c in imprime.mock_calls for a in c.args)
+        self.assertIn(self.menu.GROUPE_FORGE, sortie)
+
+    def _avec_coffre(self, chemin):
+        """Une session TODO factice dont « kdbx.path » vaut `chemin`."""
+        vault = self.mock.Mock()
+        vault.vault_path.return_value = chemin
+        self.obj._git_forge_vault = lambda: vault
+        return vault
+
+    def test_a_configured_vault_that_did_not_open_is_not_recreated(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".kdbx") as fichier:
+            vault = self._avec_coffre(fichier.name)
+            with self.mock.patch.object(
+                self.menu.click, "confirm"
+            ) as confirm, self.mock.patch("builtins.print") as imprime:
+                self.assertFalse(self.obj._git_forge_creer_coffre())
+        confirm.assert_not_called()
+        vault.ensure_vault.assert_not_called()
+        sortie = " ".join(str(a) for c in imprime.mock_calls for a in c.args)
+        self.assertIn(
+            self.menu.t(
+                "The KeePass vault could not be opened: the token stays for"
+                " this session only."
+            ),
+            sortie,
+        )
+
+    def test_a_missing_vault_is_created_without_a_second_question(self):
+        vault = self._avec_coffre("")
+        vault.ensure_vault.return_value = "/x/secrets.kdbx"
+        with self.mock.patch.object(
+            self.menu.click, "confirm", return_value=True
+        ):
+            self.assertTrue(self.obj._git_forge_creer_coffre())
+        self.assertIs(
+            vault.ensure_vault.call_args.kwargs["confirm_create"], False
+        )
+
+    def test_a_vault_that_cannot_be_written_does_not_crash_the_menu(self):
+        for erreur in (PermissionError("refusé"), EOFError()):
+            with self.subTest(erreur=type(erreur).__name__):
+                vault = self._avec_coffre("")
+                vault.ensure_vault.side_effect = erreur
+                with self.mock.patch.object(
+                    self.menu.click, "confirm", return_value=True
+                ), self.mock.patch("builtins.print"):
+                    self.assertFalse(self.obj._git_forge_creer_coffre())
+
+    def test_a_configured_path_whose_file_is_gone_is_not_opened(self):
+        """PyKeePass lèverait FileNotFoundError après avoir demandé le mot
+        de passe maître : le coffre est traité comme absent."""
+        self._avec_coffre("/chemin/qui/n-existe/pas.kdbx")
+        ouvertures = []
+        self.obj._git_coffre = lambda: ouvertures.append(1)
+        self.assertEqual(self.obj._git_forge_jeton_du_coffre("h"), "")
+        self.assertFalse(self.obj._git_forge_ranger_jeton("h", "j"))
+        self.assertEqual(ouvertures, [])
+
+    def test_vault_creation_needs_the_todo_session(self):
+        """Hors du CLI TODO (ni config ni gestionnaire), rien n'est proposé."""
+        with self.mock.patch.object(self.menu.click, "confirm") as confirm:
+            self.assertFalse(self.obj._git_forge_creer_coffre())
+        confirm.assert_not_called()
 
     def test_plain_http_to_another_host_needs_consent(self):
         with self.mock.patch.object(

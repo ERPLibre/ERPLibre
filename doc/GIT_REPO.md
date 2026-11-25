@@ -558,9 +558,14 @@ repositories on that account; another user account is reported and left out.
 
 The API lives at the web URL of the forge, asked for when the remote is an SSH URL. The access token, with the
 `write:organization`, `write:repository` and `write:user` scopes, comes from `EL_FORGEJO_TOKEN`, then from the
-ERPLibre KeePass vault, one entry per forge (host and port) in the `ERPLibre Forgejo` group; otherwise it is typed
-without echo and may be stored there. A refused token can be typed again, and the new one replaces the stored
-entry. It travels only in the `Authorization` header, never in a URL nor in `env_var.sh`, which the repository
+ERPLibre KeePass vault, one entry per forge (host and port) in the `ERPLibre Forgejo` group. Otherwise TODO offers
+three ways, the first by default: paste it without echo; create it through the API with the account name and
+password, which over plain HTTP to another host asks its own confirmation, No by default; or create it on the forge host over SSH with the Forgejo admin CLI, at the paths of the repository's
+installer and with `sudo` without a password (`sudo -n -u git /usr/local/bin/forgejo admin user generate-access-token
+… --raw`). It may then be stored in the vault; when no vault is configured, TODO offers to create one, through the
+same flow as the VPN secrets: a path, a master password typed twice, a file in mode 0600, and `kdbx.path` written to
+the private configuration, which git does not track. A refused token can be typed again, and the new one replaces
+the stored entry. It travels only in the `Authorization` header, never in a URL nor in `env_var.sh`, which the repository
 tracks, and an error message that would carry it masks it. The client ignores `~/.netrc`, which would otherwise
 replace the token with a password, and follows no redirect, which would turn a creation into a read. Plain HTTP to
 another host than this machine asks for confirmation, No by default. Without a menu, `make forge_prepare URL=<web

@@ -24042,6 +24042,46 @@ TRANSLATIONS = {
         "fr": "le compte du jeton",
         "en": "the account of the token",
     },
+    "No KeePass vault configured (kdbx.path): create one now?": {
+        "fr": "Aucun coffre KeePass configuré (kdbx.path) : en créer un maintenant ?",
+        "en": "No KeePass vault configured (kdbx.path): create one now?",
+    },
+    "Token: paste it, create it with the account password (password), or on the forge host by SSH (ssh)": {
+        "fr": "Jeton : le coller (paste), le créer avec le mot de passe du compte (password), ou sur l'hôte de la forge par SSH (ssh)",
+        "en": "Token: paste it, create it with the account password (password), or on the forge host by SSH (ssh)",
+    },
+    "Forge account": {
+        "fr": "Compte de la forge",
+        "en": "Forge account",
+    },
+    "Password of the account (hidden): ": {
+        "fr": "Mot de passe du compte (masqué) : ",
+        "en": "Password of the account (hidden): ",
+    },
+    "SSH access to the forge host": {
+        "fr": "Accès SSH à l'hôte de la forge",
+        "en": "SSH access to the forge host",
+    },
+    "Forge account that receives the token": {
+        "fr": "Compte de la forge qui reçoit le jeton",
+        "en": "Forge account that receives the token",
+    },
+    "The host needs the forge installed by ERPLibre and sudo without a password; otherwise create the token there and paste it.": {
+        "fr": "L'hôte doit porter la forge installée par ERPLibre et sudo sans mot de passe ; sinon, créer le jeton là-bas et le coller.",
+        "en": "The host needs the forge installed by ERPLibre and sudo without a password; otherwise create the token there and paste it.",
+    },
+    "Token created:": {
+        "fr": "Jeton créé :",
+        "en": "Token created:",
+    },
+    "The KeePass vault could not be opened: the token stays for this session only.": {
+        "fr": "Le coffre KeePass n'a pas pu être ouvert : le jeton ne vaut que pour cette session.",
+        "en": "The KeePass vault could not be opened: the token stays for this session only.",
+    },
+    "Plain HTTP: the account PASSWORD would cross the network in clear. Continue?": {
+        "fr": "HTTP en clair : le MOT DE PASSE du compte traverserait le réseau sans chiffrement. Continuer ?",
+        "en": "Plain HTTP: the account PASSWORD would cross the network in clear. Continue?",
+    },
     "Also freeze the branch each clone is on (revision)?": {
         "fr": "Geler aussi la branche de chaque clone (revision) ?",
         "en": "Also freeze the branch each clone is on (revision)?",

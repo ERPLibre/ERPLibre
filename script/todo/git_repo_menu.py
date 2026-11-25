@@ -1499,11 +1499,28 @@ class GitRepoMenuMixin:
     def _git_forge_titre(self, hote):
         return f"Forgejo token {hote}"
 
+    def _git_forge_kp(self):
+        """Le coffre KeePass ouvert, ou None : aucun coffre configuré, son
+        fichier absent, ou son ouverture abandonnée. Un « kdbx.path » dont
+        le fichier manque n'est pas ouvert : PyKeePass lèverait
+        FileNotFoundError après avoir demandé le mot de passe maître."""
+        vault = self._git_forge_vault()
+        if vault:
+            chemin = vault.vault_path()
+            if chemin and not os.path.exists(os.path.expanduser(chemin)):
+                return None
+        coffre = getattr(self, "_git_coffre", None)
+        if not coffre:
+            return None
+        try:
+            return coffre()
+        except (OSError, EOFError):
+            return None
+
     def _git_forge_jeton_du_coffre(self, hote):
         """Le jeton de la forge `hote` (« hôte[:port] ») rangé dans le
         coffre KeePass, ou "" sans coffre ou sans entrée."""
-        coffre = getattr(self, "_git_coffre", None)
-        kp = coffre() if coffre else None
+        kp = self._git_forge_kp()
         if not kp:
             return ""
         entree = kp.find_entries_by_title(
@@ -1514,8 +1531,7 @@ class GitRepoMenuMixin:
     def _git_forge_ranger_jeton(self, hote, jeton):
         """Range le jeton de `hote` dans le coffre, entrée créée ou
         remplacée, groupe GROUPE_FORGE. Rend False sans coffre configuré."""
-        coffre = getattr(self, "_git_coffre", None)
-        kp = coffre() if coffre else None
+        kp = self._git_forge_kp()
         if not kp:
             return False
         titre = self._git_forge_titre(hote)
@@ -1529,7 +1545,125 @@ class GitRepoMenuMixin:
         else:
             entree.password = jeton
         kp.save()
+        # save() redonne au fichier le mode du umask : le coffre revient
+        # en 0600.
+        vault = self._git_forge_vault()
+        if vault:
+            vault.protect()
         return True
+
+    def _git_forge_vault(self):
+        """Le pont vers le coffre KeePass de la session (celui du menu VPN),
+        ou None hors du CLI TODO."""
+        config = getattr(self, "config_file", None)
+        manager = getattr(self, "kdbx_manager", None)
+        if not (config and manager):
+            return None
+        from script.vpn.vault import VpnVault
+
+        return VpnVault(config, manager)
+
+    def _git_forge_creer_coffre(self):
+        """Propose de créer le coffre KeePass absent. Rend vrai quand un
+        coffre est configuré à la sortie.
+
+        La création passe par `VpnVault.ensure_vault` : chemin demandé
+        (~/.erplibre/secrets.kdbx par défaut), mot de passe maître saisi
+        deux fois, fichier en 0600, et « kdbx.path » écrit dans la
+        configuration privée, que git ne suit pas."""
+        vault = self._git_forge_vault()
+        if not vault:
+            return False
+        chemin = vault.vault_path()
+        if chemin and os.path.exists(os.path.expanduser(chemin)):
+            # Un coffre configuré et présent qui ne s'est pas ouvert (mot de
+            # passe maître abandonné) : rien à créer, et le redemander
+            # tournerait en rond.
+            print(
+                f"   ⚠  {t('The KeePass vault could not be opened: the token stays for this session only.')}"
+            )
+            return False
+        if not click.confirm(
+            f"💬 {t('No KeePass vault configured (kdbx.path): create one now?')}",
+            default=True,
+        ):
+            return False
+        from script.vpn.vault import VaultError
+
+        try:
+            return bool(vault.ensure_vault(ask=input, confirm_create=False))
+        except (VaultError, OSError, EOFError) as exc:
+            print(f"   ✗ {exc}")
+            return False
+
+    def _git_forge_obtenir_jeton(self, web):
+        """Un jeton pour la forge `web`, ou "" si l'utilisateur renonce.
+
+        Trois façons, la première par défaut : le coller ; le créer par
+        l'API avec l'identifiant et le mot de passe du compte, saisis sans
+        écho ; ou le créer sur l'hôte de la forge par SSH, avec la CLI
+        d'administration de Forgejo aux chemins de l'installateur du dépôt.
+        Un jeton créé porte les portées que la préparation exige et un nom
+        daté, unique pour le compte."""
+        import getpass
+        import time
+        import urllib.parse
+
+        print(
+            f"   {t('A Forgejo access token is needed, with the write:organization, write:repository and write:user scopes.')}"
+        )
+        facon = click.prompt(
+            f"💬 {t('Token: paste it, create it with the account password (password), or on the forge host by SSH (ssh)')}",
+            type=click.Choice(["paste", "password", "ssh"]),
+            default="paste",
+        )
+        nom = f"erplibre-todo-{time.strftime('%Y%m%d-%H%M%S')}"
+        if facon == "paste":
+            return getpass.getpass(
+                t("Paste the token (hidden, Enter to cancel): ")
+            ).strip()
+        if facon == "password":
+            if web.startswith("http://") and not forgejo_client.est_locale(
+                web
+            ):
+                if not click.confirm(
+                    f"💬 {t('Plain HTTP: the account PASSWORD would cross the network in clear. Continue?')}",
+                    default=False,
+                ):
+                    return ""
+            compte = click.prompt(
+                f"💬 {t('Forge account')}", default="", show_default=False
+            ).strip()
+            mot_de_passe = getpass.getpass(
+                t("Password of the account (hidden): ")
+            )
+            if not compte or not mot_de_passe:
+                return ""
+            try:
+                return forgejo_client.ClientForgejo(
+                    web, identifiants=(compte, mot_de_passe)
+                ).creer_jeton(nom, forgejo_client.PORTEES)
+            except forgejo_client.ErreurForgejo as exc:
+                print(f"❌ Forgejo : {exc}")
+                return ""
+        hote = urllib.parse.urlsplit(web).hostname or ""
+        cible = click.prompt(
+            f"💬 {t('SSH access to the forge host')}",
+            default=f"erplibre@{hote}",
+        ).strip()
+        compte = click.prompt(
+            f"💬 {t('Forge account that receives the token')}",
+            default="erplibre",
+        ).strip()
+        jeton, motif = forgejo_client.creer_jeton_par_ssh(cible, compte, nom)
+        if not jeton:
+            print(f"❌ {cible} : {motif}")
+            print(
+                f"   {t('The host needs the forge installed by ERPLibre and sudo without a password; otherwise create the token there and paste it.')}"
+            )
+            return ""
+        print(f"   ✓ {t('Token created:')} {nom}")
+        return jeton
 
     def _git_forge_client(self, base):
         """Le client Forgejo de la forge de `base`, vérifié, ou None.
@@ -1538,13 +1672,12 @@ class GitRepoMenuMixin:
         demander. Une URL http:// hors de cette machine demande
         confirmation, non par défaut : le jeton y passerait en clair. Le
         jeton vient de EL_FORGEJO_TOKEN ou du coffre (une entrée par forge,
-        hôte et port), sinon il se saisit sans écho. La forge doit répondre
+        hôte et port), sinon `_git_forge_obtenir_jeton` le fait coller ou
+        créer. La forge doit répondre
         à « version » puis reconnaître le jeton ; un jeton refusé (401 ou
         403) peut se ressaisir, et le jeton saisi peut être rangé dans le
         coffre, en remplaçant l'entrée périmée.
         """
-        import getpass
-
         web = forgejo_client.base_web(base)
         if not web:
             web = forgejo_client.base_web(
@@ -1569,12 +1702,7 @@ class GitRepoMenuMixin:
         print(f"   {t('Forge:')} {web}")
         while True:
             if not jeton:
-                print(
-                    f"   {t('A Forgejo access token is needed, with the write:organization, write:repository and write:user scopes.')}"
-                )
-                jeton = getpass.getpass(
-                    t("Paste the token (hidden, Enter to cancel): ")
-                ).strip()
+                jeton = self._git_forge_obtenir_jeton(web)
                 if not jeton:
                     return None
                 source = "saisi"
@@ -1602,9 +1730,12 @@ class GitRepoMenuMixin:
             f"💬 {t('Store the token in the ERPLibre KeePass vault?')}",
             default=True,
         ):
-            if self._git_forge_ranger_jeton(forge, jeton):
+            if self._git_forge_ranger_jeton(forge, jeton) or (
+                self._git_forge_creer_coffre()
+                and self._git_forge_ranger_jeton(forge, jeton)
+            ):
                 print(f"   ✓ {GROUPE_FORGE} › {self._git_forge_titre(forge)}")
-            else:
+            elif not self._git_forge_vault():
                 print(
                     f"   ⚠  {t('No KeePass vault configured (kdbx.path): the token stays for this session only.')}"
                 )

@@ -665,5 +665,73 @@ class TestJetonEtBranche(unittest.TestCase):
         self.assertIsNone(c.commit_de_branche("P", "d", "absente"))
 
 
+class TestJetonParSsh(unittest.TestCase):
+    """La création d'un jeton sur l'hôte de la forge, par la CLI de
+    Forgejo : la commande, et la lecture de sa sortie sans l'afficher."""
+
+    class Fini:
+        def __init__(self, code, sortie="", erreur=""):
+            self.returncode = code
+            self.stdout = sortie
+            self.stderr = erreur
+
+    def test_la_commande(self):
+        cmd = fc.commande_jeton_cli("le compte", "t-1")
+        self.assertTrue(
+            cmd.startswith("sudo -n -u git /usr/local/bin/forgejo admin user")
+        )
+        self.assertIn("generate-access-token", cmd)
+        self.assertIn("--username 'le compte'", cmd)
+        self.assertIn(
+            "--scopes write:organization,write:repository,write:user", cmd
+        )
+        self.assertIn("--raw", cmd)
+        self.assertIn("--config /etc/forgejo/app.ini", cmd)
+
+    def test_la_derniere_ligne_est_le_jeton(self):
+        appels = []
+
+        def lancer(argv, **kw):
+            appels.append(argv)
+            return self.Fini(0, "avertissement\nabc123def\n")
+
+        self.assertEqual(
+            fc.creer_jeton_par_ssh("u@h.invalid", "c", "t", lancer=lancer),
+            ("abc123def", ""),
+        )
+        self.assertIn("StrictHostKeyChecking=accept-new", appels[0])
+        self.assertIn("BatchMode=yes", appels[0])
+        self.assertEqual(appels[0][-2], "u@h.invalid")
+
+    def test_un_echec_rend_le_motif(self):
+        jeton, motif = fc.creer_jeton_par_ssh(
+            "u@h.invalid",
+            "c",
+            "t",
+            lancer=lambda argv, **kw: self.Fini(
+                1, "", "sudo: a password is required\n"
+            ),
+        )
+        self.assertEqual((jeton, motif), ("", "sudo: a password is required"))
+
+    def test_une_sortie_qui_n_est_pas_un_jeton(self):
+        jeton, motif = fc.creer_jeton_par_ssh(
+            "u@h.invalid",
+            "c",
+            "t",
+            lancer=lambda argv, **kw: self.Fini(0, "a b\n"),
+        )
+        self.assertEqual(jeton, "")
+        self.assertIn("no token", motif)
+
+    def test_ssh_introuvable(self):
+        def lancer(argv, **kw):
+            raise FileNotFoundError("ssh")
+
+        self.assertEqual(
+            fc.creer_jeton_par_ssh("u@h", "c", "t", lancer=lancer)[0], ""
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

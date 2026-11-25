@@ -573,8 +573,14 @@ reçoit ses dépôts sur ce compte ; un autre compte utilisateur est signalé et
 
 L'API se trouve à l'URL web de la forge, demandée quand le remote est une URL SSH. Le jeton d'accès, avec les portées
 `write:organization`, `write:repository` et `write:user`, vient de `EL_FORGEJO_TOKEN`, puis du coffre KeePass
-d'ERPLibre, une entrée par forge (hôte et port) dans le groupe `ERPLibre Forgejo` ; sinon il se saisit sans écho et
-peut y être rangé. Un jeton refusé peut se ressaisir, et le nouveau remplace l'entrée rangée. Il ne circule que dans
+d'ERPLibre, une entrée par forge (hôte et port) dans le groupe `ERPLibre Forgejo`. Sinon TODO propose trois façons, la
+première par défaut : le coller sans écho ; le créer par l'API avec l'identifiant et le mot de passe du compte, qui demande en HTTP clair vers un autre hôte sa propre confirmation, Non par défaut ; ou le
+créer sur l'hôte de la forge par SSH avec la CLI d'administration de Forgejo, aux chemins de l'installateur du dépôt et
+avec `sudo` sans mot de passe (`sudo -n -u git /usr/local/bin/forgejo admin user generate-access-token … --raw`). Il
+peut ensuite être rangé dans le coffre ; sans coffre configuré, TODO propose d'en créer un, par le même parcours que
+les secrets VPN : un chemin, un mot de passe maître saisi deux fois, un fichier en mode 0600, et `kdbx.path` écrit dans
+la configuration privée, que git ne suit pas. Un jeton refusé peut se ressaisir, et le nouveau remplace l'entrée
+rangée. Il ne circule que dans
 l'en-tête `Authorization`, jamais dans une URL ni dans `env_var.sh`, que le dépôt suit, et un message d'erreur qui le
 porterait le masque. Le client ignore `~/.netrc`, qui remplacerait sinon le jeton par un mot de passe, et ne suit
 aucune redirection, qui changerait une création en lecture. HTTP en clair vers un autre hôte que cette machine demande

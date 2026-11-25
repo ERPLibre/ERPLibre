@@ -132,12 +132,16 @@ class VpnVault:
         kdbx = self._config.get_config("kdbx")
         return bool(isinstance(kdbx, dict) and kdbx.get("password"))
 
-    def ensure_vault(self, ask=input, default_path=None) -> str:
+    def ensure_vault(
+        self, ask=input, default_path=None, confirm_create=True
+    ) -> str:
         """Chemin d'un coffre utilisable, "" si l'utilisateur renonce.
 
         Trois cas : déjà configuré et présent (rien à faire) ; configuré
         mais absent (on propose de le créer) ; pas configuré (on demande
-        où, puis on crée si le fichier n'existe pas).
+        où, puis on crée si le fichier n'existe pas). `confirm_create` faux
+        saute la question « Créer le coffre ? » : l'appelant vient de la
+        poser.
         """
         if importlib.util.find_spec("pykeepass") is None:
             raise VaultError(
@@ -158,9 +162,15 @@ class VpnVault:
 
         path = os.path.expanduser(path)
         if not os.path.exists(path):
-            answer = ask(f"Créer le coffre « {path} » ? [o/N] : ")
-            if (answer or "").strip().lower() not in ("o", "oui", "y", "yes"):
-                return ""
+            if confirm_create:
+                answer = ask(f"Créer le coffre « {path} » ? [o/N] : ")
+                if (answer or "").strip().lower() not in (
+                    "o",
+                    "oui",
+                    "y",
+                    "yes",
+                ):
+                    return ""
             self._create(path)
         self._config.set_config_value(["kdbx", "path"], path)
         return path
