@@ -143,9 +143,24 @@ el_build_jobs() {
   echo "${jobs}"
 }
 
+# Paquets que Poetry construit en même temps. Le budget d'el_build_jobs est
+# PARTAGÉ entre eux : par défaut Poetry en lance nproc + 4 à la fois, chacun
+# avec le parallélisme exporté plus bas, et leur somme dépasse la mémoire même
+# quand chaque paquet seul y tient. Deux plutôt qu'un : la plupart se
+# construisent par setuptools, qui compile un fichier à la fois ; le second
+# paquet occupe les cœurs que le premier laisse, sans dépasser le budget.
+EL_POETRY_BUILD_WORKERS="${EL_POETRY_BUILD_WORKERS:-2}"
+
 # Exporte de quoi brider les moteurs de build. À appeler AVANT « poetry
 # install », dans le shell qui le lance.
 #
+# Le budget d'el_build_jobs borne le TOTAL des compilations simultanées :
+# paquets en parallèle × tâches par paquet ne le dépasse jamais. Un seul
+# fichier de PyGLM demande 2,6 Gio à cc1plus, et Poetry le construit à côté
+# de scipy, de scikit-learn et de rpds-py : borner les tâches sans borner les
+# paquets laisse le tueur de mémoire frapper sur une VM de 10 Gio.
+#
+#   poetry POETRY_INSTALLER_MAX_WORKERS, paquets installés en parallèle.
 #   make   MAKEFLAGS, lu par tout Makefile.
 #   cmake  CMAKE_BUILD_PARALLEL_LEVEL, lu par « cmake --build » (manifold3d).
 #   ninja  aucune variable de parallélisme n'existe — mais meson-python lit
@@ -154,8 +169,13 @@ el_build_jobs() {
 #          qui ajoute le -j. C'est ce qui sauve matplotlib.
 #   MAX_JOBS  convention de PyTorch et de quelques autres.
 el_build_limit_jobs() {
-  local jobs real wrapper
-  jobs="$(el_build_jobs)"
+  local budget workers jobs real wrapper
+  budget="$(el_build_jobs)"
+  workers="${EL_POETRY_BUILD_WORKERS}"
+  [ "${workers}" -ge 1 ] 2> /dev/null || workers=1
+  [ "${workers}" -gt "${budget}" ] && workers="${budget}"
+  jobs=$((budget / workers))
+  export POETRY_INSTALLER_MAX_WORKERS="${workers}"
   export MAKEFLAGS="-j${jobs}"
   export CMAKE_BUILD_PARALLEL_LEVEL="${jobs}"
   export MAX_JOBS="${jobs}"
@@ -166,5 +186,5 @@ el_build_limit_jobs() {
     chmod +x "${wrapper}"
     export NINJA="${wrapper}"
   fi
-  echo "  compilation bridee a ${jobs} tache(s) simultanee(s)."
+  echo "  compilation bridee a ${workers} paquet(s) x ${jobs} tache(s) simultanee(s)."
 }
