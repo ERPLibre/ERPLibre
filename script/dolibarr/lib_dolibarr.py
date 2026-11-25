@@ -15,12 +15,10 @@ suivie, les étiquettes d'images, l'intervalle de PHP. read_pin refuse un
 couple incohérent plutôt que d'afficher une version fausse.
 """
 
-import json
 import os
-import re
-import xml.etree.ElementTree as ET
 
 from script.erp_common import instances as common_instances
+from script.erp_common import pin as common_pin
 from script.erp_common import support as common_support
 from script.erp_common.instances import (  # noqa: F401
     RegistryError,
@@ -28,6 +26,7 @@ from script.erp_common.instances import (  # noqa: F401
     parse_port,
     valid_login,
 )
+from script.erp_common.pin import PinError  # noqa: F401
 from script.erp_common.support import (  # noqa: F401
     LINUX_FAMILIES,
     NO_DESKTOP,
@@ -57,63 +56,18 @@ PIN_KEYS = (
     "php_max",
 )
 
-_SHA = re.compile(r"^[0-9a-f]{40}$")
-
-
-class PinError(Exception):
-    """L'épinglage est absent, illisible ou incohérent."""
-
 
 def read_pin(root):
     """Rend l'épinglage de Dolibarr lu sous la racine du dépôt `root`.
 
-    Clés rendues : celles de PIN_KEYS, plus « commit » (sha complet du
-    manifest) et « path » (chemin du checkout relatif à `root`). Lève
-    PinError pour tout défaut, et seulement PinError : l'appelant n'a qu'une
+    common_pin.read_pin lié à PIN_JSON, PIN_MANIFEST, REPO_GROUP et
+    PIN_KEYS : clés de PIN_KEYS, plus « commit » et « path ». Lève PinError
+    pour tout défaut, et seulement PinError : l'appelant n'a qu'une
     exception à rattraper pour dire pourquoi Dolibarr n'est pas proposé.
     """
-    json_path = os.path.join(root, PIN_JSON)
-    try:
-        with open(json_path, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError) as e:
-        raise PinError(f"{PIN_JSON}: {e}") from e
-    if not isinstance(data, dict):
-        raise PinError(f"{PIN_JSON}: not a JSON object")
-    missing = [k for k in PIN_KEYS if not data.get(k)]
-    if missing:
-        raise PinError(f"{PIN_JSON}: missing {', '.join(missing)}")
-
-    manifest_path = os.path.join(root, PIN_MANIFEST)
-    try:
-        tree = ET.parse(manifest_path)
-    except (OSError, ET.ParseError) as e:
-        raise PinError(f"{PIN_MANIFEST}: {e}") from e
-    project = None
-    for node in tree.getroot().iter("project"):
-        groups = (node.get("groups") or "").split(",")
-        if REPO_GROUP in (g.strip() for g in groups):
-            project = node
-            break
-    if project is None:
-        raise PinError(f"{PIN_MANIFEST}: no project in group {REPO_GROUP}")
-
-    commit = project.get("revision") or ""
-    if not _SHA.match(commit):
-        raise PinError(
-            f"{PIN_MANIFEST}: revision {commit!r} is not a full commit"
-        )
-    upstream = project.get("upstream") or ""
-    if upstream != data["branch"]:
-        raise PinError(
-            f"{PIN_MANIFEST} follows {upstream!r},"
-            f" {PIN_JSON} declares {data['branch']!r}"
-        )
-
-    pin = {k: str(data[k]) for k in PIN_KEYS}
-    pin["commit"] = commit
-    pin["path"] = project.get("path") or ""
-    return pin
+    return common_pin.read_pin(
+        root, PIN_JSON, PIN_MANIFEST, REPO_GROUP, PIN_KEYS
+    )
 
 
 def install_label(key, pin, installed):

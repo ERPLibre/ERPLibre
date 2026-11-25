@@ -13,6 +13,9 @@ Ce qui se garde :
   reste, et c'est dit ;
 - les images sont épinglées par empreinte, relue au Hub à chaque update :
   une image reconstruite sous la même étiquette déplace l'épinglage.
+Les références d'images, le Hub et la réécriture du manifest viennent de
+script/erp_common/pin et s'éprouvent dans test_erp_common_pin ; ici, leur
+liaison à Dolibarr.
 """
 
 import contextlib
@@ -22,12 +25,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 
 from script.dolibarr import lib_dolibarr, pin  # noqa: E402
+from script.erp_common import pin as common_pin  # noqa: E402
 
 # Commits et empreintes inventés.
 ANCIEN = "a" * 40
@@ -68,56 +71,6 @@ define('DOL_VERSION', constant('DOL_MAJOR_VERSION').'.'.constant('DOL_MINOR_VERS
 """
 
 
-class TestImage(unittest.TestCase):
-    def test_a_reference_splits_into_repository_tag_and_digest(self):
-        self.assertEqual(
-            pin.split_image(f"{DOLI}:24.0.0@{D_2400}"),
-            (DOLI, "24.0.0", D_2400),
-        )
-        self.assertEqual(
-            pin.split_image(f"{MARIA}:11.4"), (MARIA, "11.4", None)
-        )
-
-    def test_a_reference_is_rebuilt_from_its_parts(self):
-        self.assertEqual(
-            pin.image_ref(DOLI, "24.0.0", D_2400), f"{DOLI}:24.0.0@{D_2400}"
-        )
-        self.assertEqual(pin.image_ref(MARIA, "11.4", None), f"{MARIA}:11.4")
-
-
-class TestHub(unittest.TestCase):
-    """Network.hub_digest lit la réponse du Hub, sans réseau ici."""
-
-    def lire(self, corps):
-        reponse = mock.MagicMock()
-        reponse.__enter__.return_value = io.BytesIO(corps.encode())
-        with mock.patch.object(
-            pin.urllib.request, "urlopen", return_value=reponse
-        ) as urlopen:
-            digest = pin.Network().hub_digest(DOLI, "24.0.0")
-        return digest, urlopen.call_args[0][0]
-
-    def test_the_digest_of_the_tag(self):
-        digest, url = self.lire(json.dumps({"digest": D_2400}))
-        self.assertEqual(digest, D_2400)
-        self.assertEqual(
-            url,
-            "https://hub.docker.com/v2/repositories/dolibarr/dolibarr"
-            "/tags/24.0.0",
-        )
-
-    def test_anything_but_a_sha256_digest_is_none(self):
-        # Il finit dans une commande « run » : rien d'autre n'y entre.
-        for corps in (
-            json.dumps({"digest": "sha256:court"}),
-            json.dumps({"digest": D_2400 + " --privileged"}),
-            json.dumps({}),
-            "pas du json",
-        ):
-            with self.subTest(corps=corps):
-                self.assertIsNone(self.lire(corps)[0])
-
-
 class TestParse(unittest.TestCase):
     def test_version_from_version_inc_php(self):
         texte = VERSION_INC.format(major="24", minor="0.2")
@@ -131,37 +84,25 @@ class TestParse(unittest.TestCase):
         self.assertIsNone(pin.parse_version("<?php echo 1;"))
 
 
-class TestRewriteManifest(unittest.TestCase):
+class TestWiring(unittest.TestCase):
+    """La mécanique vient de script/erp_common/pin, liée à Dolibarr."""
+
     def test_only_the_dolibarr_pin_changes(self):
         avant = MANIFEST.format(rev=ANCIEN, branch="24.0")
         apres = pin.rewrite_manifest(avant, NOUVEAU, "25.0")
         self.assertEqual(apres, MANIFEST.format(rev=NOUVEAU, branch="25.0"))
 
-    def test_another_project_keeps_its_revision(self):
-        autre = (
-            '    <project name="x.git" path="x" remote="Dolibarr"'
-            f' revision="{ANCIEN}" upstream="24.0" groups="base" />\n'
-        )
-        avant = MANIFEST.format(rev=ANCIEN, branch="24.0").replace(
-            "</manifest>", autre + "</manifest>"
-        )
-        apres = pin.rewrite_manifest(avant, NOUVEAU, "24.0")
-        self.assertIn(autre, apres)
-        self.assertEqual(apres.count(NOUVEAU), 1)
+    def test_the_network_queries_the_dolibarr_repository(self):
+        net = pin.Network()
+        self.assertIsInstance(net, common_pin.Network)
+        self.assertEqual(net.upstream, pin.UPSTREAM)
+        # Les fichiers bruts d'un commit ne servent qu'à lire la version.
+        self.assertTrue(callable(net.raw))
 
-
-class TestRewriteRefuses(unittest.TestCase):
-    def test_no_dolibarr_project_is_refused(self):
-        with self.assertRaises(ValueError):
-            pin.rewrite_manifest("<manifest />", NOUVEAU, "24.0")
-
-    def test_two_dolibarr_projects_are_refused(self):
-        # Réécrire les deux les épinglerait sur le même commit.
-        un = MANIFEST.format(rev=ANCIEN, branch="24.0")
-        projet = un[un.index("    <project") : un.index("</manifest>")]
-        deux = un.replace("</manifest>", projet + "</manifest>")
-        with self.assertRaises(ValueError):
-            pin.rewrite_manifest(deux, NOUVEAU, "24.0")
+    def test_the_image_helpers_are_the_shared_ones(self):
+        for name in ("split_image", "image_ref", "refreshed_image", "target"):
+            with self.subTest(name=name):
+                self.assertIs(getattr(pin, name), getattr(common_pin, name))
 
 
 class Reseau:

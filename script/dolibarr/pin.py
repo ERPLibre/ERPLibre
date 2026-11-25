@@ -30,7 +30,6 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -42,16 +41,22 @@ if new_path not in sys.path:
     sys.path.append(new_path)
 
 from script.dolibarr import lib_dolibarr  # noqa: E402
+from script.erp_common import pin as common_pin  # noqa: E402
+from script.erp_common.pin import (  # noqa: E402,F401
+    HUB,
+    image_ref,
+    refreshed_image,
+    split_image,
+    target,
+)
 
 ROOT = new_path
 UPSTREAM = "https://github.com/Dolibarr/dolibarr.git"
 RAW = "https://raw.githubusercontent.com/Dolibarr/dolibarr"
-HUB = "https://hub.docker.com/v2/repositories"
 
 # Code de sortie d'un essai à blanc qui a trouvé quoi changer.
 PENDING = 3
 
-_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _MAJOR = re.compile(r"define\('DOL_MAJOR_VERSION',\s*'([0-9]+)'\)")
 _MINOR = re.compile(r"define\('DOL_MINOR_VERSION',\s*'([0-9][0-9.]*)'\)")
 _FULL = re.compile(r"define\('DOL_VERSION',\s*'([0-9][0-9.]*)'\)")
@@ -79,45 +84,22 @@ def parse_version(text):
 def rewrite_manifest(text, commit, branch):
     """`text` où le projet du groupe dolibarr prend `commit` et `branch`.
 
-    Seul ce projet change : revision, upstream et dest-branch ; le reste
-    du fichier, commentaires compris, est rendu tel quel.
+    common_pin.rewrite_manifest lié au groupe lib_dolibarr.REPO_GROUP.
     """
-
-    def one(m):
-        block = m.group(0)
-        block = re.sub(r'revision="[^"]*"', f'revision="{commit}"', block)
-        block = re.sub(r'upstream="[^"]*"', f'upstream="{branch}"', block)
-        return re.sub(r'dest-branch="[^"]*"', f'dest-branch="{branch}"', block)
-
-    pattern = re.compile(
-        r"<project\b[^>]*groups=\"[^\"]*\b"
-        + re.escape(lib_dolibarr.REPO_GROUP)
-        + r"\b[^\"]*\"[^>]*/>",
-        re.S,
+    return common_pin.rewrite_manifest(
+        text, commit, branch, lib_dolibarr.REPO_GROUP
     )
-    new, count = pattern.subn(one, text)
-    if count != 1:
-        raise ValueError(f"{count} dolibarr projects in the manifest")
-    return new
 
 
-class Network:
-    """ls-remote, fichiers bruts de GitHub et étiquettes du Hub."""
+class Network(common_pin.Network):
+    """ls-remote et étiquettes du Hub (common_pin.Network) sur le dépôt
+    Dolibarr, plus les fichiers bruts d'un commit chez GitHub."""
 
-    def ls_remote(self, ref):
-        r = subprocess.run(
-            ["git", "ls-remote", UPSTREAM, ref],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        for line in r.stdout.splitlines():
-            sha, name = line.split("\t", 1)
-            if name == ref:
-                return sha
-        return None
+    def __init__(self):
+        super().__init__(UPSTREAM)
 
     def raw(self, commit, path):
+        """Texte de `path` au commit `commit`, ou None s'il ne se lit pas."""
         try:
             with urllib.request.urlopen(
                 f"{RAW}/{commit}/{path}", timeout=30
@@ -125,50 +107,6 @@ class Network:
                 return resp.read().decode("utf-8", "replace")
         except (urllib.error.URLError, OSError):
             return None
-
-    def hub_digest(self, repo, tag):
-        """Empreinte de l'index de `repo`:`tag` au Hub, ou None."""
-        path = repo.removeprefix("docker.io/")
-        try:
-            with urllib.request.urlopen(
-                f"{HUB}/{path}/tags/{tag}", timeout=30
-            ) as resp:
-                digest = json.load(resp).get("digest")
-        except (urllib.error.URLError, OSError, ValueError):
-            return None
-        return digest if _DIGEST.fullmatch(digest or "") else None
-
-
-def split_image(ref):
-    """(dépôt, étiquette, empreinte ou None) d'une référence d'image."""
-    ref, _at, digest = ref.partition("@")
-    repo, _colon, tag = ref.rpartition(":")
-    return repo, tag, digest or None
-
-
-def image_ref(repo, tag, digest):
-    return f"{repo}:{tag}@{digest}" if digest else f"{repo}:{tag}"
-
-
-def refreshed_image(net, current, tag=None):
-    """`current` à l'étiquette `tag` (la sienne par défaut), empreinte lue
-    au Hub ; `current` tel quel si le Hub ne connaît pas cette étiquette."""
-    repo, own_tag, _digest = split_image(current)
-    tag = tag or own_tag
-    digest = net.hub_digest(repo, tag)
-    return image_ref(repo, tag, digest) if digest else current
-
-
-def target(net, branch, tag):
-    """(commit, ref) visé : le tag s'il est donné, sinon la tête de branche."""
-    if tag:
-        for ref in (f"refs/tags/{tag}^{{}}", f"refs/tags/{tag}"):
-            commit = net.ls_remote(ref)
-            if commit:
-                return commit, ref
-        return None, f"refs/tags/{tag}"
-    ref = f"refs/heads/{branch}"
-    return net.ls_remote(ref), ref
 
 
 def version_at(net, commit):

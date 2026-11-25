@@ -21,6 +21,7 @@ if RACINE not in sys.path:
     sys.path.insert(0, RACINE)
 
 from script.dolibarr import lib_dolibarr  # noqa: E402
+from script.erp_common import pin as common_pin  # noqa: E402
 
 # Valeurs inventées : un commit ne désigne personne, mais celui-ci n'existe
 # dans aucun dépôt.
@@ -99,65 +100,19 @@ class TestReadPin(unittest.TestCase):
         self.assertEqual(pin["path"], "dolibarr/dolibarr")
         self.assertEqual(pin["docker_image"], "dolibarr/dolibarr:24.0.0")
 
-    def test_a_commit_pinned_on_another_branch_is_refused(self):
-        # Le JSON annonce 24.0 ; le manifest suit 23.0 : le menu afficherait
-        # « 24.0.1 » pour du code 23.
-        root = self._root(upstream="23.0")
+    def test_the_pin_error_is_the_shared_one(self):
+        # Les appelants rattrapent lib_dolibarr.PinError : c'est celle que
+        # lève script/erp_common/pin.
+        self.assertIs(lib_dolibarr.PinError, common_pin.PinError)
+
+    def test_only_the_dolibarr_group_is_read(self):
+        # Les chemins et le groupe de Dolibarr sont liés ici ; la mécanique
+        # s'éprouve dans test_erp_common_pin.
+        root = self._root(manifest=MANIFEST.replace('"dolibarr"', '"acme"'))
         with self.assertRaises(lib_dolibarr.PinError) as ctx:
             lib_dolibarr.read_pin(root)
-        self.assertIn("23.0", str(ctx.exception))
-        self.assertIn("24.0", str(ctx.exception))
-
-    def test_a_branch_name_is_not_a_pin(self):
-        # revision="24.0" suivrait la branche : ce n'est plus un épinglage.
-        root = self._root(revision="24.0")
-        with self.assertRaises(lib_dolibarr.PinError):
-            lib_dolibarr.read_pin(root)
-
-    def test_a_short_commit_is_not_a_pin(self):
-        root = self._root(revision=COMMIT[:12])
-        with self.assertRaises(lib_dolibarr.PinError):
-            lib_dolibarr.read_pin(root)
-
-    def test_missing_json_raises_pin_error_not_os_error(self):
-        # Le menu ne rattrape qu'UNE exception pour dire pourquoi l'entrée
-        # manque ; un FileNotFoundError ferait tomber tout l'écran.
-        root = self._root(pin=None)
-        with self.assertRaises(lib_dolibarr.PinError):
-            lib_dolibarr.read_pin(root)
-
-    def test_missing_manifest_raises_pin_error(self):
-        root = self._root(manifest=None)
-        with self.assertRaises(lib_dolibarr.PinError):
-            lib_dolibarr.read_pin(root)
-
-    def test_manifest_without_the_dolibarr_project_is_refused(self):
-        root = self._root(
-            manifest='<manifest><remote name="x" fetch="https://x/" />'
-            "</manifest>"
-        )
-        with self.assertRaises(lib_dolibarr.PinError):
-            lib_dolibarr.read_pin(root)
-
-    def test_the_project_is_found_by_its_group_not_its_rank(self):
-        # Un manifest fusionné porte d'autres projets avant Dolibarr : prendre
-        # le premier venu épinglerait un autre dépôt.
-        other = (
-            '    <project name="erplibre.git" path="." remote="Dolibarr"'
-            ' revision="fedcba9876543210fedcba9876543210fedcba98"'
-            ' upstream="24.0" groups="base" />\n'
-        )
-        manifest = MANIFEST.replace("    <project\n", other + "    <project\n")
-        pin = lib_dolibarr.read_pin(self._root(manifest=manifest))
-        self.assertEqual(pin["commit"], COMMIT)
-        self.assertEqual(pin["path"], "dolibarr/dolibarr")
-
-    def test_json_missing_a_key_is_refused(self):
-        pin = dict(PIN)
-        del pin["version"]
-        with self.assertRaises(lib_dolibarr.PinError) as ctx:
-            lib_dolibarr.read_pin(self._root(pin=pin))
-        self.assertIn("version", str(ctx.exception))
+        self.assertIn("group dolibarr", str(ctx.exception))
+        self.assertIn("git_manifest_dolibarr.xml", str(ctx.exception))
 
 
 class TestLeVraiEpinglage(unittest.TestCase):
