@@ -31,12 +31,21 @@ fi
 """
 
 
-class TestAddonsPathSansDoublon(unittest.TestCase):
-    def generer(self, chemins, **kwargs):
+class Generateur(unittest.TestCase):
+    def generer(self, chemins, manifestes=None, **kwargs):
         """Réécrit le gabarit pour les dépôts `chemins` ; rend le
-        addons_path que le script écrirait, une entrée par élément."""
+        addons_path que le script écrirait, une entrée par élément.
+        `manifestes` : {nom de fichier: chemins de projet} écrits dans
+        manifest/."""
         with tempfile.TemporaryDirectory() as racine:
             os.makedirs(os.path.join(racine, "script"))
+            os.makedirs(os.path.join(racine, "manifest"))
+            for nom, projets in (manifestes or {}).items():
+                Path(racine, "manifest", nom).write_text(
+                    "<manifest>"
+                    + "".join(f'<project path="{c}"/>' for c in projets)
+                    + "</manifest>"
+                )
             fichier = os.path.join(racine, "script", "generate_config.sh")
             Path(fichier).write_text(GABARIT)
             outil = GitTool.__new__(GitTool)
@@ -74,6 +83,8 @@ class TestAddonsPathSansDoublon(unittest.TestCase):
             entrees += [e for e in valeur.split(",") if e]
         return entrees
 
+
+class TestAddonsPathSansDoublon(Generateur):
     def test_addons_addons_declared_by_a_manifest_appears_once(self):
         entrees = self.generer(
             [
@@ -104,6 +115,50 @@ class TestAddonsPathSansDoublon(unittest.TestCase):
             ["odoo18.0/addons/OCA_sign", "odoo18.0/addons/OCA_sign"]
         )
         self.assertEqual(entrees.count("/r/odoo18.0/addons/OCA_sign"), 1)
+
+
+class TestLesExtrasRestentHorsDuFichierSuivi(Generateur):
+    """Le fichier réécrit est suivi par git : un projet que seul le
+    manifeste extra déclare n'y entre pas, même quand le checkout l'a
+    synchronisé."""
+
+    MANIFESTES = {
+        "git_manifest_odoo18.0.xml": [
+            "odoo18.0/addons/OCA_sign",
+            "odoo18.0/addons/Exemple_commun",
+        ],
+        "git_manifest_extra_odoo18.0.xml": [
+            "odoo18.0/addons/Exemple_extra",
+            "odoo18.0/addons/Exemple_commun",
+        ],
+    }
+    DEPOTS = [
+        "odoo18.0/addons/OCA_sign",
+        "odoo18.0/addons/Exemple_commun",
+        "odoo18.0/addons/Exemple_extra",
+    ]
+
+    def test_an_extra_only_project_is_left_out(self):
+        entrees = self.generer(self.DEPOTS, manifestes=self.MANIFESTES)
+        self.assertNotIn("/r/odoo18.0/addons/Exemple_extra", entrees)
+        self.assertIn("/r/odoo18.0/addons/OCA_sign", entrees)
+
+    def test_a_project_of_both_manifests_stays(self):
+        entrees = self.generer(self.DEPOTS, manifestes=self.MANIFESTES)
+        self.assertIn("/r/odoo18.0/addons/Exemple_commun", entrees)
+
+    def test_an_extra_named_by_add_repos_stays(self):
+        entrees = self.generer(
+            self.DEPOTS,
+            manifestes=self.MANIFESTES,
+            whitelist=["odoo18.0/addons/OCA_sign"],
+            add_repos=["odoo18.0/addons/Exemple_extra"],
+        )
+        self.assertIn("/r/odoo18.0/addons/Exemple_extra", entrees)
+
+    def test_without_an_extra_manifest_nothing_is_left_out(self):
+        entrees = self.generer(self.DEPOTS)
+        self.assertIn("/r/odoo18.0/addons/Exemple_extra", entrees)
 
 
 if __name__ == "__main__":

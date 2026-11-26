@@ -461,6 +461,15 @@ class GitTool:
                     repos.append(repo)
         else:
             repos = all_repos
+        # Le fichier réécrit est SUIVI par git : il doit rester celui de
+        # toute installation de la version, pas celui de ce checkout. Les
+        # projets que seul le manifeste extra déclare n'y entrent donc pas ;
+        # update_env_version les ajoute à config.conf après coup, quand
+        # l'installation les demande. Un dépôt nommé par add_repos ou par la
+        # liste blanche reste, puisqu'on l'a demandé.
+        demandes = set(whitelist or ()) | set(add_repos or ())
+        extras = self.chemins_extra_seuls(repo_path) - demandes
+        repos = [r for r in repos if r.get("path") not in extras]
         results = []
         # Each path enters addons_path once. The header line already holds
         # addons/addons, unless ignore_odoo_path empties it: a manifest that
@@ -554,6 +563,28 @@ class GitTool:
         # create file
         with open(filename_locally, mode="w") as file:
             file.writelines(all_lines)
+
+    def chemins_extra_seuls(self, repo_path="."):
+        """Les chemins de projet que déclare
+        manifest/git_manifest_extra_<version>.xml et que le manifeste de
+        base de la même version ne déclare pas. Un manifeste absent ou
+        illisible compte pour vide."""
+        import xml.etree.ElementTree as ET
+
+        def chemins(nom):
+            fichier = os.path.join(repo_path, "manifest", nom)
+            try:
+                racine = ET.parse(fichier).getroot()
+            except (OSError, ET.ParseError):
+                return set()
+            return {
+                p.get("path") for p in racine.iter("project") if p.get("path")
+            }
+
+        version = self.odoo_version_long
+        return chemins(f"git_manifest_extra_{version}.xml") - chemins(
+            f"git_manifest_{version}.xml"
+        )
 
     @staticmethod
     def str_insert(source_str, insert_str, pos):
