@@ -2,7 +2,10 @@
   "terraform": {
     "required_version": ">= 1.10",
     "required_providers": {
-      "proxmox": {"source": "bpg/proxmox", "version": "= 0.123.1"}
+      "proxmox": {
+        "source": "bpg/proxmox",
+        "version": "= 0.123.1"
+      }
     }
   },
   "provider": {
@@ -12,7 +15,12 @@
       "ssh": {
         "agent": true,
         "username": "erplibre",
-        "node": [{"name": "pve1", "address": "pve.example.test"}]
+        "node": [
+          {
+            "name": "pve1",
+            "address": "pve.example.test"
+          }
+        ]
       }
     }
   },
@@ -47,13 +55,40 @@
         "name": "parc-a-vm-1",
         "started": true,
         "stop_on_destroy": true,
-        "cpu": {"type": "host", "cores": 2},
-        "memory": {"dedicated": 4096},
-        "operating_system": {"type": "l26"},
+        "cpu": {
+          "type": "host",
+          "cores": 2
+        },
+        "memory": {
+          "dedicated": 4096
+        },
+        "operating_system": {
+          "type": "l26"
+        },
         "scsi_hardware": "virtio-scsi-single",
-        "network_device": [{"bridge": "vmbr0", "model": "virtio"}],
-        "serial_device": [{"device": "socket"}],
-        "vga": {"type": "serial0"},
+        "network_device": [
+          {
+            "bridge": "vmbr0",
+            "disconnected": null,
+            "enabled": null,
+            "firewall": null,
+            "mac_address": null,
+            "model": "virtio",
+            "mtu": null,
+            "queues": null,
+            "rate_limit": null,
+            "trunks": null,
+            "vlan_id": null
+          }
+        ],
+        "serial_device": [
+          {
+            "device": "socket"
+          }
+        ],
+        "vga": {
+          "type": "serial0"
+        },
         "disk": [
           {
             "interface": "scsi0",
@@ -69,17 +104,30 @@
           "interface": "scsi1",
           "datastore_id": "local-lvm",
           "ip_config": [
-            {"ipv4": {"address": "192.0.2.10/24", "gateway": "192.0.2.1"}}
+            {
+              "ipv4": {
+                "address": "192.0.2.10/24",
+                "gateway": "192.0.2.1"
+              }
+            }
           ],
-          "dns": {"servers": ["192.0.2.53"]},
+          "dns": {
+            "servers": [
+              "192.0.2.53"
+            ]
+          },
           "user_data_file_id": "${proxmox_virtual_environment_file.ud_parc_a_vm_1.id}"
         },
         "agent": {
           "enabled": true,
           "timeout": "2m",
-          "wait_for_ip": {"disabled": true}
+          "wait_for_ip": {
+            "disabled": true
+          }
         },
-        "boot_order": ["scsi0"],
+        "boot_order": [
+          "scsi0"
+        ],
         "depends_on": [
           "proxmox_download_file.img_debian_13_amd64_qcow2",
           "proxmox_virtual_environment_file.ud_parc_a_vm_1"

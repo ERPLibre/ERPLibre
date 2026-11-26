@@ -5,7 +5,10 @@
 
 import copy
 import json
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -125,9 +128,7 @@ class TestRendu(unittest.TestCase):
         porte une IPv4 : un pont interne sans passerelle l'emporte, et
         l'écriture du snippet part vers une adresse injoignable."""
         ssh = _simple()["provider"]["proxmox"]["ssh"]
-        self.assertEqual(
-            ssh["node"], [{"name": "pve1", "address": "pve.example.test"}]
-        )
+        self.assertEqual(ssh["node"], [{"name": "pve1", "address": "pve.example.test"}])
 
     def test_adresse_ssh_ipv4_et_ipv6(self):
         for url, hote in (
@@ -192,6 +193,111 @@ class TestRendu(unittest.TestCase):
                 [_vm("a-1", 201), _vm("a-2", 202)],
                 {"a-1": _donnees(), "a-2": autre},
             )
+
+
+SCHEMA = Path(__file__).resolve().parent / "fixtures/opentofu/bpg_0.123.1_schema.json"
+_LIBRES = ("depends_on", "lifecycle")
+
+
+def _ecarts(valeur, bloc, chemin):
+    """Écarts d'un objet de ressource ou de bloc avec son schéma bpg."""
+    ecarts = []
+    attributs = bloc.get("attributes", {})
+    blocs = bloc.get("block_types", {})
+    for cle, sous in valeur.items():
+        ici = f"{chemin}.{cle}"
+        if cle in _LIBRES:
+            continue
+        if cle in blocs:
+            for i, objet in enumerate(sous if isinstance(sous, list) else [sous]):
+                ecarts += _ecarts(objet, blocs[cle]["block"], f"{ici}[{i}]")
+        elif cle in attributs:
+            type_ = attributs[cle]["type"]
+            if type_[0] == "list" and isinstance(type_[1], list):
+                if type_[1][0] == "object":
+                    attendues = set(type_[1][1])
+                    for i, objet in enumerate(sous):
+                        if set(objet) != attendues:
+                            ecarts.append(f"{ici}[{i}] keys {sorted(objet)}")
+        else:
+            ecarts.append(f"{ici} unknown")
+    return ecarts
+
+
+class TestSchemaBpg(unittest.TestCase):
+    """Le rendu respecte le schéma réel du fournisseur bpg.
+
+    `bpg_0.123.1_schema.json` est extrait de `tofu providers schema -json` ;
+    il se rafraîchit quand `conf/opentofu.json` change la version de bpg.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+
+    def _verifier(self, rendu):
+        schemas = self.schema["resource_schemas"]
+        ecarts = _ecarts(
+            rendu["provider"]["proxmox"],
+            self.schema["provider"]["block"],
+            "provider",
+        )
+        for type_, ressources in rendu["resource"].items():
+            for nom, ressource in ressources.items():
+                ecarts += _ecarts(ressource, schemas[type_]["block"], f"{type_}.{nom}")
+        self.assertEqual(ecarts, [])
+
+    def test_vm_dhcp(self):
+        self._verifier(_rendre([_vm("d-1", 201, ip="dhcp")], {"d-1": _donnees()}))
+
+    def test_vm_ip_fixe(self):
+        self._verifier(_simple())
+
+    def test_vm_uefi(self):
+        self._verifier(
+            _rendre(
+                [_vm("n-1", 201)],
+                {"n-1": _donnees("nixos-25_amd64.qcow2", uefi=True)},
+            )
+        )
+
+    def test_le_verificateur_voit_une_cle_manquante(self):
+        rendu = _simple()
+        vm = _vm_res(rendu, "vm_parc_a_vm_1")
+        del vm["network_device"][0]["mtu"]
+        vm["inconnue"] = 1
+        schemas = self.schema["resource_schemas"]
+        ecarts = _ecarts(vm, schemas["proxmox_virtual_environment_vm"]["block"], "vm")
+        self.assertEqual(len(ecarts), 2)
+
+
+PLUGINS = Path.home() / ".cache/erplibre/opentofu/plugins"
+
+
+@unittest.skipUnless(
+    shutil.which("tofu") and PLUGINS.is_dir(),
+    "tofu or its offline plugin cache is missing",
+)
+class TestTofuValidate(unittest.TestCase):
+    """`tofu validate` accepte le rendu ; sans réseau, via `-plugin-dir`."""
+
+    def test_validate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "main.tf.json").write_text(
+                json.dumps(_simple()), encoding="utf-8"
+            )
+            for argv in (
+                ["init", "-backend=false", "-input=false", f"-plugin-dir={PLUGINS}"],
+                ["validate"],
+            ):
+                r = subprocess.run(
+                    ["tofu", *argv],
+                    cwd=tmp,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

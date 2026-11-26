@@ -17,6 +17,21 @@ from script.todo.todo_i18n import t
 _RE_NOM = re.compile(r"[^A-Za-z0-9_]")
 
 
+_CLES_CARTE_RESEAU = (
+    "bridge",
+    "disconnected",
+    "enabled",
+    "firewall",
+    "mac_address",
+    "model",
+    "mtu",
+    "queues",
+    "rate_limit",
+    "trunks",
+    "vlan_id",
+)
+
+
 def _assainir(nom):
     """Nom utilisable comme identifiant de ressource OpenTofu."""
     return _RE_NOM.sub("_", nom)
@@ -81,6 +96,18 @@ def _initialisation(cible, vm, nom_ud):
     return init
 
 
+def _carte_reseau(pont):
+    """Carte réseau virtio sur `pont`.
+
+    Chez bpg, `network_device` est un ATTRIBUT `list(object)` et non un bloc :
+    la syntaxe JSON exige chaque clé de l'objet, `null` valant le défaut du
+    fournisseur.
+    """
+    carte = dict.fromkeys(_CLES_CARTE_RESEAU)
+    carte.update({"bridge": pont, "model": "virtio"})
+    return carte
+
+
 def _vm(cible, vm, donnees_vm, nom_img, nom_ud):
     """Ressource VM : mêmes réglages que la séquence `qm` du chemin SSH."""
     res = {
@@ -93,7 +120,7 @@ def _vm(cible, vm, donnees_vm, nom_img, nom_ud):
         "memory": {"dedicated": vm["ram"]},
         "operating_system": {"type": "l26"},
         "scsi_hardware": "virtio-scsi-single",
-        "network_device": [{"bridge": cible["pont"], "model": "virtio"}],
+        "network_device": [_carte_reseau(cible["pont"])],
         "serial_device": [{"device": "socket"}],
         "vga": {"type": "serial0"},
         # Le disque est importé par l'API depuis le stockage `import`, sans SSH.
