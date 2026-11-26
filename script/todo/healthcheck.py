@@ -44,6 +44,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
+from script.database import pg_state
 from script.git import freeze_resolution
 from script.poetry import poetry_venv_drift as drift
 from script.todo import (
@@ -1778,13 +1779,53 @@ def verifier_postgresql(ctx):
         sortie = ctx.lancer(args)
         texte = sortie.stdout.strip() or sortie.stderr.strip()
         if sortie.returncode == 0:
-            return Resultat(nom, OK, texte)
+            return _version_postgresql(ctx, nom, texte, hote, port)
         return Resultat(nom, ECHEC, texte or t("no answer"))
     hote = hote or "localhost"
     ctx.noter(f"python3 -c 'socket.create_connection((\"{hote}\", {port}))'")
     if _port_ouvert(hote, port):
         return Resultat(nom, OK, f"{hote}:{port} {t('accepts connections')}")
     return Resultat(nom, ECHEC, f"{hote}:{port} {t('no answer')}")
+
+
+def _version_postgresql(ctx, nom, texte, hote, port):
+    """Le verdict d'un serveur qui accepte les connexions : ALERTE quand
+    il n'est plus le binaire installé (pg_state.DECALAGE), puisque le
+    premier chargement d'une bibliothèque, plpgsql par exemple, échouera
+    jusqu'à son redémarrage. Les autres défauts de pg_state ne
+    concernent qu'une migration."""
+    env = dict(os.environ, PGPORT=str(port))
+    if hote:
+        env["PGHOST"] = hote
+    defauts = pg_state.verifier(
+        env, lancer=lambda args, **kw: ctx.lancer(args, env=kw.get("env"))
+    )
+    for _gravite, cle, valeurs in defauts:
+        if cle == pg_state.DECALAGE:
+            serveur, installee = valeurs
+            return Resultat(
+                nom,
+                ALERTE,
+                f"{texte} · {t('running version')} {serveur},"
+                f" {t('installed version')} {installee}",
+                [t(cle), f"$ {pg_state.COMMANDE_REDEMARRER}"],
+                resolutions=[
+                    Resolution(
+                        REDEMARRER_POSTGRESQL,
+                        f"🐘 {t('Restart PostgreSQL')}",
+                        [
+                            t(
+                                "The running server is restarted on its installed binary, with sudo, after a yes. Its open connections close: an Odoo or a migration running on it stops."
+                            ),
+                            f"   $ {pg_state.COMMANDE_REDEMARRER}",
+                        ],
+                    )
+                ],
+            )
+    return Resultat(nom, OK, texte)
+
+
+REDEMARRER_POSTGRESQL = "redemarrer_postgresql"
 
 
 def verifier_odoo(ctx):
@@ -2244,6 +2285,8 @@ def executer_resolution(
         return _rebatir_cache_qemu(sortie, rebatir_cache_qemu)
     if resolution.cle == HOOKS_GIT:
         return _installer_hooks(ctx, demander, sortie)
+    if resolution.cle == REDEMARRER_POSTGRESQL:
+        return _redemarrer_postgresql(ctx, demander, sortie)
     if resolution.cle == CLAUDE:
         return _deployer_commandes_claude(
             resolution.depots, demander, sortie, deployer_commande_claude
@@ -2286,6 +2329,29 @@ def _oui(demander, question):
     except EOFError:
         return False
     return reponse.strip().lower() in ("y", "yes", "o", "oui")
+
+
+def _redemarrer_postgresql(ctx, demander, sortie, lancer=None):
+    """Redémarre le serveur PostgreSQL du système par
+    pg_state.COMMANDE_REDEMARRER, sur un oui : ses connexions ouvertes
+    tombent. Rend True quand la commande a réussi ; la vérification qui
+    repasse ensuite dit si le serveur est devenu le binaire installé."""
+    if not _oui(
+        demander,
+        f"💬 {t('Restart PostgreSQL now? Its open connections close (y/N): ')}",
+    ):
+        sortie(t("Nothing changed."))
+        return False
+    lancer = lancer or _lancer_dans_le_terminal(ctx)
+    sortie(f"   $ {pg_state.COMMANDE_REDEMARRER}")
+    code = lancer(shlex.split(pg_state.COMMANDE_REDEMARRER))
+    if code:
+        sortie(
+            f"❌ {pg_state.COMMANDE_REDEMARRER} : {t('failure, code')} {code}"
+        )
+        return False
+    sortie(f"✅ {t('PostgreSQL restarted.')}")
+    return True
 
 
 def _installer_hooks(ctx, demander, sortie):
