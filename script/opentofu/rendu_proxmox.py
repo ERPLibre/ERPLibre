@@ -11,6 +11,8 @@ des objets, et une référence entre ressources une chaîne `${...}`.
 
 import re
 
+from script.todo.todo_i18n import t
+
 _RE_NOM = re.compile(r"[^A-Za-z0-9_]")
 
 
@@ -82,8 +84,12 @@ def _vm(cible, vm, donnees_vm, nom_img, nom_ud):
             {
                 "interface": "scsi0",
                 "datastore_id": cible["stockage"],
+                # Forme littérale plus `depends_on` : la doc bpg montre
+                # `import_from = <download_file>.id`, mais le format de cet
+                # identifiant n'est pas confirmé ; la référence remplacera la
+                # chaîne une fois la forme établie.
                 "import_from": (
-                    f"{cible['stockage_snippets']}:import/" f"{donnees_vm['fichier']}"
+                    f"{cible['stockage_snippets']}:import/{donnees_vm['fichier']}"
                 ),
                 "size": _taille_gio(vm["disque"]),
                 "discard": "on",
@@ -126,7 +132,15 @@ def rendre(spec, donnees, conf):
         nom_img = "img_" + _assainir(d["fichier"])
         nom_ud = "ud_" + _assainir(vm["nom"])
         nom_vm = "vm_" + _assainir(vm["nom"])
-        telechargements.setdefault(nom_img, _image(cible, d))
+        image = _image(cible, d)
+        # Un même nom de fichier avec une autre source ferait écraser l'image
+        # d'une VM par celle d'une autre dans le stockage.
+        if telechargements.setdefault(nom_img, image) != image:
+            raise ValueError(
+                t("Image {fichier} has two different sources.").format(
+                    fichier=d["fichier"]
+                )
+            )
         fichiers[nom_ud] = {
             "content_type": "snippets",
             "datastore_id": cible["stockage_snippets"],

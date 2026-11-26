@@ -108,6 +108,7 @@ class TestRendu(unittest.TestCase):
         init = _vm_res(rendu, "vm_d_1")["initialization"]
         self.assertEqual(init["ip_config"][0]["ipv4"]["address"], "dhcp")
         self.assertNotIn("dns", init)
+        self.assertNotIn("gateway", init["ip_config"][0]["ipv4"])
 
     def test_import_par_api(self):
         disque = _vm_res(_simple(), "vm_parc_a_vm_1")["disk"][0]
@@ -128,6 +129,48 @@ class TestRendu(unittest.TestCase):
         rendu = _rendre([_vm("s-1", 201)], {"s-1": d})
         img = next(iter(rendu["resource"]["proxmox_download_file"].values()))
         self.assertNotIn("checksum", img)
+
+    def test_deux_versions_deux_telechargements(self):
+        rendu = _rendre(
+            [_vm("a-1", 201), _vm("a-2", 202)],
+            {
+                "a-1": _donnees("debian-13_amd64.qcow2"),
+                "a-2": _donnees("debian-12_amd64.qcow2"),
+            },
+        )
+        self.assertEqual(len(rendu["resource"]["proxmox_download_file"]), 2)
+
+    def test_noms_assainis(self):
+        rendu = _rendre(
+            [_vm("test-vm-1", 201)],
+            {"test-vm-1": _donnees("debian-13.amd64.qcow2")},
+        )
+        self.assertIn(
+            "vm_test_vm_1", rendu["resource"]["proxmox_virtual_environment_vm"]
+        )
+        self.assertIn(
+            "img_debian_13_amd64_qcow2",
+            rendu["resource"]["proxmox_download_file"],
+        )
+
+    def test_depends_on_image_et_snippet(self):
+        vm = _vm_res(_simple(), "vm_parc_a_vm_1")
+        self.assertEqual(
+            vm["depends_on"],
+            [
+                "proxmox_download_file.img_debian_13_amd64_qcow2",
+                "proxmox_virtual_environment_file.ud_parc_a_vm_1",
+            ],
+        )
+
+    def test_meme_fichier_sources_differentes(self):
+        autre = _donnees()
+        autre["sha256"] = "def456"
+        with self.assertRaises(ValueError):
+            _rendre(
+                [_vm("a-1", 201), _vm("a-2", 202)],
+                {"a-1": _donnees(), "a-2": autre},
+            )
 
 
 if __name__ == "__main__":

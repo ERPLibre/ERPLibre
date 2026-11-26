@@ -26294,6 +26294,10 @@ TRANSLATIONS = {
         "fr": "Lecture impossible de {chemin} : {err}",
         "en": "Cannot read {chemin}: {err}",
     },
+    "Image {fichier} has two different sources.": {
+        "fr": "L'image {fichier} a deux sources différentes.",
+        "en": "Image {fichier} has two different sources.",
+    },
     "Duplicate VM name: {nom}": {
         "fr": "Nom de VM en double : {nom}",
         "en": "Duplicate VM name: {nom}",
