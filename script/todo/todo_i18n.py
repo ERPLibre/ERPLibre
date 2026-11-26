@@ -26298,6 +26298,14 @@ TRANSLATIONS = {
         "fr": "L'image {fichier} a deux sources différentes.",
         "en": "Image {fichier} has two different sources.",
     },
+    "Missing key {cle} in {chemin}": {
+        "fr": "Clé {cle} absente de {chemin}",
+        "en": "Missing key {cle} in {chemin}",
+    },
+    "State passphrase must have at least {n} characters.": {
+        "fr": "La phrase de l'état doit avoir au moins {n} caractères.",
+        "en": "State passphrase must have at least {n} characters.",
+    },
     "Duplicate VM name: {nom}": {
         "fr": "Nom de VM en double : {nom}",
         "en": "Duplicate VM name: {nom}",

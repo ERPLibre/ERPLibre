@@ -1,0 +1,9 @@
+{
+  "version": "1.13.10",
+  "required_version": ">= 1.10",
+  "gpg_fingerprint": "E3E6E43D84CB852EADB0051D0C0AF313E5FD9F80",
+  "cle_gpg_url": "https://get.opentofu.org/opentofu.asc",
+  "providers": {
+    "bpg/proxmox": "= 0.123.1"
+  }
+}
