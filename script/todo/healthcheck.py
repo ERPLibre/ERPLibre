@@ -1153,7 +1153,9 @@ def verifier_manifeste(ctx):
     if hors_gel:
         resume += f" · {len(hors_gel)} {t('off the freeze')}"
         details += hors_gel
-    resolutions = resolutions_gel(ctx, depots)
+    resolutions = resolutions_gel(
+        ctx, depots, donnees.get("mode") == "frozen"
+    )
     if perimes:
         resolutions.insert(
             0,
@@ -1206,28 +1208,24 @@ def _ligne_gel(depot):
     return f"   {depot['path']} — {t(ECARTS_GEL.get(alignement, alignement))}"
 
 
-def _gel_en_usage(depots):
-    """Vrai quand au moins un dépôt porte un « freeze-revision » : le
-    checkout se fige, et un dépôt sans gel y fait exception. Sans aucun
-    gel, chaque dépôt suit sa branche et aucun n'est signalé."""
-    return any(d.get("freeze_revision") for d in depots)
-
-
-def _a_resoudre(depot, depots):
+def _a_resoudre(depot, gele):
     """L'écart de `depot` à son gel quand une résolution s'y applique,
-    sinon None : SANS_GEL ne compte que si le gel est en usage parmi
-    `depots`."""
+    sinon None. SANS_GEL ne compte que dans un checkout gelé (`gele`) : un
+    dépôt sans gel y fait exception. En mode branches, chaque dépôt suit
+    sa branche, et les gels des fragments communs aux versions ne font pas
+    de chaque autre dépôt une exception à geler."""
     alignement = freeze_resolution.hors_gel(depot)
-    if alignement == freeze_resolution.SANS_GEL and not _gel_en_usage(depots):
+    if alignement == freeze_resolution.SANS_GEL and not gele:
         return None
     return alignement
 
 
-def resolutions_gel(ctx, depots):
+def resolutions_gel(ctx, depots, gele):
     """Les résolutions des dépôts hors de leur gel, classés par
-    `freeze_resolution.classer`. Un `git status` par dépôt hors du gel, et
+    `freeze_resolution.classer`, `gele` vrai dans un checkout gelé (mode
+    « frozen » de `repo_state`). Un `git status` par dépôt hors du gel, et
     pour eux seuls, dit lesquels ont des fichiers modifiés."""
-    candidats = [d for d in depots if _a_resoudre(d, depots)]
+    candidats = [d for d in depots if _a_resoudre(d, gele)]
     if not candidats:
         return []
 
