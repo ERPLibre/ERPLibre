@@ -302,12 +302,15 @@ class FormScreen(Screen):
         if sorte == "bool":
             return Checkbox(champ["label"], value=bool(defaut), id=wid)
         if sorte == "choice":
+            # Sans défaut, la valeur est Select.NULL (« rien de choisi ») :
+            # Select.BLANK vaut False dans textual 8 et n'est pas une
+            # valeur, le Select lèverait InvalidSelectValueError au montage.
             return Select(
                 [
                     (Content(libelle), valeur)
                     for valeur, libelle in champ["choices"]
                 ],
-                value=defaut if defaut is not None else Select.BLANK,
+                value=defaut if defaut is not None else Select.NULL,
                 allow_blank=defaut is None,
                 id=wid,
             )
@@ -676,7 +679,7 @@ class ArchinstallScreen(Screen):
                 (Content(e["label"]), e["key"])
                 for e in ctx.get("erplibre") or []
             ],
-            value=flow._default_erplibre(ctx) or Select.BLANK,
+            value=flow._default_erplibre(ctx) or Select.NULL,
             allow_blank=not ctx.get("erplibre"),
             id="erplibre",
         )

@@ -948,6 +948,21 @@ class TestTextual(AsyncCase):
             self.assertEqual(app.screen.view["expected"], "sda")
             self.assertIn("Disque [fictif]", app.screen.view["disk"])
 
+    async def test_a_choice_without_default_opens_blank(self):
+        # Aucun disque proposable : la liste des disques n'a ni choix ni
+        # défaut, et le formulaire s'ouvre quand même, sans sélection.
+        faits = m.uefi_laptop()
+        faits["disks"] = []
+        self.ctx = context(self.tmp.name, facts=faits)
+        app = self.app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await self.settle(app, pilot)
+            await pilot.press("1")
+            await self.settle(app, pilot)
+            self.assertIsInstance(app.screen, tui.FormScreen)
+            choix = app.screen.query_one("#w-disk")
+            self.assertIsNone(tui.select_value(choix))
+
     async def test_quit_refused_while_installing(self):
         app = self.app()
         async with app.run_test(size=(100, 40)) as pilot:
