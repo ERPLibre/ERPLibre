@@ -49,6 +49,9 @@ boundary.
 | `qemu_manage.py` | lifecycle, disks, hardware, cleanup, addresses |
 | `qemu_access.py` | SSH, tunnels, consoles, Android emulator |
 | `proxmox_menu.py` | the same, on a REMOTE Proxmox VE host |
+| `opentofu_menu.py` | the OpenTofu menu: fleets described by a spec, applied by an engine |
+| `opentofu_form.py` | the Textual form of a fleet: edit the spec, plan, apply, destroy |
+| `opentofu_form_ecrans.py` | the modal screens of that form (VM, name, confirmation) |
 
 The two deployment forms — libvirt here, Proxmox over there — ask the same
 questions, so they share a foundation rather than each holding a copy:
@@ -114,6 +117,9 @@ frontière.
 | `qemu_manage.py` | cycle de vie, disques, matériel, nettoyage, adresses |
 | `qemu_access.py` | SSH, tunnels, consoles, émulateur Android |
 | `proxmox_menu.py` | la même chose, sur un hôte Proxmox VE DISTANT |
+| `opentofu_menu.py` | le menu OpenTofu : des parcs décrits par une spec, appliqués par un moteur |
+| `opentofu_form.py` | le formulaire Textual d'un parc : éditer la spec, planifier, appliquer, détruire |
+| `opentofu_form_ecrans.py` | les écrans modaux de ce formulaire (VM, nom, confirmation) |
 
 Les deux formulaires de déploiement — libvirt ici, Proxmox ailleurs — posent
 les mêmes questions : ils partagent donc un socle au lieu d'en garder chacun

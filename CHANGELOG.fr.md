@@ -11,6 +11,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Ajouté
 
+- `TODO › Exécution › Déploiement › OpenTofu` déploie un parc de VM sur un hôte Proxmox VE depuis une spec JSON dans `private/opentofu/<parc>/spec.json` : un menu et un formulaire Textual pour la créer, la planifier, l'appliquer et la détruire, derrière une interface de moteur qu'OpenTofu implémente. Les champs vides de la spec sont résolus sur l'hôte puis réécrits, le jeton et la phrase d'état vivent dans un `secrets.json` en 0600, et l'état comme les plans sont chiffrés. Voir `script/opentofu/README.fr.md` ; `long_test/opentofu_proxmox.py` le vérifie de bout en bout sur un Proxmox VE jetable
 - `DECK_PLUGINS_OFF` dans `streamdeck.conf` et TODO › ERPLibre Home › Plugins on/off coupent des plugins du deck, ceux du programme du deck et ceux de `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` dans `streamdeck.conf` (0,5 à 60 secondes, 1 par défaut) règle la fréquence de rafraîchissement des pages de session ; TODO › ERPLibre Home › Rafraîchissement le modifie
 - Une passerelle cellulaire sur un modem USB, accessible depuis **Passerelle mobile** dans Odoo :
