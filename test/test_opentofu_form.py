@@ -10,6 +10,7 @@ aucun `tofu`, aucun réseau. Le coffre vit dans un dossier temporaire.
 import asyncio
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -46,7 +47,8 @@ def tearDownModule():
 
 
 class FauxMoteur:
-    """Moteur qui note ses appels ; `planifier` résout le stockage."""
+    """Moteur qui note ses appels ; `planifier` résout le stockage et
+    attend `barriere` quand elle est posée ; `appliquer` rend `apply_ok`."""
 
     nom = "tofu"
 
@@ -56,6 +58,8 @@ class FauxMoteur:
         self.changements = changements or [
             Changement("creer", "parc-a-vm-1", "vm")
         ]
+        self.barriere = None
+        self.apply_ok = True
 
     def binaire(self):
         return None
@@ -63,12 +67,14 @@ class FauxMoteur:
     def planifier(self, spec, journal):
         self.appels.append("planifier")
         journal("ligne du moteur")
+        if self.barriere is not None:
+            self.barriere.wait(10)
         spec["cible"]["stockage"] = "local-lvm"
         return Resultat(True, "plan prêt"), list(self.changements)
 
     def appliquer(self, spec, journal):
         self.appels.append("appliquer")
-        return Resultat(True, "appliqué")
+        return Resultat(self.apply_ok, "appliqué" if self.apply_ok else "")
 
     def detruire(self, spec, journal):
         self.appels.append("detruire")
@@ -117,18 +123,28 @@ class TestSaisie(unittest.TestCase):
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestEcran(unittest.TestCase):
-    def _rendu(self, gestes, changements=None, jeton=None):
+    def _rendu(
+        self, gestes, changements=None, jeton=None, quand=None, regler=None
+    ):
+        """Monte l'écran, joue `gestes`, rend (app, moteur, sauvés, sortie).
+        `regler(moteur)` ajuste le moteur factice avant le montage."""
         with tempfile.TemporaryDirectory() as racine:
             if jeton:
                 coffre.ecrire("parc-a", {"jeton": jeton}, racine)
             moteur = FauxMoteur(racine, changements)
+            if regler:
+                regler(moteur)
             sauves = []
             resultat = {}
 
             async def scenario():
                 spec = sp.nouvelle_spec("parc-a", "hote-x")
                 app = run_opentofu_form(
-                    spec, moteur, sauves.append, run_app=False
+                    spec,
+                    moteur,
+                    sauves.append,
+                    quand_applique=quand,
+                    run_app=False,
                 )
                 async with app.run_test(size=(200, 50)) as pilote:
                     await pilote.pause()
@@ -285,6 +301,96 @@ class TestEcran(unittest.TestCase):
         self.assertIn("présent", texte)
         self.assertNotIn(_JETON, texte)
         self.assertNotIn("fausse-valeur-de-jeton", texte)
+
+    def _appliquer(self, app, pilote):
+        """Gestes : plan, puis apply confirmé."""
+
+        async def suite():
+            await pilote.press("p")
+            await self._attendre(app, pilote)
+            await pilote.press("a")
+            await pilote.pause()
+            await pilote.click("#oui")
+            await self._attendre(app, pilote)
+
+        return suite()
+
+    def test_apply_reussi_mene_aux_suites_apres_la_sortie(self):
+        appels = []
+        plan = [
+            Changement("creer", "parc-a-vm-1", "vm"),
+            Changement("modifier", "parc-a-vm-2", "vm"),
+            Changement("remplacer", "parc-a-vm-3", "vm"),
+            Changement("creer", "parc-a-vm-1", "fichier"),
+        ]
+
+        async def gestes(app, pilote):
+            # Le plan remplace une VM : l'apply exige le nom retapé.
+            await pilote.press("p")
+            await self._attendre(app, pilote)
+            await self._retaper(app, pilote, "a", "parc-a")
+
+        def quand(spec, nouvelles):
+            appels.append((spec["cible"]["stockage"], nouvelles))
+
+        app, moteur, _, _ = self._rendu(gestes, plan, quand=quand)
+        self.assertEqual(moteur.appels, ["planifier", "appliquer"])
+        self.assertEqual(appels, [])
+        app.conclure()
+        self.assertEqual(
+            appels, [("local-lvm", {"parc-a-vm-1", "parc-a-vm-3"})]
+        )
+
+    def test_apply_en_echec_ne_mene_a_rien(self):
+        appels = []
+
+        async def gestes(app, pilote):
+            await self._appliquer(app, pilote)
+
+        def regler(moteur):
+            moteur.apply_ok = False
+
+        app, moteur, _, _ = self._rendu(
+            gestes, quand=lambda *a: appels.append(a), regler=regler
+        )
+        self.assertEqual(moteur.appels, ["planifier", "appliquer"])
+        app.conclure()
+        self.assertEqual(appels, [])
+
+    def test_ctrl_q_pendant_un_appel_ne_quitte_pas(self):
+        barriere = threading.Event()
+
+        def regler(moteur):
+            moteur.barriere = barriere
+
+        async def gestes(app, pilote):
+            await pilote.press("p")
+            await pilote.pause()
+            await pilote.press("ctrl+q")
+            await pilote.pause()
+            vivant = app.is_running
+            barriere.set()
+            await self._attendre(app, pilote)
+            return vivant
+
+        _, moteur, _, vivant = self._rendu(gestes, regler=regler)
+        self.assertTrue(vivant)
+        self.assertEqual(moteur.appels, ["planifier"])
+
+    def test_champ_modifie_apres_le_plan_exige_un_nouveau_plan(self):
+        async def gestes(app, pilote):
+            from textual.widgets import Input, Log
+
+            await pilote.press("p")
+            await self._attendre(app, pilote)
+            app.query_one("#c_pont", Input).value = "vmbr9"
+            await pilote.press("a")
+            await self._attendre(app, pilote)
+            return list(app.query_one("#journal", Log).lines)
+
+        _, moteur, _, journal = self._rendu(gestes)
+        self.assertEqual(moteur.appels, ["planifier"])
+        self.assertIn("✗ Planifier d'abord.", journal)
 
 
 if __name__ == "__main__":

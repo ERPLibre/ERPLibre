@@ -278,7 +278,8 @@ class OpenTofuMenuMixin:
             self._tofu_editer_parc(nom)
 
     def _tofu_editer_parc(self, nom=None):
-        """Ouvre le formulaire du parc ; il sauve par `enregistrer`."""
+        """Ouvre le formulaire du parc ; il sauve par `enregistrer`, et un
+        apply réussi y mène, écran fermé, à `_tofu_apres_apply`."""
         try:
             from script.todo.opentofu_form import run_opentofu_form
         except ModuleNotFoundError as exc:
@@ -300,7 +301,16 @@ class OpenTofuMenuMixin:
         if mot is None:
             return
         racine = self._tofu_racine()
-        run_opentofu_form(spec, mot, lambda s: spec_parc.sauver(s, racine))
+        # Un apply lancé du formulaire mène aux mêmes suites que celui du
+        # menu, une fois l'écran fermé.
+        run_opentofu_form(
+            spec,
+            mot,
+            lambda s: spec_parc.sauver(s, racine),
+            quand_applique=lambda s, n: self._tofu_apres_apply(
+                s, mot.sorties(s), n
+            ),
+        )
 
     def _tofu_lister_parcs(self):
         """Une ligne par parc : VM et hôte, ou ses erreurs de spec."""

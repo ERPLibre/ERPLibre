@@ -696,6 +696,27 @@ class TestEditerParc(Base):
             todo_i18n.t("The fleet form (TUI) is not available yet."), sortie
         )
 
+    def test_un_apply_du_formulaire_mene_aux_suites(self):
+        spec = self.parc()
+        Faux.sorties_ = {"parc-a-vm-1": {"vmid": 101, "ip": ""}}
+        recu = {}
+
+        def formulaire(spec, moteur, enregistrer, **kw):
+            recu.update(kw)
+
+        with (
+            mock.patch(
+                "script.todo.opentofu_form.run_opentofu_form", formulaire
+            ),
+            mock.patch.object(TODO, "_tofu_apres_apply") as apres,
+        ):
+            self.lancer("_tofu_editer_parc", [], "parc-a")
+            apres.assert_not_called()
+            recu["quand_applique"](spec, {"parc-a-vm-1"})
+        apres.assert_called_once_with(
+            spec, {"parc-a-vm-1": {"vmid": 101, "ip": ""}}, {"parc-a-vm-1"}
+        )
+
 
 class TestPreparerHote(Base):
     def test_executeur_brut_et_spec_sauvee(self):

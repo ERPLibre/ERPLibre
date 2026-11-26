@@ -10,7 +10,9 @@ tournent dans un worker léger (thread) : l'écran reste vivant, et le journal
 du moteur y arrive ligne à ligne par `call_from_thread`. Le moteur reçoit sa
 propre copie ; les champs qu'il résout pendant le plan reviennent dans le
 formulaire et sont sauvés. Le coffre n'est lu que pour dire si le jeton est
-présent : sa valeur n'entre dans aucun widget.
+présent : sa valeur n'entre dans aucun widget. Les modales vivent dans
+`opentofu_form_ecrans`, importé à l'ouverture de l'écran : les fonctions
+pures d'ici restent importables sans Textual.
 """
 
 import copy
@@ -48,8 +50,18 @@ CHAMPS_FORMULAIRE = {
     "o_user": ("compte", "user"),
     "o_ssh_key": ("compte", "ssh_key"),
 }
-# Actions qu'un appel au moteur en cours désactive.
-_ACTIONS_EXCLUSIVES = ("save", "plan", "apply", "destroy", "quitter")
+# Actions qu'un appel au moteur en cours désactive. `quit` (ctrl+q, de
+# priorité) et la palette, qui offre « Quitter », en sont : quitter pendant
+# un apply fermerait le tube de sortie de `tofu` en plein travail.
+_ACTIONS_EXCLUSIVES = (
+    "save",
+    "plan",
+    "apply",
+    "destroy",
+    "quitter",
+    "quit",
+    "command_palette",
+)
 
 
 def _entier_ou_texte(texte):
@@ -114,199 +126,44 @@ def _texte(valeur):
     return str(valeur)
 
 
-def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
+def run_opentofu_form(
+    spec, moteur, enregistrer, *, quand_applique=None, run_app=True
+):
     """Formulaire du parc `spec`. Rend la dernière spec sauvée par
-    `enregistrer`, ou None si rien n'a été sauvé. `run_app=False` rend
-    l'application sans la lancer (tests sans terminal)."""
+    `enregistrer`, ou None si rien n'a été sauvé.
+
+    `quand_applique(spec, nouvelles)` s'appelle une fois, APRÈS la sortie de
+    l'écran (il peut alors écrire et questionner dans le terminal), si au
+    moins un apply a réussi : `spec` est la dernière spec appliquée,
+    `nouvelles` les VM que les plans appliqués créaient ou remplaçaient.
+    `run_app=False` rend l'application sans la lancer (tests sans terminal) ;
+    `app.conclure()` fait alors ce qui suit la sortie.
+    """
     from rich.text import Text
     from textual.app import App, ComposeResult
     from textual.binding import Binding
-    from textual.containers import Horizontal, Vertical, VerticalScroll
-    from textual.screen import ModalScreen
+    from textual.containers import Horizontal, VerticalScroll
+    from textual.css.query import NoMatches
     from textual.widgets import (
         Button,
-        Checkbox,
         DataTable,
         Footer,
         Header,
         Input,
-        Label,
         Log,
         Static,
         TabbedContent,
         TabPane,
     )
 
+    from script.todo.opentofu_form_ecrans import (
+        EcranConfirmer,
+        EcranNom,
+        EcranVM,
+        ligne,
+    )
+
     racine = getattr(moteur, "racine", spec_parc.RACINE_PARCS)
-
-    def ligne(libelle, ident, compact=False):
-        """Libellé et champ de saisie sur une ligne ; `compact` les tient
-        sur une seule rangée d'écran (modale)."""
-        return Horizontal(
-            Label(libelle),
-            Input(id=ident, compact=compact),
-            classes="ligne compacte" if compact else "ligne",
-        )
-
-    css_modale = """
-        {nom} {{ align: center middle; }}
-        {nom} > Vertical {{
-            width: 90%; max-width: 100; height: auto; max-height: 90%;
-            border: thick $accent; background: $surface; padding: 0 1;
-        }}
-        {nom} .boutons {{ height: auto; align-horizontal: right; }}
-    """
-
-    class EcranConfirmer(ModalScreen):
-        """Rend True à la confirmation, None sinon."""
-
-        DEFAULT_CSS = css_modale.format(nom="EcranConfirmer")
-        BINDINGS = [("escape", "annuler", t("Cancel"))]
-
-        def __init__(self, lignes):
-            super().__init__()
-            self._lignes = lignes
-
-        def compose(self) -> ComposeResult:
-            with Vertical():
-                yield Static("\n".join(self._lignes), markup=False)
-                with Horizontal(classes="boutons"):
-                    yield Button(t("Cancel"), id="non")
-                    yield Button(t("Confirm"), variant="primary", id="oui")
-
-        def on_button_pressed(self, event) -> None:
-            self.dismiss(True if event.button.id == "oui" else None)
-
-        def action_annuler(self) -> None:
-            self.dismiss(None)
-
-    class EcranNom(ModalScreen):
-        """Nom du parc à retaper. Rend True s'il correspond, False sinon,
-        None à l'annulation."""
-
-        DEFAULT_CSS = css_modale.format(nom="EcranNom")
-        BINDINGS = [("escape", "annuler", t("Cancel"))]
-
-        def __init__(self, message, nom):
-            super().__init__()
-            self._message = message
-            self._nom = nom
-
-        def compose(self) -> ComposeResult:
-            invite = t("Type the fleet name ({nom}) to confirm: ")
-            with Vertical():
-                yield Static(self._message, markup=False)
-                yield Static(invite.format(nom=self._nom), markup=False)
-                yield Input(id="nom_saisie")
-                with Horizontal(classes="boutons"):
-                    yield Button(t("Cancel"), id="nom_non")
-                    yield Button(t("Confirm"), variant="error", id="nom_ok")
-
-        def _valider(self):
-            saisie = self.query_one("#nom_saisie", Input).value.strip()
-            self.dismiss(saisie == self._nom)
-
-        def on_button_pressed(self, event) -> None:
-            if event.button.id == "nom_ok":
-                self._valider()
-            else:
-                self.dismiss(None)
-
-        def on_input_submitted(self, event) -> None:
-            self._valider()
-
-        def action_annuler(self) -> None:
-            self.dismiss(None)
-
-    class EcranVM(ModalScreen):
-        """Une VM du parc. La saisie, placée dans une copie de la spec,
-        passe par `spec.valider` : ses erreurs s'affichent ici et la modale
-        reste ouverte. Rend la VM, ou None à l'annulation."""
-
-        DEFAULT_CSS = (
-            css_modale.format(nom="EcranVM")
-            + """
-            EcranVM VerticalScroll { height: auto; max-height: 24; }
-            #vmf_erreurs { color: $error; height: auto; }
-        """
-        )
-        BINDINGS = [("escape", "annuler", t("Cancel"))]
-
-        def __init__(self, spec, index):
-            super().__init__()
-            self._spec = spec
-            self._index = index
-            if index is None:
-                self._base = nouvelle_vm(spec)
-            else:
-                self._base = copy.deepcopy(spec["vms"][index])
-
-        def compose(self) -> ComposeResult:
-            libelles = {
-                "nom": t("Name"),
-                "distro": t("Distro"),
-                "version": t("Version"),
-                "arch": t("Architecture"),
-                "vcpus": t("vCPU"),
-                "ram": t("RAM (MiB)"),
-                "disque": t("Disk"),
-                "ip": t("IP (auto, dhcp or a.b.c.d/nn)"),
-                "passerelle": t("Gateway"),
-                "dns": t("DNS (comma separated)"),
-                "vmid": t("VMID (empty: chosen on the host)"),
-                "branche": t("ERPLibre branch"),
-            }
-            titre = t("Add a VM") if self._index is None else t("Edit a VM")
-            with Vertical():
-                yield Static(titre)
-                with VerticalScroll():
-                    for champ in CHAMPS_VM:
-                        yield ligne(libelles[champ], f"vmf_{champ}", True)
-                yield Checkbox(
-                    t("Start the VM"),
-                    bool(self._base.get("demarrer", True)),
-                    id="vmf_demarrer",
-                )
-                yield Checkbox(
-                    t("Install ERPLibre"),
-                    bool(self._base.get("installer_erplibre")),
-                    id="vmf_installer_erplibre",
-                )
-                yield Static("", id="vmf_erreurs", markup=False)
-                with Horizontal(classes="boutons"):
-                    yield Button(t("Cancel"), id="vmf_non")
-                    yield Button(t("Confirm"), variant="primary", id="vmf_ok")
-
-        def on_mount(self) -> None:
-            for champ in CHAMPS_VM:
-                self.query_one(f"#vmf_{champ}", Input).value = _texte(
-                    self._base.get(champ)
-                )
-
-        def on_button_pressed(self, event) -> None:
-            if event.button.id != "vmf_ok":
-                self.dismiss(None)
-                return
-            valeurs = {
-                c: self.query_one(f"#vmf_{c}", Input).value for c in CHAMPS_VM
-            }
-            for c in ("demarrer", "installer_erplibre"):
-                valeurs[c] = self.query_one(f"#vmf_{c}", Checkbox).value
-            vm = vm_depuis_saisie(self._base, valeurs)
-            candidat = copy.deepcopy(self._spec)
-            if self._index is None:
-                candidat["vms"].append(vm)
-            else:
-                candidat["vms"][self._index] = vm
-            erreurs = spec_parc.valider(candidat)
-            if erreurs:
-                texte = "\n".join(f"• {e}" for e in erreurs)
-                self.query_one("#vmf_erreurs", Static).update(texte)
-                return
-            self.dismiss(vm)
-
-        def action_annuler(self) -> None:
-            self.dismiss(None)
 
     class FormulaireParc(App):
         """Les onglets de la spec en haut, le plan et le journal en bas."""
@@ -344,6 +201,11 @@ def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
             self._plan = None
             self._occupe = False
             self._quitter_arme = False
+            # Apply réussi dans la séance : la spec appliquée et les VM
+            # créées ou remplacées, pour `quand_applique` après la sortie.
+            self.applique = False
+            self.spec_appliquee = None
+            self.nouvelles = set()
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -487,6 +349,7 @@ def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
                 return False
             self._sauve = copie
             self.result = copy.deepcopy(copie)
+            self._quitter_arme = False
             self._journal("✓ " + t("Spec saved."))
             return True
 
@@ -574,7 +437,9 @@ def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
             if self._occupe:
                 return
             self._lire_formulaire()
-            if self.s != self._sauve and not self._quitter_arme:
+            if self.s == self._sauve:
+                self._quitter_arme = False
+            elif not self._quitter_arme:
                 self._quitter_arme = True
                 self._journal(
                     t("Unsaved changes: press q again to quit without saving.")
@@ -627,8 +492,17 @@ def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
             self._occuper(True)
             travail = copy.deepcopy(self.s)
 
+            def vers_ecran(fonction, *args):
+                """Exécute `fonction` dans l'écran ; ne lève pas si l'écran
+                a disparu : le moteur doit continuer à lire la sortie de
+                `tofu`, sans quoi son tube se ferme en plein travail."""
+                try:
+                    self.call_from_thread(fonction, *args)
+                except (NoMatches, RuntimeError):
+                    pass
+
             def journal(texte):
-                self.call_from_thread(self._journal, texte)
+                vers_ecran(self._journal, texte)
 
             def tache():
                 changements = None
@@ -640,10 +514,8 @@ def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
                 # Une exception qui sortirait du thread fermerait l'écran et
                 # son journal : elle devient un échec affiché.
                 except Exception as exc:
-                    res = Resultat(False, str(exc), 1)
-                self.call_from_thread(
-                    self._fin, operation, res, changements, travail
-                )
+                    res = Resultat(False, str(exc) or type(exc).__name__, 1)
+                vers_ecran(self._fin, operation, res, changements, travail)
 
             self.run_worker(tache, thread=True, group="moteur")
 
@@ -651,6 +523,15 @@ def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
             self._occuper(False)
             if res.message:
                 self._journal(("✓ " if res.ok else "✗ ") + res.message)
+            if operation == "appliquer" and res.ok:
+                self.applique = True
+                self.spec_appliquee = copy.deepcopy(travail)
+                self.nouvelles |= {
+                    c.vm
+                    for c in self._plan or ()
+                    if c.ressource == "vm"
+                    and c.action in ("creer", "remplacer")
+                }
             if operation != "planifier":
                 self._plan = None
                 return
@@ -666,8 +547,17 @@ def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
                 self._remplir()
                 self._enregistrer()
 
+        def conclure(self):
+            """Après la sortie de l'écran : `quand_applique` si un apply a
+            réussi ; rend la dernière spec sauvée, ou None."""
+            if self.applique and quand_applique is not None:
+                quand_applique(
+                    copy.deepcopy(self.spec_appliquee), set(self.nouvelles)
+                )
+            return self.result
+
     app = FormulaireParc()
     if not run_app:
         return app
     app.run()
-    return app.result
+    return app.conclure()
