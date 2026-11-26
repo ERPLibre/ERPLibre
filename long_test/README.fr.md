@@ -421,9 +421,41 @@ modifié : le push vise une URL, aucun remote n'est ajouté. Le mot de passe
 administrateur est tiré au hasard et passé sur l'entrée standard ; le jeton
 ne vit que dans le processus.
 
+La dernière étape, `retour`, suit une pull request jusqu'au retour : dans un
+clone temporaire du dossier de course, une branche d'un commit vide part vers
+le dépôt ERPLibre de la forge, une pull request la fusionne par l'API dans la
+branche poussée, puis `forge_pull_requests` doit la lire fusionnée et avancer
+en fast-forward la branche locale de ce clone temporaire.
+
+Avec `--miroirs K`, deux étapes suivent, `miroirs` et `synchro`. Le minuteur
+d'avance rapide s'installe sur la forge, puis un miroir natif se crée pour le
+dépôt ERPLibre (sur `develop` ou `master` de `refs/remotes/origin`, jamais la
+branche poussée que `retour` a fait avancer) et pour K clones ; la VM doit joindre GitHub en https. Trois branches de cas, bâties
+dans un clone superficiel du miroir d'ERPLibre, partent sans force vers le
+dépôt de travail : un commit en retard sur le miroir, un commit en avance, et
+divergente. Une passe doit avancer la première, laisser les deux autres en
+place, et ne rien forcer. La branche d'un clone porte ce que le checkout de
+l'hôte a poussé : des commits locaux absents de son origine la font diverger,
+et c'est alors l'état juste, pas un échec.
+
+Avec `--ci`, le déploiement pose aussi le runner de CI (`runner` :
+forgejo-runner en mode hôte, et le venv de CI bâti d'avance), et le dépôt
+ERPLibre reçoit deux branches de plus, `HEAD~1` en `ci-longtest-base` et
+`HEAD` en `ci-longtest` ; rien n'est écrit dans le dépôt de l'hôte. Après
+`retour`, l'étape `ci` active Actions sur ce dépôt, ouvre la pull request
+entre elles, et attend son statut combiné jusqu'à 75 minutes : elle réussit
+sur un succès. La pull request exerce le workflow COMMITÉ : la course refuse
+de partir quand `.forgejo/workflows/unit_test.yml` ou
+`script/forgejo/ci_venv.sh` manque à `HEAD`, et avertit quand l'arbre de
+travail diffère. Avec `--miroirs` aussi, `ci_push` vérifie que les commits
+poussés par la synchro ne portent aucun statut : le workflow ne réagit qu'aux
+pull requests.
+
 ```
 ./long_test/forge_push.py                  # toute la course
 ./long_test/forge_push.py --projets 5      # ERPLibre et 5 clones
+./long_test/forge_push.py --miroirs 2      # plus les miroirs d'ERPLibre et de 2 clones
+./long_test/forge_push.py --ci             # plus la CI d'une pull request d'ERPLibre
 ./long_test/forge_push.py --dry-run        # le plan, rien de créé
 ./long_test/forge_push.py --detruire       # défaire la dernière course
 ```
