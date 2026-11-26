@@ -1,0 +1,96 @@
+{
+  "terraform": {
+    "required_version": ">= 1.10",
+    "required_providers": {
+      "proxmox": {"source": "bpg/proxmox", "version": "= 0.123.1"}
+    }
+  },
+  "provider": {
+    "proxmox": {
+      "endpoint": "https://pve.example.test:8006",
+      "insecure": true,
+      "ssh": {"agent": true, "username": "erplibre"}
+    }
+  },
+  "resource": {
+    "proxmox_download_file": {
+      "img_debian_13_amd64_qcow2": {
+        "content_type": "import",
+        "datastore_id": "local",
+        "node_name": "pve1",
+        "url": "https://images.example.test/debian-13.qcow2",
+        "file_name": "debian-13_amd64.qcow2",
+        "overwrite_unmanaged": true,
+        "checksum": "abc123",
+        "checksum_algorithm": "sha256"
+      }
+    },
+    "proxmox_virtual_environment_file": {
+      "ud_parc_a_vm_1": {
+        "content_type": "snippets",
+        "datastore_id": "local",
+        "node_name": "pve1",
+        "source_raw": {
+          "data": "#cloud-config\n",
+          "file_name": "erplibre-parc-a-vm-1.yml"
+        }
+      }
+    },
+    "proxmox_virtual_environment_vm": {
+      "vm_parc_a_vm_1": {
+        "node_name": "pve1",
+        "vm_id": 201,
+        "name": "parc-a-vm-1",
+        "started": true,
+        "stop_on_destroy": true,
+        "cpu": {"type": "host", "cores": 2},
+        "memory": {"dedicated": 4096},
+        "operating_system": {"type": "l26"},
+        "scsi_hardware": "virtio-scsi-single",
+        "network_device": [{"bridge": "vmbr0", "model": "virtio"}],
+        "serial_device": [{"device": "socket"}],
+        "vga": {"type": "serial0"},
+        "disk": [
+          {
+            "interface": "scsi0",
+            "datastore_id": "local-lvm",
+            "import_from": "local:import/debian-13_amd64.qcow2",
+            "size": 20,
+            "discard": "on",
+            "ssd": true,
+            "iothread": true
+          }
+        ],
+        "initialization": {
+          "interface": "scsi1",
+          "datastore_id": "local-lvm",
+          "ip_config": [
+            {"ipv4": {"address": "192.0.2.10/24", "gateway": "192.0.2.1"}}
+          ],
+          "dns": {"servers": ["192.0.2.53"]},
+          "user_data_file_id": "${proxmox_virtual_environment_file.ud_parc_a_vm_1.id}"
+        },
+        "agent": {
+          "enabled": true,
+          "timeout": "2m",
+          "wait_for_ip": {"disabled": true}
+        },
+        "boot_order": ["scsi0"],
+        "depends_on": [
+          "proxmox_download_file.img_debian_13_amd64_qcow2",
+          "proxmox_virtual_environment_file.ud_parc_a_vm_1"
+        ]
+      }
+    }
+  },
+  "output": {
+    "vms": {
+      "value": {
+        "parc-a-vm-1": {
+          "vmid": 201,
+          "ipv4": "${proxmox_virtual_environment_vm.vm_parc_a_vm_1.ipv4_addresses}"
+        }
+      }
+    }
+  }
+}
