@@ -40,6 +40,14 @@ const HOTE_AMONT = "miroir.example"
 
 func frontDeTest(t *testing.T, corps string) (*amont, string, *CA) {
 	t.Helper()
+	return frontDeTestRegle(t, corps, nil)
+}
+
+// frontDeTestRegle : frontDeTest, le front passé à `regler` avant de servir.
+func frontDeTestRegle(
+	t *testing.T, corps string, regler func(*TLSFront),
+) (*amont, string, *CA) {
+	t.Helper()
 	a := &amont{corps: corps}
 	a.srv = httptest.NewTLSServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +76,9 @@ func frontDeTest(t *testing.T, corps string) (*amont, string, *CA) {
 		t.Fatalf("autorité : %v", err)
 	}
 	front := &TLSFront{CA: ca, Proxy: proxy, Refusals: NewRefusals(nil)}
+	if regler != nil {
+		regler(front)
+	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -181,4 +192,24 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Sans tunnel, un hôte que la liste des refus porte est déchiffré quand
+// même : le tunnel, sans destination d'origine, n'aboutirait jamais.
+func TestFrontSansTunnelDechiffreUnHoteRefuse(t *testing.T) {
+	a, ecoute, ca := frontDeTestRegle(t, "corps servi", func(f *TLSFront) {
+		f.Refusals = NewRefusals([]string{HOTE_AMONT})
+		f.SansTunnel = true
+		f.Origine = func(net.Conn) (string, error) {
+			return "", fmt.Errorf("aucune destination d'origine")
+		}
+	})
+	_, texte := dialogueTLS(t, ca, ecoute, HOTE_AMONT, "/paquet")
+	if !strings.HasPrefix(texte, "HTTP/1.1 200") ||
+		!strings.HasSuffix(texte, "corps servi") {
+		t.Fatalf("réponse %q", texte)
+	}
+	if atomic.LoadInt64(&a.appel) != 1 {
+		t.Errorf("amont appelé %d fois", atomic.LoadInt64(&a.appel))
+	}
 }

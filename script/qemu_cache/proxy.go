@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -136,6 +137,12 @@ type Proxy struct {
 	// vise l'un d'eux sur une adresse de cette machine est une boucle. Vide,
 	// rien n'est refusé.
 	Ecoutes []int
+	// HorsLigne interdit toute connexion vers l'amont : chaque requête
+	// prend le chemin du repli (voir horsligne.go).
+	HorsLigne bool
+	// Pacman sert un dépôt pacman local à la place des miroirs Arch. Nul,
+	// les miroirs passent par le chemin ordinaire du cache.
+	Pacman *DepotPacman
 
 	// completions tient les clés dont le corps entier est en cours de prise
 	// (voir completer) ; enCours les compte, pour qui doit les attendre.
@@ -239,6 +246,12 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	// est refusée avant toute autre chose.
 	if p.viseLeCache(u) {
 		p.boucle(w, u, class, r.Method, clientDe(r.RemoteAddr))
+		return
+	}
+
+	// Le dépôt pacman local passe avant le magasin : il répond pour tout
+	// miroir Arch, et ce qu'il n'a pas est un 404, jamais un relais.
+	if p.servirPacman(w, r, u) {
 		return
 	}
 
@@ -776,15 +789,25 @@ func (p *Proxy) offlineMiss(
 	w http.ResponseWriter, u *url.URL, class Class, method, client string,
 	cause error,
 ) {
-	msg := enCommentaire(fmt.Sprintf(
-		T("erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
-			"  demandé : %s\n"+
-			"  classe  : %s\n"+
-			"  cause   : %v\n"+
-			"%s"+
-			"Ce fichier n'a jamais traversé ce cache. Rétablir le réseau, ou\n"+
-			"déployer une VM identique à celle qui a rempli le cache.\n"),
-		u, class, cause, decrireMuet(cause)))
+	var msg string
+	if errors.Is(cause, errHorsLigne) {
+		msg = enCommentaire(fmt.Sprintf(
+			T("erplibre_go_qemu_cache : mode hors ligne, rien en réserve.\n"+
+				"  demandé : %s\n"+
+				"  classe  : %s\n"+
+				"%s"),
+			u, class, decrireHorsLigne(cause)))
+	} else {
+		msg = enCommentaire(fmt.Sprintf(
+			T("erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
+				"  demandé : %s\n"+
+				"  classe  : %s\n"+
+				"  cause   : %v\n"+
+				"%s"+
+				"Ce fichier n'a jamais traversé ce cache. Rétablir le réseau, ou\n"+
+				"déployer une VM identique à celle qui a rempli le cache.\n"),
+			u, class, cause, decrireMuet(cause)))
+	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-ERPLibre-Cache", OutcomeOfflineMiss)
 	w.WriteHeader(http.StatusGatewayTimeout)
@@ -796,7 +819,12 @@ func (p *Proxy) offlineMiss(
 		Client: client,
 	})
 	// Le journal dit l'amont, non le cache : le service tourne et répond,
-	// c'est la source qui manque pour cette adresse.
+	// c'est la source qui manque pour cette adresse. Hors ligne, aucun
+	// amont n'a été tenté : c'est le paquet qui ne l'a pas.
+	if errors.Is(cause, errHorsLigne) {
+		log.Printf(T("absent du magasin hors ligne : %s"), u)
+		return
+	}
 	log.Printf(T("amont injoignable, absent du cache : %s (%v)"), u, cause)
 }
 
@@ -933,6 +961,9 @@ func (p *Proxy) fetch(
 	r *http.Request, u *url.URL, repli bool,
 ) (*http.Response, error) {
 	adresse := adresseAmont(u)
+	if p.HorsLigne {
+		return nil, fmt.Errorf("%w (%s)", errHorsLigne, adresse)
+	}
 	if repli && p.Muets.ConnuMuet(adresse) {
 		return nil, fmt.Errorf("%w (%s)", errAmontConnuMuet, adresse)
 	}

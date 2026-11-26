@@ -554,3 +554,38 @@ func TestUneCoupureNeCondamnePasLHote(t *testing.T) {
 		t.Error("une coupure a condamné l'hôte au tunnel opaque")
 	}
 }
+
+// L'autorité d'un paquet hors ligne se distingue de celle du cache par son
+// nom, admet une horloge en retard de quelques jours et ne vit que deux
+// ans ; relue, elle n'est pas régénérée.
+func TestAutoriteDePaquet(t *testing.T) {
+	dir := t.TempDir()
+	ca, err := LoadOrCreatePayloadCA(dir)
+	if err != nil {
+		t.Fatalf("création : %v", err)
+	}
+	if ca.cert.Subject.CommonName != nomAutoritePaquet {
+		t.Errorf("nom %q", ca.cert.Subject.CommonName)
+	}
+	cache, err := LoadOrCreateCA(t.TempDir())
+	if err != nil {
+		t.Fatalf("création du cache : %v", err)
+	}
+	if cache.cert.Subject.CommonName == nomAutoritePaquet {
+		t.Error("l'autorité du cache porte le nom de celle d'un paquet")
+	}
+	maintenant := time.Now()
+	if !ca.cert.NotBefore.Before(maintenant.AddDate(0, 0, -6)) {
+		t.Errorf("début %v : une horloge en retard la refuserait", ca.cert.NotBefore)
+	}
+	if ca.cert.NotAfter.After(maintenant.AddDate(2, 0, 1)) {
+		t.Errorf("fin %v : plus de deux ans", ca.cert.NotAfter)
+	}
+	relue, err := LoadOrCreatePayloadCA(dir)
+	if err != nil {
+		t.Fatalf("relecture : %v", err)
+	}
+	if relue.Fingerprint() != ca.Fingerprint() {
+		t.Error("l'autorité du paquet a été régénérée")
+	}
+}

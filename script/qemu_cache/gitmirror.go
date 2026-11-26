@@ -95,6 +95,10 @@ type GitMirror struct {
 	// http.ProxyFromEnvironment : l'environnement même que « git remote
 	// update » lit.
 	Mandataire func(*http.Request) (*url.URL, error)
+	// HorsLigne sert les miroirs présents tels quels : aucun clonage,
+	// aucun rafraîchissement, aucune sonde. Un dépôt absent rend faux, et
+	// le relais hors ligne dit au client qu'il manque.
+	HorsLigne bool
 
 	mu      sync.Mutex
 	verrous map[string]*sync.Mutex
@@ -226,6 +230,9 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 	_, statErr := os.Stat(filepath.Join(chemin, "HEAD"))
 	existe := statErr == nil
 
+	if g.HorsLigne {
+		return chemin, existe
+	}
 	if existe && g.recent(chemin) {
 		return chemin, true
 	}
@@ -592,15 +599,28 @@ func (g *GitMirror) Servir(
 	w http.ResponseWriter, r *http.Request, chemin, reste string,
 ) int64 {
 	racine := filepath.Dir(chemin)
+	env := []string{
+		"GIT_PROJECT_ROOT=" + racine,
+		// Le miroir n'a pas de « git-daemon-export-ok », et n'en aura
+		// pas : il ne sert que le pont des VM de cet hôte.
+		"GIT_HTTP_EXPORT_ALL=1",
+	}
+	if g.HorsLigne {
+		// Les miroirs d'un paquet hors ligne appartiennent au compte qui les
+		// a fabriqués, pas à celui du service : sans cette exception, git
+		// refuse un dépôt dont il n'est pas propriétaire (« dubious
+		// ownership »). L'exception passe par la configuration de ligne de
+		// commande, seule portée, avec le système, où git la lit.
+		env = append(env,
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=safe.directory",
+			"GIT_CONFIG_VALUE_0=*",
+		)
+	}
 	h := &cgi.Handler{
-		Path: g.backend(),
-		Dir:  racine,
-		Env: []string{
-			"GIT_PROJECT_ROOT=" + racine,
-			// Le miroir n'a pas de « git-daemon-export-ok », et n'en aura
-			// pas : il ne sert que le pont des VM de cet hôte.
-			"GIT_HTTP_EXPORT_ALL=1",
-		},
+		Path:       g.backend(),
+		Dir:        racine,
+		Env:        env,
 		InheritEnv: []string{"PATH"},
 	}
 	// La passerelle lit le chemin du dépôt dans l'URL qu'on lui présente : ce
