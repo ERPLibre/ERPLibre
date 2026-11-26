@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """L'interface Moteur et le plan commun."""
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -87,6 +88,26 @@ class TestMoteur(unittest.TestCase):
             self.assertEqual(m.kw, {"a": 1})
         finally:
             mo._REGISTRE.pop("faux")
+
+
+    def test_moteur_tofu_charge_a_la_demande(self):
+        # Processus neuf : aucun module n'a encore importé moteur_tofu.
+        code = (
+            "import sys; sys.argv = ['todo.py']\n"
+            "from script.opentofu import moteur as mo\n"
+            "assert 'script.opentofu.moteur_tofu' not in sys.modules\n"
+            "print(type(mo.moteur_pour({'moteur': 'tofu'})).__name__)\n"
+        )
+        depot = Path(__file__).resolve().parent.parent
+        res = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=depot,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "MoteurTofu")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ s'impose avant d'appliquer.
 """
 
 import abc
+import importlib
 from dataclasses import dataclass, field
 
 from script.todo.todo_i18n import t
@@ -78,6 +79,9 @@ class Moteur(abc.ABC):
 
 
 _REGISTRE = {}
+# Moteurs livrés : leur module s'importe au premier `moteur_pour`, et
+# s'enregistre lui-même à l'import.
+_CONNUS = {"tofu": "script.opentofu.moteur_tofu"}
 
 
 def enregistrer(nom, classe):
@@ -88,8 +92,11 @@ def enregistrer(nom, classe):
 def moteur_pour(spec, **kw):
     """Instancie le moteur que `spec["moteur"]` désigne, avec `**kw`.
 
-    Lève `KeyError` (message traduit) si ce nom n'est pas enregistré."""
+    Un moteur livré mais pas encore importé l'est ici. Lève `KeyError`
+    (message traduit) si ce nom n'est ni enregistré ni livré."""
     nom = spec.get("moteur")
+    if nom not in _REGISTRE and nom in _CONNUS:
+        importlib.import_module(_CONNUS[nom])
     if nom not in _REGISTRE:
         raise KeyError(t("Unknown engine: {nom}.").format(nom=nom))
     return _REGISTRE[nom](**kw)

@@ -289,7 +289,7 @@ class MoteurTofu(Moteur):
                 ),
                 code,
             )
-        if any(_VERROU in ligne for ligne in lignes):
+        if code != 0 and any(_VERROU in ligne for ligne in lignes):
             return Resultat(False, _message_verrou(lignes, dossier), code)
         if code != 0:
             return Resultat(
@@ -495,7 +495,15 @@ class MoteurTofu(Moteur):
         spec résolue est sauvée ET le dict `spec` reçu est mis à jour en
         place, pour que l'appelant affiche et réutilise les valeurs
         résolues. Toute erreur rend `(Resultat(False, message), [])`.
+
+        Le plan précédent est effacé avant tout : après une demande de plan
+        qui échoue, `appliquer` ne trouve rien plutôt qu'un plan plus ancien
+        que cette demande.
         """
+        try:
+            self._effacer_plan(self.dossier_travail(spec))
+        except ValueError as exc:
+            return Resultat(False, str(exc), 1), []
         res = self._preparer(spec, journal)
         if not res.ok:
             return res, []
@@ -531,8 +539,8 @@ class MoteurTofu(Moteur):
     def appliquer(self, spec, journal):
         """Applique le plan sauvé, s'il est plus récent que `main.tf.json`.
 
-        Le plan est effacé après un apply réussi : un plan sauvé ne
-        s'applique pas deux fois.
+        Le plan est effacé après toute tentative, réussie, en échec ou
+        interrompue : un plan sauvé ne s'applique jamais deux fois.
         """
         try:
             dossier = self.dossier_travail(spec)
@@ -548,9 +556,9 @@ class MoteurTofu(Moteur):
         res, _ = self._diffuser(
             spec, ["apply", "-input=false", "-no-color", _PLAN], journal
         )
+        self._effacer_plan(dossier)
         if not res.ok:
             return res
-        self._effacer_plan(dossier)
         return Resultat(True, t("Apply done."))
 
     def detruire(self, spec, journal):
@@ -576,7 +584,11 @@ class MoteurTofu(Moteur):
 
     def etat(self, spec):
         """Adresses des ressources de l'état ; l'erreur en dernière ligne."""
-        if not self._initialise(self.dossier_travail(spec)):
+        try:
+            dossier = self.dossier_travail(spec)
+        except ValueError as exc:
+            return [str(exc)]
+        if not self._initialise(dossier):
             return []
         res, lignes = self._diffuser(spec, ["state", "list"], lambda _l: None)
         lignes = [x for x in lignes if x.strip()]
@@ -589,9 +601,13 @@ class MoteurTofu(Moteur):
 
         `wait_for_ip.disabled` laisse l'IPv4 de `tofu` toujours vide : `ip`
         est l'adresse fixe de la spec sans son préfixe, "" en DHCP. Rend {}
-        sans état ou sur une sortie illisible.
+        sans état, sur un nom de parc invalide ou sur une sortie illisible.
         """
-        if not self._initialise(self.dossier_travail(spec)):
+        try:
+            dossier = self.dossier_travail(spec)
+        except ValueError:
+            return {}
+        if not self._initialise(dossier):
             return {}
         res, sortie = self._capturer(
             spec, ["output", "-json", "-no-color"], lambda _l: None

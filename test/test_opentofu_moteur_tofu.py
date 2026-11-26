@@ -3,6 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le moteur OpenTofu : traduction du plan et enchaînement des commandes.
 
+`fixtures/opentofu/show_plan.json` est écrite à la main d'après le format
+documenté de `tofu show -json` : elle est à remplacer par une sortie réelle
+capturée au test long (`long_test/`), le seul qui dispose de tofu et d'un PVE.
+
 Un faux `tofu` (script Python écrit dans un dossier temporaire) journalise
 ses arguments, les NOMS des variables d'environnement utiles et un drapeau
 « jeton dans argv », puis rend des lignes préparées par le test.
@@ -348,6 +352,34 @@ class TestPlanifier(_Base):
         self.assertIn("Error: boom", self.lignes)
         self.assertNotIn("show", self.sous_commandes())
 
+    def test_plan_en_echec_invalide_le_plan_precedent(self):
+        res, _ = self.planifier()
+        self.assertTrue(res.ok, res.message)
+        self.spec["vms"][0]["ram"] = 1
+        res, _ = self.planifier()
+        self.assertFalse(res.ok)
+        res = self.moteur.appliquer(self.spec, self.lignes.append)
+        self.assertEqual(res.message, "Planifier d'abord.")
+        self.assertNotIn("apply", self.sous_commandes())
+
+    def test_phrase_de_verrou_sans_echec_ignoree(self):
+        self.comportement(
+            {
+                "plan": {"lignes": ["note: Error acquiring the state lock"]},
+                "show": {"fichier": str(FIXTURE)},
+            }
+        )
+        res, _ = self.planifier()
+        self.assertTrue(res.ok, res.message)
+
+    def test_nom_de_parc_invalide_sans_exception(self):
+        self.spec["nom"] = "../evade"
+        self.assertEqual(len(self.moteur.etat(self.spec)), 1)
+        self.assertEqual(self.moteur.sorties(self.spec), {})
+        res, changements = self.planifier()
+        self.assertFalse(res.ok)
+        self.assertEqual(self.appels(), [])
+
     def test_show_illisible_efface_le_plan(self):
         self.comportement({"show": {"texte": "pas du json"}})
         res, _ = self.planifier()
@@ -441,6 +473,14 @@ class TestAppliquerDetruire(_Base):
         self.assertFalse((dossier / "plan.bin").exists())
         res = self.moteur.appliquer(self.spec, self.lignes.append)
         self.assertFalse(res.ok)
+
+    def test_apply_en_echec_efface_le_plan(self):
+        self.planifier()
+        self.comportement({"apply": {"lignes": ["Error: x"], "code": 1}})
+        res = self.moteur.appliquer(self.spec, self.lignes.append)
+        self.assertFalse(res.ok)
+        dossier = self.moteur.dossier_travail(self.spec)
+        self.assertFalse((dossier / "plan.bin").exists())
 
     def test_jeton_jamais_en_argv(self):
         cf.ecrire("parc-a", {"jeton": JETON}, self.racine)

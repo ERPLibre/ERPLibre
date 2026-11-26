@@ -83,6 +83,20 @@ class TestCoffre(unittest.TestCase):
         env = cf.environnement("parc-a", base, self.racine)
         self.assertEqual(env["PROXMOX_VE_API_TOKEN"], JETON)
 
+    def test_environnement_retire_les_traces_tofu(self):
+        base = {
+            "TF_LOG": "TRACE",
+            "TF_LOG_PATH": "/tmp/trace.log",
+            "TF_LOG_CORE": "TRACE",
+            "TF_LOG_PROVIDER": "TRACE",
+            "PATH": "/bin",
+        }
+        env = cf.environnement("parc-a", base, self.racine)
+        for nom in ("TF_LOG", "TF_LOG_PATH", "TF_LOG_CORE", "TF_LOG_PROVIDER"):
+            self.assertNotIn(nom, env)
+        self.assertEqual(env["PATH"], "/bin")
+        self.assertIn("TF_LOG", base)
+
     def test_environnement_ne_touche_pas_os_environ(self):
         avant = dict(os.environ)
         cf.environnement("parc-a", None, self.racine)

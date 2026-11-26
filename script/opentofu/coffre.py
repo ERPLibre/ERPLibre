@@ -29,6 +29,9 @@ _CLES_CONF = (
     "providers",
 )
 _PHRASE_MIN = 16
+# Une trace de tofu recopie l'en-tête d'autorisation, jeton compris, sans
+# passer par `masquer`.
+_TRACES = ("TF_LOG", "TF_LOG_PATH", "TF_LOG_CORE", "TF_LOG_PROVIDER")
 _MASQUE = "***"
 
 
@@ -134,7 +137,8 @@ def environnement(nom, base=None, racine=RACINE_PARCS):
     Porte le jeton Proxmox quand il est stocké, le chiffrement de l'état, le
     cache partagé des fournisseurs et les réglages non interactifs. Sans jeton
     stocké, un `PROXMOX_VE_API_TOKEN` hérité est retiré : il appartient à un
-    autre parc ou à un autre hôte. Ni `base` ni os.environ ne sont modifiés.
+    autre parc ou à un autre hôte. Les variables de trace `TF_LOG*` héritées
+    sont retirées aussi. Ni `base` ni os.environ ne sont modifiés.
     """
     env = dict(os.environ if base is None else base)
     jeton = lire(nom, racine).get("jeton")
@@ -142,6 +146,8 @@ def environnement(nom, base=None, racine=RACINE_PARCS):
         env["PROXMOX_VE_API_TOKEN"] = jeton
     else:
         env.pop("PROXMOX_VE_API_TOKEN", None)
+    for nom_var in _TRACES:
+        env.pop(nom_var, None)
     env["TF_ENCRYPTION"] = tf_encryption(phrase_etat(nom, racine))
     CACHE_PLUGINS.mkdir(parents=True, exist_ok=True)
     env["TF_PLUGIN_CACHE_DIR"] = str(CACHE_PLUGINS)

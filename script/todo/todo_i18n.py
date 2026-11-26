@@ -26389,7 +26389,8 @@ TRANSLATIONS = {
     "VM {nom}: vmid must be empty or an integer >= 100.": {
         "fr": "VM {nom} : vmid doit être vide ou un entier >= 100.",
         "en": "VM {nom}: vmid must be empty or an integer >= 100.",
-    },    "(known after apply)": {
+    },
+    "(known after apply)": {
         "fr": "(après apply)",
         "en": "(known after apply)",
     },
