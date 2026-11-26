@@ -23,7 +23,7 @@ engine log at the bottom. Keys: `s` save, `p` plan, `a` apply, `d` destroy,
 `q` quit. While `tofu` runs, the form is busy: the actions and `Ctrl+Q` are
 disabled until it returns, so a run is never cut halfway. An apply that
 replaces or destroys a VM, and every destroy, asks you to retype the fleet
-name.
+name. A destroy also removes the VMs' SSH aliases from `~/.ssh/config`.
 
 ## First run
 
@@ -31,7 +31,7 @@ name.
    `pacman` exists (Arch), it installs the package; elsewhere it downloads
    the release zip, verifies the checksum file and its GPG signature
    (fingerprint pinned in `conf/opentofu.json`), then installs the binary
-   into `~/.local/bin`.
+   into `~/.local/bin`. Either way it asks for confirmation [y/N] first.
 2. **Create a fleet**: a name (`^[a-z][a-z0-9-]{0,30}$`) and the SSH target
    of the Proxmox host. The spec starts with one default VM.
 3. **Prepare the host**: over SSH, creates the role `ERPLibreTofu`, the user
@@ -51,6 +51,7 @@ name.
 
 | Field | Meaning |
 |-------|---------|
+| `cible.type` | target kind: `proxmox` |
 | `cible.hote` | SSH access to the host: `target`, `jump`, `port`, `sudo` (`"sudo "` or `""`) |
 | `cible.api_url` | Proxmox API URL; empty, it becomes `https://<host>:8006/` |
 | `cible.insecure` | accept the host's self-signed certificate |
@@ -58,7 +59,7 @@ name.
 | `cible.stockage` | storage for disks and images |
 | `cible.stockage_snippets` | storage that accepts snippets (cloud-init) |
 | `cible.pont` | network bridge |
-| `compte.user`, `compte.ssh_key` | account created in the VMs, public key put in it |
+| `compte.user`, `compte.ssh_key` | account created in the VMs, path of the public key file put in it (default `~/.ssh/id_ed25519.pub`), not the key itself |
 | `vms[].nom` | VM name, `^[a-z][a-z0-9-]{0,62}$`, unique in the fleet |
 | `vms[].vmid` | Proxmox VMID; empty, the first free one |
 | `vms[].distro`, `version`, `arch` | image from the deployment catalog |
@@ -92,9 +93,13 @@ gives a list of readable errors, not a traceback.
   masks them. The inherited `TF_LOG*` variables are dropped, since a trace
   copies the authorization header.
 - **A lost or overwritten `secrets.json` makes the state unreadable.** Restore
-  it from a backup. Without a backup, the VMs still exist on the host:
-  destroy them there (`qm stop`, `qm destroy`), delete the fleet's state
-  files, and run Prepare the host again for a new token.
+  it from a backup. Without a backup, the VMs still exist on the host.
+  Destroy ONLY the VMIDs listed in the fleet's `spec.json` (`vms[].vmid`),
+  and confirm each one first with `qm config <vmid>` (the name must match
+  the spec); touch no other VM. Then delete the fleet's state directory,
+  `private/opentofu/<fleet>/.tofu/`, and run Prepare the host again,
+  answering YES to recreating the token: the old token still exists on the
+  host with no local secret, so the preparation refuses otherwise.
 
 ## Limits of v1
 

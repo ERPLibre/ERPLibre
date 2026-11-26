@@ -23,7 +23,8 @@ journal du moteur en bas. Touches : `s` enregistrer, `p` planifier, `a`
 appliquer, `d` détruire, `q` quitter. Tant que `tofu` tourne, le formulaire
 est occupé : les actions et `Ctrl+Q` sont désactivés jusqu'au retour, donc un
 passage n'est jamais coupé en deux. Un apply qui remplace ou détruit une VM,
-et tout destroy, demandent de retaper le nom du parc.
+et tout destroy, demandent de retaper le nom du parc. Un destroy retire aussi les alias SSH
+des VM de `~/.ssh/config`.
 
 ## Première utilisation
 
@@ -31,7 +32,7 @@ et tout destroy, demandent de retaper le nom du parc.
    `pacman` existe (Arch), il installe le paquet ; ailleurs il télécharge le
    zip de la version, vérifie le fichier de sommes et sa signature GPG
    (empreinte épinglée dans `conf/opentofu.json`), puis installe le binaire
-   dans `~/.local/bin`.
+   dans `~/.local/bin`. Dans les deux cas il demande d'abord confirmation [y/N].
 2. **Créer un parc** : un nom (`^[a-z][a-z0-9-]{0,30}$`) et la cible SSH de
    l'hôte Proxmox. La spec démarre avec une VM par défaut.
 3. **Préparer l'hôte** : par SSH, crée le rôle `ERPLibreTofu`, l'utilisateur
@@ -51,6 +52,7 @@ et tout destroy, demandent de retaper le nom du parc.
 
 | Champ | Sens |
 |-------|------|
+| `cible.type` | genre de cible : `proxmox` |
 | `cible.hote` | accès SSH à l'hôte : `target`, `jump`, `port`, `sudo` (`"sudo "` ou `""`) |
 | `cible.api_url` | URL de l'API Proxmox ; vide, devient `https://<hôte>:8006/` |
 | `cible.insecure` | accepter le certificat auto-signé de l'hôte |
@@ -58,7 +60,7 @@ et tout destroy, demandent de retaper le nom du parc.
 | `cible.stockage` | stockage des disques et des images |
 | `cible.stockage_snippets` | stockage qui accepte les snippets (cloud-init) |
 | `cible.pont` | pont réseau |
-| `compte.user`, `compte.ssh_key` | compte créé dans les VM, clé publique qui y est posée |
+| `compte.user`, `compte.ssh_key` | compte créé dans les VM, chemin du fichier de clé publique qui y est posée (défaut `~/.ssh/id_ed25519.pub`), pas la clé elle-même |
 | `vms[].nom` | nom de VM, `^[a-z][a-z0-9-]{0,62}$`, unique dans le parc |
 | `vms[].vmid` | VMID Proxmox ; vide, le premier libre |
 | `vms[].distro`, `version`, `arch` | image du catalogue de déploiement |
@@ -93,8 +95,13 @@ donne une liste d'erreurs lisibles, jamais une trace Python.
   trace recopie l'en-tête d'autorisation.
 - **Un `secrets.json` perdu ou écrasé rend l'état illisible.** Le restaurer
   depuis une sauvegarde. Sans sauvegarde, les VM existent toujours sur
-  l'hôte : les y détruire (`qm stop`, `qm destroy`), supprimer les fichiers
-  d'état du parc, puis relancer Préparer l'hôte pour un nouveau jeton.
+  l'hôte. Détruire UNIQUEMENT les VMID listés dans le `spec.json` du parc
+  (`vms[].vmid`), en confirmant chacun d'abord par `qm config <vmid>` (le
+  nom doit correspondre à la spec) ; ne toucher à aucune autre VM. Puis
+  supprimer le dossier d'état du parc, `private/opentofu/<parc>/.tofu/`, et
+  relancer Préparer l'hôte en répondant OUI à la recréation du jeton :
+  l'ancien jeton existe encore sur l'hôte sans secret local, donc la
+  préparation refuse autrement.
 
 ## Limites de la v1
 

@@ -32,7 +32,7 @@ engine log at the bottom. Keys: `s` save, `p` plan, `a` apply, `d` destroy,
 `q` quit. While `tofu` runs, the form is busy: the actions and `Ctrl+Q` are
 disabled until it returns, so a run is never cut halfway. An apply that
 replaces or destroys a VM, and every destroy, asks you to retype the fleet
-name.
+name. A destroy also removes the VMs' SSH aliases from `~/.ssh/config`.
 
 ## First run
 
@@ -40,7 +40,7 @@ name.
    `pacman` exists (Arch), it installs the package; elsewhere it downloads
    the release zip, verifies the checksum file and its GPG signature
    (fingerprint pinned in `conf/opentofu.json`), then installs the binary
-   into `~/.local/bin`.
+   into `~/.local/bin`. Either way it asks for confirmation [y/N] first.
 2. **Create a fleet**: a name (`^[a-z][a-z0-9-]{0,30}$`) and the SSH target
    of the Proxmox host. The spec starts with one default VM.
 3. **Prepare the host**: over SSH, creates the role `ERPLibreTofu`, the user
@@ -60,6 +60,7 @@ name.
 
 | Field | Meaning |
 |-------|---------|
+| `cible.type` | target kind: `proxmox` |
 | `cible.hote` | SSH access to the host: `target`, `jump`, `port`, `sudo` (`"sudo "` or `""`) |
 | `cible.api_url` | Proxmox API URL; empty, it becomes `https://<host>:8006/` |
 | `cible.insecure` | accept the host's self-signed certificate |
@@ -67,7 +68,7 @@ name.
 | `cible.stockage` | storage for disks and images |
 | `cible.stockage_snippets` | storage that accepts snippets (cloud-init) |
 | `cible.pont` | network bridge |
-| `compte.user`, `compte.ssh_key` | account created in the VMs, public key put in it |
+| `compte.user`, `compte.ssh_key` | account created in the VMs, path of the public key file put in it (default `~/.ssh/id_ed25519.pub`), not the key itself |
 | `vms[].nom` | VM name, `^[a-z][a-z0-9-]{0,62}$`, unique in the fleet |
 | `vms[].vmid` | Proxmox VMID; empty, the first free one |
 | `vms[].distro`, `version`, `arch` | image from the deployment catalog |
@@ -101,9 +102,13 @@ gives a list of readable errors, not a traceback.
   masks them. The inherited `TF_LOG*` variables are dropped, since a trace
   copies the authorization header.
 - **A lost or overwritten `secrets.json` makes the state unreadable.** Restore
-  it from a backup. Without a backup, the VMs still exist on the host:
-  destroy them there (`qm stop`, `qm destroy`), delete the fleet's state
-  files, and run Prepare the host again for a new token.
+  it from a backup. Without a backup, the VMs still exist on the host.
+  Destroy ONLY the VMIDs listed in the fleet's `spec.json` (`vms[].vmid`),
+  and confirm each one first with `qm config <vmid>` (the name must match
+  the spec); touch no other VM. Then delete the fleet's state directory,
+  `private/opentofu/<fleet>/.tofu/`, and run Prepare the host again,
+  answering YES to recreating the token: the old token still exists on the
+  host with no local secret, so the preparation refuses otherwise.
 
 ## Limits of v1
 
@@ -153,7 +158,8 @@ journal du moteur en bas. Touches : `s` enregistrer, `p` planifier, `a`
 appliquer, `d` détruire, `q` quitter. Tant que `tofu` tourne, le formulaire
 est occupé : les actions et `Ctrl+Q` sont désactivés jusqu'au retour, donc un
 passage n'est jamais coupé en deux. Un apply qui remplace ou détruit une VM,
-et tout destroy, demandent de retaper le nom du parc.
+et tout destroy, demandent de retaper le nom du parc. Un destroy retire aussi les alias SSH
+des VM de `~/.ssh/config`.
 
 ## Première utilisation
 
@@ -161,7 +167,7 @@ et tout destroy, demandent de retaper le nom du parc.
    `pacman` existe (Arch), il installe le paquet ; ailleurs il télécharge le
    zip de la version, vérifie le fichier de sommes et sa signature GPG
    (empreinte épinglée dans `conf/opentofu.json`), puis installe le binaire
-   dans `~/.local/bin`.
+   dans `~/.local/bin`. Dans les deux cas il demande d'abord confirmation [y/N].
 2. **Créer un parc** : un nom (`^[a-z][a-z0-9-]{0,30}$`) et la cible SSH de
    l'hôte Proxmox. La spec démarre avec une VM par défaut.
 3. **Préparer l'hôte** : par SSH, crée le rôle `ERPLibreTofu`, l'utilisateur
@@ -181,6 +187,7 @@ et tout destroy, demandent de retaper le nom du parc.
 
 | Champ | Sens |
 |-------|------|
+| `cible.type` | genre de cible : `proxmox` |
 | `cible.hote` | accès SSH à l'hôte : `target`, `jump`, `port`, `sudo` (`"sudo "` ou `""`) |
 | `cible.api_url` | URL de l'API Proxmox ; vide, devient `https://<hôte>:8006/` |
 | `cible.insecure` | accepter le certificat auto-signé de l'hôte |
@@ -188,7 +195,7 @@ et tout destroy, demandent de retaper le nom du parc.
 | `cible.stockage` | stockage des disques et des images |
 | `cible.stockage_snippets` | stockage qui accepte les snippets (cloud-init) |
 | `cible.pont` | pont réseau |
-| `compte.user`, `compte.ssh_key` | compte créé dans les VM, clé publique qui y est posée |
+| `compte.user`, `compte.ssh_key` | compte créé dans les VM, chemin du fichier de clé publique qui y est posée (défaut `~/.ssh/id_ed25519.pub`), pas la clé elle-même |
 | `vms[].nom` | nom de VM, `^[a-z][a-z0-9-]{0,62}$`, unique dans le parc |
 | `vms[].vmid` | VMID Proxmox ; vide, le premier libre |
 | `vms[].distro`, `version`, `arch` | image du catalogue de déploiement |
@@ -223,8 +230,13 @@ donne une liste d'erreurs lisibles, jamais une trace Python.
   trace recopie l'en-tête d'autorisation.
 - **Un `secrets.json` perdu ou écrasé rend l'état illisible.** Le restaurer
   depuis une sauvegarde. Sans sauvegarde, les VM existent toujours sur
-  l'hôte : les y détruire (`qm stop`, `qm destroy`), supprimer les fichiers
-  d'état du parc, puis relancer Préparer l'hôte pour un nouveau jeton.
+  l'hôte. Détruire UNIQUEMENT les VMID listés dans le `spec.json` du parc
+  (`vms[].vmid`), en confirmant chacun d'abord par `qm config <vmid>` (le
+  nom doit correspondre à la spec) ; ne toucher à aucune autre VM. Puis
+  supprimer le dossier d'état du parc, `private/opentofu/<parc>/.tofu/`, et
+  relancer Préparer l'hôte en répondant OUI à la recréation du jeton :
+  l'ancien jeton existe encore sur l'hôte sans secret local, donc la
+  préparation refuse autrement.
 
 ## Limites de la v1
 
