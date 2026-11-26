@@ -37,6 +37,8 @@ _LANGUE_ORIGINE = todo_i18n._current_lang
 CIBLE = "admin@hote.invalid"
 ALIAS = "hote.invalid+parc-a-vm-1"
 VM = "parc-a-vm-1"
+VM2 = "parc-a-vm-2"
+ALIAS2 = "hote.invalid+parc-a-vm-2"
 IP = "192.0.2.10"
 CONF = {
     "version": "1.13.10",
@@ -349,6 +351,21 @@ class TestApply(Base):
         apres, _ = self._apply(["1"])
         self.assertEqual(Faux.appels, [])
 
+    def test_seules_les_vm_creees_ou_remplacees_sont_nouvelles(self):
+        Faux.plan = [
+            mo.Changement("creer", "parc-a-vm-2", "vm"),
+            mo.Changement("remplacer", VM, "vm"),
+            mo.Changement("modifier", "parc-a-vm-3", "vm"),
+            mo.Changement("creer", "parc-a-vm-4", "cloud-init"),
+        ]
+        apres, _ = self._apply(["1", "parc-a"])
+        self.assertEqual(apres.call_args.args[2], {VM, "parc-a-vm-2"})
+
+    def test_un_plan_qui_modifie_n_a_aucune_nouvelle(self):
+        Faux.plan = [mo.Changement("modifier", VM, "vm", [("ram", 1, 2)])]
+        apres, _ = self._apply(["1", "o"])
+        self.assertEqual(apres.call_args.args[2], set())
+
     def test_le_moteur_recoit_l_executeur_et_la_racine(self):
         executer = mock.Mock()
         self.todo._tofu_executer = lambda spec: executer
@@ -393,9 +410,21 @@ class TestApresApply(Base):
         spec["vms"][0].update(vm)
         return spec
 
-    def apres(self, spec, sorties):
-        with redirect_stdout(io.StringIO()):
-            self.todo._tofu_apres_apply(spec, sorties)
+    def apres(self, spec, sorties, nouvelles=None):
+        sortie = io.StringIO()
+        with redirect_stdout(sortie):
+            self.todo._tofu_apres_apply(spec, sorties, nouvelles)
+        return sortie.getvalue()
+
+    def deux_vm(self, **vm):
+        """Spec à deux VM à installer, `VM` et `VM2`, avec leurs sorties."""
+        spec = self.spec(installer_erplibre=True, **vm)
+        spec["vms"].append(dict(spec["vms"][0], nom=VM2))
+        sorties = {
+            VM: {"vmid": 101, "ip": IP},
+            VM2: {"vmid": 102, "ip": "192.0.2.11"},
+        }
+        return spec, sorties
 
     def test_l_alias_rebondit_par_l_hote(self):
         self.apres(self.spec(), {VM: {"vmid": 101, "ip": IP}})
@@ -412,7 +441,7 @@ class TestApresApply(Base):
     def test_sans_ip_l_hote_de_la_spec_est_interroge(self):
         vu = {}
 
-        def adresse(vmid):
+        def adresse(vmid, attente=120):
             vu["hote"] = self.todo._pve_host(ask=False)
             vu["vmid"] = vmid
             return "192.0.2.20"
@@ -456,6 +485,65 @@ class TestApresApply(Base):
     def test_une_vm_sans_sortie_est_sautee(self):
         self.apres(self.spec(), {})
         self.assertFalse(self.config.exists())
+
+    def test_un_apply_qui_modifie_ne_reinstalle_rien(self):
+        spec, sorties = self.deux_vm()
+        self.apres(spec, sorties, nouvelles=set())
+        self.todo._qemu_install_erplibre_monitored.assert_not_called()
+        self.todo._pve_attendre_ssh.assert_not_called()
+        texte = self.config.read_text(encoding="utf-8")
+        self.assertIn(f"Host {ALIAS}\n", texte)
+        self.assertIn(f"Host {ALIAS2}\n", texte)
+
+    def test_seule_la_vm_creee_est_installee(self):
+        spec, sorties = self.deux_vm()
+        self.apres(spec, sorties, nouvelles={VM2})
+        self.todo._pve_attendre_ssh.assert_called_once_with(ALIAS2)
+        appel = self.todo._qemu_install_erplibre_monitored.call_args
+        self.assertEqual(appel.args[0], [VM2])
+        self.assertEqual(appel.args[2], {VM2: ALIAS2})
+
+    def test_une_vm_en_place_en_dhcp_n_attend_pas_son_adresse(self):
+        spec, sorties = self.deux_vm()
+        sorties[VM]["ip"] = ""
+        self.apres(spec, sorties, nouvelles=set())
+        self.todo._pve_guest_ip.assert_called_once_with(101, attente=0)
+
+    def test_sans_vmid_ni_ip_la_vm_est_sautee(self):
+        spec, sorties = self.deux_vm()
+        sorties[VM] = {"vmid": None, "ip": ""}
+        sortie = self.apres(spec, sorties)
+        self.todo._pve_guest_ip.assert_not_called()
+        self.assertIn(VM, sortie)
+        texte = self.config.read_text(encoding="utf-8")
+        self.assertNotIn(ALIAS + "\n", texte)
+        self.assertIn(f"Host {ALIAS2}\n", texte)
+
+    def test_sans_adresse_un_avis_et_la_vm_suivante_continue(self):
+        spec, sorties = self.deux_vm()
+        sorties[VM]["ip"] = ""
+        self.todo._pve_guest_ip.return_value = ""
+        sortie = self.apres(spec, sorties)
+        avis = todo_i18n.t(
+            "{vm}: no address yet; see Show the VM addresses later."
+        )
+        self.assertIn(avis.format(vm=VM), sortie)
+        texte = self.config.read_text(encoding="utf-8")
+        self.assertNotIn(ALIAS + "\n", texte)
+        self.assertIn(f"Host {ALIAS2}\n", texte)
+        appel = self.todo._qemu_install_erplibre_monitored.call_args
+        self.assertEqual(appel.args[0], [VM2])
+
+    def test_une_premiere_vm_muette_n_arrete_pas_la_seconde(self):
+        spec, sorties = self.deux_vm()
+        self.todo._pve_attendre_ssh.side_effect = [False, True]
+        self.apres(spec, sorties)
+        texte = self.config.read_text(encoding="utf-8")
+        self.assertIn(f"Host {ALIAS}\n", texte)
+        self.assertIn(f"Host {ALIAS2}\n", texte)
+        appel = self.todo._qemu_install_erplibre_monitored.call_args
+        self.assertEqual(appel.args[0], [VM2])
+        self.assertEqual(appel.args[2], {VM2: ALIAS2})
 
 
 class TestApresDestroy(Base):
@@ -588,6 +676,23 @@ class TestEditerParc(Base):
         with mock.patch.dict(sys.modules, {"script.todo.opentofu_form": None}):
             sortie = self.lancer("_tofu_editer_parc")
         self.assertIn(
+            todo_i18n.t("The fleet form (TUI) is not available yet."), sortie
+        )
+
+    def test_une_dependance_manquante_n_est_pas_masquee(self):
+        erreur = ModuleNotFoundError("No module named 'textual'")
+        erreur.name = "textual"
+        vrai_import = __import__
+
+        def importer(nom, *args, **kw):
+            if nom == "script.todo.opentofu_form":
+                raise erreur
+            return vrai_import(nom, *args, **kw)
+
+        with mock.patch("builtins.__import__", importer):
+            sortie = self.lancer("_tofu_editer_parc")
+        self.assertIn("textual", sortie)
+        self.assertNotIn(
             todo_i18n.t("The fleet form (TUI) is not available yet."), sortie
         )
 

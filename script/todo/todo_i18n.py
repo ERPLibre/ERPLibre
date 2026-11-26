@@ -26744,6 +26744,14 @@ TRANSLATIONS = {
             "~/.local/bin? [y/N] "
         ),
     },
+    "{vm}: no VMID known, skipped.": {
+        "fr": "{vm} : aucun VMID connu, sautée.",
+        "en": "{vm}: no VMID known, skipped.",
+    },
+    "tofu: {chemin}, version {version}": {
+        "fr": "tofu : {chemin}, version {version}",
+        "en": "tofu: {chemin}, version {version}",
+    },
 }
 
 

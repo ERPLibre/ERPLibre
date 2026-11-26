@@ -281,8 +281,16 @@ class OpenTofuMenuMixin:
         """Ouvre le formulaire du parc ; il sauve par `enregistrer`."""
         try:
             from script.todo.opentofu_form import run_opentofu_form
-        except ImportError:
+        except ModuleNotFoundError as exc:
+            # Seule l'absence du module du formulaire lui-même vaut « pas
+            # encore livré » ; une dépendance manquante est une vraie panne.
+            if exc.name != "script.todo.opentofu_form":
+                print(f"✗ {exc}")
+                return
             print(t("The fleet form (TUI) is not available yet."))
+            return
+        except ImportError as exc:
+            print(f"✗ {exc}")
             return
         nom = nom or self._tofu_choisir_parc()
         spec = self._tofu_charger(nom) if nom else None
@@ -353,7 +361,8 @@ class OpenTofuMenuMixin:
 
         Un plan qui remplace ou détruit une ressource exige de retaper le
         nom du parc ; sinon un oui suffit. Les alias des VM que le plan
-        détruit sans les garder dans la spec sont retirés.
+        détruit sans les garder dans la spec sont retirés. Seules les VM
+        que le plan crée ou remplace sont attendues et installées.
         """
         spec = self._tofu_parc()
         if not spec:
@@ -383,7 +392,12 @@ class OpenTofuMenuMixin:
         } - gardees
         if disparues:
             self._tofu_retirer_alias(spec, sorted(disparues))
-        self._tofu_apres_apply(spec, mot.sorties(spec))
+        nouvelles = {
+            c.vm
+            for c in changements
+            if c.ressource == "vm" and c.action in ("creer", "remplacer")
+        }
+        self._tofu_apres_apply(spec, mot.sorties(spec), nouvelles)
 
     def _tofu_destroy(self):
         """Détruit les VM du parc après que son nom a été retapé."""
@@ -437,14 +451,20 @@ class OpenTofuMenuMixin:
     # Après l'apply, après le destroy
     # ------------------------------------------------------------------ #
 
-    def _tofu_apres_apply(self, spec, sorties):
+    def _tofu_apres_apply(self, spec, sorties, nouvelles=None):
         """Alias ssh, attente de ssh, puis installation suivie d'ERPLibre.
 
         L'adresse vient de la sortie (adresse fixe de la spec) ; vide (DHCP),
         elle est demandée à l'hôte par `_pve_guest_ip`, l'hôte de la spec
         étant épinglé le temps de l'appel. L'alias rebondit par l'hôte :
         l'adresse d'une VM sur un pont interne n'est routable que de lui.
-        Une VM sans adresse ou muette en ssh n'est pas installée.
+
+        `nouvelles` : noms des VM que l'apply a créées ou remplacées ; None
+        les vise toutes. L'alias est réécrit pour toute VM dont l'adresse se
+        lit sans attendre ; l'attente de l'adresse, celle de ssh et
+        l'installation ne visent que les nouvelles, pour qu'un apply qui
+        retouche une VM ne réinstalle pas ses voisines. Une VM sans VMID,
+        sans adresse ou muette en ssh est signalée et sautée.
         """
         hote = spec["cible"]["hote"]
         cible = hote["target"]
@@ -461,13 +481,23 @@ class OpenTofuMenuMixin:
         with self._pve_host_pinned(epingle):
             for vm in spec["vms"]:
                 nom = vm["nom"]
+                neuve = nouvelles is None or nom in nouvelles
                 sortie = sorties.get(nom)
                 if not sortie:
                     avis = t("{vm}: no tofu output, skipped.")
                     print("  ⚠ " + avis.format(vm=nom))
                     continue
                 vmid = sortie.get("vmid") or vm.get("vmid")
-                ip = sortie.get("ip") or self._pve_guest_ip(vmid)
+                ip = sortie.get("ip") or ""
+                if not ip and not vmid:
+                    avis = t("{vm}: no VMID known, skipped.")
+                    print("  ⚠ " + avis.format(vm=nom))
+                    continue
+                if not ip and neuve:
+                    ip = self._pve_guest_ip(vmid)
+                elif not ip:
+                    # Une VM déjà en place a son bail : une seule lecture.
+                    ip = self._pve_guest_ip(vmid, attente=0)
                 if not ip:
                     avis = t(
                         "{vm}: no address yet; see Show the VM addresses "
@@ -483,6 +513,8 @@ class OpenTofuMenuMixin:
                     proxy_jump=cible,
                     identity_file=cle or None,
                 )
+                if not neuve:
+                    continue
                 if not self._pve_attendre_ssh(nom_alias):
                     avis = t("{vm}: does not answer ssh yet.")
                     print("  ⚠ " + avis.format(vm=nom))
@@ -584,7 +616,8 @@ class OpenTofuMenuMixin:
         binaire = outil.trouver_tofu()
         if binaire:
             version = outil.version_tofu(binaire)
-            print(f"  tofu : {binaire} — {version or '?'}")
+            vu = t("tofu: {chemin}, version {version}")
+            print("  " + vu.format(chemin=binaire, version=version or "?"))
             if self._tofu_version_ok(version, plancher):
                 return
         else:
