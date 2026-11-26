@@ -45,10 +45,12 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git import (  # noqa: E402
+    forge_manifest,
     forgejo_client,
     git_freeze_diff,
     git_freeze_manifest,
     manifest_freeze,
+    manifest_repo,
     push_remote,
     repo_apply,
     repo_upgrade,
@@ -246,6 +248,12 @@ class GitRepoMenuMixin:
             {"prompt_description": t("🔀 Compare two freezes")},
             {"section": t("Remotes")},
             {"prompt_description": t("📡 Push the repositories to a remote")},
+            {"prompt_description": t("📬 Open pull requests on a forge")},
+            {
+                "prompt_description": t(
+                    "🧭 Sync from a forge: private manifest overlay"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -289,6 +297,10 @@ class GitRepoMenuMixin:
             self._git_repo_comparer()
         elif status == "16":
             self._git_repo_pousser_remote()
+        elif status == "17":
+            self._git_repo_pull_requests()
+        elif status == "18":
+            self._git_repo_surcouche()
         else:
             print(t("Command not found !"))
 
@@ -1359,6 +1371,14 @@ class GitRepoMenuMixin:
         for p in projets:
             p["affiche"] = p["chemin"]
             p["chemin"] = os.path.join(RACINE, p["chemin"])
+        racine = push_remote.projet_racine(RACINE)
+        if racine and click.confirm(
+            f"💬 {t('Also push the ERPLibre repository, which holds the manifests?')}"
+            f" ({racine['branche']})",
+            default=True,
+        ):
+            racine["affiche"] = f"ERPLibre ({racine['branche']})"
+            projets.insert(0, racine)
         remotes = push_remote.remotes_des_clones(
             [p["chemin"] for p in projets]
         )
@@ -1428,6 +1448,14 @@ class GitRepoMenuMixin:
         )
         for r in echecs:
             print(f"   - {affiches[r['chemin']]}: {r['erreur'][-300:]}")
+        pousses = {r["chemin"] for r in resultats if not r["code"]}
+        manifeste = [
+            p
+            for p in projets
+            if p["chemin"] in pousses and p["chemin"] != RACINE
+        ]
+        if manifeste and nom not in {p["remote"] for p in projets}:
+            self._git_repo_proposer_surcouche(nom, manifeste)
         return len(echecs)
 
     def _git_repo_nouveau_remote(self, projets):
@@ -1448,9 +1476,18 @@ class GitRepoMenuMixin:
                 f"⚠  {t('This name is a manifest remote: git-repo would rewrite its URL.')}"
             )
             return None, ()
+        if not forge_manifest.NOM_VALIDE.match(nom):
+            print(
+                f"⚠  {t('Invalid remote name: letters, digits, dot, dash and underscore.')}"
+            )
+            return None, ()
         base = click.prompt(
-            f"💬 {t('Base URL of the forge (https://… or ssh://…)')}"
+            f"💬 {t('Base URL of the forge (https://… or ssh://…), or qemu to create a Forgejo VM')}"
         ).strip()
+        if base.lower() == "qemu":
+            base = self._git_forge_creer_vm(projets)
+            if not base:
+                return None, ()
         if not re.match(r"^(?:https?|ssh)://[^/]+|^[^@/:]+@[^/:]+:", base):
             print(f"⚠  {t('Not a forge URL.')}")
             return None, ()
@@ -1531,19 +1568,26 @@ class GitRepoMenuMixin:
     def _git_forge_ranger_jeton(self, hote, jeton):
         """Range le jeton de `hote` dans le coffre, entrée créée ou
         remplacée, groupe GROUPE_FORGE. Rend False sans coffre configuré."""
+        return self._git_forge_ranger(self._git_forge_titre(hote), jeton)
+
+    def _git_forge_ranger(self, titre, secret, compte=""):
+        """Range `secret` sous l'entrée `titre` du groupe GROUPE_FORGE,
+        créée ou remplacée, avec `compte` pour identifiant. Rend False sans
+        coffre configuré."""
         kp = self._git_forge_kp()
         if not kp:
             return False
-        titre = self._git_forge_titre(hote)
         entree = kp.find_entries_by_title(titre, first=True)
         if entree is None:
             groupe = next(
                 (g for g in kp.root_group.subgroups if g.name == GROUPE_FORGE),
                 None,
             ) or kp.add_group(kp.root_group, GROUPE_FORGE)
-            kp.add_entry(groupe, titre, "", jeton)
+            kp.add_entry(groupe, titre, compte, secret)
         else:
-            entree.password = jeton
+            entree.password = secret
+            if compte:
+                entree.username = compte
         kp.save()
         # save() redonne au fichier le mode du umask : le coffre revient
         # en 0600.
@@ -1678,7 +1722,8 @@ class GitRepoMenuMixin:
         403) peut se ressaisir, et le jeton saisi peut être rangé dans le
         coffre, en remplaçant l'entrée périmée.
         """
-        web = forgejo_client.base_web(base)
+        session = getattr(self, "_git_forge_session", {}).get(base)
+        web = session["web"] if session else forgejo_client.base_web(base)
         if not web:
             web = forgejo_client.base_web(
                 click.prompt(
@@ -1688,7 +1733,14 @@ class GitRepoMenuMixin:
             if not web:
                 print(f"⚠  {t('Not a forge URL.')}")
                 return None
-        if web.startswith("http://") and not forgejo_client.est_locale(web):
+        # La forge que cette session vient de créer dans une VM locale est
+        # jointe par le pont libvirt de la machine, où son mot de passe
+        # administrateur est déjà passé : la question ne se repose pas.
+        if (
+            not session
+            and web.startswith("http://")
+            and not forgejo_client.est_locale(web)
+        ):
             if not click.confirm(
                 f"💬 {t('Plain HTTP: send the token in clear to')}"
                 f" {forgejo_client.cle_forge(web)}?",
@@ -1696,9 +1748,12 @@ class GitRepoMenuMixin:
             ):
                 return None
         forge = forgejo_client.cle_forge(web)
-        jeton, source = forgejo_client.jeton(
-            forge, coffre=self._git_forge_jeton_du_coffre
-        )
+        if session:
+            jeton, source = session["jeton"], "vm"
+        else:
+            jeton, source = forgejo_client.jeton(
+                forge, coffre=self._git_forge_jeton_du_coffre
+            )
         print(f"   {t('Forge:')} {web}")
         while True:
             if not jeton:
@@ -1838,6 +1893,445 @@ class GitRepoMenuMixin:
                 + ", ".join(f"{n} {e}" for e, n in sorted(compte.items()))
             )
         return True
+
+    def _git_forge_creer_vm(self, projets=()):
+        """Crée une VM QEMU qui porte une forge Forgejo et rend la base SSH
+        de ses dépôts, ou None.
+
+        `forge_vm.deployer` y pose .venv.erplibre seul — pas d'Odoo — et
+        Forgejo en push-to-create, inscriptions fermées, dépôts privés par
+        défaut. Le compte administrateur ne doit recouvrir aucun
+        propriétaire des `projets` : Forgejo compare les noms sans égard à
+        la casse, et ce compte empêcherait l'organisation. Son mot de passe,
+        tiré au hasard, et le jeton créé se rangent dans le coffre KeePass ;
+        sans coffre, le mot de passe s'affiche une fois. La clé d'hôte SSH
+        de la forge est enregistrée pour le push, et la session retient
+        l'URL web et le jeton : la préparation de la forge ne les redemande
+        pas. Une étape échouée laisse la VM en place, avec son journal."""
+        import subprocess
+        import time
+
+        from script.forgejo import forge_vm
+
+        print(
+            f"   {t('A QEMU VM receives .venv.erplibre (no Odoo) and Forgejo:')}"
+            f" {forge_vm.DISTRO} {forge_vm.VERSION}, {forge_vm.VCPUS} vCPU,"
+            f" {forge_vm.MEMOIRE_MO} MB, {forge_vm.DISQUE_GO} GB."
+        )
+        print(
+            f"   {t('It takes from 15 to 40 minutes; creating the VM needs sudo.')}"
+        )
+        venv_cmd = getattr(self, "_QEMU_ERPLIBRE_VENV_CMD", "")
+        if not venv_cmd or not hasattr(self, "_qemu_vm_ip"):
+            print(f"⚠  {t('Creating a VM needs the TODO CLI.')}")
+            return None
+        if not forge_vm.cle_publique():
+            print(
+                f"⚠  {t('No SSH public key in ~/.ssh: the push needs one.')}"
+            )
+            return None
+        nom = click.prompt(
+            f"💬 {t('Name of the VM')}",
+            default=f"forge-{time.strftime('%y%m%d-%H%M')}",
+        ).strip()
+        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9-]{0,62}$", nom):
+            print(f"⚠  {t('Invalid name: letters, digits and dashes.')}")
+            return None
+        admin = click.prompt(
+            f"💬 {t('Forgejo administrator account')}", default="forge-admin"
+        ).strip()
+        proprietaires = {
+            (p.get("proprietaire") or "").lower() for p in projets
+        }
+        if (
+            not forgejo_client.nom_organisation_valide(admin)
+            or admin.lower() in proprietaires
+        ):
+            print(
+                f"⚠  {t('Invalid account, or the name of an owner of the repositories.')}"
+            )
+            return None
+        if not click.confirm(f"💬 {t('Create the VM')} {nom}?", default=True):
+            return None
+        if subprocess.run(["sudo", "-v"]).returncode:
+            print(f"⚠  {t('sudo was refused: no VM created.')}")
+            return None
+        dossier = os.path.join(os.path.expanduser("~/.erplibre/forge"), nom)
+        os.makedirs(dossier, exist_ok=True)
+        journal = dossier + ".log"
+        print(f"   {t('Log:')} {journal}")
+        ca = getattr(self, "_qemu_cache_ca_path", lambda: "")()
+        cache = ["--cache-ca", ca] if ca else ["--cache-bypass"]
+
+        def etape(n, ok, detail=""):
+            marque = "✅" if ok else "❌"
+            print(
+                f"   {marque} {n}{' : ' + detail if detail else ''}",
+                flush=True,
+            )
+            return ok
+
+        forge = forge_vm.deployer(
+            nom,
+            admin,
+            journal,
+            dossier,
+            lambda n: self._qemu_vm_ip(n, timeout=forge_vm.DELAI_SSH),
+            venv_cmd,
+            etape,
+            cache=cache,
+            preambule=getattr(self, "_qemu_cloud_init_wait", lambda: "true")(),
+        )
+        if forge is None:
+            print(
+                f"⚠  {t('The forge is not ready; the VM, if created, stays in place. Log:')}"
+                f" {journal}"
+            )
+            return None
+        if not forge_vm.enregistrer_cle_hote(forge["ip"]):
+            print(
+                f"   ⚠  {t('The SSH host key of the forge could not be read.')}"
+            )
+        self._git_forge_session = getattr(self, "_git_forge_session", {})
+        self._git_forge_session[forge["base_ssh"]] = {
+            "web": forge["web"],
+            "jeton": forge["jeton"],
+        }
+        cle = forgejo_client.cle_forge(forge["web"])
+        print(f"   {t('Forge:')} {forge['web']} · {admin}")
+
+        def ranger():
+            return self._git_forge_ranger(
+                self._git_forge_titre(cle), forge["jeton"]
+            ) and self._git_forge_ranger(
+                f"Forgejo admin {cle}", forge["mot_de_passe"], admin
+            )
+
+        if ranger() or (self._git_forge_creer_coffre() and ranger()):
+            print(
+                f"   ✓ {GROUPE_FORGE} › {self._git_forge_titre(cle)},"
+                f" Forgejo admin {cle}"
+            )
+        else:
+            print(
+                f"   {t('Password of the administrator, shown once:')}"
+                f" {forge['mot_de_passe']}"
+            )
+        return forge["base_ssh"]
+
+    def _git_repo_proposer_surcouche(self, nom, projets):
+        """Après un push vers le remote `nom`, propose, non par défaut,
+        d'écrire la surcouche privée qui fait synchroniser les `projets`
+        poussés depuis cette forge."""
+        base = forge_manifest.base_du_remote(projets, nom)
+        if (
+            not base
+            or not forge_manifest.NOM_VALIDE.match(nom)
+            or not click.confirm(
+                f"💬 {t('Write a private manifest so that repo sync fetches these repositories from')}"
+                f" {nom}?",
+                default=False,
+            )
+        ):
+            return False
+        return self._git_repo_ecrire_surcouche(nom, base, projets)
+
+    def _git_repo_ecrire_surcouche(self, nom, base, projets):
+        """Écrit la surcouche `forge_manifest` du remote `nom` : chaque
+        remote du manifeste des `projets` vise `base`.
+
+        Un remote se redirige en entier. Les projets de la fusion qu'il
+        sert sans être parmi les `projets` — ceux des fragments communs à
+        toutes les versions, par exemple — chercheraient sur la forge un
+        dépôt absent : ils sont listés, et le choix porte alors sur
+        « partial » (le défaut quand il reste un remote : seuls les remotes
+        dont chaque projet est sur la forge), « all » ou « cancel »."""
+        if not forge_manifest.NOM_VALIDE.match(nom or ""):
+            print(
+                f"⚠  {t('Invalid remote name: letters, digits, dot, dash and underscore.')}"
+            )
+            return False
+        remotes = forge_manifest.remotes_rediriges(projets, base)
+        if not remotes:
+            print(f"⚠  {t('No manifest remote to redirect.')}")
+            return False
+        depart = os.getcwd()
+        try:
+            os.chdir(RACINE)
+            manquants = forge_manifest.projets_non_couverts(
+                set(remotes), {p["cle"] for p in projets}
+            )
+        finally:
+            os.chdir(depart)
+        for remote, fetch in remotes.items():
+            print(f"   ▸ {remote} → {fetch}")
+        if manquants:
+            print(
+                f"   ⚠  {len(manquants)}"
+                f" {t('projects of the merged manifests use these remotes but are not on the forge; their sync would fail:')}"
+            )
+            for cle, remote in list(manquants.items())[:10]:
+                print(f"      - {cle} ({remote})")
+            if len(manquants) > 10:
+                print(f"      … {len(manquants) - 10}")
+            complets = {
+                r: f
+                for r, f in remotes.items()
+                if r not in set(manquants.values())
+            }
+            choix = click.prompt(
+                f"💬 {t('partial: redirect only the remotes whose projects are all on the forge')}"
+                f" ({len(complets)}/{len(remotes)});"
+                f" {t('all: redirect every remote; cancel')}",
+                type=click.Choice(["partial", "all", "cancel"]),
+                default="partial" if complets else "cancel",
+            )
+            if choix == "cancel" or (choix == "partial" and not complets):
+                return False
+            if choix == "partial":
+                remotes = complets
+        chemin = forge_manifest.ecrire(RACINE, nom, remotes)
+        print(f"   ✓ {chemin}")
+        print(
+            f"   {t('It takes effect at the next reconfiguration; removing it brings back the original URLs.')}"
+        )
+        return True
+
+    def _git_repo_projets_absolus(self):
+        """Les projets de la version active, chemins absolus et
+        « affiche » relatif ; [] hors d'un checkout configuré."""
+        depart = os.getcwd()
+        try:
+            os.chdir(RACINE)
+            projets = push_remote.projets_actifs()
+        finally:
+            os.chdir(depart)
+        for p in projets:
+            p["affiche"] = p["chemin"]
+            p["chemin"] = os.path.join(RACINE, p["chemin"])
+        return projets
+
+    def _git_repo_choisir_remote_forge(self, projets):
+        """Le nom d'un remote des clones qui n'est pas un remote du
+        manifeste, choisi dans la liste, ou None."""
+        manifeste = {p["remote"] for p in projets}
+        remotes = {
+            n: c
+            for n, c in push_remote.remotes_des_clones(
+                [p["chemin"] for p in projets]
+            ).items()
+            if n not in manifeste
+        }
+        if not remotes:
+            print(
+                f"⚠  {t('No forge remote in the clones: push the repositories to a remote first.')}"
+            )
+            return None
+        noms = list(remotes)
+        for i, n in enumerate(noms, 1):
+            print(f"   {i}. {n} ({remotes[n]}/{len(projets)})")
+        choix = click.prompt(f"💬 {t('Remote')}", default="1").strip()
+        if not choix.isdigit() or not 1 <= int(choix) <= len(noms):
+            print(t("Command not found !"))
+            return None
+        return noms[int(choix) - 1]
+
+    def _git_repo_sur_la_forge(self, projets, nom, base):
+        """Les `projets` dont le remote `nom` vise
+        « <base>/<propriétaire>/<dépôt>.git » et dont la branche du
+        manifeste existe sur la forge, lue par « git ls-remote », en
+        parallèle : un clone qui porte le remote sans que son push ait
+        abouti n'en est pas."""
+
+        def present(p):
+            if not p.get("proprietaire") or not p.get("branche"):
+                return False
+            attendu = push_remote.url_cible(base, p["proprietaire"], p["nom"])
+            if repo_upgrade.url_du_remote(p["chemin"], nom) != attendu:
+                return False
+            out, _err, code = repo_upgrade.git(
+                ["ls-remote", nom, f"refs/heads/{p['branche']}"],
+                p["chemin"],
+                120,
+            )
+            return code == 0 and bool(out.strip())
+
+        return [
+            p
+            for p, ok in zip(
+                projets,
+                push_remote._en_parallele(
+                    present, projets, push_remote.PARALLELE
+                ),
+            )
+            if ok
+        ]
+
+    def _git_repo_surcouche(self):
+        """Écrit ou retire une surcouche privée de manifeste
+        (`forge_manifest`), puis propose de reconfigurer dans le mode
+        actuel du checkout, non par défaut."""
+        print(f"🧭 {t('Sync from a forge: private manifest overlay')}")
+        existantes = forge_manifest.surcouches(RACINE)
+        for n in existantes:
+            remotes = forge_manifest.lire(RACINE, n)
+            exemple = next(iter(remotes.values()), "")
+            print(f"   ▸ {n}: {len(remotes)} remotes · {exemple}")
+        print(f"   w. {t('Write the overlay of a forge remote')}")
+        if existantes:
+            print(f"   r. {t('Remove an overlay')}")
+        choix = click.prompt(f"💬 {t('Choice')}", default="w").strip().lower()
+        if choix == "w":
+            projets = self._git_repo_projets_absolus()
+            nom = self._git_repo_choisir_remote_forge(projets)
+            if not nom:
+                return False
+            base = forge_manifest.base_du_remote(projets, nom)
+            if not base:
+                print(
+                    f"⚠  {t('The forge URL cannot be deduced from this remote.')}"
+                )
+                return False
+            portes = self._git_repo_sur_la_forge(projets, nom, base)
+            print(
+                f"   {len(portes)}/{len(projets)}"
+                f" {t('clones have their manifest branch on the forge.')}"
+            )
+            if not self._git_repo_ecrire_surcouche(nom, base, portes):
+                return False
+        elif choix == "r" and existantes:
+            nom = (
+                existantes[0]
+                if len(existantes) == 1
+                else click.prompt(
+                    f"💬 {t('Overlay')}",
+                    type=click.Choice(existantes),
+                )
+            )
+            if not click.confirm(
+                f"💬 {t('Remove the overlay')} {nom}?", default=True
+            ):
+                return False
+            forge_manifest.retirer(RACINE, nom)
+            print(f"   ✓ {t('Overlay removed:')} {nom}")
+        else:
+            print(t("Command not found !"))
+            return False
+        etat = etat_manifeste_local()
+        gele = bool(etat and etat[0])
+        if click.confirm(
+            f"💬 {t('Reconfigure now? Every clone takes the new URLs.')}",
+            default=False,
+        ):
+            self._git_repo_reconfigurer(freeze=gele)
+        return True
+
+    def _git_repo_pull_requests(self):
+        """Ouvre sur la forge une pull request par clone dont la branche
+        extraite diffère de la branche du manifeste.
+
+        Le remote choisi est un remote de forge des clones. Chaque branche
+        se pousse sous son nom, en parallèle et sans force, puis la pull
+        request va de cette branche vers la branche du manifeste dans le
+        même dépôt de la forge. Un clone est écarté quand la branche du
+        manifeste manque sur la forge, ou quand elle porte déjà le commit de
+        la branche : il n'y a rien à fusionner. Une pull request ouverte
+        pour la même paire est reprise, jamais doublée. Le titre est le
+        sujet du dernier commit de la branche."""
+        print(f"📬 {t('Open pull requests on a forge')}")
+        projets = self._git_repo_projets_absolus()
+        nom = self._git_repo_choisir_remote_forge(projets)
+        if not nom:
+            return 0
+        candidats = []
+        for p in projets:
+            out, _err, code = repo_upgrade.git(
+                ["rev-parse", "--abbrev-ref", "HEAD"], p["chemin"]
+            )
+            tete = out.strip()
+            depot = manifest_repo.depot_de_l_url(
+                repo_upgrade.url_du_remote(p["chemin"], nom)
+            )
+            if (
+                code
+                or not depot
+                or not p["branche"]
+                or tete in ("", "HEAD", p["branche"])
+            ):
+                continue
+            candidats.append(dict(p, tete=tete, depot=depot[:2]))
+        if not candidats:
+            print(
+                f"   {t('No clone is on a branch other than its manifest branch.')}"
+            )
+            return 0
+        for c in candidats:
+            print(f"   ▸ {c['affiche']}: {c['tete']} → {c['branche']}")
+        base = forge_manifest.base_du_remote(projets, nom)
+        if not base:
+            print(
+                f"⚠  {t('The forge URL cannot be deduced from this remote.')}"
+            )
+            return 0
+        if not click.confirm(
+            f"💬 {t('Push these branches to')} {nom}"
+            f" {t('and open the pull requests?')}",
+            default=False,
+        ):
+            print(f"↩️  {t('Cancelled: nothing was pushed.')}")
+            return 0
+        client = self._git_forge_client(base)
+        if client is None:
+            return len(candidats)
+        cibles = [
+            {
+                "chemin": c["chemin"],
+                "remote": nom,
+                "specs": [f"refs/heads/{c['tete']}:refs/heads/{c['tete']}"],
+            }
+            for c in candidats
+        ]
+        resultats = push_remote.pousser_en_parallele(cibles)
+        echecs = 0
+        for c, r in zip(candidats, resultats):
+            if r["code"]:
+                echecs += 1
+                print(f"   ⚠  {c['affiche']}: {r['erreur'][-300:]}")
+                continue
+            proprietaire, depot = c["depot"]
+            try:
+                sur_forge = client.commit_de_branche(
+                    proprietaire, depot, c["branche"]
+                )
+                if sur_forge is None:
+                    print(
+                        f"   - {c['affiche']}: {c['branche']}"
+                        f" {t('is absent from the forge: push the repositories first.')}"
+                    )
+                    continue
+                if sur_forge == repo_upgrade.commit_de(c["chemin"], "HEAD"):
+                    print(f"   - {c['affiche']}: {t('nothing to merge.')}")
+                    continue
+                sujet, _err, _code = repo_upgrade.git(
+                    ["log", "-1", "--format=%s", "HEAD"], c["chemin"]
+                )
+                etat, pr = client.assurer_pull_request(
+                    proprietaire,
+                    depot,
+                    c["tete"],
+                    c["branche"],
+                    sujet.strip() or c["tete"],
+                )
+            except forgejo_client.ErreurForgejo as exc:
+                echecs += 1
+                print(f"   ⚠  {c['affiche']}: {exc}")
+                continue
+            libelle = t("created") if etat == "creee" else t("already open")
+            print(
+                f"   ✅ {c['affiche']}: #{pr.get('number')} {libelle}"
+                f" {pr.get('html_url', '')}".rstrip()
+            )
+        return echecs
 
     def _git_repo_comparer(self):
         """Compare deux gels, puis ouvre l'historique d'un projet sur demande.

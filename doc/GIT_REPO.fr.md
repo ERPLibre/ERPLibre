@@ -561,6 +561,46 @@ refspecs et ne pousse rien.
 Quand le gel propose de pousser les branches qu'il ne peut écrire, il les pousse de la même façon, en parallèle, et
 peut viser un autre remote des clones ; le gel n'écrit toujours une branche que si le remote du manifeste la porte.
 
+TODO demande d'abord s'il pousse aussi le dépôt ERPLibre, celui qui porte `manifest/`, Oui par défaut : sa branche
+extraite part sous le même nom vers `<base>/<propriétaire>/<dépôt>.git`, le propriétaire et le nom lus dans son URL
+`origin`, pour qu'une installation neuve puisse partir de la forge.
+
+Au lieu d'une URL, `qemu` crée la forge dans une VM QEMU locale (Ubuntu 24.04, 4 vCPU, 4 Go, 60 Go ; de 15 à 40
+minutes, `sudo` pour créer la VM). Une fois cloud-init terminé, qui fait approuver le cache de téléchargement de l'hôte,
+la VM reçoit le code de ce checkout par un bundle git, `.venv.erplibre` seul, sans Odoo, puis Forgejo en push-to-create, inscriptions fermées, dépôts privés par défaut et push de clone superficiel
+accepté. Le compte administrateur ne doit pas porter le nom d'un propriétaire des dépôts, casse mise à part. Son mot de
+passe, tiré au hasard et passé par l'entrée standard, et le jeton créé avec lui se rangent dans le coffre KeePass
+(`Forgejo admin <hôte:port>`, `Forgejo token <hôte:port>`) ; sans coffre, le mot de passe s'affiche une fois. Votre clé
+publique SSH est ajoutée à ce compte, et la clé d'hôte de la forge remplace toute ancienne clé de la même adresse dans
+`~/.ssh/known_hosts`. L'URL web et le jeton de la forge restent connus de la session : la préparation de la forge ne
+demande ni jeton ni accord pour le HTTP en clair, qui ne traverse que le pont libvirt de la machine. Une étape échouée
+laisse la VM en place avec son journal, `~/.erplibre/forge/<vm>.log`.
+
+#### Synchroniser depuis une forge : une surcouche de manifeste privée
+
+Après un push vers un remote de forge, TODO propose, Non par défaut, d'écrire
+`private/manifest/git_manifest_forge_<remote>.xml` ; TODO › Repo › Synchroniser depuis une forge l'écrit ou la retire
+à tout moment. La surcouche ne porte que des éléments `<remote>` : chaque remote du manifeste des dépôts poussés garde
+son nom et prend `<base>/<propriétaire>/` pour `fetch`. Le fichier est inscrit en dernier dans
+`private/default_git_manifest.csv`, et la fusion donne le dernier mot au dernier fichier qui définit un remote : les
+projets, révisions et gels ne changent pas, et l'adresse de la forge reste hors de `manifest/` ; la base amont du gel
+(`UPSTREAM=1`) ignore la surcouche, la forge ne portant pas les amonts des forks. Un remote est redirigé en entier :
+les projets des manifestes fusionnés qu'il sert sans être sur la forge, ceux des fragments communs à toutes les
+versions par exemple, sont listés, et le choix porte alors sur `partial` (par défaut : seuls les remotes dont chaque
+projet est sur la forge), `all` ou `cancel`. Depuis le menu, un clone compte comme présent sur la forge quand son remote
+vise `<base>/<propriétaire>/<dépôt>.git` et que `git ls-remote` y trouve la branche de son manifeste. Elle prend effet
+à la reconfiguration suivante, que TODO propose dans le mode actuel du checkout, Non par défaut ; retirer le fichier
+puis reconfigurer ramène les URL d'origine. Le nom du remote doit convenir à un nom de fichier : lettres, chiffres,
+`.`, `-`, `_`.
+
+#### Ouvrir des pull requests sur une forge
+
+TODO › Repo › Ouvrir des pull requests sur une forge prend un remote de forge des clones et chaque clone dont la
+branche extraite n'est pas celle de son manifeste. Après une seule confirmation, chaque branche se pousse sous son nom,
+en parallèle et jamais de force, puis une pull request va d'elle vers la branche du manifeste dans le même dépôt de la
+forge, titrée du sujet de son dernier commit. Un clone est écarté quand la branche du manifeste manque sur la forge, ou
+qu'elle porte déjà le commit de la branche. Une pull request ouverte pour la même paire est reprise, jamais doublée.
+
 #### Préparer une forge Forgejo
 
 Un remote neuf posé à partir de l'URL d'une forge propose, avant le push, de vérifier la forge par son API (Forgejo,

@@ -999,6 +999,45 @@ and `UNSHALLOW=1` requests: many servers refuse a truncated history. `DRY_RUN=1`
 When the freeze offers to push the branches it cannot write, it pushes them the same way, in parallel, and can target
 another remote of the clones; the freeze still writes a branch only when the manifest remote carries it.
 
+TODO first asks whether to push the ERPLibre repository too, the one that holds `manifest/`, Yes by default: its
+checked-out branch goes under the same name to `<base>/<owner>/<repo>.git`, the owner and the name read from its
+`origin` URL, so a new installation can start from the forge.
+
+Instead of a URL, `qemu` creates the forge in a local QEMU VM (Ubuntu 24.04, 4 vCPU, 4 GB, 60 GB; 15 to 40 minutes,
+`sudo` to create the VM). Once cloud-init has finished, which trusts the host's download cache, the VM receives the
+code of this checkout through a git bundle, `.venv.erplibre` only, no Odoo, then Forgejo with push-to-create, registration closed, private repositories by default and shallow pushes
+accepted. The administrator account must not share a name with an owner of the repositories, case aside. Its
+password, drawn at random and passed on standard input, and the token created with it are stored in the KeePass vault
+(`Forgejo admin <host:port>`, `Forgejo token <host:port>`); without a vault, the password is shown once. Your SSH
+public key is added to that account, and the forge's host key replaces any older one for the same address in
+`~/.ssh/known_hosts`. The forge's web URL and token stay known for the session: preparing the forge asks neither for
+a token nor for consent to plain HTTP, which only crosses the host's libvirt bridge. A failed step leaves the VM in
+place with its log, `~/.erplibre/forge/<vm>.log`.
+
+#### Sync from a forge: a private manifest overlay
+
+After a push to a forge remote, TODO offers, No by default, to write `private/manifest/git_manifest_forge_<remote>.xml`;
+TODO › Repo › Sync from a forge writes or removes it at any time. The overlay holds only `<remote>` elements: each
+manifest remote of the pushed repositories keeps its name and gets `<base>/<owner>/` as `fetch`. The file is listed
+last in `private/default_git_manifest.csv`, and the merge gives the last file that defines a remote the last word, so
+projects, revisions and freezes are unchanged and the forge's address stays out of `manifest/`; the upstream base of
+the freeze (`UPSTREAM=1`) ignores the overlay, since the forge does not hold the forks' upstreams. A remote is
+redirected whole: the projects of the merged manifests that it serves but that are not on the forge, those of the
+fragments common to every version for instance, are listed, and the choice is then `partial` (by default: only the
+remotes whose every project is on the forge), `all` or `cancel`. From the menu, a clone counts as on the forge when
+its remote points to `<base>/<owner>/<repo>.git` and `git ls-remote` finds its manifest branch there. It takes effect
+at the next reconfiguration, which TODO offers in the checkout's current mode, No by default; removing the file and
+reconfiguring brings back the original URLs. The remote's name must suit a file name: letters, digits, `.`, `-`,
+`_`.
+
+#### Open pull requests on a forge
+
+TODO › Repo › Open pull requests on a forge takes a forge remote of the clones and every clone whose checked-out
+branch is not its manifest branch. After one confirmation, each branch is pushed under its own name, in parallel and
+never forced, then a pull request goes from it to the manifest branch in the same forge repository, titled with the
+subject of its last commit. A clone is skipped when the manifest branch is missing on the forge, or when it already
+holds the branch's commit. An open pull request for the same pair is reused, never duplicated.
+
 #### Prepare a Forgejo forge
 
 A new remote set from a forge URL offers, before pushing, to check the forge through its API (Forgejo, `/api/v1`)
@@ -1099,6 +1138,46 @@ refspecs et ne pousse rien.
 
 Quand le gel propose de pousser les branches qu'il ne peut écrire, il les pousse de la même façon, en parallèle, et
 peut viser un autre remote des clones ; le gel n'écrit toujours une branche que si le remote du manifeste la porte.
+
+TODO demande d'abord s'il pousse aussi le dépôt ERPLibre, celui qui porte `manifest/`, Oui par défaut : sa branche
+extraite part sous le même nom vers `<base>/<propriétaire>/<dépôt>.git`, le propriétaire et le nom lus dans son URL
+`origin`, pour qu'une installation neuve puisse partir de la forge.
+
+Au lieu d'une URL, `qemu` crée la forge dans une VM QEMU locale (Ubuntu 24.04, 4 vCPU, 4 Go, 60 Go ; de 15 à 40
+minutes, `sudo` pour créer la VM). Une fois cloud-init terminé, qui fait approuver le cache de téléchargement de l'hôte,
+la VM reçoit le code de ce checkout par un bundle git, `.venv.erplibre` seul, sans Odoo, puis Forgejo en push-to-create, inscriptions fermées, dépôts privés par défaut et push de clone superficiel
+accepté. Le compte administrateur ne doit pas porter le nom d'un propriétaire des dépôts, casse mise à part. Son mot de
+passe, tiré au hasard et passé par l'entrée standard, et le jeton créé avec lui se rangent dans le coffre KeePass
+(`Forgejo admin <hôte:port>`, `Forgejo token <hôte:port>`) ; sans coffre, le mot de passe s'affiche une fois. Votre clé
+publique SSH est ajoutée à ce compte, et la clé d'hôte de la forge remplace toute ancienne clé de la même adresse dans
+`~/.ssh/known_hosts`. L'URL web et le jeton de la forge restent connus de la session : la préparation de la forge ne
+demande ni jeton ni accord pour le HTTP en clair, qui ne traverse que le pont libvirt de la machine. Une étape échouée
+laisse la VM en place avec son journal, `~/.erplibre/forge/<vm>.log`.
+
+#### Synchroniser depuis une forge : une surcouche de manifeste privée
+
+Après un push vers un remote de forge, TODO propose, Non par défaut, d'écrire
+`private/manifest/git_manifest_forge_<remote>.xml` ; TODO › Repo › Synchroniser depuis une forge l'écrit ou la retire
+à tout moment. La surcouche ne porte que des éléments `<remote>` : chaque remote du manifeste des dépôts poussés garde
+son nom et prend `<base>/<propriétaire>/` pour `fetch`. Le fichier est inscrit en dernier dans
+`private/default_git_manifest.csv`, et la fusion donne le dernier mot au dernier fichier qui définit un remote : les
+projets, révisions et gels ne changent pas, et l'adresse de la forge reste hors de `manifest/` ; la base amont du gel
+(`UPSTREAM=1`) ignore la surcouche, la forge ne portant pas les amonts des forks. Un remote est redirigé en entier :
+les projets des manifestes fusionnés qu'il sert sans être sur la forge, ceux des fragments communs à toutes les
+versions par exemple, sont listés, et le choix porte alors sur `partial` (par défaut : seuls les remotes dont chaque
+projet est sur la forge), `all` ou `cancel`. Depuis le menu, un clone compte comme présent sur la forge quand son remote
+vise `<base>/<propriétaire>/<dépôt>.git` et que `git ls-remote` y trouve la branche de son manifeste. Elle prend effet
+à la reconfiguration suivante, que TODO propose dans le mode actuel du checkout, Non par défaut ; retirer le fichier
+puis reconfigurer ramène les URL d'origine. Le nom du remote doit convenir à un nom de fichier : lettres, chiffres,
+`.`, `-`, `_`.
+
+#### Ouvrir des pull requests sur une forge
+
+TODO › Repo › Ouvrir des pull requests sur une forge prend un remote de forge des clones et chaque clone dont la
+branche extraite n'est pas celle de son manifeste. Après une seule confirmation, chaque branche se pousse sous son nom,
+en parallèle et jamais de force, puis une pull request va d'elle vers la branche du manifeste dans le même dépôt de la
+forge, titrée du sujet de son dernier commit. Un clone est écarté quand la branche du manifeste manque sur la forge, ou
+qu'elle porte déjà le commit de la branche. Une pull request ouverte pour la même paire est reprise, jamais doublée.
 
 #### Préparer une forge Forgejo
 

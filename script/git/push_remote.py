@@ -114,6 +114,34 @@ def projets_actifs(odoo_version=None):
     return sorted(projets, key=lambda p: p["chemin"])
 
 
+def projet_racine(racine, remote="origin"):
+    """Le dépôt ERPLibre lui-même, celui qui porte `manifest/`, sous la
+    forme d'un projet de `projets_actifs`, ou None.
+
+    Son propriétaire et son nom viennent de l'URL de `remote` ; sa
+    « branche » est la branche extraite, qu'il pousse sous le même nom.
+    None quand le checkout n'a pas ce remote ou est en HEAD détachée."""
+    from script.git import manifest_repo
+
+    depot = manifest_repo.depot_de_l_url(
+        repo_upgrade.url_du_remote(racine, remote)
+    )
+    out, _err, code = repo_upgrade.git(
+        ["rev-parse", "--abbrev-ref", "HEAD"], racine
+    )
+    branche = out.strip()
+    if not depot or code or not branche or branche == "HEAD":
+        return None
+    return {
+        "cle": depot[1],
+        "chemin": racine,
+        "nom": depot[1],
+        "remote": remote,
+        "branche": branche,
+        "proprietaire": depot[0],
+    }
+
+
 def _en_parallele(fonction, elements, jobs):
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         return list(pool.map(fonction, elements))

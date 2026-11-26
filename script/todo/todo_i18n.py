@@ -24082,6 +24082,178 @@ TRANSLATIONS = {
         "fr": "HTTP en clair : le MOT DE PASSE du compte traverserait le réseau sans chiffrement. Continuer ?",
         "en": "Plain HTTP: the account PASSWORD would cross the network in clear. Continue?",
     },
+    "Push the repositories to a remote": {
+        "fr": "Pousser les dépôts vers un remote",
+        "en": "Push the repositories to a remote",
+    },
+    "A QEMU VM receives .venv.erplibre (no Odoo) and Forgejo:": {
+        "fr": "Une VM QEMU reçoit .venv.erplibre (sans Odoo) et Forgejo :",
+        "en": "A QEMU VM receives .venv.erplibre (no Odoo) and Forgejo:",
+    },
+    "Also push the ERPLibre repository, which holds the manifests?": {
+        "fr": "Pousser aussi le dépôt ERPLibre, qui porte les manifestes ?",
+        "en": "Also push the ERPLibre repository, which holds the manifests?",
+    },
+    "Base URL of the forge (https://… or ssh://…), or qemu to create a Forgejo VM": {
+        "fr": "URL de base de la forge (https://… ou ssh://…), ou qemu pour créer une VM Forgejo",
+        "en": "Base URL of the forge (https://… or ssh://…), or qemu to create a Forgejo VM",
+    },
+    "Create the VM": {
+        "fr": "Créer la VM",
+        "en": "Create the VM",
+    },
+    "Creating a VM needs the TODO CLI.": {
+        "fr": "Créer une VM exige le CLI TODO.",
+        "en": "Creating a VM needs the TODO CLI.",
+    },
+    "Forgejo administrator account": {
+        "fr": "Compte administrateur de Forgejo",
+        "en": "Forgejo administrator account",
+    },
+    "Invalid account, or the name of an owner of the repositories.": {
+        "fr": "Compte invalide, ou nom d'un propriétaire des dépôts.",
+        "en": "Invalid account, or the name of an owner of the repositories.",
+    },
+    "Invalid name: letters, digits and dashes.": {
+        "fr": "Nom invalide : lettres, chiffres et tirets.",
+        "en": "Invalid name: letters, digits and dashes.",
+    },
+    "It takes effect at the next reconfiguration; removing it brings back the original URLs.": {
+        "fr": "Elle prend effet à la prochaine reconfiguration ; la retirer ramène les URL d'origine.",
+        "en": "It takes effect at the next reconfiguration; removing it brings back the original URLs.",
+    },
+    "It takes from 15 to 40 minutes; creating the VM needs sudo.": {
+        "fr": "Compter de 15 à 40 minutes ; créer la VM exige sudo.",
+        "en": "It takes from 15 to 40 minutes; creating the VM needs sudo.",
+    },
+    "Name of the VM": {
+        "fr": "Nom de la VM",
+        "en": "Name of the VM",
+    },
+    "No SSH public key in ~/.ssh: the push needs one.": {
+        "fr": "Aucune clé publique SSH dans ~/.ssh : le push en exige une.",
+        "en": "No SSH public key in ~/.ssh: the push needs one.",
+    },
+    "No clone is on a branch other than its manifest branch.": {
+        "fr": "Aucun clone n'est sur une autre branche que celle de son manifeste.",
+        "en": "No clone is on a branch other than its manifest branch.",
+    },
+    "No forge remote in the clones: push the repositories to a remote first.": {
+        "fr": "Aucun remote de forge dans les clones : pousser d'abord les dépôts vers un remote.",
+        "en": "No forge remote in the clones: push the repositories to a remote first.",
+    },
+    "No manifest remote to redirect.": {
+        "fr": "Aucun remote du manifeste à rediriger.",
+        "en": "No manifest remote to redirect.",
+    },
+    "Open pull requests on a forge": {
+        "fr": "Ouvrir des pull requests sur une forge",
+        "en": "Open pull requests on a forge",
+    },
+    "📬 Open pull requests on a forge": {
+        "fr": "📬 Ouvrir des pull requests sur une forge",
+        "en": "📬 Open pull requests on a forge",
+    },
+    "Overlay": {
+        "fr": "Surcouche",
+        "en": "Overlay",
+    },
+    "Overlay removed:": {
+        "fr": "Surcouche retirée :",
+        "en": "Overlay removed:",
+    },
+    "Password of the administrator, shown once:": {
+        "fr": "Mot de passe de l'administrateur, affiché une seule fois :",
+        "en": "Password of the administrator, shown once:",
+    },
+    "Push these branches to": {
+        "fr": "Pousser ces branches vers",
+        "en": "Push these branches to",
+    },
+    "and open the pull requests?": {
+        "fr": "et ouvrir les pull requests ?",
+        "en": "and open the pull requests?",
+    },
+    "Reconfigure now? Every clone takes the new URLs.": {
+        "fr": "Reconfigurer maintenant ? Chaque clone prend les nouvelles URL.",
+        "en": "Reconfigure now? Every clone takes the new URLs.",
+    },
+    "Remove an overlay": {
+        "fr": "Retirer une surcouche",
+        "en": "Remove an overlay",
+    },
+    "Remove the overlay": {
+        "fr": "Retirer la surcouche",
+        "en": "Remove the overlay",
+    },
+    "Sync from a forge: private manifest overlay": {
+        "fr": "Synchroniser depuis une forge : surcouche de manifeste privée",
+        "en": "Sync from a forge: private manifest overlay",
+    },
+    "🧭 Sync from a forge: private manifest overlay": {
+        "fr": "🧭 Synchroniser depuis une forge : surcouche de manifeste privée",
+        "en": "🧭 Sync from a forge: private manifest overlay",
+    },
+    "The SSH host key of the forge could not be read.": {
+        "fr": "La clé d'hôte SSH de la forge n'a pas pu être lue.",
+        "en": "The SSH host key of the forge could not be read.",
+    },
+    "The forge URL cannot be deduced from this remote.": {
+        "fr": "L'URL de la forge ne se déduit pas de ce remote.",
+        "en": "The forge URL cannot be deduced from this remote.",
+    },
+    "The forge is not ready; the VM, if created, stays in place. Log:": {
+        "fr": "La forge n'est pas prête ; la VM, si elle a été créée, reste en place. Journal :",
+        "en": "The forge is not ready; the VM, if created, stays in place. Log:",
+    },
+    "Write a private manifest so that repo sync fetches these repositories from": {
+        "fr": "Écrire un manifeste privé pour que repo sync tire ces dépôts de",
+        "en": "Write a private manifest so that repo sync fetches these repositories from",
+    },
+    "Write the overlay of a forge remote": {
+        "fr": "Écrire la surcouche d'un remote de forge",
+        "en": "Write the overlay of a forge remote",
+    },
+    "already open": {
+        "fr": "déjà ouverte",
+        "en": "already open",
+    },
+    "created": {
+        "fr": "créée",
+        "en": "created",
+    },
+    "is absent from the forge: push the repositories first.": {
+        "fr": "est absente de la forge : pousser d'abord les dépôts.",
+        "en": "is absent from the forge: push the repositories first.",
+    },
+    "nothing to merge.": {
+        "fr": "rien à fusionner.",
+        "en": "nothing to merge.",
+    },
+    "projects of the merged manifests use these remotes but are not on the forge; their sync would fail:": {
+        "fr": "projets des manifestes fusionnés utilisent ces remotes mais ne sont pas sur la forge ; leur synchronisation échouerait :",
+        "en": "projects of the merged manifests use these remotes but are not on the forge; their sync would fail:",
+    },
+    "sudo was refused: no VM created.": {
+        "fr": "sudo a été refusé : aucune VM créée.",
+        "en": "sudo was refused: no VM created.",
+    },
+    "Invalid remote name: letters, digits, dot, dash and underscore.": {
+        "fr": "Nom de remote invalide : lettres, chiffres, point, tiret et soulignement.",
+        "en": "Invalid remote name: letters, digits, dot, dash and underscore.",
+    },
+    "partial: redirect only the remotes whose projects are all on the forge": {
+        "fr": "partial : ne rediriger que les remotes dont chaque projet est sur la forge",
+        "en": "partial: redirect only the remotes whose projects are all on the forge",
+    },
+    "all: redirect every remote; cancel": {
+        "fr": "all : rediriger chaque remote ; cancel",
+        "en": "all: redirect every remote; cancel",
+    },
+    "clones have their manifest branch on the forge.": {
+        "fr": "clones ont la branche de leur manifeste sur la forge.",
+        "en": "clones have their manifest branch on the forge.",
+    },
     "Also freeze the branch each clone is on (revision)?": {
         "fr": "Geler aussi la branche de chaque clone (revision) ?",
         "en": "Also freeze the branch each clone is on (revision)?",

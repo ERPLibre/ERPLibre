@@ -996,6 +996,8 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "🫗 Unfreeze the versions": "_git_repo_geler",
         "🔀 Compare two freezes": "_git_repo_comparer",
         "📡 Push the repositories to a remote": "_git_repo_pousser_remote",
+        "📬 Open pull requests on a forge": "_git_repo_pull_requests",
+        "🧭 Sync from a forge: private manifest overlay": "_git_repo_surcouche",
     }
 
     def test_the_upstream_remotes_come_before_the_dry_run(self):
@@ -1429,6 +1431,7 @@ class TestGitRepoPushToRemote(unittest.TestCase):
         for nom, valeur in (
             ("projets_actifs", lambda: copy.deepcopy(self.PROJETS)),
             ("remotes_des_clones", lambda chemins, jobs=8: {"Orig": 2}),
+            ("projet_racine", lambda racine, remote="origin": None),
             ("pousser_en_parallele", pousser),
             ("poser_remote", poser),
             (
@@ -1549,6 +1552,11 @@ class TestGitRepoPushToRemote(unittest.TestCase):
             )
         self.assertEqual(self.poussees, [])
 
+    def test_an_unsafe_remote_name_is_refused(self):
+        code, confirm = self.lancer(["n", "equipe/forge"], [])
+        self.assertEqual((code, self.poses, self.poussees), (0, [], []))
+        confirm.assert_not_called()
+
     def test_a_manifest_remote_name_is_refused(self):
         code, confirm = self.lancer(["n", "Orig"], [])
         self.assertEqual(code, 0)
@@ -1567,6 +1575,546 @@ class TestGitRepoPushToRemote(unittest.TestCase):
         self.lancer(["1", "manifest"], [True, True])
         self.assertEqual(len(self.approfondis), 1)
         self.assertTrue(self.approfondis[0].endswith("odooX.0/a"))
+
+    def test_qemu_creates_the_forge_then_its_base_is_used(self):
+        base = "ssh://git@192.0.2.7:2222"
+        with self.mock.patch.object(
+            type(self.obj), "_git_forge_creer_vm", return_value=base
+        ) as creer:
+            self.lancer(
+                ["n", "forge", "qemu", "manifest"],
+                # Ajouter le remote, ne pas préparer la forge, pousser.
+                [True, False, True],
+            )
+        self.assertEqual(
+            [p["proprietaire"] for p in creer.call_args[0][0]],
+            ["Proprio", None],
+        )
+        self.assertEqual(self.poses[0][2], f"{base}/Proprio/a.git")
+
+    def test_a_forge_vm_not_created_cancels(self):
+        with self.mock.patch.object(
+            type(self.obj), "_git_forge_creer_vm", return_value=None
+        ):
+            code, _ = self.lancer(["n", "forge", "qemu"], [])
+        self.assertEqual((code, self.poses, self.poussees), (0, [], []))
+
+    def test_the_erplibre_repository_is_pushed_first_on_request(self):
+        racine = {
+            "cle": "erplibre",
+            "chemin": self.menu.RACINE,
+            "nom": "erplibre",
+            "remote": "origin",
+            "branche": "dev/x",
+            "proprietaire": "ERPLibre",
+        }
+        with self.mock.patch.object(
+            self.prm, "projet_racine", return_value=dict(racine)
+        ):
+            self.lancer(["1", "manifest"], [True, True])
+        self.assertEqual(self.poussees[0]["chemin"], self.menu.RACINE)
+        self.assertEqual(len(self.poussees), 3)
+        self.poussees.clear()
+        with self.mock.patch.object(
+            self.prm, "projet_racine", return_value=dict(racine)
+        ):
+            self.lancer(["1", "manifest"], [False, True])
+        self.assertNotIn(
+            self.menu.RACINE, [c["chemin"] for c in self.poussees]
+        )
+
+    def test_the_overlay_is_offered_after_a_push_to_a_forge(self):
+        """Après un push vers un remote de forge, la surcouche se propose
+        pour les clones poussés, jamais pour le dépôt ERPLibre."""
+        base = "ssh://git@forge.example.invalid:2222"
+        racine = {
+            "cle": "erplibre",
+            "chemin": self.menu.RACINE,
+            "nom": "erplibre",
+            "remote": "origin",
+            "branche": "dev/x",
+            "proprietaire": "ERPLibre",
+        }
+        with self.mock.patch.object(
+            self.prm, "projet_racine", return_value=racine
+        ), self.mock.patch.object(
+            self.menu.forge_manifest, "base_du_remote", return_value=base
+        ), self.mock.patch.object(
+            type(self.obj), "_git_repo_ecrire_surcouche", return_value=True
+        ) as ecrire:
+            self.lancer(
+                ["n", "forge", base, "manifest"],
+                # Le dépôt ERPLibre, ajouter le remote, ne pas préparer la
+                # forge, pousser, écrire la surcouche.
+                [True, True, False, True, True],
+            )
+        nom, base_ecrite, projets = ecrire.call_args[0]
+        self.assertEqual((nom, base_ecrite), ("forge", base))
+        self.assertEqual(
+            [p["chemin"].rsplit("/", 1)[1] for p in projets], ["a"]
+        )
+
+    def test_no_overlay_for_a_manifest_remote(self):
+        with self.mock.patch.object(
+            type(self.obj), "_git_repo_proposer_surcouche"
+        ) as proposer:
+            self.lancer(["1", "manifest"], [True])
+        proposer.assert_not_called()
+
+
+class TestGitForgeCreerVm(unittest.TestCase):
+    """La forge créée dans une VM QEMU au choix du remote : la VM, son
+    jeton et son mot de passe administrateur, et la session qui retient
+    l'URL web et le jeton. `forge_vm.deployer` est remplacé."""
+
+    BASE = "ssh://git@192.0.2.7:2222"
+    WEB = "http://192.0.2.7:3000"
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        from script.forgejo import forge_vm
+
+        self.fv = forge_vm
+        self.forge = {
+            "nom": "forge-x",
+            "uuid": "u",
+            "ip": "192.0.2.7",
+            "web": self.WEB,
+            "base_ssh": self.BASE,
+            "admin": "forge-admin",
+            "mot_de_passe": "mdp-tire-au-hasard",
+            "jeton": "jeton-neuf",
+            "version": "17.0",
+            "client": None,
+        }
+        for nom, valeur in (
+            ("cle_publique", "/k.pub"),
+            ("enregistrer_cle_hote", True),
+        ):
+            p = mock.patch.object(forge_vm, nom, return_value=valeur)
+            p.start()
+            self.addCleanup(p.stop)
+        self.deployer = mock.patch.object(
+            forge_vm, "deployer", return_value=dict(self.forge)
+        ).start()
+        self.addCleanup(mock.patch.stopall)
+        self.sudo = mock.patch(
+            "subprocess.run", return_value=mock.Mock(returncode=0)
+        ).start()
+        self.dossier = mock.patch("os.makedirs").start()
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            _QEMU_ERPLIBRE_VENV_CMD = "venv"
+
+            def _qemu_vm_ip(self, nom, timeout=600):
+                return "192.0.2.7"
+
+            def _qemu_cache_ca_path(self):
+                return ""
+
+        self.obj = Menu()
+        self.ranges = []
+        self.coffre = True
+
+        def ranger(titre, secret, compte=""):
+            if self.coffre:
+                self.ranges.append((titre, secret, compte))
+            return self.coffre
+
+        mock.patch.object(
+            Menu, "_git_forge_ranger", side_effect=ranger
+        ).start()
+        mock.patch.object(
+            Menu, "_git_forge_creer_coffre", return_value=False
+        ).start()
+
+    def creer(self, prompts, confirms, projets=()):
+        sortie = []
+        with self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=list(prompts)
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ), self.mock.patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sortie.append(" ".join(map(str, a))),
+        ):
+            base = self.obj._git_forge_creer_vm(list(projets))
+        return base, "\n".join(sortie)
+
+    def test_the_vm_is_created_and_its_secrets_stored(self):
+        base, sortie = self.creer(["forge-x", "forge-admin"], [True])
+        self.assertEqual(base, self.BASE)
+        args = self.deployer.call_args
+        self.assertEqual(args[0][:2], ("forge-x", "forge-admin"))
+        self.assertEqual(args[0][5], "venv")
+        self.assertEqual(args.kwargs["cache"], ["--cache-bypass"])
+        self.assertEqual(
+            self.ranges,
+            [
+                ("Forgejo token 192.0.2.7:3000", "jeton-neuf", ""),
+                (
+                    "Forgejo admin 192.0.2.7:3000",
+                    "mdp-tire-au-hasard",
+                    "forge-admin",
+                ),
+            ],
+        )
+        self.assertNotIn("mdp-tire-au-hasard", sortie)
+        self.assertEqual(
+            self.obj._git_forge_session[self.BASE],
+            {"web": self.WEB, "jeton": "jeton-neuf"},
+        )
+
+    def test_without_vault_the_password_is_shown_once(self):
+        self.coffre = False
+        base, sortie = self.creer(["forge-x", "forge-admin"], [True])
+        self.assertEqual(base, self.BASE)
+        self.assertEqual(sortie.count("mdp-tire-au-hasard"), 1)
+
+    def test_an_admin_named_like_an_owner_is_refused(self):
+        base, _ = self.creer(
+            ["forge-x", "proprio"], [], projets=[{"proprietaire": "Proprio"}]
+        )
+        self.assertIsNone(base)
+        self.deployer.assert_not_called()
+
+    def test_refused_sudo_creates_nothing(self):
+        self.sudo.return_value = self.mock.Mock(returncode=1)
+        base, _ = self.creer(["forge-x", "forge-admin"], [True])
+        self.assertIsNone(base)
+        self.deployer.assert_not_called()
+
+    def test_a_failed_deployment_leaves_no_session(self):
+        self.deployer.return_value = None
+        base, _ = self.creer(["forge-x", "forge-admin"], [True])
+        self.assertIsNone(base)
+        self.assertFalse(getattr(self.obj, "_git_forge_session", {}))
+
+    def test_the_session_spares_the_token_question(self):
+        self.creer(["forge-x", "forge-admin"], [True])
+        client = self.mock.Mock()
+        client.version.return_value = "17.0"
+        client.identite.return_value = "forge-admin"
+        with self.mock.patch.object(
+            self.menu.forgejo_client, "ClientForgejo", return_value=client
+        ) as classe, self.mock.patch.object(
+            self.menu.click, "prompt"
+        ) as prompt, self.mock.patch.object(
+            self.menu.click, "confirm"
+        ) as confirm, self.mock.patch(
+            "builtins.print"
+        ):
+            self.assertIs(self.obj._git_forge_client(self.BASE), client)
+        self.assertEqual(
+            classe.call_args, self.mock.call(self.WEB, jeton_api="jeton-neuf")
+        )
+        prompt.assert_not_called()
+        # Ni jeton à saisir ni HTTP en clair à confirmer : la forge vient
+        # d'être créée par cette session.
+        confirm.assert_not_called()
+
+
+class TestGitRepoSurcouche(unittest.TestCase):
+    """La surcouche privée de manifeste, depuis le menu : écrire, retirer,
+    reconfigurer dans le mode du checkout. `forge_manifest` est remplacé."""
+
+    BASE = "ssh://git@forge.example.invalid:2222"
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.fm = git_repo_menu.forge_manifest
+        self.addCleanup(mock.patch.stopall)
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        self.obj = Menu()
+        self.reconf = mock.patch.object(Menu, "_git_repo_reconfigurer").start()
+        mock.patch.object(
+            git_repo_menu, "etat_manifeste_local", return_value=(5, 10)
+        ).start()
+
+    def lancer(self, prompts, confirms, methode="_git_repo_surcouche", *args):
+        with self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=list(prompts)
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            return getattr(self.obj, methode)(*args)
+
+    def test_remove_then_reconfigure_in_the_frozen_mode(self):
+        self.mock.patch.object(
+            self.fm, "surcouches", return_value=["forge"]
+        ).start()
+        self.mock.patch.object(self.fm, "lire", return_value={}).start()
+        retirer = self.mock.patch.object(self.fm, "retirer").start()
+        self.assertTrue(self.lancer(["r"], [True, True]))
+        retirer.assert_called_once_with(self.menu.RACINE, "forge")
+        self.reconf.assert_called_once_with(freeze=True)
+
+    def test_write_for_the_clones_on_the_forge(self):
+        self.mock.patch.object(self.fm, "surcouches", return_value=[]).start()
+        projets = [
+            {"chemin": "/r/a", "cle": "a", "affiche": "a"},
+            {"chemin": "/r/b", "cle": "b", "affiche": "b"},
+        ]
+        self.mock.patch.object(
+            type(self.obj), "_git_repo_projets_absolus", return_value=projets
+        ).start()
+        self.mock.patch.object(
+            type(self.obj),
+            "_git_repo_choisir_remote_forge",
+            return_value="forge",
+        ).start()
+        self.mock.patch.object(
+            self.fm, "base_du_remote", return_value=self.BASE
+        ).start()
+        sur_la_forge = self.mock.patch.object(
+            type(self.obj),
+            "_git_repo_sur_la_forge",
+            return_value=[projets[0]],
+        ).start()
+        ecrire = self.mock.patch.object(
+            type(self.obj), "_git_repo_ecrire_surcouche", return_value=True
+        ).start()
+        self.assertTrue(self.lancer(["w"], [False]))
+        sur_la_forge.assert_called_once_with(projets, "forge", self.BASE)
+        self.assertEqual(
+            ecrire.call_args[0], ("forge", self.BASE, [projets[0]])
+        )
+        self.reconf.assert_not_called()
+
+    def ecrire_surcouche(self, choix, nom="forge"):
+        projets = [
+            {"cle": "a", "remote": "Amont", "proprietaire": "Amont"},
+            {"cle": "c", "remote": "Commun", "proprietaire": "Commun"},
+        ]
+        return self.lancer(
+            choix,
+            [],
+            "_git_repo_ecrire_surcouche",
+            nom,
+            self.BASE,
+            projets,
+        )
+
+    def test_uncovered_projects_leave_their_remote_by_default(self):
+        """Un remote qui sert aussi un projet absent de la forge (un
+        fragment commun) reste sur son URL par « partial », le défaut."""
+        self.mock.patch.object(
+            self.fm,
+            "projets_non_couverts",
+            return_value={"x+commun/x": "Commun"},
+        ).start()
+        ecrire = self.mock.patch.object(self.fm, "ecrire").start()
+        with self.mock.patch.object(
+            self.menu.click, "prompt", return_value="partial"
+        ) as prompt, self.mock.patch("builtins.print"):
+            self.assertTrue(
+                self.obj._git_repo_ecrire_surcouche(
+                    "forge",
+                    self.BASE,
+                    [
+                        {
+                            "cle": "a",
+                            "remote": "Amont",
+                            "proprietaire": "Amont",
+                        },
+                        {
+                            "cle": "c",
+                            "remote": "Commun",
+                            "proprietaire": "Commun",
+                        },
+                    ],
+                )
+            )
+        self.assertEqual(prompt.call_args.kwargs["default"], "partial")
+        self.assertEqual(
+            ecrire.call_args[0],
+            (self.menu.RACINE, "forge", {"Amont": f"{self.BASE}/Amont/"}),
+        )
+        ecrire.reset_mock()
+        self.assertTrue(self.ecrire_surcouche(["all"]))
+        self.assertEqual(set(ecrire.call_args[0][2]), {"Amont", "Commun"})
+        ecrire.reset_mock()
+        self.assertFalse(self.ecrire_surcouche(["cancel"]))
+        ecrire.assert_not_called()
+
+    def test_an_unsafe_remote_name_writes_nothing(self):
+        ecrire = self.mock.patch.object(self.fm, "ecrire").start()
+        self.assertFalse(self.ecrire_surcouche([], nom="equipe/forge"))
+        ecrire.assert_not_called()
+
+    def test_only_clones_whose_branch_is_on_the_forge_count(self):
+        projets = [
+            {
+                "chemin": c,
+                "nom": f"{c[-1]}.git",
+                "proprietaire": "P",
+                "branche": "X.0",
+            }
+            for c in ("/r/a", "/r/b", "/r/c")
+        ]
+        urls = {
+            "/r/a": f"{self.BASE}/P/a.git",
+            "/r/b": f"{self.BASE}/P/b.git",
+            "/r/c": "ssh://ailleurs.example.invalid/P/c.git",
+        }
+        self.mock.patch.object(
+            self.menu.repo_upgrade,
+            "url_du_remote",
+            side_effect=lambda chemin, nom: urls[chemin],
+        ).start()
+        self.mock.patch.object(
+            self.menu.repo_upgrade,
+            "git",
+            side_effect=lambda args, cwd, delai=None: (
+                ("abc\trefs/heads/X.0\n", "", 0)
+                if cwd == "/r/a"
+                else ("", "", 0)
+            ),
+        ).start()
+        self.assertEqual(
+            [
+                p["chemin"]
+                for p in self.obj._git_repo_sur_la_forge(
+                    projets, "forge", self.BASE
+                )
+            ],
+            ["/r/a"],
+        )
+
+
+class TestGitRepoPullRequests(unittest.TestCase):
+    """Les pull requests sur la forge : une par clone dont la branche
+    extraite n'est pas celle du manifeste. Git, le push et l'API sont
+    remplacés."""
+
+    BASE = "ssh://git@forge.example.invalid:2222"
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.addCleanup(mock.patch.stopall)
+        self.tetes = {"/r/a": "dev/a", "/r/b": "X.0", "/r/c": "HEAD"}
+        projets = [
+            {
+                "chemin": c,
+                "affiche": c,
+                "branche": "X.0",
+                "nom": c[-1] + ".git",
+            }
+            for c in sorted(self.tetes)
+        ]
+
+        def git(args, cwd, delai=None):
+            if args[:2] == ["rev-parse", "--abbrev-ref"]:
+                return self.tetes[cwd] + "\n", "", 0
+            if args[0] == "log":
+                return "Sujet du commit\n", "", 0
+            return "", "", 1
+
+        mock.patch.object(
+            git_repo_menu.repo_upgrade, "git", side_effect=git
+        ).start()
+        mock.patch.object(
+            git_repo_menu.repo_upgrade,
+            "url_du_remote",
+            side_effect=lambda c, n: f"{self.BASE}/Proprio/{c[-1]}.git",
+        ).start()
+        mock.patch.object(
+            git_repo_menu.repo_upgrade, "commit_de", return_value="tete"
+        ).start()
+        mock.patch.object(
+            git_repo_menu.forge_manifest,
+            "base_du_remote",
+            return_value=self.BASE,
+        ).start()
+        self.pousser = mock.patch.object(
+            git_repo_menu.push_remote,
+            "pousser_en_parallele",
+            side_effect=lambda cibles: [
+                dict(c, code=0, erreur="") for c in cibles
+            ],
+        ).start()
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        mock.patch.object(
+            Menu, "_git_repo_projets_absolus", return_value=projets
+        ).start()
+        mock.patch.object(
+            Menu, "_git_repo_choisir_remote_forge", return_value="forge"
+        ).start()
+        self.client = mock.Mock()
+        self.client.commit_de_branche.return_value = "base"
+        self.client.assurer_pull_request.return_value = (
+            "creee",
+            {"number": 3, "html_url": "u"},
+        )
+        mock.patch.object(
+            Menu, "_git_forge_client", return_value=self.client
+        ).start()
+        self.obj = Menu()
+
+    def lancer(self, confirms):
+        with self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ), self.mock.patch("builtins.print"):
+            return self.obj._git_repo_pull_requests()
+
+    def test_one_pull_request_per_clone_off_its_manifest_branch(self):
+        self.assertEqual(self.lancer([True]), 0)
+        (cibles,) = self.pousser.call_args[0]
+        self.assertEqual(
+            cibles,
+            [
+                {
+                    "chemin": "/r/a",
+                    "remote": "forge",
+                    "specs": ["refs/heads/dev/a:refs/heads/dev/a"],
+                }
+            ],
+        )
+        self.client.assurer_pull_request.assert_called_once_with(
+            "Proprio", "a", "dev/a", "X.0", "Sujet du commit"
+        )
+
+    def test_nothing_is_pushed_without_consent(self):
+        self.lancer([False])
+        self.pousser.assert_not_called()
+
+    def test_a_remote_that_is_no_forge_stops_before_any_question(self):
+        self.menu.forge_manifest.base_du_remote.return_value = None
+        self.assertEqual(self.lancer([]), 0)
+        self.pousser.assert_not_called()
+
+    def test_a_base_branch_absent_from_the_forge_skips(self):
+        self.client.commit_de_branche.return_value = None
+        self.lancer([True])
+        self.client.assurer_pull_request.assert_not_called()
+
+    def test_a_branch_already_on_the_base_has_nothing_to_merge(self):
+        self.client.commit_de_branche.return_value = "tete"
+        self.lancer([True])
+        self.client.assurer_pull_request.assert_not_called()
 
 
 class TestGitRepoPrepareForge(unittest.TestCase):

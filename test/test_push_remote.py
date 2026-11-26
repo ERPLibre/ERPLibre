@@ -115,6 +115,42 @@ class _Depots(unittest.TestCase):
         return _git(self.forge, "for-each-ref", "--format=%(refname)").split()
 
 
+class TestProjetRacine(_Depots):
+    """Le dépôt qui porte manifest/ se pousse comme un projet : son
+    propriétaire et son nom viennent de l'URL d'origin, sa branche est la
+    branche extraite."""
+
+    def test_branche_extraite_et_depot_d_origin(self):
+        _git(
+            self.clone,
+            "remote",
+            "add",
+            "origin",
+            "git@forge.example.invalid:Proprio/racine.git",
+        )
+        _git(self.clone, "checkout", "-q", "-b", "dev/x")
+        p = pr.projet_racine(self.clone)
+        self.assertEqual(
+            (p["proprietaire"], p["nom"], p["branche"], p["remote"]),
+            ("Proprio", "racine", "dev/x", "origin"),
+        )
+        self.assertEqual(
+            pr.refspecs(self.clone, pr.MODE_MANIFESTE, "origin", "dev/x"),
+            (["HEAD:refs/heads/dev/x"], None),
+        )
+
+    def test_head_detachee_ou_sans_origin(self):
+        self.assertIsNone(pr.projet_racine(self.clone))
+        _git(
+            self.clone,
+            "remote",
+            "add",
+            "origin",
+            "git@forge.example.invalid:Proprio/racine.git",
+        )
+        self.assertIsNone(pr.projet_racine(self.clone))
+
+
 class TestPoserRemote(_Depots):
     def test_ajoute_puis_present(self):
         url = f"file://{self.forge}"
