@@ -28,8 +28,10 @@ from script.todo import todo_i18n  # noqa: E402
 from test.test_system_usb import (  # noqa: E402
     cle_montee,
     lsblk,
+    manifeste_paquet,
     noeud,
     nvme_systeme,
+    ranger_paquet,
 )
 
 
@@ -71,6 +73,14 @@ class Banc(unittest.TestCase):
             mock.patch.object(su, "lien_by_id", return_value=None),
             mock.patch.object(su.shutil, "which", return_value="/bin/eject"),
             mock.patch.object(um, "todo_file_browser", None),
+            # Aucun paquet hors ligne, aucun debugfs : un test qui en veut
+            # range les siens dans self.paquets.
+            mock.patch.object(
+                su,
+                "dossier_paquets",
+                return_value=os.path.join(self.tmp.name, "offline"),
+            ),
+            mock.patch.object(su, "lire_manifeste_image", return_value=None),
         ):
             patch.start()
             self.addCleanup(patch.stop)
@@ -173,6 +183,16 @@ class TestLesTraductions(unittest.TestCase):
             and isinstance(n.args[0], ast.Constant)
         ]
         cles += list(um.RAISONS_USB.values()) + list(um.ALERTES_USB.values())
+        cles += list(um.ERREURS_PAQUET.values())
+        cles += list(um.ALERTES_PAQUET.values())
+        cles += list(um.DEFAUTS_DERIVE.values())
+        # Les phrases choisies par une variable avant t().
+        cles += [
+            "Already built with this offline payload:",
+            "Already built with this profile:",
+            "Build the ISO with the offline payload? (y/N): ",
+            "Build the ISO with this profile? (y/N): ",
+        ]
         for e in su.catalogue("/chemin/inexistant"):
             cles.append(e["libelle_key"])
             if e["raison_key"]:
@@ -874,7 +894,10 @@ class TestLesProfilsMachine(BancProfils):
         self.assertIn("Utilisateur : demandé pendant l'installation", texte)
 
 
-class TestLEcritureAvecProfil(BancProfils):
+class BancIsoErplibre(BancProfils):
+    """Une ISO ERPLibre de base, un xorriso factice, des faits d'ISO
+    dérivée saine, et ni pkglist ni UUID lus sur l'ISO."""
+
     def setUp(self):
         super().setUp()
         self.base = os.path.join(
@@ -887,25 +910,58 @@ class TestLEcritureAvecProfil(BancProfils):
         )
         self.volume.start()
         self.addCleanup(self.volume.stop)
+        # Ce que lire_faits_derive lirait d'une ISO dérivée saine ; un test
+        # change self.faits pour simuler un défaut.
+        self.faits = {
+            "sfdisk": {
+                "partitiontable": {
+                    "sectorsize": 512,
+                    "partitions": [
+                        {"node": "d.iso1", "size": 8, "type": "0"},
+                        {"node": "d.iso2", "size": 8, "type": "ef"},
+                    ],
+                }
+            },
+            "eltorito": "El Torito boot img :   1  BIOS  y\n"
+            "El Torito boot img :   2  UEFI  y\n",
+            "volume_date": "2099010203040500",
+        }
+        for patch in (
+            mock.patch.object(
+                su, "lire_faits_derive", side_effect=lambda d: self.faits
+            ),
+            mock.patch.object(su, "lire_pkglist", return_value=None),
+            mock.patch.object(su, "lire_uuid_iso", return_value=None),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
         self.todo.execute.exec_command_live.side_effect = self.xorriso_factice
 
     def xorriso_factice(self, cmd, source_erplibre=True):
         """Fait ce que xorriso ferait : -outdev reçoit la base suivie du
-        profil de -map."""
+        profil de -map, puis de l'image de -append_partition."""
         args = shlex.split(cmd)
         if args[0] == "xorriso":
             with open(args[args.index("-indev") + 1], "rb") as fh:
                 contenu = fh.read()
-            with open(args[args.index("-map") + 1], "rb") as fh:
-                contenu += fh.read()
+            if "-map" in args:
+                with open(args[args.index("-map") + 1], "rb") as fh:
+                    contenu += fh.read()
+            if "-append_partition" in args:
+                with open(
+                    args[args.index("-append_partition") + 3], "rb"
+                ) as fh:
+                    contenu += fh.read()
             with open(args[args.index("-outdev") + 1], "wb") as fh:
                 fh.write(contenu)
         return 0
 
-    def ecrire_avec(self, choix_profil, *suite):
-        reponses = ["1", self.base, choix_profil, *suite]
+    def ecrire_avec(self, choix_profil, *suite, hors_ligne=""):
+        reponses = ["1", self.base, choix_profil, hors_ligne, *suite]
         return self.ecrire([lsblk(nvme_systeme(), cle_montee())] * 2, reponses)
 
+
+class TestLEcritureAvecProfil(BancIsoErplibre):
     def test_profile_zero_keeps_the_old_write_path(self):
         for choix in ("0", ""):
             with self.subTest(choix=choix):
@@ -1062,6 +1118,7 @@ class TestLEcritureAvecProfil(BancProfils):
             )
         )
         self.assertNotIn("Profil machine :", self.texte())
+        self.assertNotIn("Installation hors ligne :", self.texte())
         self.assertFalse(any("xorriso" in c for c in self.lances()))
 
     def test_a_profile_with_errors_is_refused(self):
@@ -1100,6 +1157,304 @@ class TestLEcritureAvecProfil(BancProfils):
         installer.assert_called_once_with(su.PAQUETS_XORRISO)
         self.todo.execute.exec_command_live.assert_not_called()
         self.assertIn("libisoburn", self.texte())
+
+
+class TestLEcritureAvecPaquet(BancIsoErplibre):
+    """Le paquet hors ligne choisi après le profil : liste, fabrique, ISO
+    dérivée avec la partition 3, contrôles de place et de taille de clé.
+    Les paquets sont rangés dans le dossier temporaire, aux valeurs
+    inventées."""
+
+    UUID = "2099-01-02-03-04-05-00"
+
+    def setUp(self):
+        super().setUp()
+        self.dossier = su.dossier_paquets()
+        os.makedirs(self.dossier)
+        self.faits["sfdisk"]["partitiontable"]["partitions"].append(
+            {"node": "d.iso3", "size": 1024, "type": "83"}
+        )
+
+    def ranger(self, nom="odoo18-20990102-030405", **options):
+        options.setdefault("manifeste", manifeste_paquet(iso_uuid=self.UUID))
+        manifeste = options.pop("manifeste")
+        return ranger_paquet(self.dossier, nom, manifeste, **options)
+
+    def image(self, dossier):
+        (nom,) = [n for n in os.listdir(dossier) if n.endswith(".img")]
+        return os.path.join(dossier, nom)
+
+    def ecrire_paquet(self, *reponses, cles=None):
+        """`reponses` après l'ISO ; lsblk lu trois fois : la taille des
+        clés branchées, le choix de la clé, la relecture."""
+        cles = cles or [cle_montee()]
+        return self.ecrire(
+            [lsblk(nvme_systeme(), *cles)] * 3,
+            ["1", self.base, *reponses],
+        )
+
+    def derivees(self):
+        return sorted(os.listdir(self.derives))
+
+    def test_a_payload_alone_appends_partition_3_then_writes(self):
+        dossier = self.ranger()
+        image = self.image(dossier)
+        self.assertTrue(self.ecrire_paquet("", "1", "o", "1", "sdb", "o"))
+        derive = su.chemin_derive(
+            self.derives,
+            su.sha256_fichier(self.base),
+            None,
+            su.sha256_fichier(image),
+        )
+        self.assertIn("-none-", derive)
+        lances = self.lances()
+        self.assertEqual(
+            lances[0],
+            shlex.join(
+                [
+                    "xorriso",
+                    "-indev",
+                    self.base,
+                    "-outdev",
+                    derive,
+                    "-boot_image",
+                    "any",
+                    "replay",
+                    "-boot_image",
+                    "any",
+                    "gpt_disk_guid=volume_date_uuid",
+                    "-volume_date",
+                    "uuid",
+                    "2099010203040500",
+                    "-append_partition",
+                    "3",
+                    "0x83",
+                    image,
+                    "-commit",
+                ]
+            ),
+        )
+        self.assertIn(
+            f"sudo dd if={derive} of=/dev/sdb bs=4M conv=fsync "
+            "oflag=direct status=progress",
+            lances,
+        )
+        with open(derive, "rb") as fh:
+            self.assertTrue(fh.read().endswith(b"image ext4 fictive"))
+        self.assertEqual(os.stat(derive).st_mode & 0o777, 0o600)
+        texte = self.texte()
+        self.assertIn("Installation hors ligne :", texte)
+        self.assertIn("paquet odoo18, 2099-01-02", texte)
+        self.assertIn("clé de 4 Go ou plus", texte)
+        self.assertNotIn("Garder ce paquet", texte)
+        # Une seconde écriture reprend l'ISO dérivée.
+        self.todo.execute.exec_command_live.reset_mock()
+        self.assertTrue(self.ecrire_paquet("", "1", "1", "sdb", "o"))
+        self.assertFalse(any("xorriso" in c for c in self.lances()))
+        self.assertIn(
+            "Déjà construite avec ce paquet hors ligne", self.texte()
+        )
+
+    def test_profile_and_payload_go_in_the_same_derived_iso(self):
+        self.ranger()
+        self.assertTrue(
+            self.ecrire_paquet(
+                self.numero("generic"), "1", "o", "1", "sdb", "o"
+            )
+        )
+        argv = shlex.split(self.lances()[0])
+        self.assertIn("-map", argv)
+        self.assertIn("-append_partition", argv)
+        (iso,) = [n for n in self.derivees() if n.endswith(".iso")]
+        self.assertEqual(iso.count("-"), 2)
+        self.assertNotIn("none", iso)
+
+    def test_a_modified_payload_image_builds_nothing(self):
+        dossier = self.ranger()
+        with open(self.image(dossier), "ab") as fh:
+            fh.write(b"alteree")
+        self.assertFalse(self.ecrire_paquet("", "1", "o"))
+        self.todo.execute.exec_command_live.assert_not_called()
+        self.assertIn("ne correspond plus à son .sha256", self.texte())
+
+    def test_a_derived_iso_failing_its_check_is_removed(self):
+        self.ranger()
+        self.faits["volume_date"] = "2099010203049999"
+        self.assertFalse(self.ecrire_paquet("", "1", "o"))
+        self.assertEqual(len(self.lances()), 1)
+        self.assertEqual(self.derivees(), [])
+        self.assertIn("L'ISO dérivée est refusée", self.texte())
+        self.assertIn("son UUID a changé", self.texte())
+
+    def test_a_missing_data_partition_refuses_the_derived_iso(self):
+        self.ranger()
+        del self.faits["sfdisk"]["partitiontable"]["partitions"][2]
+        self.assertFalse(self.ecrire_paquet("", "1", "o"))
+        self.assertIn("la partition 3", self.texte())
+
+    def test_a_warning_asks_and_no_goes_back_to_the_list(self):
+        self.ranger(manifeste=manifeste_paquet())
+        # Sans référence d'ISO : mise en garde, « non », liste relue, aucun.
+        self.assertTrue(self.ecrire_paquet("", "1", "n", "", "1", "sdb", "o"))
+        self.assertIn("Rien ne dit quelle ISO", self.texte())
+        self.assertIn(
+            f"sudo dd if={self.base} of=/dev/sdb bs=4M conv=fsync "
+            "oflag=direct status=progress",
+            self.lances(),
+        )
+        self.assertFalse(any("xorriso" in c for c in self.lances()))
+
+    def test_another_iso_is_named_in_the_warning(self):
+        self.ranger()
+        with mock.patch.object(
+            su, "lire_uuid_iso", return_value="2099-09-09-09-09-09-00"
+        ):
+            self.assertTrue(
+                self.ecrire_paquet("", "1", "o", "o", "1", "sdb", "o")
+            )
+        self.assertIn(f"autre ISO (UUID {self.UUID})", self.texte())
+
+    def test_an_invalid_payload_is_listed_but_not_selectable(self):
+        self.ranger(somme=False)
+        self.assertTrue(self.ecrire_paquet("", "1", "", "1", "sdb", "o"))
+        texte = self.texte()
+        self.assertIn("✗ paquet odoo18", texte)
+        self.assertIn("aucun fichier .sha256", texte)
+        self.assertIn("ne peut pas partir sur une clé", texte)
+        self.assertFalse(any("xorriso" in c for c in self.lances()))
+
+    def test_a_too_small_key_is_warned_then_refused_with_advice(self):
+        self.ranger()
+        petite = cle_montee(taille=2000)
+        self.assertFalse(
+            self.ecrire_paquet("", "1", "o", "o", "1", "sdb", cles=[petite])
+        )
+        texte = self.texte()
+        self.assertIn("Aucune clé USB branchée ne peut recevoir", texte)
+        self.assertIn("est plus petit que l'image", texte)
+        self.assertGreaterEqual(texte.count("clé de 4 Go ou plus"), 2)
+        self.assertFalse(any("dd if=" in c for c in self.lances()))
+
+    def test_no_room_for_the_derived_iso_stops_before_the_yes(self):
+        self.ranger()
+        with mock.patch.object(su, "espace_libre", return_value=10):
+            self.assertFalse(self.ecrire_paquet("", "1"))
+        self.todo.execute.exec_command_live.assert_not_called()
+        self.assertIn("Pas assez de place libre", self.texte())
+
+    def test_outdated_derived_files_make_room_first(self):
+        self.ranger()
+        os.makedirs(self.derives)
+        perime = os.path.join(self.derives, "aaaaaaaaaaaa-bbbbbbbbbbbb.iso")
+        with open(perime, "wb") as fh:
+            fh.truncate(2 * su.MARGE_DERIVE)
+        with mock.patch.object(su, "espace_libre", return_value=10):
+            self.assertTrue(self.ecrire_paquet("", "1", "o", "1", "sdb", "o"))
+        self.assertFalse(os.path.exists(perime))
+        self.assertIn("retirés d'abord pour faire de la place", self.texte())
+
+    def test_the_factory_entry_builds_then_lists_the_new_payload(self):
+        graine = os.path.join(self.tmp.name, "graine")
+        os.makedirs(graine)
+
+        def lancer(cmd, source_erplibre=True):
+            if su.SCRIPT_FABRIQUE in cmd:
+                self.ranger()
+                return 0
+            return self.xorriso_factice(cmd, source_erplibre)
+
+        self.todo.execute.exec_command_live.side_effect = lancer
+        odoo = str(su.PROFILS_ERPLIBRE.index("odoo18") + 1)
+        with (
+            mock.patch.object(su, "GRAINE_GIT", graine),
+            mock.patch.object(su, "espace_libre", return_value=500 * su.GIO),
+        ):
+            self.assertTrue(
+                self.ecrire_paquet(
+                    "", "1", odoo, "o", "1", "o", "1", "sdb", "o"
+                )
+            )
+        fabrique = shlex.split(self.lances()[0])
+        self.assertEqual(
+            fabrique[1:],
+            [
+                su.SCRIPT_FABRIQUE,
+                "build",
+                "--profile",
+                "odoo18",
+                "--iso",
+                self.base,
+                "--out",
+                self.dossier,
+                "--seed-git-mirrors",
+                graine,
+            ],
+        )
+        self.assertTrue(shlex.split(self.lances()[1])[0] == "xorriso")
+        self.assertIn("Environ 15 min", self.texte())
+
+    def test_the_factory_is_refused_without_room(self):
+        with mock.patch.object(su, "espace_libre", return_value=su.GIO):
+            self.assertTrue(
+                self.ecrire(
+                    [lsblk(nvme_systeme(), cle_montee())] * 2,
+                    ["1", self.base, "", "1", "1", "", "1", "sdb", "o"],
+                )
+            )
+        self.assertIn("Pas assez de place libre", self.texte())
+        self.assertFalse(any(su.SCRIPT_FABRIQUE in c for c in self.lances()))
+
+
+class TestLePaquetSurLaCle(Banc):
+    def cle_ecrite(self):
+        return noeud(
+            "sdb",
+            "disk",
+            tran="usb",
+            rm=True,
+            taille=32 * su.GIO,
+            vendor="Kestrel",
+            model="DataTwig 32",
+            serial="KT0042FAKE0002",
+            enfants=[
+                noeud("sdb1", fstype="iso9660", label="ERPLIBRE_209901"),
+                noeud("sdb2", fstype="vfat", label="ARCHISO_EFI"),
+                noeud("sdb3", fstype="ext4", label="ERPLIBRE_DATA"),
+            ],
+        )
+
+    def detecter(self, manifeste):
+        with (
+            mock.patch.object(
+                su,
+                "lire_lsblk",
+                return_value=lsblk(nvme_systeme(), self.cle_ecrite()),
+            ),
+            mock.patch.object(
+                su, "manifeste_partition", return_value=manifeste
+            ),
+        ):
+            self.todo._system_usb_detecter()
+
+    def test_detection_names_the_payload_of_a_written_key(self):
+        self.detecter(manifeste_paquet("gnome"))
+        self.assertIn(
+            "Paquet hors ligne sur /dev/sdb3 : gnome, 2099-01-02", self.texte()
+        )
+
+    def test_without_read_access_only_the_partition_is_named(self):
+        self.detecter(None)
+        self.assertIn("lisible en root seulement", self.texte())
+
+    def test_the_catalogue_lists_payloads(self):
+        self.todo._system_usb_catalogue()
+        self.assertIn("aucun : en fabriquer un", self.texte())
+        ranger_paquet(
+            su.dossier_paquets(), "gnome-1", manifeste_paquet("gnome")
+        )
+        self.vus.clear()
+        self.todo._system_usb_catalogue()
+        self.assertIn("✓ paquet gnome, 2099-01-02", self.texte())
 
 
 if __name__ == "__main__":

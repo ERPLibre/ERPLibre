@@ -10,7 +10,10 @@ lance le test : lien_by_id reçoit une racine /dev temporaire, et ses
 appels sur /dev se font sur des noms qui n'y désignent rien de connu.
 """
 
+import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -984,6 +987,510 @@ class TestLesProfilsEtLeRemastering(unittest.TestCase):
 
     def test_xorriso_package_on_arch(self):
         self.assertEqual(su.PAQUETS_XORRISO["pacman"], "libisoburn")
+
+
+def manifeste_paquet(
+    profil="odoo18",
+    cree="2099-01-02T03:04:05Z",
+    archinstall="4.5",
+    iso_uuid=None,
+):
+    """Un manifeste de paquet hors ligne que check_manifest() du live
+    accepte ; source, empreintes et UUID inventés."""
+    doc = {
+        "schema": 1,
+        "erplibre_profile": profil,
+        "created": cree,
+        "arch": "x86_64",
+        "erplibre": {
+            "git_url": "https://forge.example.org/erplibre.git",
+            "branch": "fictive",
+            "commit": "ab" * 20,
+        },
+        "archinstall_version": archinstall,
+        "arch_snapshot": "2099-01-01",
+        "parts": {
+            "proxy": {"path": "bin/proxy", "size": 8, "sha256": "1" * 64},
+            "ca_cert": {"path": "ca/ca.crt", "size": 8, "sha256": "2" * 64},
+            "ca_key": {"path": "ca/ca.key", "size": 8, "sha256": "3" * 64},
+            "repo": {"path": "repo", "size": 8, "files": 1},
+            "store": {"path": "store", "size": 0, "files": 0},
+        },
+    }
+    if iso_uuid:
+        doc["reference"] = {"iso_uuid": iso_uuid}
+    return doc
+
+
+def ranger_paquet(
+    racine,
+    nom,
+    manifeste,
+    contenu=b"image ext4 fictive",
+    somme=True,
+    rapport=None,
+    etat=None,
+):
+    """Un répertoire de fabrique sous `racine` : image, .sha256 (vrai ou
+    absent), payload/manifest.json, et au besoin report.json et
+    work/state.json. Rend le dossier."""
+    dossier = os.path.join(racine, nom)
+    os.makedirs(os.path.join(dossier, "payload"))
+    image = os.path.join(dossier, f"erplibre-offline-{nom}.img")
+    with open(image, "wb") as fh:
+        fh.write(contenu)
+    if somme:
+        with open(image + ".sha256", "w") as fh:
+            fh.write(
+                f"{su.sha256_fichier(image)}  {os.path.basename(image)}\n"
+            )
+    if manifeste is not None:
+        with open(
+            os.path.join(dossier, "payload", "manifest.json"), "w"
+        ) as fh:
+            json.dump(manifeste, fh)
+    if rapport is not None:
+        with open(os.path.join(dossier, "report.json"), "w") as fh:
+            json.dump(rapport, fh)
+    if etat is not None:
+        os.makedirs(os.path.join(dossier, "work"))
+        with open(os.path.join(dossier, "work", "state.json"), "w") as fh:
+            json.dump(etat, fh)
+    return dossier
+
+
+FAITS_SAINS = {
+    "sfdisk": {
+        "partitiontable": {
+            "sectorsize": 512,
+            "partitions": [
+                {"node": "/x/d.iso1", "size": 4000, "type": "0"},
+                {"node": "/x/d.iso2", "size": 400, "type": "ef"},
+                {"node": "/x/d.iso3", "size": 2048, "type": "83"},
+            ],
+        }
+    },
+    "eltorito": "El Torito boot img :   1  BIOS  y   none  0x0000\n"
+    "El Torito boot img :   2  UEFI  y   none  0x0000\n",
+    "volume_date": "2099010203040500",
+}
+
+
+class TestLeRemasteringAvecPaquet(unittest.TestCase):
+    """L'ISO dérivée qui porte un paquet hors ligne : nom, plan xorriso,
+    contrôle du résultat. Empreintes et dates inventées."""
+
+    def test_derived_path_with_and_without_profile(self):
+        self.assertEqual(
+            su.chemin_derive("/d", "a" * 64, None, "c" * 64),
+            "/d/aaaaaaaaaaaa-none-cccccccccccc.iso",
+        )
+        self.assertEqual(
+            su.chemin_derive("/d", "a" * 64, "b" * 64, "c" * 64),
+            "/d/aaaaaaaaaaaa-bbbbbbbbbbbb-cccccccccccc.iso",
+        )
+        for nom in (
+            "aaaaaaaaaaaa-none-cccccccccccc.iso",
+            "aaaaaaaaaaaa-none-cccccccccccc.iso.sha256",
+            "aaaaaaaaaaaa-bbbbbbbbbbbb-cccccccccccc.json.tmp",
+        ):
+            self.assertTrue(su.DERIVE_RE.match(nom), nom)
+        for nom in ("aaaaaaaaaaaa-none.iso", "aaaaaaaaaaaa-autre-c.iso"):
+            self.assertFalse(su.DERIVE_RE.match(nom), nom)
+
+    def test_payload_only_plan_appends_partition_3(self):
+        res = su.plan_remaster(
+            "/iso/base.iso",
+            None,
+            "/d/a-none-c.iso",
+            "2099010203040500",
+            image_paquet="/p/paquet.img",
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(
+            res["plan"],
+            [
+                [
+                    "xorriso",
+                    "-indev",
+                    "/iso/base.iso",
+                    "-outdev",
+                    "/d/a-none-c.iso",
+                    "-boot_image",
+                    "any",
+                    "replay",
+                    "-boot_image",
+                    "any",
+                    "gpt_disk_guid=volume_date_uuid",
+                    "-volume_date",
+                    "uuid",
+                    "2099010203040500",
+                    "-append_partition",
+                    "3",
+                    "0x83",
+                    "/p/paquet.img",
+                    "-commit",
+                ]
+            ],
+        )
+        self.assertEqual(res["details"]["payload"], "/p/paquet.img")
+        self.assertEqual(res["details"]["volume_date"], "2099010203040500")
+
+    def test_profile_and_payload_map_then_append(self):
+        argv = su.plan_remaster(
+            "/b.iso",
+            "/d/p.json",
+            "/d/x.iso",
+            "2099010203040500",
+            image_paquet="/p/i.img",
+        )["plan"][0]
+        self.assertLess(argv.index("replay"), argv.index("-map"))
+        self.assertLess(argv.index("-map"), argv.index("-append_partition"))
+        self.assertEqual(argv[-1], "-commit")
+
+    def test_healthy_derived_iso_has_no_defect(self):
+        self.assertEqual(
+            su.defauts_derive(FAITS_SAINS, "2099010203040500", 2048 * 512),
+            [],
+        )
+        # Sans paquet, la partition 3 n'est pas exigée.
+        sans = json.loads(json.dumps(FAITS_SAINS))
+        del sans["sfdisk"]["partitiontable"]["partitions"][2]
+        self.assertEqual(su.defauts_derive(sans, "2099010203040500"), [])
+
+    def test_each_defect_is_named(self):
+        self.assertEqual(
+            su.defauts_derive(FAITS_SAINS, "2099010203040599"),
+            ["uuid-changed"],
+        )
+        bios = dict(FAITS_SAINS, eltorito="El Torito boot img : 2 UEFI y\n")
+        self.assertEqual(
+            su.defauts_derive(bios, "2099010203040500"), ["no-bios-boot"]
+        )
+        uefi = dict(FAITS_SAINS, eltorito="El Torito boot img : 1 BIOS y\n")
+        self.assertEqual(
+            su.defauts_derive(uefi, "2099010203040500"), ["no-uefi-boot"]
+        )
+        sans_esp = json.loads(json.dumps(FAITS_SAINS))
+        sans_esp["sfdisk"]["partitiontable"]["partitions"][1]["type"] = "83"
+        self.assertIn(
+            "no-esp", su.defauts_derive(sans_esp, "2099010203040500")
+        )
+        self.assertEqual(
+            su.defauts_derive(FAITS_SAINS, "2099010203040500", 2049 * 512),
+            ["no-data-partition"],
+        )
+        mauvais_type = json.loads(json.dumps(FAITS_SAINS))
+        mauvais_type["sfdisk"]["partitiontable"]["partitions"][2]["type"] = "7"
+        self.assertEqual(
+            su.defauts_derive(mauvais_type, "2099010203040500", 512),
+            ["no-data-partition"],
+        )
+        for illisible in (
+            dict(FAITS_SAINS, sfdisk=None),
+            dict(FAITS_SAINS, eltorito=None),
+        ):
+            self.assertEqual(
+                su.defauts_derive(illisible, "2099010203040500"),
+                ["unreadable"],
+            )
+
+    def test_partition_table_numbers_come_from_the_node(self):
+        self.assertEqual(
+            su.partitions_table(FAITS_SAINS["sfdisk"]),
+            {
+                1: {"type": "0", "octets": 4000 * 512},
+                2: {"type": "ef", "octets": 400 * 512},
+                3: {"type": "83", "octets": 2048 * 512},
+            },
+        )
+        self.assertEqual(su.partitions_table(None), {})
+
+
+class TestLesPaquetsHorsLigne(unittest.TestCase):
+    """La liste des paquets de la fabrique et ce qui empêche chacun de
+    partir. Aucun debugfs : le manifeste vient de payload/, ou d'un
+    lecteur injecté."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.racine = self.tmp.name
+        self.sans_debugfs = lambda _image: None
+
+    def lister(self):
+        return su.paquets_hors_ligne(self.racine, self.sans_debugfs)
+
+    def test_a_valid_payload_and_its_fields(self):
+        dossier = ranger_paquet(
+            self.racine,
+            "odoo18-20990102-030405",
+            manifeste_paquet(iso_uuid="2099-01-02-03-04-05-00"),
+            rapport={"ok": True},
+        )
+        (p,) = self.lister()
+        self.assertEqual(p["erreurs"], [])
+        self.assertEqual(p["dossier"], dossier)
+        self.assertEqual(p["profil"], "odoo18")
+        self.assertEqual(p["date"], "2099-01-02")
+        self.assertEqual(p["taille"], len(b"image ext4 fictive"))
+        self.assertEqual(p["sha256"], su.sha256_fichier(p["image"]))
+        self.assertEqual(p["iso_uuid"], "2099-01-02-03-04-05-00")
+
+    def test_newest_first_and_folders_without_image_skipped(self):
+        ranger_paquet(
+            self.racine, "a", manifeste_paquet(cree="2099-01-01T00:00:00Z")
+        )
+        ranger_paquet(
+            self.racine,
+            "b",
+            manifeste_paquet("gnome", cree="2099-03-01T00:00:00Z"),
+        )
+        os.makedirs(os.path.join(self.racine, "vide"))
+        with open(os.path.join(self.racine, "build-a.log"), "w") as fh:
+            fh.write("journal")
+        self.assertEqual(
+            [p["date"] for p in self.lister()], ["2099-03-01", "2099-01-01"]
+        )
+        self.assertEqual(su.paquets_hors_ligne("/nulle/part"), [])
+
+    def test_each_reason_that_keeps_a_payload_off_a_key(self):
+        cas = {
+            "sans-somme": ({"somme": False}, ["no-sha256"]),
+            "sans-manifeste": ({"manifeste": None}, ["manifest-unreadable"]),
+            "invalide": (
+                {"manifeste": dict(manifeste_paquet(), schema=9)},
+                ["manifest-invalid"],
+            ),
+            "enregistrement": (
+                {
+                    "manifeste": dict(
+                        manifeste_paquet(),
+                        mode="record",
+                        record={
+                            "proxy": "10.0.2.2",
+                            "http_port": 1,
+                            "tls_port": 2,
+                        },
+                    )
+                },
+                ["record"],
+            ),
+            "rapport": ({"rapport": {"ok": False}}, ["report-not-ok"]),
+        }
+        for nom, (options, attendu) in cas.items():
+            with self.subTest(nom=nom):
+                options = dict(options)
+                manifeste = options.pop("manifeste", manifeste_paquet())
+                dossier = ranger_paquet(self.racine, nom, manifeste, **options)
+                p = su.paquet_hors_ligne(dossier, self.sans_debugfs)
+                self.assertEqual(p["erreurs"], attendu)
+
+    def test_the_image_manifest_wins_over_payload_dir(self):
+        dossier = ranger_paquet(self.racine, "x", manifeste_paquet("gnome"))
+        p = su.paquet_hors_ligne(
+            dossier, lambda _image: manifeste_paquet("home")
+        )
+        self.assertEqual(p["profil"], "home")
+
+    def test_the_iso_uuid_falls_back_to_the_build_state(self):
+        dossier = ranger_paquet(
+            self.racine,
+            "x",
+            manifeste_paquet(),
+            etat={"plan": {"iso_uuid": "2099-05-06-07-08-09-00"}},
+        )
+        p = su.paquet_hors_ligne(dossier, self.sans_debugfs)
+        self.assertEqual(p["iso_uuid"], "2099-05-06-07-08-09-00")
+
+    @unittest.skipUnless(
+        shutil.which("mkfs.ext4") and shutil.which("debugfs"),
+        "e2fsprogs absent",
+    )
+    def test_debugfs_reads_the_manifest_of_a_real_ext4_image(self):
+        source = os.path.join(self.racine, "source")
+        os.makedirs(source)
+        with open(os.path.join(source, "manifest.json"), "w") as fh:
+            json.dump(manifeste_paquet("gnome"), fh)
+        image = os.path.join(self.racine, "i.img")
+        with open(image, "wb") as fh:
+            fh.truncate(4 * 1024**2)
+        subprocess.run(
+            [
+                "mkfs.ext4",
+                "-q",
+                "-F",
+                "-L",
+                su.LABEL_PAQUET,
+                "-d",
+                source,
+                image,
+            ],
+            check=True,
+        )
+        self.assertEqual(
+            su.lire_manifeste_image(image)["erplibre_profile"], "gnome"
+        )
+        self.assertIsNone(su.lire_manifeste_image(source + "/absent.img"))
+
+    def test_constants_match_the_live_and_the_factory(self):
+        hl = su.module_hors_ligne()
+        self.assertEqual(su.LABEL_PAQUET, hl.DATA_LABEL)
+        self.assertEqual(su.MANIFESTE_PAQUET, hl.MANIFEST_NAME)
+        from script.iso.archlinux import offline_payload as op
+
+        self.assertEqual(su.GRAINE_GIT, op.SEED_DEFAULT)
+        self.assertEqual(
+            os.path.expanduser(su.DOSSIER_PAQUETS), str(op.OUT_ROOT)
+        )
+        self.assertEqual(
+            set(su.PROFILS_ERPLIBRE), {"gnome", "home", "odoo18", "dev"}
+        )
+
+
+class TestLaCompatibiliteEtLaPlace(unittest.TestCase):
+    def test_advised_key_size(self):
+        self.assertEqual(su.cle_conseillee(27 * 10**9), 32)
+        self.assertEqual(su.cle_conseillee(2 * GIO), 4)
+        # Une clé de 16 Go n'offre pas 15,5 Go utiles.
+        self.assertEqual(su.cle_conseillee(15_500_000_000), 32)
+        self.assertIsNone(su.cle_conseillee(10**15))
+
+    def test_expected_derived_size(self):
+        self.assertEqual(su.taille_derive(1000, 2000), 3000 + su.MARGE_DERIVE)
+        self.assertEqual(su.taille_derive(1000), 1000 + su.MARGE_DERIVE)
+
+    def test_pkglist_version(self):
+        texte = "base 3-2\narchinstall 4.5.1-1\nnftables 1:1.1.7-3\n"
+        self.assertEqual(su.version_pkglist(texte), "4.5.1")
+        self.assertEqual(su.version_pkglist(texte, "nftables"), "1:1.1.7")
+        self.assertIsNone(su.version_pkglist(texte, "absent"))
+        self.assertIsNone(su.version_pkglist(None))
+
+    def test_payload_warnings_for_an_iso(self):
+        p = {
+            "iso_uuid": "2099-01-02-03-04-05-00",
+            "manifeste": {"archinstall_version": "4.5"},
+        }
+        pkglist = "archinstall 4.5.2-1\n"
+        self.assertEqual(
+            su.alertes_paquet(p, pkglist, "2099-01-02-03-04-05-00"), []
+        )
+        self.assertEqual(
+            su.alertes_paquet(p, pkglist, "2099-09-09-09-09-09-00"),
+            [{"code": "other-iso", "uuid": "2099-01-02-03-04-05-00"}],
+        )
+        self.assertEqual(
+            su.alertes_paquet(
+                dict(p, iso_uuid=None), "archinstall 4.6-1\n", None
+            ),
+            [
+                {"code": "iso-unknown"},
+                {
+                    "code": "archinstall-mismatch",
+                    "iso": "4.6",
+                    "payload": "4.5",
+                },
+            ],
+        )
+        # Rien de lisible sur l'ISO : seule la référence manquante parle.
+        self.assertEqual(su.alertes_paquet(p, None, None), [])
+
+    def test_space_verdict(self):
+        self.assertIsNone(su.verdict_espace(10, 10))
+        self.assertIsNone(su.verdict_espace(10, None))
+        self.assertEqual(su.verdict_espace(10, 4, 6), "cleanup")
+        self.assertEqual(su.verdict_espace(10, 4, 5), "no-space")
+
+    def test_free_space_walks_up_to_an_existing_parent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsInstance(
+                su.espace_libre(os.path.join(tmp, "a", "b")), int
+            )
+
+    def test_a_written_key_shows_its_payload_partition(self):
+        cle = noeud(
+            "sdb",
+            "disk",
+            tran="usb",
+            taille=32 * GIO,
+            enfants=[
+                noeud("sdb1", fstype="iso9660", label="ERPLIBRE_209901"),
+                noeud("sdb2", fstype="vfat", label="ARCHISO_EFI"),
+                noeud("sdb3", fstype="ext4", label="ERPLIBRE_DATA"),
+            ],
+        )
+        (disque,) = su.disques(lsblk(cle), racine_dev=RACINE_INEXISTANTE)
+        partition = su.partition_paquet(disque)
+        self.assertEqual(partition["path"], "/dev/sdb3")
+        self.assertIsNone(
+            su.partition_paquet(su.disques(lsblk(cle_montee()))[0])
+        )
+        with mock.patch.object(su, "lire_manifeste_image") as lire:
+            self.assertIsNone(
+                su.manifeste_partition(partition, lisible=lambda _p: False)
+            )
+            lire.assert_not_called()
+            lire.return_value = {"erplibre_profile": "gnome"}
+            self.assertEqual(
+                su.manifeste_partition(partition, lisible=lambda _p: True),
+                {"erplibre_profile": "gnome"},
+            )
+            lire.assert_called_once_with("/dev/sdb3")
+
+
+class TestLaFabrique(unittest.TestCase):
+    def test_build_plan_argv(self):
+        res = su.plan_fabrique(
+            "odoo18",
+            "/iso/base.iso",
+            "py",
+            "/o",
+            graine="/graine",
+            libre=100 * GIO,
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(
+            res["plan"],
+            [
+                [
+                    "py",
+                    su.SCRIPT_FABRIQUE,
+                    "build",
+                    "--profile",
+                    "odoo18",
+                    "--iso",
+                    "/iso/base.iso",
+                    "--out",
+                    "/o",
+                    "--seed-git-mirrors",
+                    "/graine",
+                ]
+            ],
+        )
+        self.assertEqual(
+            res["details"]["minutes"], su.FABRIQUE["odoo18"]["minutes"]
+        )
+        sans = su.plan_fabrique("odoo18", "/i.iso", "py", "/o")
+        self.assertNotIn("--seed-git-mirrors", sans["plan"][0])
+        self.assertEqual(
+            sans["details"]["minutes"],
+            su.FABRIQUE["odoo18"]["minutes_sans_graine"],
+        )
+
+    def test_gnome_clones_nothing_and_gets_no_seed(self):
+        res = su.plan_fabrique("gnome", "/i.iso", "py", "/o", graine="/g")
+        self.assertNotIn("--seed-git-mirrors", res["plan"][0])
+        self.assertIsNone(res["details"]["seed"])
+
+    def test_refusals(self):
+        res = su.plan_fabrique("inconnu", "/i.iso", "py", "/o")
+        self.assertEqual(res["reason"], "unknown-erplibre-profile")
+        res = su.plan_fabrique("odoo18", "/i.iso", "py", "/o", libre=GIO)
+        self.assertEqual(res["reason"], "no-space")
+        self.assertEqual(
+            res["details"]["need"], su.FABRIQUE["odoo18"]["espace"]
+        )
 
 
 if __name__ == "__main__":

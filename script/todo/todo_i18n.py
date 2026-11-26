@@ -27050,6 +27050,166 @@ TRANSLATIONS = {
         "fr": "Fichier d'ISO dérivée périmé retiré :",
         "en": "Removed an outdated derived ISO file:",
     },
+    "Not enough free space in {path}: {need} needed, {free} free.": {
+        "fr": "Pas assez de place libre dans {path} : {need} nécessaires, {free} libres.",
+        "en": "Not enough free space in {path}: {need} needed, {free} free.",
+    },
+    "Unknown ERPLibre profile: {profile}.": {
+        "fr": "Profil ERPLibre inconnu : {profile}.",
+        "en": "Unknown ERPLibre profile: {profile}.",
+    },
+    "no .sha256 file for the image: build the payload again.": {
+        "fr": "aucun fichier .sha256 pour l'image : refabriquer le paquet.",
+        "en": "no .sha256 file for the image: build the payload again.",
+    },
+    "no readable manifest in the image (debugfs, e2fsprogs) nor in payload/.": {
+        "fr": "aucun manifeste lisible dans l'image (debugfs, e2fsprogs) ni dans payload/.",
+        "en": "no readable manifest in the image (debugfs, e2fsprogs) nor in payload/.",
+    },
+    "the manifest is refused by the installer of the key.": {
+        "fr": "le manifeste est refusé par l'installateur de la clé.",
+        "en": "the manifest is refused by the installer of the key.",
+    },
+    "this is a recording key, not an offline payload.": {
+        "fr": "c'est une clé d'enregistrement, pas un paquet hors ligne.",
+        "en": "this is a recording key, not an offline payload.",
+    },
+    "report.json says a required package is missing or unsigned: build the payload again.": {
+        "fr": "report.json signale un paquet requis absent ou non signé : refabriquer le paquet.",
+        "en": "report.json says a required package is missing or unsigned: build the payload again.",
+    },
+    "Nothing says which ISO recorded this payload: the ISO must have the offline mode, otherwise the key installs online.": {
+        "fr": "Rien ne dit quelle ISO a enregistré ce paquet : l'ISO doit avoir le mode hors ligne, sinon la clé installe en ligne.",
+        "en": "Nothing says which ISO recorded this payload: the ISO must have the offline mode, otherwise the key installs online.",
+    },
+    "This payload was recorded with another ISO (UUID {uuid}): the chosen ISO must have the offline mode, otherwise the key installs online.": {
+        "fr": "Ce paquet a été enregistré avec une autre ISO (UUID {uuid}) : l'ISO choisie doit avoir le mode hors ligne, sinon la clé installe en ligne.",
+        "en": "This payload was recorded with another ISO (UUID {uuid}): the chosen ISO must have the offline mode, otherwise the key installs online.",
+    },
+    "The ISO carries archinstall {iso}, the payload was recorded with {payload}: it may ask for packages the payload lacks (the installer checks before erasing anything).": {
+        "fr": "L'ISO porte archinstall {iso}, le paquet a été enregistré avec {payload} : il peut demander des paquets absents du paquet (l'installateur le vérifie avant tout effacement).",
+        "en": "The ISO carries archinstall {iso}, the payload was recorded with {payload}: it may ask for packages the payload lacks (the installer checks before erasing anything).",
+    },
+    "sfdisk or xorriso cannot read it.": {
+        "fr": "sfdisk ou xorriso ne peut pas la lire.",
+        "en": "sfdisk or xorriso cannot read it.",
+    },
+    "its UUID changed: the live would not find its boot medium.": {
+        "fr": "son UUID a changé : le live ne retrouverait pas son support de démarrage.",
+        "en": "its UUID changed: the live would not find its boot medium.",
+    },
+    "BIOS boot is missing.": {
+        "fr": "le démarrage BIOS manque.",
+        "en": "BIOS boot is missing.",
+    },
+    "UEFI boot is missing.": {
+        "fr": "le démarrage UEFI manque.",
+        "en": "UEFI boot is missing.",
+    },
+    "the EFI partition is missing.": {
+        "fr": "la partition EFI manque.",
+        "en": "the EFI partition is missing.",
+    },
+    "partition 3 (offline payload) is missing or too small.": {
+        "fr": "la partition 3 (paquet hors ligne) manque ou est trop petite.",
+        "en": "partition 3 (offline payload) is missing or too small.",
+    },
+    "payload {profile}, {date}, {size} (key of {key} GB or more)": {
+        "fr": "paquet {profile}, {date}, {size} (clé de {key} Go ou plus)",
+        "en": "payload {profile}, {date}, {size} (key of {key} GB or more)",
+    },
+    "Offline payload on {device} (manifest readable as root only).": {
+        "fr": "Paquet hors ligne sur {device} (manifeste lisible en root seulement).",
+        "en": "Offline payload on {device} (manifest readable as root only).",
+    },
+    "Offline payload on {device}: {profile}, {date}": {
+        "fr": "Paquet hors ligne sur {device} : {profile}, {date}",
+        "en": "Offline payload on {device}: {profile}, {date}",
+    },
+    "Offline payloads in {path}:": {
+        "fr": "Paquets hors ligne dans {path} :",
+        "en": "Offline payloads in {path}:",
+    },
+    "none: build one when writing an ERPLibre ISO to a key.": {
+        "fr": "aucun : en fabriquer un à l'écriture d'une ISO ERPLibre sur une clé.",
+        "en": "none: build one when writing an ERPLibre ISO to a key.",
+    },
+    "Offline installation:": {
+        "fr": "Installation hors ligne :",
+        "en": "Offline installation:",
+    },
+    "no (network required during installation)": {
+        "fr": "non (réseau requis pendant l'installation)",
+        "en": "no (network required during installation)",
+    },
+    "Build an offline payload (reference install in QEMU)…": {
+        "fr": "Fabriquer un paquet hors ligne (installation de référence en QEMU)…",
+        "en": "Build an offline payload (reference install in QEMU)…",
+    },
+    "Payload number, Enter for none: ": {
+        "fr": "Numéro du paquet, Entrée pour aucun : ",
+        "en": "Payload number, Enter for none: ",
+    },
+    "This payload cannot go on a key: see the reasons above.": {
+        "fr": "Ce paquet ne peut pas partir sur une clé : voir les raisons ci-dessus.",
+        "en": "This payload cannot go on a key: see the reasons above.",
+    },
+    "No USB key plugged in can hold {size}: the largest is {largest}.": {
+        "fr": "Aucune clé USB branchée ne peut recevoir {size} : la plus grande fait {largest}.",
+        "en": "No USB key plugged in can hold {size}: the largest is {largest}.",
+    },
+    "Keep this offline payload? (y/N): ": {
+        "fr": "Garder ce paquet hors ligne ? (o/N) : ",
+        "en": "Keep this offline payload? (y/N): ",
+    },
+    "The image will take {size}: use a key of {key} GB or more. Writing and reading it back takes tens of minutes on a slow key.": {
+        "fr": "L'image fera {size} : prendre une clé de {key} Go ou plus. L'écrire puis la relire prend des dizaines de minutes sur une clé lente.",
+        "en": "The image will take {size}: use a key of {key} GB or more. Writing and reading it back takes tens of minutes on a slow key.",
+    },
+    "ERPLibre profile number (0 to cancel): ": {
+        "fr": "Numéro du profil ERPLibre (0 pour annuler) : ",
+        "en": "ERPLibre profile number (0 to cancel): ",
+    },
+    "About {minutes} min and up to {need} in {path}: a reference install of {profile} in QEMU (KVM, no root), network required during the build.": {
+        "fr": "Environ {minutes} min et jusqu'à {need} dans {path} : une installation de référence de {profile} en QEMU (KVM, sans root), réseau requis pendant la fabrication.",
+        "en": "About {minutes} min and up to {need} in {path}: a reference install of {profile} in QEMU (KVM, no root), network required during the build.",
+    },
+    "Git mirrors copied first from:": {
+        "fr": "Miroirs git copiés d'abord depuis :",
+        "en": "Git mirrors copied first from:",
+    },
+    "Build the offline payload now? (y/N): ": {
+        "fr": "Fabriquer le paquet hors ligne maintenant ? (o/N) : ",
+        "en": "Build the offline payload now? (y/N): ",
+    },
+    "Checking the SHA-256 of the offline payload image…": {
+        "fr": "Vérification de la somme SHA-256 de l'image du paquet hors ligne…",
+        "en": "Checking the SHA-256 of the offline payload image…",
+    },
+    "The offline payload image does not match its .sha256: build the payload again.": {
+        "fr": "L'image du paquet hors ligne ne correspond plus à son .sha256 : refabriquer le paquet.",
+        "en": "The offline payload image does not match its .sha256: build the payload again.",
+    },
+    "Already built with this offline payload:": {
+        "fr": "Déjà construite avec ce paquet hors ligne :",
+        "en": "Already built with this offline payload:",
+    },
+    "Outdated derived ISO files are removed first to make room.": {
+        "fr": "Les fichiers d'ISO dérivées périmés sont retirés d'abord pour faire de la place.",
+        "en": "Outdated derived ISO files are removed first to make room.",
+    },
+    "Build the ISO with the offline payload? (y/N): ": {
+        "fr": "Construire l'ISO avec le paquet hors ligne ? (o/N) : ",
+        "en": "Build the ISO with the offline payload? (y/N): ",
+    },
+    "The derived ISO is refused:": {
+        "fr": "L'ISO dérivée est refusée :",
+        "en": "The derived ISO is refused:",
+    },
+    "Derived ISO:": {
+        "fr": "ISO dérivée :",
+        "en": "Derived ISO:",
+    },
     "{device} is not present on this computer.": {
         "fr": "{device} n'est pas présent sur cet ordinateur.",
         "en": "{device} is not present on this computer.",

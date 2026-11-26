@@ -16,6 +16,13 @@ résumé, puis placé dans une ISO dérivée (system_usb.plan_remaster) que
 l'écriture reçoit à la place de l'ISO choisie. Le profil ne porte aucun
 mot de passe ; l'installateur les demande.
 
+Elle peut aussi partir avec un paquet hors ligne, choisi juste après le
+profil parmi ceux que la fabrique a rangés (ou fabriqué sur demande) :
+l'ISO dérivée le porte en 3e partition. Sa somme est vérifiée avant le
+remastering, l'ISO dérivée est contrôlée après (démarrage BIOS et UEFI,
+UUID, partition), et une clé trop petite est refusée avec la taille de
+clé conseillée.
+
 Mixin de la classe TODO : ses méthodes vivent sur la même instance que
 celles des autres fichiers, elles s'appellent donc par « self. ».
 """
@@ -53,6 +60,37 @@ RAISONS_USB = {
     "iso-on-key": "The image {path} is on the key itself ({mountpoint}): copy it elsewhere first.",
     "not-downloadable": "This image cannot be downloaded.",
     "no-volume-date": "The volume date of {path} cannot be read (blkid, xorriso): the ISO with the profile would not find its boot medium.",
+    "no-space": "Not enough free space in {path}: {need} needed, {free} free.",
+    "unknown-erplibre-profile": "Unknown ERPLibre profile: {profile}.",
+}
+
+# Pourquoi un paquet hors ligne ne peut pas partir sur une clé
+# (system_usb.paquet_hors_ligne).
+ERREURS_PAQUET = {
+    "no-sha256": "no .sha256 file for the image: build the payload again.",
+    "manifest-unreadable": "no readable manifest in the image (debugfs, e2fsprogs) nor in payload/.",
+    "manifest-invalid": "the manifest is refused by the installer of the key.",
+    "record": "this is a recording key, not an offline payload.",
+    "report-not-ok": "report.json says a required package is missing or unsigned: build the payload again.",
+}
+
+# Les mises en garde d'un paquet pour l'ISO choisie
+# (system_usb.alertes_paquet).
+ALERTES_PAQUET = {
+    "iso-unknown": "Nothing says which ISO recorded this payload: the ISO must have the offline mode, otherwise the key installs online.",
+    "other-iso": "This payload was recorded with another ISO (UUID {uuid}): the chosen ISO must have the offline mode, otherwise the key installs online.",
+    "archinstall-mismatch": "The ISO carries archinstall {iso}, the payload was recorded with {payload}: it may ask for packages the payload lacks (the installer checks before erasing anything).",
+}
+
+# Ce qui manque à une ISO dérivée pour démarrer comme sa base
+# (system_usb.defauts_derive).
+DEFAUTS_DERIVE = {
+    "unreadable": "sfdisk or xorriso cannot read it.",
+    "uuid-changed": "its UUID changed: the live would not find its boot medium.",
+    "no-bios-boot": "BIOS boot is missing.",
+    "no-uefi-boot": "UEFI boot is missing.",
+    "no-esp": "the EFI partition is missing.",
+    "no-data-partition": "partition 3 (offline payload) is missing or too small.",
 }
 
 # Les phrases des codes de validate(), de ProfileError, des mises en
@@ -71,7 +109,7 @@ ALERTES_USB = {
 }
 
 # Les détails exprimés en octets, mis en unité lisible avant la phrase.
-TAILLES_USB = {"size", "iso_size", "limit"}
+TAILLES_USB = {"size", "iso_size", "limit", "need", "free"}
 
 
 def _champs(details):
@@ -139,6 +177,22 @@ def _retirer(*chemins):
             os.remove(chemin)
         except FileNotFoundError:
             pass
+
+
+def ligne_paquet(paquet, taille_iso=0):
+    """Un paquet hors ligne en une ligne : marque, profil, date, taille
+    de l'image et taille de clé conseillée pour l'ISO de `taille_iso`
+    octets qui le portera."""
+    marque = "✗" if paquet["erreurs"] else "✓"
+    cle = su.cle_conseillee(su.taille_derive(taille_iso, paquet["taille"]))
+    return f"{marque} " + t(
+        "payload {profile}, {date}, {size} (key of {key} GB or more)"
+    ).format(
+        profile=paquet["profil"] or "?",
+        date=paquet["date"] or "?",
+        size=octets(paquet["taille"]),
+        key=cle or "?",
+    )
 
 
 def lignes_cle(cle):
@@ -227,12 +281,35 @@ class SystemUsbMenuMixin:
             print(f"  {t('No USB key detected: plug one in and retry.')}")
         for cle in cles:
             print("\n".join(lignes_cle(cle)))
+            ligne = self._system_usb_ligne_paquet_cle(cle)
+            if ligne:
+                print(ligne)
         print(
             "  "
             + t("System disks excluded: {count}").format(count=len(systeme))
         )
         print()
         return cles
+
+    def _system_usb_ligne_paquet_cle(self, cle):
+        """La ligne qui dit qu'une clé porte un paquet hors ligne, None si
+        elle n'en porte pas. Le manifeste n'est lu que si le périphérique
+        l'est sans sudo (groupe disk)."""
+        partition = su.partition_paquet(cle)
+        if partition is None:
+            return None
+        manifeste = su.manifeste_partition(partition)
+        if manifeste is None:
+            return "    📦 " + t(
+                "Offline payload on {device} (manifest readable as root only)."
+            ).format(device=partition["path"])
+        return "    📦 " + t(
+            "Offline payload on {device}: {profile}, {date}"
+        ).format(
+            device=partition["path"],
+            profile=manifeste.get("erplibre_profile") or "?",
+            date=str(manifeste.get("created") or "?")[:10],
+        )
 
     # [2] Écrire
 
@@ -246,6 +323,7 @@ class SystemUsbMenuMixin:
         iso_taille = self._system_usb_valider_iso(iso)
         if iso_taille is None:
             return False
+        self._usb_paquet = None
         if su.est_iso_erplibre(iso):
             derive = self._system_usb_iso_avec_profil(iso)
             if not derive:
@@ -276,6 +354,8 @@ class SystemUsbMenuMixin:
         res = su.plan_ecriture(cle, iso, iso_taille, systeme)
         if not res["ok"]:
             print(f"  ⚠ {message_refus(res)}")
+            if res["reason"] == "too-small" and self._usb_paquet:
+                self._system_usb_conseil_cle(iso_taille)
             return False
         for alerte in res["warnings"]:
             print(f"  ⚠ {message_alerte(alerte)}")
@@ -525,13 +605,20 @@ class SystemUsbMenuMixin:
                 f"  {t('The ERPLibre Arch Linux ISO builder is not available yet in this checkout:')} {su.SCRIPT_CONSTRUCTION}"
             )
             return False
-        python = os.path.join(".venv.erplibre", "bin", "python")
-        if not os.access(os.path.join(su.RACINE_DEPOT, python), os.X_OK):
-            python = sys.executable
-        commande = shlex.join([python, su.SCRIPT_CONSTRUCTION])
+        commande = shlex.join(
+            [self._system_usb_python(), su.SCRIPT_CONSTRUCTION]
+        )
         return not self.execute.exec_command_live(
             commande, source_erplibre=False
         )
+
+    def _system_usb_python(self):
+        """Le Python du venv d'outillage, relatif à la racine du dépôt, ou
+        à défaut celui qui fait tourner le TODO."""
+        python = os.path.join(".venv.erplibre", "bin", "python")
+        if not os.access(os.path.join(su.RACINE_DEPOT, python), os.X_OK):
+            python = sys.executable
+        return python
 
     # [4] Catalogue
 
@@ -554,15 +641,40 @@ class SystemUsbMenuMixin:
 
     def _system_usb_catalogue(self):
         self._system_usb_afficher_catalogue(su.catalogue())
+        paquets = su.paquets_hors_ligne()
+        print(
+            "  "
+            + t("Offline payloads in {path}:").format(
+                path=su.dossier_paquets()
+            )
+        )
+        if not paquets:
+            print(
+                f"    {t('none: build one when writing an ERPLibre ISO to a key.')}"
+            )
+        self._system_usb_afficher_paquets(paquets, numeros=False)
         print()
 
     # [2] Écrire, avec un profil machine
 
     def _system_usb_iso_avec_profil(self, iso):
         """L'image à écrire quand `iso` est une ISO ERPLibre : `iso` elle-même
-        si l'on ne choisit aucun profil (installation guidée), l'ISO dérivée
-        qui porte le profil choisi, ou None si l'on annule ou qu'un pas
-        échoue."""
+        si l'on ne choisit ni profil (installation guidée) ni paquet hors
+        ligne, l'ISO dérivée qui porte ce qu'on a choisi, ou None si l'on
+        annule ou qu'un pas échoue. Le paquet choisi reste dans
+        self._usb_paquet pour la suite de l'écriture."""
+        profil = self._system_usb_choisir_profil()
+        if profil is False:
+            return None
+        paquet = self._system_usb_choisir_paquet(iso)
+        self._usb_paquet = paquet
+        if profil is None and paquet is None:
+            return iso
+        return self._system_usb_remaster(iso, profil, paquet)
+
+    def _system_usb_choisir_profil(self):
+        """Le profil machine effectif choisi, None pour aucun, False si le
+        profil choisi a des erreurs."""
         entrees = mp.list_profiles(su.dossiers_profils())
         print(f"  {t('Machine profile:')}")
         print(f"  [0] {t('none (guided installation)')}")
@@ -570,7 +682,7 @@ class SystemUsbMenuMixin:
         while True:
             reponse = input(t("Profile number, Enter for none: ")).strip()
             if reponse in ("", "0"):
-                return iso
+                return None
             numero = entier(reponse)
             if numero is not None and 1 <= numero <= len(entrees):
                 break
@@ -582,26 +694,187 @@ class SystemUsbMenuMixin:
             )
             for code, details in entree["errors"]:
                 print(f"    {message_profil(code, details)}")
-            return None
+            return False
         profil = entree["effective"]
         print("\n".join(lignes_resume(profil)))
         print(
             f"  🔒 {t('Passwords and LUKS passphrases will be asked during installation.')}"
         )
-        return self._system_usb_remaster(iso, profil)
+        return profil
 
-    def _system_usb_remaster(self, iso, profil):
-        """Le chemin de l'ISO dérivée qui porte `profil`, fabriquée par
-        xorriso selon system_usb.plan_remaster après un oui, ou reprise
-        telle quelle si une précédente est intacte ; None sinon.
+    # [2] Écrire, avec un paquet hors ligne
+
+    def _system_usb_afficher_paquets(
+        self, paquets, numeros=True, taille_iso=0
+    ):
+        """Une ligne par paquet (ligne_paquet), son dossier et ses erreurs
+        dessous."""
+        for i, p in enumerate(paquets, 1):
+            tete = f"  [{i}] " if numeros else "    "
+            print(f"{tete}{ligne_paquet(p, taille_iso)}")
+            print(f"      {p['dossier']}")
+            for code in p["erreurs"]:
+                print(f"      ⚠ {t(ERREURS_PAQUET.get(code, code))}")
+
+    def _system_usb_choisir_paquet(self, iso):
+        """Le paquet hors ligne que la clé portera (un dict de
+        system_usb.paquets_hors_ligne), ou None pour aucun (installation
+        en ligne). L'entrée qui suit la liste lance la fabrique ; après
+        elle, ou après un paquet qu'on ne garde pas, la liste est relue."""
+        while True:
+            paquets = su.paquets_hors_ligne()
+            print(f"  {t('Offline installation:')}")
+            print(f"  [0] {t('no (network required during installation)')}")
+            self._system_usb_afficher_paquets(
+                paquets, taille_iso=os.path.getsize(iso)
+            )
+            fabrique = len(paquets) + 1
+            print(
+                f"  [{fabrique}] {t('Build an offline payload (reference install in QEMU)…')}"
+            )
+            reponse = input(t("Payload number, Enter for none: ")).strip()
+            if reponse in ("", "0"):
+                return None
+            numero = entier(reponse)
+            if numero == fabrique:
+                self._system_usb_fabriquer_paquet(iso)
+                continue
+            if numero is None or not 1 <= numero <= len(paquets):
+                print(f"  {t('Choose a number from the list.')}")
+                continue
+            paquet = paquets[numero - 1]
+            if paquet["erreurs"]:
+                print(
+                    f"  ⚠ {t('This payload cannot go on a key: see the reasons above.')}"
+                )
+                continue
+            if self._system_usb_accepter_paquet(iso, paquet):
+                return paquet
+
+    def _system_usb_accepter_paquet(self, iso, paquet):
+        """Montre la taille de clé conseillée et les mises en garde du
+        paquet pour `iso` (system_usb.alertes_paquet), puis, s'il y en a,
+        ou si aucune clé branchée n'est assez grande, demande de garder le
+        paquet. Rend vrai si on le garde."""
+        attendue = su.taille_derive(os.path.getsize(iso), paquet["taille"])
+        self._system_usb_conseil_cle(attendue)
+        alertes = su.alertes_paquet(
+            paquet, su.lire_pkglist(iso), su.lire_uuid_iso(iso)
+        )
+        for alerte in alertes:
+            phrase = ALERTES_PAQUET.get(alerte["code"], alerte["code"])
+            print(f"  ⚠ {t(phrase).format_map(_Defaut(alerte))}")
+        petites = self._system_usb_cles_trop_petites(attendue)
+        if petites:
+            print(
+                "  ⚠ "
+                + t(
+                    "No USB key plugged in can hold {size}: the largest is {largest}."
+                ).format(size=octets(attendue), largest=octets(petites))
+            )
+        if (alertes or petites) and not self._is_yes(
+            input(t("Keep this offline payload? (y/N): "))
+        ):
+            print(f"  {t('Nothing changed.')}")
+            return False
+        return True
+
+    def _system_usb_conseil_cle(self, taille):
+        """La taille de clé conseillée pour une image de `taille` octets,
+        et la durée d'une écriture de cette taille."""
+        print(
+            "  💾 "
+            + t(
+                "The image will take {size}: use a key of {key} GB or more. Writing and reading it back takes tens of minutes on a slow key."
+            ).format(size=octets(taille), key=su.cle_conseillee(taille) or "?")
+        )
+
+    def _system_usb_cles_trop_petites(self, taille):
+        """La taille de la plus grande clé branchée si aucune ne reçoit
+        `taille` octets, None sinon (ou sans clé, ou sans lsblk) : c'est
+        alors avant la fabrication de l'ISO dérivée qu'il faut le dire."""
+        donnees = su.lire_lsblk()
+        if donnees is None:
+            return None
+        tailles = [c["taille"] or 0 for c in su.cles_usb(donnees)]
+        if not tailles or max(tailles) >= taille:
+            return None
+        return max(tailles)
+
+    def _system_usb_fabriquer_paquet(self, iso):
+        """Fabrique un paquet hors ligne depuis `iso` après le choix d'un
+        profil ERPLibre, l'annonce de sa durée et de sa place, et un oui.
+        Rend vrai si la fabrique a réussi."""
+        for i, profil in enumerate(su.PROFILS_ERPLIBRE, 1):
+            print(f"  [{i}] {profil}")
+        numero = entier(
+            input(t("ERPLibre profile number (0 to cancel): ")).strip()
+        )
+        if numero is None or not 1 <= numero <= len(su.PROFILS_ERPLIBRE):
+            return False
+        profil = su.PROFILS_ERPLIBRE[numero - 1]
+        dossier = su.dossier_paquets()
+        graine = su.GRAINE_GIT if os.path.isdir(su.GRAINE_GIT) else None
+        res = su.plan_fabrique(
+            profil,
+            iso,
+            self._system_usb_python(),
+            dossier,
+            graine=graine,
+            libre=su.espace_libre(dossier),
+        )
+        if not res["ok"]:
+            print(f"  ⚠ {message_refus(res)}")
+            return False
+        details = res["details"]
+        print(
+            "  ⏱ "
+            + t(
+                "About {minutes} min and up to {need} in {path}: a reference install of {profile} in QEMU (KVM, no root), network required during the build."
+            ).format(
+                minutes=details["minutes"],
+                need=octets(details["need"]),
+                path=dossier,
+                profile=profil,
+            )
+        )
+        if details["seed"]:
+            print(f"  {t('Git mirrors copied first from:')} {details['seed']}")
+        for cmd in res["plan"]:
+            print(f"  {t('Will execute:')} {shlex.join(cmd)}")
+        if not self._is_yes(
+            input(t("Build the offline payload now? (y/N): "))
+        ):
+            print(f"  {t('Nothing changed.')}")
+            return False
+        return self._system_usb_executer(res["plan"])
+
+    def _system_usb_verifier_paquet(self, paquet):
+        """Vrai si l'image du paquet a encore la somme de son .sha256."""
+        print(f"  {t('Checking the SHA-256 of the offline payload image…')}")
+        if su.sha256_fichier(paquet["image"]) == paquet["sha256"]:
+            return True
+        print(
+            f"  ⚠ {t('The offline payload image does not match its .sha256: build the payload again.')}"
+        )
+        return False
+
+    def _system_usb_remaster(self, iso, profil, paquet=None):
+        """Le chemin de l'ISO dérivée qui porte `profil` et/ou `paquet`,
+        fabriquée par xorriso selon system_usb.plan_remaster après un oui,
+        ou reprise telle quelle si une précédente est intacte ; None
+        sinon.
 
         Rien n'est écrit avant le oui. Le dossier des dérivées est en
         0700 et l'ISO passe en 0600 : elle nomme un utilisateur et un
-        hôte. Le profil n'est écrit en JSON que le temps de xorriso, qui
-        le recopie dans l'ISO. Sa somme SHA-256 n'est écrite qu'une fois
-        xorriso réussi ; un échec retire l'ISO partielle. Une erreur du
-        système de fichiers (disque plein, quota) devient une mise en
-        garde."""
+        hôte, et le paquet porte la clé de son autorité. Le profil n'est
+        écrit en JSON que le temps de xorriso, qui le recopie dans l'ISO.
+        La place libre est vérifiée d'abord, en comptant les dérivées
+        périmées, retirées avant xorriso s'il le faut ; la somme du paquet
+        l'est après le oui. Sa somme SHA-256 n'est écrite qu'une fois
+        xorriso réussi et l'ISO contrôlée ; un échec retire l'ISO
+        partielle. Une erreur du système de fichiers (disque plein, quota)
+        devient une mise en garde."""
         if not self._system_usb_xorriso():
             return None
         print(f"  {t('Computing the SHA-256 of the image…')}")
@@ -609,59 +882,141 @@ class SystemUsbMenuMixin:
         if sha_base is None:
             print(f"❌ {t('No such file: ')}{iso}")
             return None
-        texte = mp.dump(profil)
+        texte = mp.dump(profil) if profil is not None else None
         derive = su.chemin_derive(
-            su.dossier_derives(), sha_base, su.sha256_texte(texte)
+            su.dossier_derives(),
+            sha_base,
+            su.sha256_texte(texte) if texte else None,
+            paquet["sha256"] if paquet else None,
         )
         if su.derive_valide(derive):
-            print(f"  ✓ {t('Already built with this profile:')} {derive}")
+            deja = (
+                "Already built with this offline payload:"
+                if paquet
+                else "Already built with this profile:"
+            )
+            print(f"  ✓ {t(deja)} {derive}")
             return derive
-        profil_json = os.path.splitext(derive)[0] + ".json"
+        profil_json = os.path.splitext(derive)[0] + ".json" if texte else None
         res = su.plan_remaster(
-            iso, profil_json, derive, su.lire_volume_date(iso)
+            iso,
+            profil_json,
+            derive,
+            su.lire_volume_date(iso),
+            image_paquet=paquet["image"] if paquet else None,
         )
         if not res["ok"]:
             print(f"  ⚠ {message_refus(res)}")
             return None
+        dossier = os.path.dirname(derive)
+        besoin = su.taille_derive(
+            os.path.getsize(iso), paquet["taille"] if paquet else 0
+        )
+        perimes = su.derives_perimes(dossier, derive)
+        verdict = su.verdict_espace(
+            besoin,
+            su.espace_libre(dossier),
+            sum(os.path.getsize(f) for f in perimes),
+        )
+        if verdict == "no-space":
+            print(
+                "  ⚠ "
+                + message_refus(
+                    {
+                        "reason": "no-space",
+                        "details": {
+                            "path": dossier,
+                            "need": besoin,
+                            "free": su.espace_libre(dossier),
+                        },
+                    }
+                )
+            )
+            return None
+        if verdict == "cleanup":
+            print(
+                f"  {t('Outdated derived ISO files are removed first to make room.')}"
+            )
         for cmd in res["plan"]:
             print(f"  {t('Will execute:')} {shlex.join(cmd)}")
-        if not self._is_yes(
-            input(t("Build the ISO with this profile? (y/N): "))
-        ):
+        question = (
+            "Build the ISO with the offline payload? (y/N): "
+            if paquet
+            else "Build the ISO with this profile? (y/N): "
+        )
+        if not self._is_yes(input(t(question))):
             print(f"  {t('Nothing changed.')}")
             return None
         try:
+            if verdict == "cleanup":
+                self._system_usb_retirer_perimes(perimes)
+            if paquet and not self._system_usb_verifier_paquet(paquet):
+                return None
             return self._system_usb_remaster_executer(
-                res["plan"], profil_json, texte, derive
+                res["plan"],
+                profil_json,
+                texte,
+                derive,
+                volume_date=res["details"]["volume_date"],
+                image_octets=paquet["taille"] if paquet else None,
             )
         except OSError as exc:
             print(f"  ⚠ {t('File system error:')} {exc}")
             _retirer(derive, su.chemin_somme(derive))
             return None
         finally:
-            _retirer(profil_json)
+            if profil_json:
+                _retirer(profil_json)
 
-    def _system_usb_remaster_executer(self, plan, profil_json, texte, derive):
-        """Écrit le profil, lance `plan`, scelle l'ISO dérivée (0600, somme)
-        et retire les dérivées périmées. Rend `derive`, ou None si xorriso
-        échoue. Les OSError remontent à _system_usb_remaster."""
+    def _system_usb_retirer_perimes(self, perimes):
+        for perime in perimes:
+            _retirer(perime)
+            print(f"  {t('Removed an outdated derived ISO file:')} {perime}")
+
+    def _system_usb_remaster_executer(
+        self,
+        plan,
+        profil_json,
+        texte,
+        derive,
+        volume_date=None,
+        image_octets=None,
+    ):
+        """Écrit le profil s'il y en a un, lance `plan`, contrôle l'ISO
+        dérivée (system_usb.defauts_derive), la scelle (0600, somme) et
+        retire les dérivées périmées. Rend `derive`, ou None si xorriso
+        échoue ou que le contrôle trouve un défaut. Les OSError remontent
+        à _system_usb_remaster."""
         su.dossier_prive(os.path.dirname(derive))
-        su.ecrire_atomique(profil_json, texte)
+        if texte is not None:
+            su.ecrire_atomique(profil_json, texte)
         _retirer(derive, su.chemin_somme(derive))
         if not self._system_usb_executer(plan):
             _retirer(derive)
             return None
-        ligne = su.ligne_somme(derive) if os.path.isfile(derive) else None
+        if not os.path.isfile(derive):
+            print(f"  ⚠ {t('xorriso did not produce the ISO:')} {derive}")
+            return None
+        defauts = su.defauts_derive(
+            su.lire_faits_derive(derive), volume_date, image_octets
+        )
+        if defauts:
+            print(f"  ⚠ {t('The derived ISO is refused:')} {derive}")
+            for code in defauts:
+                print(f"    {t(DEFAUTS_DERIVE.get(code, code))}")
+            _retirer(derive)
+            return None
+        ligne = su.ligne_somme(derive)
         if ligne is None:
             print(f"  ⚠ {t('xorriso did not produce the ISO:')} {derive}")
             _retirer(derive)
             return None
         os.chmod(derive, 0o600)
         su.ecrire_atomique(su.chemin_somme(derive), ligne)
-        print(f"  ✓ {t('ISO with the profile:')} {derive}")
-        for perime in su.derives_perimes(os.path.dirname(derive), derive):
-            _retirer(perime)
-            print(f"  {t('Removed an outdated derived ISO file:')} {perime}")
+        print(f"  ✓ {t('Derived ISO:')} {derive}")
+        self._system_usb_retirer_perimes(
+            su.derives_perimes(os.path.dirname(derive), derive)
+        )
         return derive
 
     def _system_usb_xorriso(self):

@@ -28,18 +28,29 @@ TODO : ceux du dépôt, puis ceux de private/iso/machine, que ce module
 plan_remaster(), qui en tire une ISO dérivée portant le profil ; le plan
 d'écriture s'applique ensuite à elle sans changer.
 
+Une ISO ERPLibre peut aussi partir avec un paquet hors ligne : l'image
+ext4 LABEL=ERPLIBRE_DATA que la fabrique (offline_payload.py) range sous
+DOSSIER_PAQUETS. plan_remaster() l'ajoute à l'ISO dérivée comme 3e
+partition (xorriso -append_partition), le live la trouve par son
+étiquette. paquets_hors_ligne() les liste avec ce qui empêche chacun de
+partir, defauts_derive() vérifie que l'ISO dérivée démarre toujours en
+BIOS et en UEFI, sous le même UUID.
+
 Ce module ne rend que des codes, des chemins et des nombres (octets) ; la
 phrase et la langue appartiennent au menu. Il ne lance que des commandes
 de lecture.
 """
 
 import fnmatch
+import functools
 import glob
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import shutil
+import tempfile
 
 from script.iso.archlinux.machine import machine_profile as mp
 from script.todo.system_diagnostic import commande
@@ -127,18 +138,83 @@ DOSSIER_PROFILS_PRIVES = os.path.join(
     RACINE_DEPOT, "private", "iso", "machine"
 )
 
-# Les ISO dérivées, une par couple (image de base, profil) : leur nom
-# porte les deux empreintes, une même paire retombe sur le même fichier.
+# Les ISO dérivées, une par triplet (image de base, profil, paquet hors
+# ligne) : leur nom porte les empreintes, un même triplet retombe sur le
+# même fichier.
 DOSSIER_DERIVES = "~/.erplibre/iso/derived"
 CHEMIN_PROFIL_ISO = "/erplibre/machine.json"
 LONGUEUR_EMPREINTE = 12
+# La place du profil dans le nom d'une ISO dérivée qui n'en porte aucun.
+SANS_PROFIL = "none"
 # Le nom d'un fichier que le remastering écrit dans DOSSIER_DERIVES :
 # l'ISO, sa somme, le profil en entrée de xorriso, et le temporaire
-# d'ecrire_atomique.
+# d'ecrire_atomique. Le 3e segment, l'empreinte du paquet hors ligne,
+# n'existe que si l'ISO en porte un ; SANS_PROFIL ne va jamais sans lui.
+_HEX = "[0-9a-f]{%d}" % LONGUEUR_EMPREINTE
 DERIVE_RE = re.compile(
-    r"^[0-9a-f]{%d}-[0-9a-f]{%d}\.(iso|iso\.sha256|json)(\.tmp)?$"
-    % (LONGUEUR_EMPREINTE, LONGUEUR_EMPREINTE)
+    rf"^{_HEX}-(?:{_HEX}(?:-{_HEX})?|{SANS_PROFIL}-{_HEX})"
+    r"\.(iso|iso\.sha256|json)(\.tmp)?$"
 )
+# Ce que xorriso ajoute à la taille de la base et du paquet : la table GPT
+# de secours et l'alignement des partitions ajoutées, quelques Kio. Le
+# remastering rejoue la base, et l'ISO dérivée est d'ordinaire un peu plus
+# petite que cette somme.
+MARGE_DERIVE = 4 * 1024**2
+
+# Paquets hors ligne
+
+# La fabrique (script/iso/archlinux/offline_payload.py) range chaque
+# paquet sous DOSSIER_PAQUETS/<profil>-<horodatage>/ : l'image ext4 et son
+# .sha256, payload/ (le répertoire dont l'image est faite), report.json et
+# work/ (l'enregistrement).
+DOSSIER_PAQUETS = "~/.erplibre/iso/offline"
+MOTIF_IMAGE_PAQUET = "erplibre-offline-*.img"
+SCRIPT_FABRIQUE = os.path.join(
+    "script", "iso", "archlinux", "offline_payload.py"
+)
+# Le module du live qui valide un manifeste (erplibre_offline.py) : son
+# dossier n'est pas un paquet Python, il se charge par son chemin.
+MODULE_HORS_LIGNE = os.path.join(
+    RACINE_DEPOT,
+    "script",
+    "iso",
+    "archlinux",
+    "profile",
+    "airootfs",
+    "usr",
+    "local",
+    "share",
+    "erplibre-install",
+    "erplibre_offline.py",
+)
+MANIFESTE_PAQUET = "manifest.json"
+# L'étiquette que le live cherche (erplibre_offline.DATA_LABEL), le
+# numéro de la partition et son type MBR (Linux).
+LABEL_PAQUET = "ERPLIBRE_DATA"
+NUMERO_PARTITION_PAQUET = 3
+TYPE_PARTITION_PAQUET = "0x83"
+# Le magasin git du service de cache de l'hôte : la fabrique y copie les
+# miroirs que l'installation de référence clonerait sinon
+# (offline_payload.SEED_DEFAULT).
+GRAINE_GIT = "/var/cache/erplibre_go_qemu_cache/git"
+# Ce qu'une fabrication demande, par profil ERPLibre : la durée en minutes
+# avec et sans miroirs git amorcés, et la place libre exigée sous
+# DOSSIER_PAQUETS (image, paquet et enregistrement). Ordres de grandeur :
+# un profil sans étape ERPLibre ne tire que des paquets Arch (image de
+# 2 à 3 Gio) ; un profil Odoo clone les dépôts d'addons avec leur
+# historique (image d'environ 26 Gio, plus de 40 Gio en tout).
+FABRIQUE = {
+    "gnome": {"minutes": 10, "minutes_sans_graine": 10, "espace": 8 * GIO},
+    "home": {"minutes": 20, "minutes_sans_graine": 60, "espace": 64 * GIO},
+    "odoo18": {"minutes": 15, "minutes_sans_graine": 90, "espace": 64 * GIO},
+    "dev": {"minutes": 20, "minutes_sans_graine": 90, "espace": 64 * GIO},
+}
+PROFILS_ERPLIBRE = tuple(FABRIQUE)
+# Les tailles de clé du commerce, en Go décimaux. Une clé vendue N Go en
+# offre un peu moins (Go de 10⁹ octets, zone réservée du contrôleur) :
+# CAPACITE_UTILE de N·10⁹ couvre les clés courantes.
+TAILLES_CLE_GO = (4, 8, 16, 32, 64, 128, 256, 512)
+CAPACITE_UTILE = 0.9
 
 # Le paquet qui fournit xorriso, par gestionnaire (voir
 # qemu_privilege.install_cmd_for) : libisoburn chez Arch Linux.
@@ -793,10 +869,14 @@ def sha256_texte(texte):
     return hashlib.sha256(texte.encode("utf-8")).hexdigest()
 
 
-def chemin_derive(dossier, sha_base, sha_profil):
-    """<dossier>/<12 premiers de l'empreinte de base>-<12 du profil>.iso"""
+def chemin_derive(dossier, sha_base, sha_profil=None, sha_paquet=None):
+    """<dossier>/<12 de l'empreinte de base>-<12 du profil>[-<12 du
+    paquet>].iso ; SANS_PROFIL tient la place d'un profil absent."""
     n = LONGUEUR_EMPREINTE
-    return os.path.join(dossier, f"{sha_base[:n]}-{sha_profil[:n]}.iso")
+    nom = f"{sha_base[:n]}-{sha_profil[:n] if sha_profil else SANS_PROFIL}"
+    if sha_paquet:
+        nom += f"-{sha_paquet[:n]}"
+    return os.path.join(dossier, nom + ".iso")
 
 
 def chemin_somme(derive):
@@ -896,9 +976,18 @@ def lire_volume_date(iso):
     )
 
 
-def plan_remaster(base, profil_json, derive, volume_date, reutiliser=False):
+def plan_remaster(
+    base,
+    profil_json,
+    derive,
+    volume_date,
+    reutiliser=False,
+    image_paquet=None,
+):
     """Le plan qui fabrique `derive`, copie de l'ISO `base` portant le
-    profil `profil_json` en CHEMIN_PROFIL_ISO.
+    profil `profil_json` en CHEMIN_PROFIL_ISO et, si `image_paquet` est
+    donnée, ce paquet hors ligne comme partition NUMERO_PARTITION_PAQUET.
+    L'un ou l'autre peut manquer (None).
 
     xorriso relit `base` (-indev) et écrit une image neuve (-outdev) : le
     démarrage BIOS et UEFI est rejoué tel quel (-boot_image any replay),
@@ -908,6 +997,12 @@ def plan_remaster(base, profil_json, derive, volume_date, reutiliser=False):
     seraient tirés au hasard, alors qu'avec lui ils se dérivent de la date
     de volume comme ceux que mkarchiso écrit. `reutiliser` vrai
     (voir derive_valide) rend un plan vide.
+
+    Le rejeu recrée la partition 2 (l'ESP) que mkarchiso ajoute ;
+    -append_partition, posé après lui, ajoute la 3e derrière elle, dans la
+    table MBR que le noyau lit et dans la GPT hybride que lit le
+    micrologiciel UEFI. Le paquet est donc écrit avec l'ISO, par le même
+    dd : la clé n'est jamais modifiée après coup.
 
     Refus : no-volume-date si `volume_date` n'est pas une date de volume
     de 16 chiffres.
@@ -920,32 +1015,467 @@ def plan_remaster(base, profil_json, derive, volume_date, reutiliser=False):
         and volume_date.isdigit()
     ):
         return _refus("no-volume-date", path=base)
+    argv = [
+        "xorriso",
+        "-indev",
+        base,
+        "-outdev",
+        derive,
+        "-boot_image",
+        "any",
+        "replay",
+        "-boot_image",
+        "any",
+        "gpt_disk_guid=volume_date_uuid",
+        "-volume_date",
+        "uuid",
+        volume_date,
+    ]
+    if profil_json:
+        argv += ["-map", profil_json, CHEMIN_PROFIL_ISO]
+    if image_paquet:
+        argv += [
+            "-append_partition",
+            str(NUMERO_PARTITION_PAQUET),
+            TYPE_PARTITION_PAQUET,
+            image_paquet,
+        ]
+    argv.append("-commit")
     return _resultat(
         True,
-        plan=[
-            [
-                "xorriso",
-                "-indev",
-                base,
-                "-outdev",
-                derive,
-                "-boot_image",
-                "any",
-                "replay",
-                "-boot_image",
-                "any",
-                "gpt_disk_guid=volume_date_uuid",
-                "-volume_date",
-                "uuid",
-                volume_date,
-                "-map",
-                profil_json,
-                CHEMIN_PROFIL_ISO,
-                "-commit",
-            ]
-        ],
+        plan=[argv],
         derived=derive,
         reuse=False,
         base=base,
         profile=profil_json,
+        payload=image_paquet,
+        volume_date=volume_date,
+    )
+
+
+# Contrôle de l'ISO dérivée
+
+_ELTORITO_RE = re.compile(
+    r"^El Torito boot img\s*:\s*\d+\s+(BIOS|UEFI)\b", re.M
+)
+_NUMERO_RE = re.compile(r"(\d+)$")
+
+
+def lire_faits_derive(derive):
+    """Ce que defauts_derive() examine, lu sur le fichier `derive` sans
+    root : la table de partitions (sfdisk -J), le catalogue El Torito
+    (xorriso -report_el_torito) et la date de volume (via blkid). Une
+    valeur illisible vaut None."""
+    sortie = commande(["sfdisk", "-J", derive], timeout=30)
+    try:
+        table = json.loads(sortie) if sortie else None
+    except ValueError:
+        table = None
+    return {
+        "sfdisk": table,
+        "eltorito": commande(
+            ["xorriso", "-indev", derive, "-report_el_torito", "plain"],
+            timeout=120,
+        ),
+        "volume_date": lire_volume_date(derive),
+    }
+
+
+def partitions_table(table):
+    """{numéro: {"type", "octets"}} d'une sortie de sfdisk -J. Le numéro
+    est le suffixe du nœud (« derive.iso3 » → 3), le type tel que sfdisk
+    l'écrit (« ef », « 83 »), sans casse."""
+    resultat = {}
+    racine = (table or {}).get("partitiontable") or {}
+    secteur = racine.get("sectorsize") or 512
+    for p in racine.get("partitions") or []:
+        m = _NUMERO_RE.search(str(p.get("node") or ""))
+        if not m:
+            continue
+        resultat[int(m.group(1))] = {
+            "type": str(p.get("type") or "").lower(),
+            "octets": int(p.get("size") or 0) * secteur,
+        }
+    return resultat
+
+
+def defauts_derive(faits, volume_date, image_octets=None):
+    """Les codes de ce qui manque à une ISO dérivée pour démarrer comme sa
+    base ; [] si rien. `faits` vient de lire_faits_derive().
+
+    - unreadable : sfdisk ou xorriso n'a rien rendu ;
+    - uuid-changed : la date de volume n'est plus `volume_date`, et
+      archiso ne retrouverait pas son support (archisosearchuuid) ;
+    - no-bios-boot, no-uefi-boot : une image El Torito manque ;
+    - no-esp : plus de partition EFI (type ef) pour une clé en UEFI ;
+    - no-data-partition : `image_octets` donné, et la partition
+      NUMERO_PARTITION_PAQUET manque, n'est pas de type Linux ou est plus
+      petite que l'image.
+    """
+    if not faits.get("sfdisk") or not faits.get("eltorito"):
+        return ["unreadable"]
+    defauts = []
+    if faits.get("volume_date") != volume_date:
+        defauts.append("uuid-changed")
+    plateformes = set(_ELTORITO_RE.findall(faits["eltorito"]))
+    if "BIOS" not in plateformes:
+        defauts.append("no-bios-boot")
+    if "UEFI" not in plateformes:
+        defauts.append("no-uefi-boot")
+    parts = partitions_table(faits["sfdisk"])
+    if not any(p["type"] == "ef" for p in parts.values()):
+        defauts.append("no-esp")
+    if image_octets:
+        donnees = parts.get(NUMERO_PARTITION_PAQUET)
+        if (
+            not donnees
+            or donnees["type"] != TYPE_PARTITION_PAQUET[2:]
+            or donnees["octets"] < image_octets
+        ):
+            defauts.append("no-data-partition")
+    return defauts
+
+
+# Paquets hors ligne : liste, validité, compatibilité
+
+
+def dossier_paquets():
+    """DOSSIER_PAQUETS, le « ~ » résolu à l'appel."""
+    return os.path.expanduser(DOSSIER_PAQUETS)
+
+
+@functools.lru_cache(maxsize=1)
+def module_hors_ligne(chemin=MODULE_HORS_LIGNE):
+    """erplibre_offline, chargé une fois depuis `chemin` ; sa
+    check_manifest() est celle du live, et le TODO refuse donc ce que le
+    live refuserait."""
+    spec = importlib.util.spec_from_file_location(
+        "erplibre_offline_todo", chemin
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _json_objet(texte):
+    """Le dict que `texte` encode, ou None."""
+    try:
+        doc = json.loads(texte or "")
+    except ValueError:
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def _lire_json(chemin):
+    try:
+        with open(chemin, encoding="utf-8") as fh:
+            return _json_objet(fh.read())
+    except OSError:
+        return None
+
+
+def lire_manifeste_image(chemin):
+    """Le manifeste (dict) à la racine du système ext4 de `chemin`, une
+    image ou une partition, lu par debugfs sans montage ni root ; None si
+    debugfs manque, si `chemin` est illisible ou si le fichier n'est pas
+    un objet JSON. debugfs sort sur 0 même en échec : seul le contenu
+    tranche."""
+    return _json_objet(
+        commande(
+            ["debugfs", "-R", f"cat /{MANIFESTE_PAQUET}", chemin], timeout=30
+        )
+    )
+
+
+def _uuid_reference(dossier, manifeste):
+    """L'UUID de l'ISO qui a enregistré le paquet : celui du manifeste,
+    sinon celui du plan de fabrication (work/state.json), qu'un manifeste
+    plus ancien ne recopiait pas ; None si aucun."""
+    uuid = (manifeste.get("reference") or {}).get("iso_uuid")
+    if uuid:
+        return uuid
+    etat = _lire_json(os.path.join(dossier, "work", "state.json")) or {}
+    return (etat.get("plan") or {}).get("iso_uuid")
+
+
+def paquet_hors_ligne(dossier, lire_manifeste=None):
+    """Le paquet rangé dans `dossier`, ou None s'il n'y a aucune image.
+
+    Rend {"dossier", "image", "taille", "sha256", "manifeste", "profil",
+    "date", "iso_uuid", "erreurs"}. Le manifeste est lu dans l'image même
+    (`lire_manifeste`, lire_manifeste_image par défaut), à défaut dans
+    payload/. `erreurs` liste les codes qui empêchent le paquet de partir
+    sur une clé, [] sinon :
+
+    - no-sha256 : pas de .sha256, ou sans la ligne de l'image ;
+    - manifest-unreadable : aucun manifeste lisible ;
+    - manifest-invalid : check_manifest() du live le refuse ;
+    - record : manifeste d'enregistrement, qui ne sert pas hors ligne ;
+    - report-not-ok : report.json dit qu'un paquet requis manque au
+      dépôt ou n'a pas de signature.
+
+    Rien n'est haché ici : la somme d'une image de dizaines de Gio prend
+    la minute, elle se vérifie juste avant le remastering.
+    """
+    lire_manifeste = lire_manifeste or lire_manifeste_image
+    images = sorted(
+        f
+        for f in glob.glob(os.path.join(dossier, MOTIF_IMAGE_PAQUET))
+        if os.path.isfile(f)
+    )
+    if not images:
+        return None
+    image = images[-1]
+    erreurs = []
+    try:
+        with open(image + ".sha256", encoding="utf-8") as fh:
+            somme = parse_sha256sums(fh.read(), os.path.basename(image))
+    except OSError:
+        somme = None
+    if somme is None:
+        erreurs.append("no-sha256")
+    manifeste = lire_manifeste(image) or _lire_json(
+        os.path.join(dossier, "payload", MANIFESTE_PAQUET)
+    )
+    hl = module_hors_ligne()
+    if manifeste is None:
+        erreurs.append("manifest-unreadable")
+        manifeste = {}
+    elif hl.is_record(manifeste):
+        erreurs.append("record")
+    elif hl.check_manifest(manifeste):
+        erreurs.append("manifest-invalid")
+    rapport = _lire_json(os.path.join(dossier, "report.json"))
+    if rapport is not None and rapport.get("ok") is False:
+        erreurs.append("report-not-ok")
+    return {
+        "dossier": dossier,
+        "image": image,
+        "taille": os.path.getsize(image),
+        "sha256": somme,
+        "manifeste": manifeste,
+        "profil": manifeste.get("erplibre_profile"),
+        "date": str(manifeste.get("created") or "")[:10] or None,
+        "iso_uuid": _uuid_reference(dossier, manifeste),
+        "erreurs": erreurs,
+    }
+
+
+def paquets_hors_ligne(dossier=None, lire_manifeste=None):
+    """Les paquets de `dossier` (DOSSIER_PAQUETS par défaut), un par
+    sous-dossier qui porte une image, du plus récent au plus ancien ; les
+    invalides y sont, avec leurs erreurs."""
+    dossier = dossier or dossier_paquets()
+    try:
+        noms = sorted(os.listdir(dossier))
+    except OSError:
+        return []
+    paquets = []
+    for nom in noms:
+        chemin = os.path.join(dossier, nom)
+        if os.path.isdir(chemin):
+            p = paquet_hors_ligne(chemin, lire_manifeste)
+            if p is not None:
+                paquets.append(p)
+    paquets.sort(
+        key=lambda p: (str(p["manifeste"].get("created") or ""), p["image"]),
+        reverse=True,
+    )
+    return paquets
+
+
+def cle_conseillee(octets):
+    """La plus petite taille de clé du commerce (en Go, voir
+    TAILLES_CLE_GO) qui reçoit `octets` ; None au-delà de la plus
+    grande."""
+    return next(
+        (
+            n
+            for n in TAILLES_CLE_GO
+            if n * 10**9 * CAPACITE_UTILE >= (octets or 0)
+        ),
+        None,
+    )
+
+
+def taille_derive(taille_base, taille_image=0):
+    """La taille attendue de l'ISO dérivée, par excès (MARGE_DERIVE)."""
+    return taille_base + (taille_image or 0) + MARGE_DERIVE
+
+
+def version_pkglist(texte, paquet="archinstall"):
+    """La version (sans le pkgrel) de `paquet` dans un pkglist.x86_64.txt
+    d'archiso (« nom version-pkgrel » par ligne), ou None."""
+    for ligne in (texte or "").splitlines():
+        morceaux = ligne.split()
+        if len(morceaux) == 2 and morceaux[0] == paquet:
+            return morceaux[1].rsplit("-", 1)[0]
+    return None
+
+
+def _majeur_mineur(version):
+    return tuple(int(m) for m in re.findall(r"\d+", str(version or ""))[:2])
+
+
+def lire_pkglist(iso):
+    """Le pkglist.x86_64.txt de `iso` (les paquets du live, versions
+    comprises), extrait par xorriso dans un dossier temporaire ; None si
+    xorriso manque ou échoue."""
+    with tempfile.TemporaryDirectory(prefix="erplibre-pkglist-") as tmp:
+        cible = os.path.join(tmp, "pkglist.txt")
+        sortie = commande(
+            [
+                "xorriso",
+                "-osirrox",
+                "on",
+                "-indev",
+                iso,
+                "-extract",
+                "/arch/pkglist.x86_64.txt",
+                cible,
+            ],
+            timeout=60,
+        )
+        if sortie is None:
+            return None
+        try:
+            with open(cible, encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return None
+
+
+def lire_uuid_iso(iso):
+    """L'UUID ISO 9660 de `iso` tel que blkid l'écrit
+    (« AAAA-MM-JJ-hh-mm-ss-cc »), ou None."""
+    sortie = commande(["blkid", "-p", "-s", "UUID", "-o", "value", iso])
+    return (sortie or "").strip() or None
+
+
+def alertes_paquet(paquet, pkglist, uuid_iso):
+    """Les mises en garde d'un paquet pour l'ISO qui le recevra.
+
+    - iso-unknown : rien ne dit avec quelle ISO le paquet a été enregistré ;
+    - other-iso : il l'a été avec une autre ISO (UUID `uuid`) ;
+    - archinstall-mismatch : l'ISO porte un archinstall d'une autre
+      version majeure.mineure (`iso`) que celui du paquet (`payload`) ;
+      il peut demander des paquets que le dépôt n'a pas.
+
+    Seule l'ISO sait si elle a le mode hors ligne : une ISO plus ancienne
+    que lui ignore la partition, et la clé installe alors en ligne.
+    """
+    alertes = []
+    reference = paquet.get("iso_uuid")
+    if not reference:
+        alertes.append({"code": "iso-unknown"})
+    elif uuid_iso and reference != uuid_iso:
+        alertes.append({"code": "other-iso", "uuid": reference})
+    attendue = (paquet.get("manifeste") or {}).get("archinstall_version")
+    sur_iso = version_pkglist(pkglist)
+    if (
+        attendue
+        and sur_iso
+        and _majeur_mineur(attendue) != _majeur_mineur(sur_iso)
+    ):
+        alertes.append(
+            {
+                "code": "archinstall-mismatch",
+                "iso": sur_iso,
+                "payload": attendue,
+            }
+        )
+    return alertes
+
+
+def espace_libre(chemin):
+    """Les octets libres du système de fichiers qui porte `chemin`, ou
+    son plus proche parent existant ; None si illisible."""
+    courant = os.path.abspath(chemin)
+    while not os.path.exists(courant):
+        parent = os.path.dirname(courant)
+        if parent == courant:
+            return None
+        courant = parent
+    try:
+        return shutil.disk_usage(courant).free
+    except OSError:
+        return None
+
+
+def verdict_espace(besoin, libre, recuperable=0):
+    """None si `libre` suffit à `besoin` ; « cleanup » s'il suffit une
+    fois `recuperable` octets retirés (les ISO dérivées périmées) ;
+    « no-space » sinon. Un `libre` inconnu (None) ne refuse rien."""
+    if libre is None or libre >= besoin:
+        return None
+    if libre + (recuperable or 0) >= besoin:
+        return "cleanup"
+    return "no-space"
+
+
+def partition_paquet(cle):
+    """La partition ext4 LABEL_PAQUET de `cle` (un disque de disques()),
+    ou None : une clé écrite avec un paquet hors ligne la porte."""
+    return next(
+        (
+            p
+            for p in cle.get("partitions") or []
+            if p.get("label") == LABEL_PAQUET and p.get("fstype") == "ext4"
+        ),
+        None,
+    )
+
+
+def manifeste_partition(partition, lisible=None):
+    """Le manifeste de la partition de paquet, lu par debugfs si l'on a le
+    droit de lire le périphérique (groupe disk) ; None sinon, sans sudo."""
+    lisible = lisible or (lambda p: os.access(p, os.R_OK))
+    if not lisible(partition["path"]):
+        return None
+    return lire_manifeste_image(partition["path"])
+
+
+def plan_fabrique(profil, iso, python, dossier, graine=None, libre=None):
+    """Le plan qui fabrique un paquet hors ligne du profil ERPLibre
+    `profil` depuis l'ISO `iso`, rangé sous `dossier` (offline_payload.py
+    build). `graine`, s'il est donné, est le dossier des miroirs git à
+    copier d'abord ; un profil sans étape ERPLibre (gnome) n'en clone
+    aucun et ne la reçoit pas.
+
+    Refus : unknown-erplibre-profile ; no-space si `libre` (octets libres
+    sous `dossier`, None si inconnu) est sous FABRIQUE[profil]["espace"].
+    """
+    if profil not in FABRIQUE:
+        return _refus("unknown-erplibre-profile", profile=profil)
+    besoins = FABRIQUE[profil]
+    if libre is not None and libre < besoins["espace"]:
+        return _refus(
+            "no-space", path=dossier, need=besoins["espace"], free=libre
+        )
+    if profil == "gnome":
+        graine = None
+    argv = [
+        python,
+        SCRIPT_FABRIQUE,
+        "build",
+        "--profile",
+        profil,
+        "--iso",
+        iso,
+        "--out",
+        dossier,
+    ]
+    if graine:
+        argv += ["--seed-git-mirrors", graine]
+    return _resultat(
+        True,
+        plan=[argv],
+        profile=profil,
+        minutes=besoins[
+            "minutes" if graine or profil == "gnome" else "minutes_sans_graine"
+        ],
+        need=besoins["espace"],
+        free=libre,
+        seed=graine,
+        path=dossier,
     )
