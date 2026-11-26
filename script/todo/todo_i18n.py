@@ -26218,6 +26218,34 @@ TRANSLATIONS = {
         "en": "USB passthrough, emulated deck: run it",
     },
     # OpenTofu
+    "+ create {vm} ({ressource})": {
+        "fr": "+ créer {vm} ({ressource})",
+        "en": "+ create {vm} ({ressource})",
+    },
+    "~ modify {vm} ({ressource})": {
+        "fr": "~ modifier {vm} ({ressource})",
+        "en": "~ modify {vm} ({ressource})",
+    },
+    "± replace {vm} ({ressource})": {
+        "fr": "± remplacer {vm} ({ressource})",
+        "en": "± replace {vm} ({ressource})",
+    },
+    "- destroy {vm} ({ressource})": {
+        "fr": "- détruire {vm} ({ressource})",
+        "en": "- destroy {vm} ({ressource})",
+    },
+    "    {champ} : {avant} → {apres}": {
+        "fr": "    {champ} : {avant} → {apres}",
+        "en": "    {champ} : {avant} → {apres}",
+    },
+    "No changes.": {
+        "fr": "Aucun changement.",
+        "en": "No changes.",
+    },
+    "Unknown engine: {nom}.": {
+        "fr": "Moteur inconnu : {nom}.",
+        "en": "Unknown engine: {nom}.",
+    },
     "A VM entry must be an object.": {
         "fr": "Une entrée de VM doit être un objet.",
         "en": "A VM entry must be an object.",
