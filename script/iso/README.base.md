@@ -162,13 +162,18 @@ sans rien démarrer ; les vérifications de releng ont lieu dans le conteneur.
 ## Writing to a USB key
 
 The ISO is a hybrid image: copy it to the whole device (not a partition).
-**Everything on the key is erased.**
+**Everything on the key is erased.** The TODO menu `Bootable USB key` does
+the same after three confirmations, and can add a machine profile and an
+offline payload first (see « Writing a key with a payload »).
 
 <!-- [fr] -->
 ## Écriture sur une clé USB
 
 L'ISO est une image hybride : la copier sur le périphérique entier (pas sur
-une partition). **Tout le contenu de la clé est effacé.**
+une partition). **Tout le contenu de la clé est effacé.** Le menu
+`Clé USB amorçable` du TODO fait de même après trois confirmations, et peut
+d'abord ajouter un profil machine et un paquet hors ligne (voir « Écrire
+une clé avec un paquet »).
 
 <!-- [common] -->
 ```bash
@@ -531,7 +536,9 @@ The kernel parameter `erplibre.answers=` makes `erplibre-install` hand the
 automatic installation to this core. Exit codes: `0`, the ERPLibre stage
 codes, `21` answers, `22` profile, `23` disk refused, `24` disk stage
 failed (or a UUID missing after it), `25` archinstall version, `26`
-archinstall, `27` plugin, `130` interrupted.
+archinstall, `27` plugin, `28` offline install refused, `29` the
+installed system still trusts the offline payload authority, `130`
+interrupted.
 
 <!-- [fr] -->
 ## Installation pilotée par le profil machine
@@ -579,7 +586,387 @@ Le paramètre noyau `erplibre.answers=` fait passer l'installation
 automatique de `erplibre-install` à ce cœur. Codes de sortie : `0`, ceux de
 l'étape ERPLibre, `21` réponses, `22` profil, `23` disque refusé, `24` étape
 disque en échec (ou UUID manquant après elle), `25` version d'archinstall,
-`26` archinstall, `27` greffon, `130` interrompu.
+`26` archinstall, `27` greffon, `28` installation hors ligne refusée,
+`29` le système installé approuve encore l'autorité du paquet hors ligne,
+`130` interrompu.
+
+<!-- [en] -->
+## Offline installation (payload on the key)
+
+A key can carry an **offline payload**: a third partition, ext4,
+`LABEL=ERPLIBRE_DATA`, added to the ISO by `xorriso -append_partition 3`
+when the key is written (never by editing the key after `dd`). It holds one
+payload for one ERPLibre profile:
+
+```
+manifest.json   schema, ERPLibre profile, git source (url, branch, commit),
+                creation date, archinstall version, Arch snapshot date,
+                sizes, sha256 of the small parts
+repo/           pacman repository: <repo>/os/x86_64/<repo>.db + packages
+store/          store of the Go caching proxy (script/qemu_cache), git
+                mirrors under store/git/
+bin/            the proxy, built static (CGO_ENABLED=0)
+ca/             a certificate authority of this payload only (named
+                « ERPLibre offline payload », valid two years from a week
+                before its creation)
+```
+
+When a valid payload is found, the screen offers its profile by default,
+labelled « offline install (payload <profile>, <date>) »; choosing it needs
+no network. Another profile stays possible online, network required.
+
+In automatic mode (`erplibre.answers`), the answers' `"offline"` alone
+decides: `true` waits for neither the network nor `pacman-init`, and a
+missing or unreadable payload is refused at once (code `28`); `false`
+waits for both, even when the key carries a payload.
+
+Before anything is erased, the core checks that the payload exists, is of
+the chosen profile, that the profile command of this ISO is the one the
+payload recorded (`erplibre.profile_command_sha256`; a payload without it
+only gets a warning), and that its repository serves every package the
+archinstall configuration asks for (exit code `28` otherwise). It then
+starts `erplibre-offline start --profile <key>`:
+
+- the clock is moved forward to the payload creation date when it is
+  behind (a hardware clock kept in local time): the authority and the
+  snapshot signatures would otherwise be « not yet valid »;
+
+- the pacman keyring is initialised: without network, releng's
+  `pacman-init` waits forever for a synchronised clock, so the wait is
+  lifted (as `archinstall --skip-ntp` does for itself);
+- the partition is mounted read-only (`ro,noload,nodev,nosuid,noexec`:
+  `noload` keeps even a pending ext4 journal from being replayed);
+- the proxy and the authority are copied to `/run/erplibre-offline`, their
+  sha256 checked, and the proxy runs `--hors-ligne` on 127.0.0.1 under an
+  unprivileged UID: it serves the store, and the local pacman repository
+  for **every** Arch mirror URL, never contacts upstream, never writes;
+- dnsmasq answers 198.18.0.1 to every name, systemd-resolved asks only it;
+  that address sits on a dummy interface with a low-priority default route,
+  without which `connect()` fails before the nft rule and systemd-resolved
+  answers « Network is down »;
+- nft redirects TCP 80/443 output of every process but the proxy to it
+  (IPv6 to 80/443 is rejected so that clients fall back to IPv4);
+- the live trusts the authority (anchor + `trust extract-compat`);
+- the live mirrorlist gets a server if it has none: pacstrap copies it into
+  the target, which keeps a real mirror;
+- a self-test fetches `core.db` through the whole path;
+- the live keyring is updated from the payload repository when the
+  snapshot's `archlinux-keyring` is newer (`pacman -Sy`, `pacman -Qu`,
+  `pacman -S`, signature checked by the current keyring): it replaces the
+  WKD sync that `--skip-wkd` skips, so that a packager key added or
+  extended after the ISO was built refuses before the erase, not after.
+
+archinstall runs with `--offline --skip-ntp --skip-wkd`. The archinstall
+chroot shares the live network, so the ERPLibre stage reaches the proxy as
+well; inside the target it trusts the authority (anchor, `SSL_CERT_FILE`,
+`REQUESTS_CA_BUNDLE`, `PIP_CERT`, `UV_NATIVE_TLS`, `NODE_EXTRA_CA_CERTS`, a
+global `npmrc` for `sudo npm -g`) and removes all of it at the end. The core
+then checks the target (`erplibre-offline clean-target`): it always
+regenerates the target bundles (`trust extract-compat` in the chroot),
+then searches them for the authority itself, not only its anchor, since
+a removed anchor whose extract failed (full disk, killed stage) leaves it
+trusted. If the authority is still there the install fails with code `29`.
+It then stops the service, which undoes each step in reverse order; any
+exception during `start`, Ctrl-C included, undoes it as well. The installed system is
+normal: regular mirrorlist, no proxy authority, no proxy service.
+
+The payload is built on the host by `archlinux/offline_payload.py`
+(`build-proxy`, `manifest`, `image`); the proxy is compiled there with the
+Go toolchain of the repository, because its store format belongs to the
+version that filled it. The repository must carry each package's `.sig`:
+pacman downloads it, the databases no longer embed signatures. The image
+makes every file readable (the proxy runs under its own account), except
+the authority's key.
+
+### Building a payload
+
+```bash
+./script/iso/archlinux/offline_payload.py build --profile gnome \
+    --iso ~/.erplibre/iso/erplibre-archlinux-<date>-x86_64.iso --dry-run
+./script/iso/archlinux/offline_payload.py build --profile odoo18 \
+    --iso <iso> --seed-git-mirrors /var/cache/erplibre_go_qemu_cache/git
+```
+
+`build` makes a **reference install** of the profile in QEMU (KVM, no
+root): the static proxy runs on the host in record mode, on 127.0.0.1 and
+two free ports, with an empty store; the VM boots the ISO as a USB key by
+its kernel (answers in `erplibre.answers`, generic machine profile, UEFI
+when OVMF is present) with a second key `LABEL=ERPLIBRE_DATA` that holds
+only a **record manifest** (`"mode": "record"`, the proxy address and
+ports, the authority's certificate). The installer then takes its offline
+path, except that nft sends 80/443 to the host proxy through the QEMU
+user-network gateway (10.0.2.2) and the live keeps its network and DNS:
+the reference install fetches exactly what the offline install will ask.
+Running the proxy on the host rather than in the live writes the store
+straight into the build directory (nothing to extract from a VM disk) and
+needs no root. It runs with `--sans-tunnel`: reached through the QEMU
+gateway, without a kernel redirect on the host, it has no original
+destination to tunnel to, so it always decrypts. `--seed-git-mirrors` first copies the profile's bare git
+mirrors from an existing store (reflink on btrfs/XFS, read only on the
+source); the install still goes through the proxy, which updates them.
+
+The packages a machine profile can ask for but the VM did not (kernels,
+both microcodes, open GPU drivers, power, shells, AppArmor, LUKS/LVM,
+GRUB, sound firmware) are then fetched through the proxy from the host,
+their closure computed by `pacman -Sp` on the recorded databases.
+
+`assemble <build dir>` (also run by `build`) turns the store into the
+payload: pacman files become `repo/` — the recorded official database is
+kept when it names a present file for every recorded package, otherwise
+the repository is rebuilt by `repo-add` on the newest recorded version
+(unsigned database, accepted by Arch's `SigLevel = Required
+DatabaseOptional`; packages keep their `.sig`); the rest of the store is
+kept (hard links), and only the git mirrors the access log shows served.
+Then `manifest.json`, the ext4 image and its `.sha256`, and `report.json`
+(sizes, times, packages the pre-erase check would miss: must be empty),
+all under `~/.erplibre/iso/offline/<profile>-<stamp>/`.
+
+### Writing a key with a payload
+
+In the TODO, `System › Bootable USB key › Write an ISO to a USB key`: after
+the machine profile, an ERPLibre ISO asks « Offline installation »:
+
+- `[0]` no: the key installs online, network required;
+- one line per payload found under `~/.erplibre/iso/offline/`: profile,
+  date, image size and the advised key size. A payload is listed with
+  `✗` and cannot be chosen when its `.sha256` is missing, its manifest
+  (read from the image by `debugfs`, without root) is missing or refused by
+  the live's own check, or `report.json` says a required package is
+  missing or unsigned;
+- a last entry runs the factory (`offline_payload.py build`) for a chosen
+  ERPLibre profile, after showing its duration, the free space it needs
+  (refused below it) and the command; the git mirrors of the host cache
+  are seeded when present. The list is read again afterwards.
+
+Choosing a payload warns when nothing says which ISO recorded it, when it
+was recorded with another ISO (only an ISO with the offline mode uses the
+partition; an older one ignores it and installs online), when the ISO's
+archinstall differs from the payload's, or when no plugged-in key is large
+enough; each warning asks before keeping the payload.
+
+The payload then goes into a derived ISO, with the machine profile if one
+was chosen, under `~/.erplibre/iso/derived/<base>-<profile|none>-<payload>.iso`
+(0700 folder, 0600 file: the payload holds its authority's key):
+
+```bash
+xorriso -indev <base.iso> -outdev <derived.iso> \
+    -boot_image any replay -boot_image any gpt_disk_guid=volume_date_uuid \
+    -volume_date uuid <date of the base> [-map <profile.json> /erplibre/machine.json] \
+    -append_partition 3 0x83 <payload.img> -commit
+```
+
+Before xorriso, the free space is checked (base + image; outdated derived
+ISOs are removed first if that is enough), and the image's sha256 is
+checked against its `.sha256`. After it, the derived ISO is checked with
+`sfdisk -J`, `xorriso -report_el_torito` and `blkid`: BIOS and UEFI El
+Torito images, EFI partition, same UUID as the base (archiso finds its
+medium by it), partition 3 of type Linux at least as large as the image;
+otherwise it is removed. The key is then written as usual (`dd`, `cmp`): a
+key smaller than the derived ISO is refused, with the advised key size —
+an Odoo 18 payload (about 26 GB) needs a key of 32 GB or more. Writing and
+reading back such an image takes tens of minutes on a slow key.
+
+On the live, archiso mounts partition 1 (ISO 9660) of the key, so
+partition 3 stays free for `erplibre-offline`, which finds it by its label.
+`Detect USB keys and show their information` shows when a key carries a payload, with its profile and
+date when the device is readable without sudo; `Supported ISO list` lists
+the payloads of `~/.erplibre/iso/offline/`.
+
+<!-- [fr] -->
+## Installation hors ligne (paquet sur la clé)
+
+Une clé peut porter un **paquet hors ligne** : une troisième partition,
+ext4, `LABEL=ERPLIBRE_DATA`, ajoutée à l'ISO par `xorriso
+-append_partition 3` à l'écriture de la clé (jamais en modifiant la clé
+après `dd`). Elle tient un paquet pour un profil ERPLibre :
+
+```
+manifest.json   schéma, profil ERPLibre, source git (url, branche, commit),
+                date de création, version d'archinstall, date de
+                l'instantané Arch, tailles, sha256 des petites pièces
+repo/           dépôt pacman : <dépôt>/os/x86_64/<dépôt>.db + paquets
+store/          magasin du mandataire Go (script/qemu_cache), miroirs git
+                sous store/git/
+bin/            le mandataire, compilé statique (CGO_ENABLED=0)
+ca/             une autorité propre à ce paquet (nommée « ERPLibre offline
+                payload », valide deux ans à partir d'une semaine avant
+                sa création)
+```
+
+Quand un paquet valide est trouvé, l'écran propose son profil par défaut,
+avec la mention « installation hors ligne (paquet <profil>, <date>) » ; le
+choisir ne demande aucun réseau. Un autre profil reste possible en ligne,
+réseau requis.
+
+En mode automatique (`erplibre.answers`), seul le `"offline"` des réponses
+décide : `true` n'attend ni le réseau ni `pacman-init`, et un paquet absent
+ou illisible est refusé aussitôt (code `28`) ; `false` attend les deux,
+même si la clé porte un paquet.
+
+Avant tout effacement, le cœur vérifie que le paquet existe, qu'il est du
+profil choisi, que la commande du profil sur cette ISO est celle que le
+paquet a enregistrée (`erplibre.profile_command_sha256` ; un paquet qui ne
+la porte pas n'en reçoit qu'une mise en garde) et que son dépôt sert chaque
+paquet que la configuration archinstall demande (code de sortie `28`
+sinon). Il lance ensuite `erplibre-offline start --profile <clé>` :
+
+- l'horloge est avancée à la date de création du paquet si elle est en
+  retard (horloge matérielle tenue à l'heure locale) : l'autorité et les
+  signatures de l'instantané seraient sinon « pas encore valides » ;
+
+- le trousseau pacman est initialisé : sans réseau, le `pacman-init` de
+  releng attend sans fin une heure synchronisée ; l'attente est donc levée
+  (comme `archinstall --skip-ntp` le fait pour lui-même) ;
+- la partition est montée en lecture seule (`ro,noload,nodev,nosuid,noexec`
+  : `noload` empêche même le rejeu d'un journal ext4 en attente) ;
+- le mandataire et l'autorité sont copiés dans `/run/erplibre-offline`,
+  sha256 vérifié, et le mandataire tourne `--hors-ligne` sur 127.0.0.1 sous
+  un UID sans privilège : il sert le magasin, et le dépôt pacman local pour
+  **toute** URL de miroir Arch, sans jamais joindre l'amont ni écrire ;
+- dnsmasq répond 198.18.0.1 à tout nom, systemd-resolved n'interroge que
+  lui ; l'adresse vit sur une interface factice qui porte une route par
+  défaut de faible priorité, sans quoi `connect()` échoue avant la règle
+  nft et systemd-resolved répond « Network is down » ;
+- nft détourne la sortie TCP 80/443 de tout processus, sauf le mandataire,
+  vers lui (l'IPv6 vers 80/443 est refusée pour que les clients retombent
+  sur l'IPv4) ;
+- le live approuve l'autorité (ancre + `trust extract-compat`) ;
+- la liste de miroirs du live reçoit un serveur si elle n'en a aucun :
+  pacstrap la recopie dans la cible, qui garde un vrai miroir ;
+- un essai demande `core.db` au travers de tout le chemin ;
+- le trousseau du live est mis à jour depuis le dépôt du paquet quand
+  l'`archlinux-keyring` de l'instantané est plus récent (`pacman -Sy`,
+  `pacman -Qu`, `pacman -S`, signature vérifiée par le trousseau actuel) :
+  il remplace la synchronisation WKD que `--skip-wkd` saute, pour qu'une
+  clé d'empaqueteur ajoutée ou prolongée après la construction de l'ISO
+  refuse avant l'effacement, et non après.
+
+archinstall tourne avec `--offline --skip-ntp --skip-wkd`. Le chroot
+d'archinstall partage le réseau du live : l'étape ERPLibre joint donc aussi
+le mandataire ; dans la cible, elle fait approuver l'autorité (ancre,
+`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`, `UV_NATIVE_TLS`,
+`NODE_EXTRA_CA_CERTS`, un `npmrc` global pour `sudo npm -g`) et retire tout
+à la fin. Le cœur vérifie ensuite la cible (`erplibre-offline
+clean-target`) : il régénère toujours ses faisceaux (`trust extract-compat`
+dans le chroot), puis y cherche l'autorité elle-même et pas seulement son
+ancre, car une ancre effacée dont l'extraction a échoué (disque plein,
+étape tuée) la laisse approuvée. Si elle y est encore, l'installation
+échoue avec le code `29`. Il arrête ensuite le service, qui défait chaque
+geste en ordre inverse ; toute exception pendant `start`, Ctrl-C compris,
+le défait aussi. Le système installé est normal : liste de miroirs ordinaire,
+aucune autorité du mandataire, aucun service du mandataire.
+
+Le paquet se fabrique sur l'hôte par `archlinux/offline_payload.py`
+(`build-proxy`, `manifest`, `image`) ; le mandataire y est compilé avec la
+chaîne Go du dépôt, parce que le format de son magasin appartient à la
+version qui l'a rempli. Le dépôt doit porter le `.sig` de chaque paquet :
+pacman le télécharge, les bases n'embarquent plus les signatures. L'image
+rend chaque fichier lisible (le mandataire tourne sous son propre compte),
+sauf la clé de l'autorité.
+
+### Fabriquer un paquet
+
+```bash
+./script/iso/archlinux/offline_payload.py build --profile gnome \
+    --iso ~/.erplibre/iso/erplibre-archlinux-<date>-x86_64.iso --dry-run
+./script/iso/archlinux/offline_payload.py build --profile odoo18 \
+    --iso <iso> --seed-git-mirrors /var/cache/erplibre_go_qemu_cache/git
+```
+
+`build` fait une **installation de référence** du profil en QEMU (KVM,
+sans root) : le mandataire statique tourne sur l'hôte en mode
+enregistrement, sur 127.0.0.1 et deux ports libres, magasin vide ; la VM
+démarre l'ISO en clé USB par son noyau (réponses dans `erplibre.answers`,
+profil machine generic, UEFI quand OVMF est présent) avec une 2e clé
+`LABEL=ERPLIBRE_DATA` qui ne porte qu'un **manifeste d'enregistrement**
+(`"mode": "record"`, l'adresse et les ports du mandataire, le certificat de
+l'autorité). L'installateur suit alors son chemin hors ligne, sauf que nft
+envoie 80/443 au mandataire de l'hôte par la passerelle du réseau « user »
+de QEMU (10.0.2.2) et que le live garde son réseau et son DNS :
+l'installation de référence tire exactement ce que l'installation hors
+ligne demandera. Le mandataire tourne sur l'hôte plutôt que dans le live :
+le magasin s'écrit directement dans le répertoire de fabrication (rien à
+extraire d'un disque de VM), sans root. Il tourne avec `--sans-tunnel` : joint par la
+passerelle de QEMU, sans détournement noyau sur l'hôte, il n'a aucune
+destination d'origine vers laquelle ouvrir un tunnel, et déchiffre donc
+toujours. `--seed-git-mirrors` copie d'abord
+les miroirs git nus du profil depuis un magasin existant (reflink sur
+btrfs/XFS, la source n'est que lue) ; l'installation passe quand même par
+le mandataire, qui les met à jour.
+
+Les paquets qu'un profil machine peut demander mais que la VM n'a pas tirés
+(noyaux, deux microcodes, pilotes graphiques libres, alimentation, shells,
+AppArmor, LUKS/LVM, GRUB, micrologiciels son) sont ensuite tirés au travers
+du mandataire depuis l'hôte, leur fermeture calculée par `pacman -Sp` sur
+les bases enregistrées.
+
+`assemble <répertoire>` (lancé aussi par `build`) fait du magasin le
+paquet : les fichiers pacman deviennent `repo/` — la base officielle
+enregistrée est gardée si elle désigne un fichier présent pour chaque
+paquet enregistré, sinon le dépôt est reconstruit par `repo-add` sur la
+version enregistrée la plus récente (base non signée, que le `SigLevel =
+Required DatabaseOptional` d'Arch accepte ; les paquets gardent leur
+`.sig`) ; le reste du magasin est gardé (liens physiques), et seuls les
+miroirs git que le journal d'accès montre servis. Puis `manifest.json`,
+l'image ext4 et son `.sha256`, et `report.json` (tailles, durées, paquets
+que le contrôle d'avant l'effacement ne trouverait pas : doit être vide),
+le tout sous `~/.erplibre/iso/offline/<profil>-<horodatage>/`.
+
+### Écrire une clé avec un paquet
+
+Dans le TODO, `Système › Clé USB amorçable › Écrire un ISO sur une clé
+USB` : après le profil machine, une ISO ERPLibre demande « Installation
+hors ligne » :
+
+- `[0]` non : la clé installe en ligne, réseau requis ;
+- une ligne par paquet trouvé sous `~/.erplibre/iso/offline/` : profil,
+  date, taille de l'image et taille de clé conseillée. Un paquet est
+  listé avec `✗` et ne peut pas être choisi quand son `.sha256` manque,
+  que son manifeste (lu dans l'image par `debugfs`, sans root) manque ou
+  est refusé par le contrôle même du live, ou que `report.json` signale un
+  paquet requis absent ou non signé ;
+- une dernière entrée lance la fabrique (`offline_payload.py build`) pour
+  un profil ERPLibre choisi, après avoir montré sa durée, la place libre
+  qu'elle demande (refus en dessous) et la commande ; les miroirs git du
+  cache de l'hôte sont amorcés s'ils sont là. La liste est relue ensuite.
+
+Choisir un paquet met en garde quand rien ne dit quelle ISO l'a enregistré,
+quand il l'a été avec une autre ISO (seule une ISO qui a le mode hors ligne
+se sert de la partition ; une plus ancienne l'ignore et installe en ligne),
+quand l'archinstall de l'ISO diffère de celui du paquet, ou quand aucune
+clé branchée n'est assez grande ; chaque mise en garde demande avant de
+garder le paquet.
+
+Le paquet part ensuite dans une ISO dérivée, avec le profil machine s'il y
+en a un, sous
+`~/.erplibre/iso/derived/<base>-<profil|none>-<paquet>.iso` (dossier en
+0700, fichier en 0600 : le paquet porte la clé de son autorité) :
+
+```bash
+xorriso -indev <base.iso> -outdev <dérivée.iso> \
+    -boot_image any replay -boot_image any gpt_disk_guid=volume_date_uuid \
+    -volume_date uuid <date de la base> [-map <profil.json> /erplibre/machine.json] \
+    -append_partition 3 0x83 <paquet.img> -commit
+```
+
+Avant xorriso, la place libre est vérifiée (base + image ; les ISO
+dérivées périmées sont retirées d'abord si cela suffit), et la somme
+sha256 de l'image comparée à son `.sha256`. Après lui, l'ISO dérivée est
+contrôlée par `sfdisk -J`, `xorriso -report_el_torito` et `blkid` : images
+El Torito BIOS et UEFI, partition EFI, même UUID que la base (archiso
+retrouve son support par lui), partition 3 de type Linux au moins aussi
+grande que l'image ; sinon elle est retirée. La clé s'écrit ensuite comme
+d'habitude (`dd`, `cmp`) : une clé plus petite que l'ISO dérivée est
+refusée, avec la taille de clé conseillée — un paquet Odoo 18 (environ
+26 Go) demande une clé de 32 Go ou plus. Écrire puis relire une telle
+image prend des dizaines de minutes sur une clé lente.
+
+Sur le live, archiso monte la partition 1 (ISO 9660) de la clé : la
+partition 3 reste libre pour `erplibre-offline`, qui la trouve par son
+étiquette. `Détecter les clés USB et afficher leurs informations`
+dit quand une clé porte un paquet, avec
+son profil et sa date si le périphérique est lisible sans sudo ; `Liste des
+ISO prises en charge` liste les paquets de `~/.erplibre/iso/offline/`.
 
 <!-- [en] -->
 ## Files
@@ -593,12 +980,14 @@ script/iso/archlinux/
 ├── build_iso.py                         releng + overlay -> mkarchiso
 ├── container_build.py                   container mode: engine, image, argv
 ├── container/Containerfile              builder image (archiso, archinstall)
+├── offline_payload.py                   offline payload: reference install, image
 └── profile/airootfs/usr/local/
     ├── bin/erplibre-install             tty1 entry: screen or automatic
     ├── bin/erplibre-installer-ui        installer screen (Textual / text)
     ├── bin/erplibre-install-config      archinstall user_configuration.json
     ├── bin/erplibre-installer           profile-driven installer core
     ├── bin/erplibre-todo                TODO embedded in the key
+    ├── bin/erplibre-offline             offline payload service
     └── share/erplibre-install/
         ├── erplibre-stage.sh            ERPLibre stage (archinstall chroot)
         ├── erplibre_ui.py               screen: mode, home actions
@@ -610,6 +999,7 @@ script/iso/archlinux/
         ├── erplibre_disk.py             disk stage: plan, preflight, run
         ├── erplibre_archinstall.py      pre-mounted config, --creds
         ├── erplibre_plugin.py           archinstall plugin (4.5)
+        ├── erplibre_offline.py          offline: probe, start, stop, checks
         └── user_configuration.template.json
 ```
 
@@ -626,8 +1016,9 @@ cloned repository and branch — is set in one place: `network_source` in
 
 Tests: `./script/test/run_unit_test.sh test/test_iso_archlinux_build.py`
 (no archiso nor container engine needed), `test/test_iso_container_build.py`,
-and `test/test_iso_installer_{disk,plugin,core,ui}.py` (no archinstall
-needed; the screen tests need `textual`, else they are skipped).
+`test/test_iso_installer_{disk,plugin,core,ui}.py` (no archinstall
+needed; the screen tests need `textual`, else they are skipped), and
+`test/test_iso_offline.py` (offline service, stage, payload tool).
 
 <!-- [fr] -->
 `profiles.json` (profils, source réseau, gabarit de `erplibre.service`) et
@@ -642,5 +1033,6 @@ cloné et branche — se règle en un seul endroit : `network_source` dans
 
 Tests : `./script/test/run_unit_test.sh test/test_iso_archlinux_build.py`
 (sans archiso ni moteur de conteneur), `test/test_iso_container_build.py`,
-et `test/test_iso_installer_{disk,plugin,core,ui}.py` (sans archinstall ;
-les tests de l'écran demandent `textual`, sinon ils sont sautés).
+`test/test_iso_installer_{disk,plugin,core,ui}.py` (sans archinstall ;
+les tests de l'écran demandent `textual`, sinon ils sont sautés), et
+`test/test_iso_offline.py` (service hors ligne, étape, fabrique du paquet).

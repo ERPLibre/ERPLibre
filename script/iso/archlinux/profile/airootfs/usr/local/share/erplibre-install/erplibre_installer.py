@@ -45,8 +45,17 @@ Ils ne sont jamais journalisés ; ils passent à cryptsetup sur l'entrée
 standard et à archinstall par un fichier --creds 0600 sur RUN_DIR, écrasé
 puis effacé dès qu'archinstall rend la main.
 
+« offline » vrai installe depuis le paquet hors ligne de la clé
+(erplibre_offline) : avant d'effacer quoi que ce soit, le paquet doit
+exister, être du profil ERPLibre choisi et servir chaque paquet que la
+configuration demande ; il est ensuite mis en service le temps de
+l'installation, et la cible est vérifiée propre (aucune autorité restée
+approuvée) avant d'être démontée. Un paquet d'enregistrement (installation
+de référence de la fabrique) suit le même chemin, sans le contrôle des
+paquets : c'est lui qui remplit le dépôt.
+
 Codes de sortie : 0 réussi ; 2 usage ; ceux de l'étape ERPLibre (3,
-10 à 14, voir erplibre-stage.sh) ; EXIT_* ci-dessous pour le reste. En
+10 à 15, voir erplibre-stage.sh) ; EXIT_* ci-dessous pour le reste. En
 mode automatique, la dernière ligne sur la console série est
 « __ERPLIBRE_EXIT__ <code> ».
 
@@ -74,6 +83,7 @@ if MACHINE_DIR not in sys.path:
 
 import erplibre_archinstall as ai  # noqa: E402
 import erplibre_disk as disk_mod  # noqa: E402
+import erplibre_offline as offline_mod  # noqa: E402
 import erplibre_plugin as plugin_mod  # noqa: E402
 import facts as facts_mod  # noqa: E402
 import machine_profile as mp  # noqa: E402
@@ -93,6 +103,12 @@ EXIT_DISK_FAILED = 24
 EXIT_ARCHINSTALL_VERSION = 25
 EXIT_ARCHINSTALL = 26
 EXIT_PLUGIN = 27
+# Installation hors ligne refusée avant tout effacement : paquet absent,
+# illisible, d'un autre profil, paquets manquants, mise en service ratée.
+EXIT_OFFLINE = 28
+# La cible approuve encore l'autorité du paquet hors ligne après
+# nettoyage : le système installé n'est pas sûr, l'installation échoue.
+EXIT_OFFLINE_RESIDUE = 29
 EXIT_INTERRUPTED = 130
 # L'étape ERPLibre attendue n'a laissé aucun fichier d'état.
 EXIT_STAGE_MISSING = 1
@@ -565,7 +581,10 @@ def archinstall_argv(paths, offline=False):
         paths["target"],
     ]
     if offline:
-        argv += ["--skip-ntp", "--skip-wkd"]
+        # --offline saute la sonde du réseau et la synchronisation des
+        # bases, mais pas les attentes de l'heure (NTP) et du trousseau
+        # (WKD), qui ne finiraient jamais sans réseau.
+        argv += ["--offline", "--skip-ntp", "--skip-wkd"]
     return argv
 
 
@@ -628,10 +647,132 @@ def run_install(
     if not prep["ok"]:
         log(f"refused: {prep['reason']} {prep['details']}")
         return REASON_EXIT.get(prep["reason"], EXIT_ANSWERS)
+    offline = doc.get("offline") is True
+    contexte = (paths, prep, erplibre_doc, outil, fx, params, tty)
+    if offline:
+        refus = offline_gate(contexte, trouvee, run, log)
+        if refus:
+            return EXIT_OFFLINE
     if dry_run:
         log("dry run: nothing executed")
         return EXIT_OK
+    mis_en_service = False
+    if offline:
+        deja = (offline_mod.load_state(_offline_paths(paths)) or {}).get(
+            "active"
+        )
+        try:
+            offline_mod.start(
+                prep["erplibre_profile"],
+                _offline_paths(paths),
+                run=run,
+                log=log,
+                lang=outil.pick_lang(params, erplibre_doc),
+            )
+        except offline_mod.OfflineError as exc:
+            log(f"offline refused: {exc.code} {exc.details}")
+            return EXIT_OFFLINE
+        mis_en_service = not deja
+    try:
+        return _install_from_disk(
+            paths, doc, prep, brut, contexte, run, log, serial, echo
+        )
+    finally:
+        if mis_en_service:
+            offline_mod.stop(_offline_paths(paths), run=run, log=log)
 
+
+def _offline_paths(paths):
+    return offline_mod.paths_for(paths.get("offline_run", offline_mod.RUN_DIR))
+
+
+def offline_gate(contexte, version, run, log):
+    """Le refus d'une installation hors ligne, avant tout effacement, ou
+    None : paquet introuvable ou invalide, d'un autre profil, ou dont le
+    dépôt ne sert pas un paquet que la configuration demande. Lecture
+    seule (le paquet est au plus monté en lecture seule) : l'essai à
+    blanc la passe aussi."""
+    paths, prep, erplibre_doc, outil, fx, params, tty = contexte
+    opaths = _offline_paths(paths)
+    sonde = offline_mod.probe(opaths, run, log)
+    if not sonde["ok"]:
+        log(f"offline refused: {sonde['reason']} {sonde['errors']}")
+        return sonde["reason"]
+    manifeste = sonde["manifest"]
+    profil_erplibre = outil.find_profile(
+        erplibre_doc, prep["erplibre_profile"]
+    )
+    ok, raison, alertes = offline_mod.match_profile(
+        manifeste,
+        prep["erplibre_profile"],
+        version,
+        (profil_erplibre or {}).get("command", ""),
+    )
+    if not ok:
+        if raison == "profile-command-mismatch":
+            precision = (
+                f"the {prep['erplibre_profile']} command of this ISO is "
+                "not the one the payload recorded"
+            )
+        else:
+            precision = (
+                f"payload {manifeste.get('erplibre_profile')}, wanted "
+                f"{prep['erplibre_profile']}"
+            )
+        log(f"offline refused: {raison} ({precision})")
+        return raison
+    for alerte in alertes:
+        log(f"offline warning: {alerte}")
+    log(f"offline payload: {offline_mod.manifest_label(manifeste)}")
+    if offline_mod.is_record(manifeste):
+        # L'enregistrement remplit le dépôt : il n'y a encore rien à
+        # contrôler, le mandataire de l'hôte joint l'amont.
+        return None
+    config = archinstall_config(contexte)
+    noms = offline_mod.required_packages(
+        config, (fx.get("cpu") or {}).get("vendor")
+    )
+    try:
+        manquants = offline_mod.check_packages(noms, opaths["data"], manifeste)
+    except (OSError, ValueError, KeyError) as exc:
+        log(f"offline refused: repository unreadable: {exc!r}")
+        return "repo-unreadable"
+    if manquants:
+        log(
+            "offline refused: packages missing from the payload: "
+            + ", ".join(f"{n} ({r})" for n, r in manquants)
+        )
+        return "packages-missing"
+    return None
+
+
+def archinstall_config(contexte, offline_prelude=None):
+    """La configuration archinstall de l'installation : celle de
+    l'installateur 1b (erplibre-install-config) plus les réglages
+    résolus, cible pré-montée."""
+    paths, prep, erplibre_doc, outil, fx, params, tty = contexte
+    profil_erplibre = outil.find_profile(
+        erplibre_doc, prep["erplibre_profile"]
+    )
+    base = outil.build_config(
+        outil.load_json(os.path.join(paths["share"], outil.TEMPLATE_FILE)),
+        erplibre_doc,
+        profil_erplibre,
+        _read_text(os.path.join(paths["share"], outil.STAGE_FILE)),
+        fx["firmware"]["mode"] == "uefi",
+        tty,
+        outil.pick_lang(params, erplibre_doc),
+        offline=offline_prelude,
+    )
+    return ai.machine_config(base, prep["settings"], paths["target"])
+
+
+def _install_from_disk(
+    paths, doc, prep, brut, contexte, run, log, serial, echo
+):
+    """Étape disque, puis archinstall ; la cible est rendue (démontée,
+    LUKS fermé) quoi qu'il arrive."""
+    plan = prep["disk"] or {}
     settings = prep["settings"]
     lay = plan["layout"]
     secrets = doc.get("secrets") or {}
@@ -672,19 +813,7 @@ def run_install(
         return EXIT_DISK_FAILED
 
     try:
-        return _archinstall_phase(
-            paths,
-            doc,
-            prep,
-            lay,
-            erplibre_doc,
-            outil,
-            fx,
-            params,
-            tty,
-            run,
-            log,
-        )
+        return _archinstall_phase(paths, doc, prep, lay, contexte, run, log)
     except Exception as exc:
         log(f"archinstall phase failed: {exc!r}")
         return EXIT_ARCHINSTALL
@@ -701,10 +830,10 @@ def subprocess_output(run, argv):
     return res.stdout or ""
 
 
-def _archinstall_phase(
-    paths, doc, prep, lay, erplibre_doc, outil, fx, params, tty, run, log
-):
+def _archinstall_phase(paths, doc, prep, lay, contexte, run, log):
+    fx = contexte[4]
     settings = prep["settings"]
+    offline = doc.get("offline") is True
     uuids = disk_mod.read_uuids(lay, run)
     manquants = disk_mod.missing_uuids(lay, uuids)
     if manquants:
@@ -713,20 +842,14 @@ def _archinstall_phase(
     disk_state = dict(
         uuids, disk=lay["disk"], vg=lay["vg"], swap_dev=lay["swap_dev"]
     )
-    profil_erplibre = outil.find_profile(
-        erplibre_doc, prep["erplibre_profile"]
-    )
-    lang = outil.pick_lang(params, erplibre_doc)
-    base = outil.build_config(
-        outil.load_json(os.path.join(paths["share"], outil.TEMPLATE_FILE)),
-        erplibre_doc,
-        profil_erplibre,
-        _read_text(os.path.join(paths["share"], outil.STAGE_FILE)),
-        fx["firmware"]["mode"] == "uefi",
-        tty,
-        lang,
-    )
-    config = ai.machine_config(base, settings, paths["target"])
+    prelude = None
+    if offline:
+        opaths = _offline_paths(paths)
+        actif = offline_mod.load_state(opaths) or {}
+        prelude = offline_mod.stage_prelude(
+            actif.get("manifest") or {}, offline_mod.ca_pem(opaths) or ""
+        )
+    config = archinstall_config(contexte, prelude)
     a_etape = bool(config.get("custom_commands"))
     run_dir = paths["run"]
     etat = {
@@ -753,7 +876,7 @@ def _archinstall_phase(
         )
         env = dict(os.environ)
         env[plugin_mod.STATE_ENV] = os.path.join(run_dir, "plugin-state.json")
-        argv = archinstall_argv(paths, doc.get("offline") is True)
+        argv = archinstall_argv(paths, offline)
         log(f"$ {' '.join(argv)}")
         try:
             rc = run(argv, env=env, check=False).returncode
@@ -763,6 +886,22 @@ def _archinstall_phase(
     finally:
         ai.shred(creds)
     log(f"archinstall: exit code {rc}")
+    if offline:
+        # L'étape retire elle-même l'autorité de la cible ; une étape
+        # interrompue ou un disque plein ne l'a pas fait, et la cible ne
+        # doit rien garder. Ce reste passe avant tout autre échec : il
+        # rend le système installé dangereux, pas seulement incomplet.
+        restes, encore = offline_mod.clean_target(
+            paths["target"],
+            run=run,
+            log=log,
+            ca_pem=offline_mod.ca_pem(_offline_paths(paths)),
+        )
+        if restes:
+            log(f"offline residues removed from the target: {restes}")
+        if encore:
+            log(f"offline residues STILL in the target: {encore}")
+            return EXIT_OFFLINE_RESIDUE
     echecs = plugin_failures(etat["status_path"])
     if echecs:
         log(f"plugin failed: {', '.join(echecs)}")
@@ -802,12 +941,42 @@ def _parser():
     parser.add_argument(
         "--dry-run", action="store_true", help="plan only, nothing executed"
     )
+    parser.add_argument(
+        "--offline-requested",
+        action="store_true",
+        help="exit 0 if the answers ask for an offline install, 1 "
+        "otherwise; nothing else is done",
+    )
     return parser
+
+
+def offline_requested(source, run_dir=DEFAULT_PATHS["run"]):
+    """Vrai si les réponses `source` (valeur de erplibre.answers ou
+    chemin) demandent l'installation hors ligne. Ne journalise rien et
+    n'écrit rien : le lanceur s'en sert pour ne pas attendre un réseau
+    que l'installation hors ligne n'emploie pas, quand le paquet de la
+    clé est absent ou illisible et que le cœur doit le refuser lui-même
+    (EXIT_OFFLINE) au lieu de laisser le lanceur attendre le réseau puis
+    échouer sur « pas de réseau ». Des réponses illisibles rendent faux."""
+    if not source:
+        return False
+    try:
+        doc, _permis = decode_answers(source, run_dir)
+    except ValueError:
+        return False
+    return isinstance(doc, dict) and doc.get("offline") is True
 
 
 def main(argv=None):
     args = _parser().parse_args(argv)
     paths = dict(DEFAULT_PATHS)
+    if args.offline_requested:
+        if args.auto:
+            params = facts_mod.cmdline_params(_read_text(paths["cmdline"]))
+            source = params.get(ANSWERS_PARAM)
+        else:
+            source = args.answers
+        return 0 if offline_requested(source, paths["run"]) else 1
     if args.auto:
         params = facts_mod.cmdline_params(_read_text(paths["cmdline"]))
         valeur = params.get(ANSWERS_PARAM)

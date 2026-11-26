@@ -33,7 +33,8 @@
 # échoué (clone gardé, PostgreSQL démarré par systemctl).
 #
 # Codes de EL_STATUS : 0 réussi, 3 aucun compte utilisateur, 10 sudoers,
-# 11 clone, 12 PostgreSQL, 13 commande du profil, 14 service erplibre.
+# 11 clone, 12 PostgreSQL, 13 commande du profil, 14 service erplibre,
+# 15 autorité hors ligne.
 
 EL_PROFILE_KEY="${EL_PROFILE_KEY:-}"
 EL_PROFILE_LABEL="${EL_PROFILE_LABEL:-}"
@@ -45,6 +46,10 @@ EL_GIT_BRANCH="${EL_GIT_BRANCH:-master}"
 EL_TTY="${EL_TTY:-}"
 EL_LANG="${EL_LANG:-fr}"
 EL_UNIT_TEMPLATE="${EL_UNIT_TEMPLATE:-}"
+# Installation hors ligne (erplibre_offline.stage_prelude) : EL_OFFLINE=1
+# et l'autorité du paquet en base64 sur une ligne.
+EL_OFFLINE="${EL_OFFLINE:-0}"
+EL_OFFLINE_CA_B64="${EL_OFFLINE_CA_B64:-}"
 
 EL_LOG=/var/log/erplibre-install.log
 EL_STATUS_DIR=/var/lib/erplibre-install
@@ -54,6 +59,13 @@ EL_RELAUNCH=/usr/local/sbin/erplibre-stage
 EL_UNIT_FILE="${EL_UNIT_FILE:-/etc/systemd/system/erplibre.service}"
 EL_PASSWD="${EL_PASSWD:-/etc/passwd}"
 EL_TMP_DIR="${EL_TMP_DIR:-/tmp}"
+EL_ROOT="${EL_ROOT:-}"
+EL_OFFLINE_ANCHOR="${EL_ROOT}/etc/ca-certificates/trust-source/anchors/erplibre-offline.crt"
+# npmrc global lu par npm sur Arch (voir erplibre_offline.NPMRC).
+EL_OFFLINE_NPMRC="${EL_ROOT}/etc/npmrc"
+EL_OFFLINE_NPMRC_MARK="# erplibre-offline"
+EL_SYSTEM_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+EL_OFFLINE_ACTIVE=0
 EL_PG_DATA=/var/lib/postgres/data
 EL_PG_LOG=/var/lib/postgres/erplibre-install.log
 EL_PG_STARTED=0
@@ -157,19 +169,72 @@ el_sudoers_add() {
 
 # --- SOURCE RÉSEAU -----------------------------------------------------
 # Seul endroit qui décide d'où viennent le dépôt ERPLibre et, pour tout ce
-# que l'étape lance, les paquets et les téléchargements. Aujourd'hui : le
+# que l'étape lance, les paquets et les téléchargements. En ligne : le
 # réseau de la cible tel quel, EL_GIT_URL et EL_GIT_BRANCH venant de
-# profiles.json (« network_source »). Une source hors ligne — un mandataire
-# de cache servi depuis la clé, avec une redirection nft de la sortie — se
-# branche dans ces deux fonctions : la préparer avant le clone, la retirer
-# dans el_cleanup.
+# profiles.json (« network_source »).
+#
+# Hors ligne (EL_OFFLINE=1, dans le chroot seulement) : le live sert déjà
+# tout — DNS, détournement nft de la sortie 80/443 vers le mandataire du
+# paquet, dépôt pacman — au chroot, qui partage son réseau ; EL_GIT_URL et
+# EL_GIT_BRANCH sont ceux que le paquet a enregistrés. Reste à faire
+# approuver l'autorité du paquet PAR LA CIBLE : ancre et faisceau système
+# (git, pacman, curl), variables de el_offline_env pour ce qui l'ignore
+# (pip, requests, uv, Node), et un npmrc global pour « sudo npm -g », dont
+# sudo vide l'environnement. el_network_source_release retire les trois,
+# et la cible n'approuve plus rien de plus qu'une installation en ligne.
 el_network_source_prepare() {
   el_say "Source : ${EL_GIT_URL} (branche ${EL_GIT_BRANCH})" \
     "Source: ${EL_GIT_URL} (branch ${EL_GIT_BRANCH})"
+  [[ "${EL_OFFLINE}" == "1" && "${EL_IN_CHROOT}" == "1" ]] || return 0
+  el_say "Installation hors ligne : autorité du paquet approuvée le temps de l'étape" \
+    "Offline install: payload authority trusted for the stage only"
+  [[ -n "${EL_OFFLINE_CA_B64}" ]] || return 1
+  EL_OFFLINE_ACTIVE=1
+  install -d -m 0755 "$(dirname "${EL_OFFLINE_ANCHOR}")" || return 1
+  printf '%s' "${EL_OFFLINE_CA_B64}" | base64 -d >"${EL_OFFLINE_ANCHOR}" ||
+    return 1
+  chmod 0644 "${EL_OFFLINE_ANCHOR}" || return 1
+  el_trust_extract || return 1
+  if [[ ! -e "${EL_OFFLINE_NPMRC}" ]]; then
+    install -d -m 0755 "$(dirname "${EL_OFFLINE_NPMRC}")" || return 1
+    printf '%s\ncafile=%s\naudit=false\nfund=false\nupdate-notifier=false\n' \
+      "${EL_OFFLINE_NPMRC_MARK}" "${EL_SYSTEM_BUNDLE}" >"${EL_OFFLINE_NPMRC}" ||
+      return 1
+  fi
 }
 
 el_network_source_release() {
-  :
+  [[ "${EL_OFFLINE_ACTIVE}" == "1" ]] || return 0
+  rm -f -- "${EL_OFFLINE_ANCHOR}"
+  if [[ -f "${EL_OFFLINE_NPMRC}" ]] &&
+    grep -qxF -- "${EL_OFFLINE_NPMRC_MARK}" "${EL_OFFLINE_NPMRC}"; then
+    rm -f -- "${EL_OFFLINE_NPMRC}"
+  fi
+  el_trust_extract || true
+  EL_OFFLINE_ACTIVE=0
+}
+
+# Régénère le faisceau système depuis les ancres (p11-kit, paquet
+# ca-certificates de base). Les tests le remplacent.
+el_trust_extract() {
+  trust extract-compat
+}
+
+# el_offline_env : les « VAR=valeur » ajoutées à l'environnement de la
+# commande du profil hors ligne ; rien en ligne. Gardé en accord avec
+# erplibre_offline.stage_env, que test_iso_offline compare.
+el_offline_env() {
+  [[ "${EL_OFFLINE_ACTIVE}" == "1" ]] || return 0
+  printf '%s\n' \
+    "SSL_CERT_FILE=${EL_SYSTEM_BUNDLE}" \
+    "REQUESTS_CA_BUNDLE=${EL_SYSTEM_BUNDLE}" \
+    "PIP_CERT=${EL_SYSTEM_BUNDLE}" \
+    "CURL_CA_BUNDLE=${EL_SYSTEM_BUNDLE}" \
+    "NODE_EXTRA_CA_CERTS=${EL_SYSTEM_BUNDLE}" \
+    "UV_NATIVE_TLS=1" \
+    "NPM_CONFIG_AUDIT=false" \
+    "NPM_CONFIG_FUND=false" \
+    "NPM_CONFIG_UPDATE_NOTIFIER=false"
 }
 # ------------------------------------------------------------------------
 
@@ -249,12 +314,15 @@ el_target_lang() {
 # substitution « $( gsettings … ) » qui l'a lancé : le script appelant
 # attend alors sans fin. gsettings n'a besoin que de dconf, pas de gvfs.
 el_run_profile() {
+  local -a offline=()
+  mapfile -t offline < <(el_offline_env)
   runuser -u "${EL_USER}" -- env -i \
     HOME="${EL_HOME}" USER="${EL_USER}" LOGNAME="${EL_USER}" \
     SHELL=/bin/bash LANG="$(el_target_lang)" TERM="${TERM:-dumb}" \
     PATH="${EL_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin" \
     EL_NON_INTERACTIVE=1 EL_INSTALL_MISE=1 \
     GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 \
+    "${offline[@]}" \
     bash -lc "cd \"\$HOME/git/erplibre\" && ${EL_PROFILE_CMD}" </dev/null
 }
 
@@ -303,9 +371,21 @@ el_cleanup() {
   el_network_source_release
 }
 
+# La copie de relance tourne sur le système démarré, en ligne : les deux
+# lignes hors ligne du prélude n'y passent pas — « EL_OFFLINE=1 » devient
+# « EL_OFFLINE=0 », l'autorité du paquet est retirée — et la relance ne
+# pose jamais d'ancre. Les motifs ne touchent que la forme du prélude
+# (valeur nue, sans « ${ ») : les défauts du corps du script restent.
+el_relaunch_filter() {
+  sed -e 's/^EL_OFFLINE=1$/EL_OFFLINE=0/' \
+    -e '/^EL_OFFLINE_CA_B64=[A-Za-z0-9+\/=]*$/d'
+}
+
 el_save_relaunch() {
   if [[ -f "$0" && "$0" != "${EL_RELAUNCH}" ]]; then
-    install -D -m 0750 -- "$0" "${EL_RELAUNCH}" 2>/dev/null || true
+    install -d -m 0755 "$(dirname "${EL_RELAUNCH}")" 2>/dev/null || true
+    el_relaunch_filter <"$0" >"${EL_RELAUNCH}" 2>/dev/null &&
+      chmod 0750 "${EL_RELAUNCH}" 2>/dev/null || true
   fi
 }
 
@@ -331,7 +411,7 @@ el_main() {
   el_sudoers_add || return 10
 
   el_step "clone du dépôt" "cloning the repository"
-  el_network_source_prepare
+  el_network_source_prepare || return 15
   el_clone || return 11
 
   if [[ "${EL_PROFILE_POSTGRES}" == "1" ]]; then

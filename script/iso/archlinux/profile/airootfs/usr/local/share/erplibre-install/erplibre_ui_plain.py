@@ -333,7 +333,7 @@ class PlainUI:
 
     def execute(self, doc):
         tr = self.tr
-        attente = {"run": self.run}
+        attente = {"run": self.run, "network": flow.needs_network(doc)}
         if self.sleep is not None:
             attente["sleep"] = self.sleep
         if not self.dry_run and not flow.wait_ready(self.write, tr, **attente):

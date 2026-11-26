@@ -27432,6 +27432,34 @@ TRANSLATIONS = {
         "fr": "Le greffon ERPLibre d'archinstall a échoué.",
         "en": "The ERPLibre archinstall plugin failed.",
     },
+    "Installation source": {
+        "fr": "Source de l'installation",
+        "en": "Installation source",
+    },
+    "The ERPLibre stage could not trust the offline payload.": {
+        "fr": "L'étape ERPLibre n'a pas pu approuver le paquet hors ligne.",
+        "en": "The ERPLibre stage could not trust the offline payload.",
+    },
+    "The installed system still trusts the offline payload authority: reinstall it, or free space on it and run 'trust extract-compat' before using it.": {
+        "fr": "Le système installé approuve encore l'autorité du paquet hors ligne : le réinstaller, ou y libérer de la place et lancer « trust extract-compat » avant de s'en servir.",
+        "en": "The installed system still trusts the offline payload authority: reinstall it, or free space on it and run 'trust extract-compat' before using it.",
+    },
+    "The offline install was refused before anything was erased; see the log.": {
+        "fr": "L'installation hors ligne a été refusée avant tout effacement ; voir le journal.",
+        "en": "The offline install was refused before anything was erased; see the log.",
+    },
+    "The offline payload of this key is unusable ({reason}): the install needs the network.": {
+        "fr": "Le paquet hors ligne de cette clé est inutilisable ({reason}) : l'installation demande le réseau.",
+        "en": "The offline payload of this key is unusable ({reason}): the install needs the network.",
+    },
+    "offline install (payload {profile}, {date})": {
+        "fr": "installation hors ligne (paquet {profile}, {date})",
+        "en": "offline install (payload {profile}, {date})",
+    },
+    "online (network required)": {
+        "fr": "en ligne (réseau requis)",
+        "en": "online (network required)",
+    },
     "The ERPLibre profile command failed.": {
         "fr": "La commande du profil ERPLibre a échoué.",
         "en": "The ERPLibre profile command failed.",

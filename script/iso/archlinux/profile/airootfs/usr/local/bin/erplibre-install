@@ -60,7 +60,8 @@ EL_EXIT_MARKER=__ERPLIBRE_EXIT__
 EL_CMDLINE_FILE="${EL_CMDLINE_FILE:-/proc/cmdline}"
 EL_LANG=fr
 # Nom que el_wait_network doit pouvoir résoudre : le réseau sert les miroirs
-# Arch à archinstall. Une source hors ligne change aussi cette sonde.
+# Arch à archinstall. Une installation hors ligne demandée par les réponses
+# dispense de l'attente (el_core_auto).
 EL_NETWORK_PROBE_HOST="${EL_NETWORK_PROBE_HOST:-archlinux.org}"
 
 # el_param <clé> : valeur d'un paramètre « clé=valeur » du noyau, vide si
@@ -268,11 +269,24 @@ el_auto_poweroff() {
 el_core_auto() {
   el_log "installation automatique par le profil machine" \
     "automatic install from the machine profile"
-  el_wait_boot || el_log "pacman-init inactif" "pacman-init not active"
-  if ! el_wait_network 300; then
-    el_log "pas de réseau" "no network"
-    el_auto_end 20
-    return
+  # Ce sont les réponses qui décident, pas la présence d'un paquet sur la
+  # clé. Hors ligne demandé : ni le démarrage ni pacman-init ne sont
+  # attendus (sans réseau, pacman-init attend une heure synchronisée qui
+  # ne vient jamais ; le service hors ligne initialise lui-même le
+  # trousseau), et un paquet absent ou illisible est refusé par le cœur
+  # (code 28) avant tout effacement. En ligne : le réseau et le trousseau
+  # sont attendus même si la clé porte un paquet, faute de quoi archinstall
+  # partirait sur un disque effacé avant que le DHCP ait répondu.
+  if "${EL_CORE}" --auto --offline-requested; then
+    el_log "installation hors ligne : réseau non attendu" \
+      "offline install: network not awaited"
+  else
+    el_wait_boot || el_log "pacman-init inactif" "pacman-init not active"
+    if ! el_wait_network 300; then
+      el_log "pas de réseau" "no network"
+      el_auto_end 20
+      return
+    fi
   fi
   "${EL_CORE}" --auto --serial "${EL_SERIAL}"
   el_auto_poweroff

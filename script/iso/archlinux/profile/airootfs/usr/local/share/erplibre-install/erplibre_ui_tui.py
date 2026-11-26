@@ -591,7 +591,11 @@ class ProgressScreen(Screen):
         def log(ligne):
             app.call_from_thread(self.add_line, ligne)
 
-        attente = {"run": app.run_cmd, "sleep": app.sleep}
+        attente = {
+            "run": app.run_cmd,
+            "sleep": app.sleep,
+            "network": flow.needs_network(self.doc),
+        }
         if not app.dry_run and not flow.wait_ready(log, app.tr, **attente):
             rc = flow.NETWORK_EXIT
         else:

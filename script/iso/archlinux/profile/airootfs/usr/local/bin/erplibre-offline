@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Lanceur de l'installation hors ligne (erplibre_offline.py) : probe,
+start --profile <clé>, stop, status, clean-target <cible>.
+
+Le module vit dans SHARE_DIR. Aucun cache Python n'est écrit à côté de
+lui."""
+
+import sys
+
+sys.dont_write_bytecode = True
+SHARE_DIR = "/usr/local/share/erplibre-install"
+sys.path.insert(0, SHARE_DIR)
+
+import erplibre_offline  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(erplibre_offline.main())

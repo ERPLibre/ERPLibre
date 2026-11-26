@@ -120,11 +120,15 @@ def bootloader_config(uefi):
     return {"bootloader": "Grub", "uki": False, "removable": False}
 
 
-def stage_command(doc, profile, stage_text, tty, lang):
+def stage_command(doc, profile, stage_text, tty, lang, offline=None):
     """Texte de l'unique « custom_commands » : un prélude qui fixe les
     variables de l'étape, puis erplibre-stage.sh tel quel. Chaque valeur
     passe par shlex.quote : la commande du profil et le gabarit d'unité
-    portent des guillemets, des « $ » et des sauts de ligne."""
+    portent des guillemets, des « $ » et des sauts de ligne.
+
+    `offline`, liste de (variable, valeur) de
+    erplibre_offline.stage_prelude, remplace les variables de même nom
+    (la source git du paquet) et ajoute les autres."""
     source = doc.get("network_source", {})
     values = [
         ("EL_PROFILE_KEY", profile["key"]),
@@ -138,6 +142,8 @@ def stage_command(doc, profile, stage_text, tty, lang):
         ("EL_LANG", lang),
         ("EL_UNIT_TEMPLATE", doc.get("service_unit", "")),
     ]
+    for nom, valeur in offline or ():
+        values = [(k, v) for k, v in values if k != nom] + [(nom, valeur)]
     prelude = "".join(f"{k}={shlex.quote(v)}\n" for k, v in values)
     # Le shebang du script reste à sa place utile : en tête du fichier
     # qu'archinstall écrit, et que l'étape recopie pour être relancée.
@@ -149,13 +155,22 @@ def stage_command(doc, profile, stage_text, tty, lang):
 
 
 def build_config(
-    template, doc, profile, stage_text, uefi, tty, lang, disk_config=None
+    template,
+    doc,
+    profile,
+    stage_text,
+    uefi,
+    tty,
+    lang,
+    disk_config=None,
+    offline=None,
 ):
     """user_configuration.json pour archinstall, sous forme de dict.
 
     Le profil « GNOME seul » n'a pas de commande : ni paquets de l'étape,
     ni custom_commands. PostgreSQL est ajouté aux paquets des profils qui
-    en ont besoin, pour que l'étape le trouve déjà là."""
+    en ont besoin, pour que l'étape le trouve déjà là. `offline` passe au
+    prélude de l'étape (voir stage_command)."""
     config = json.loads(json.dumps(template))
     config["bootloader_config"] = bootloader_config(uefi)
     packages = list(config.get("packages", []))
@@ -167,7 +182,9 @@ def build_config(
         for pkg in extra:
             if pkg not in packages:
                 packages.append(pkg)
-        commands.append(stage_command(doc, profile, stage_text, tty, lang))
+        commands.append(
+            stage_command(doc, profile, stage_text, tty, lang, offline)
+        )
     config["packages"] = packages
     config["custom_commands"] = commands
     if disk_config is not None:

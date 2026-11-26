@@ -23,8 +23,14 @@ Un champ est un dict {"key", "kind", "label", "choices", "default",
   « bool »), que collect() traduit en document de réponses.
 
 Pures, sauf ce qui touche le live et le dit : load_context (matériel et
-support), apply_keymap, live_status, wait_ready, run_core,
-archinstall_commands. Chacune prend son `run` ou son `popen`.
+support), offline_context, apply_keymap, live_status, wait_ready,
+run_core, archinstall_commands. Chacune prend son `run` ou son `popen`.
+
+Installation hors ligne : quand la clé porte un paquet hors ligne valide
+(erplibre_offline), son profil ERPLibre est proposé par défaut avec la
+mention « installation hors ligne (paquet <profil>, <date>) » ; le
+choisir rend le document « offline », et l'installation ne demande pas
+de réseau. Un autre profil reste possible, en ligne, réseau requis.
 """
 
 import os
@@ -35,6 +41,7 @@ import time
 import erplibre_archinstall as ai
 import erplibre_disk as disk_mod
 import erplibre_installer as core
+import erplibre_offline as offline_mod
 import facts as facts_mod
 import machine_profile as mp
 import profile_messages as pm
@@ -154,6 +161,16 @@ EXIT_MESSAGES = {
     ),
     core.EXIT_ARCHINSTALL: N_("archinstall failed."),
     core.EXIT_PLUGIN: N_("The ERPLibre archinstall plugin failed."),
+    core.EXIT_OFFLINE: N_(
+        "The offline install was refused before anything was erased; "
+        "see the log."
+    ),
+    15: N_("The ERPLibre stage could not trust the offline payload."),
+    core.EXIT_OFFLINE_RESIDUE: N_(
+        "The installed system still trusts the offline payload authority: "
+        "reinstall it, or free space on it and run 'trust extract-compat' "
+        "before using it."
+    ),
     core.EXIT_INTERRUPTED: N_(
         "The installation was interrupted; the disk was released."
     ),
@@ -171,13 +188,21 @@ CONFIRM_LABEL = N_("Confirm: {label}")
 
 
 def load_context(
-    paths=None, run=subprocess.run, raw_facts=None, lang=None, override=None
+    paths=None,
+    run=subprocess.run,
+    raw_facts=None,
+    lang=None,
+    override=None,
+    offline=None,
 ):
     """Ce que l'interface affiche et dont collect() a besoin :
 
     {"paths", "facts", "params", "profile", "origin", "machine_found",
     "profile_error", "erplibre", "erplibre_doc", "lang", "keymaps",
-    "timezones"}.
+    "timezones", "offline"}.
+
+    « offline » est la sonde du paquet hors ligne (offline_context), ou
+    `offline` quand il est donné.
 
     Le profil machine vient de machine.json sur le support (relu par
     erplibre_installer.machine_profile, copytoram compris), du profil
@@ -220,7 +245,54 @@ def load_context(
         "lang": langue,
         "keymaps": list_keymaps(paths.get("keymaps", KEYMAP_DIR)),
         "timezones": list_timezones(paths.get("zoneinfo", ZONEINFO_DIR)),
+        "offline": offline
+        if offline is not None
+        else offline_context(paths, run),
     }
+
+
+def offline_context(paths, run=subprocess.run):
+    """La sonde du paquet hors ligne (erplibre_offline.probe), qui monte
+    la partition de données en lecture seule. Hors root, ou si la sonde
+    lève, aucun paquet : l'installation reste en ligne."""
+    if os.geteuid() != 0:
+        return {"found": False, "ok": False, "reason": "not-root"}
+    try:
+        return offline_mod.probe(
+            offline_mod.paths_for(
+                paths.get("offline_run", offline_mod.RUN_DIR)
+            ),
+            run,
+        )
+    except Exception as exc:  # la sonde ne doit jamais fermer l'écran
+        return {"found": False, "ok": False, "reason": repr(exc)}
+
+
+def offline_profile(ctx):
+    """Le profil ERPLibre du paquet hors ligne valide, ou None."""
+    sonde = ctx.get("offline") or {}
+    if not sonde.get("ok"):
+        return None
+    return (sonde.get("manifest") or {}).get("erplibre_profile")
+
+
+def offline_text(ctx, tr):
+    """« installation hors ligne (paquet <profil>, <date>) », ou None
+    sans paquet valide."""
+    cle = offline_profile(ctx)
+    if not cle:
+        return None
+    manifeste = ctx["offline"]["manifest"]
+    return tr(
+        "offline install (payload {profile}, {date})",
+        profile=cle,
+        date=str(manifeste.get("created") or "")[:10],
+    )
+
+
+def needs_network(doc):
+    """Vrai si l'installation de `doc` tire du réseau."""
+    return doc.get("offline") is not True
 
 
 def list_keymaps(root=KEYMAP_DIR):
@@ -425,12 +497,20 @@ def form_fields(ctx, tr):
                 default=auto["path"] if auto else None,
             )
         )
+    hors_ligne = offline_profile(ctx)
+    mention = offline_text(ctx, tr)
+    choix = []
+    for e in ctx.get("erplibre") or []:
+        libelle = e["label"]
+        if e["key"] == hors_ligne:
+            libelle = f"{libelle} — {mention}"
+        choix.append((e["key"], libelle))
     champs.append(
         _field(
             "erplibre_profile",
             "choice",
             tr("ERPLibre profile"),
-            [(e["key"], e["label"]) for e in ctx.get("erplibre") or []],
+            choix,
             default=_default_erplibre(ctx),
         )
     )
@@ -452,6 +532,8 @@ def _secret_pair(nom, tr):
 
 def _default_erplibre(ctx):
     cles = [e["key"] for e in ctx.get("erplibre") or []]
+    if offline_profile(ctx) in cles:
+        return offline_profile(ctx)
     voulu = mp.get(ctx["profile"], "erplibre.profile")
     if voulu in cles:
         return voulu
@@ -664,6 +746,10 @@ def collect(ctx, values, tr):
                 reponses[cle] = lue
     if "root" not in doc:
         doc["root"] = root_choice(ctx, values)
+    hors_ligne = offline_profile(ctx)
+    doc["offline"] = bool(hors_ligne) and (
+        doc.get("erplibre_profile") == hors_ligne
+    )
     return doc, erreurs
 
 
@@ -765,9 +851,24 @@ def recap(ctx, doc, prep, tr):
     alertes += [warning_message(tr, a) for a in plan.get("warnings") or []]
     alertes += secret_warnings(ctx, doc, settings, tr)
     lbaf = mp.get(settings, "disk.nvme_lba_4k")
+    sonde = ctx.get("offline") or {}
+    if sonde.get("found") and not sonde.get("ok"):
+        alertes.append(
+            tr(
+                "The offline payload of this key is unusable ({reason}): "
+                "the install needs the network.",
+                reason=sonde.get("reason"),
+            )
+        )
+    source = (
+        offline_text(ctx, tr)
+        if doc.get("offline") is True
+        else tr("online (network required)")
+    )
     return {
         "profile": profile_title(ctx, tr),
-        "summary": summary_lines(tr, settings),
+        "summary": summary_lines(tr, settings)
+        + [(tr("Installation source"), source)],
         "hardware": hardware_lines(tr, ctx["facts"]),
         "warnings": alertes,
         "disk": disk_label(disque) if disque else "?",
@@ -927,10 +1028,17 @@ def wait_ready(
     boot_s=300,
     network_s=60,
     host=NETWORK_PROBE_HOST,
+    network=True,
 ):
     """Attend pacman-init (au plus `boot_s` secondes) puis le réseau (au
     plus `network_s`). Rend vrai si le réseau répond ; pacman-init absent
-    n'est qu'un avertissement, pacman le dira s'il échoue."""
+    n'est qu'un avertissement, pacman le dira s'il échoue.
+
+    Sans `network` (installation hors ligne), rien n'est attendu : sans
+    réseau, pacman-init attend une synchronisation de l'heure qui ne vient
+    jamais, et le service hors ligne initialise lui-même le trousseau."""
+    if not network:
+        return True
     for i in range(boot_s):
         if live_status(run, host)["pacman_init"]:
             break

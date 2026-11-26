@@ -486,6 +486,11 @@ class TestRunCore(unittest.TestCase):
         )
         self.assertIn("archinstall", flow.exit_message(tr_en(), 26, True))
         self.assertIn("99", flow.exit_message(tr_en(), 99))
+        # Une autorité hors ligne restée dans la cible a son propre message.
+        self.assertIn(
+            "trust extract-compat",
+            flow.exit_message(tr_en(), flow.core.EXIT_OFFLINE_RESIDUE),
+        )
 
     def test_archinstall_commands(self):
         config, archinstall = flow.archinstall_commands(self.ctx, "home", "")

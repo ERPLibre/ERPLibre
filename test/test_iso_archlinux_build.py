@@ -1765,6 +1765,36 @@ class TestShellScripts(unittest.TestCase):
             self.assertNotIn("ATTENTE", res.stdout)
             self.assertNotIn("ARCHINSTALL", res.stdout)
 
+    def test_core_auto_waits_for_network_unless_offline_requested(self):
+        # Les réponses décident, pas la clé : hors ligne demandé, le cœur
+        # est lancé tout de suite (il refuse lui-même un paquet absent) ;
+        # en ligne, réseau et trousseau sont attendus même si la clé porte
+        # un paquet.
+        with tempfile.TemporaryDirectory() as tmp:
+            for demande, attendu in ((0, False), (1, True)):
+                coeur = Path(tmp) / f"coeur{demande}"
+                coeur.write_text(
+                    "#!/bin/bash\n"
+                    'echo "CORE $*"\n'
+                    '[[ " $* " == *" --offline-requested "* ]] && '
+                    f"exit {demande}\n"
+                    "exit 0\n"
+                )
+                coeur.chmod(0o755)
+                script = (
+                    'source "$1"; EL_CORE="$2"; EL_SERIAL=/dev/null; '
+                    "el_wait_boot() { echo ATTENTE; }; "
+                    "el_wait_network() { echo RESEAU; return 0; }; "
+                    "el_auto_poweroff() { :; }; el_core_auto"
+                )
+                res = self._bash(script, str(INSTALLER), str(coeur))
+                self.assertEqual(res.returncode, 0, res.stderr)
+                lignes = res.stdout.splitlines()
+                self.assertIn("CORE --auto --offline-requested", lignes)
+                self.assertIn("CORE --auto --serial /dev/null", lignes)
+                self.assertEqual("RESEAU" in lignes, attendu, lignes)
+                self.assertEqual("ATTENTE" in lignes, attendu, lignes)
+
     def test_auto_mode_password_and_creds_never_persist(self):
         # Outil de configuration et archinstall bouchonnés : le mot de
         # passe arrive par l'environnement, pas par argv, et le fichier

@@ -120,6 +120,8 @@ ARCHISO_INSTALL_CMD = ["sudo", "pacman", "-S", "--needed", "archiso"]
 #   - git, sans lequel todo.py refuse de démarrer.
 # libisoburn fournit xorriso, par lequel le menu Clé USB du TODO écrit un
 # profil machine dans une ISO dérivée.
+# nftables porte le détournement de l'installation hors ligne
+# (erplibre_offline) ; son DNS, dnsmasq, est déjà dans releng.
 # Un menu qui importe autre chose à l'usage (assistant, courriel, KDBX)
 # rend son erreur d'import sur le live, sans toucher au reste du TODO.
 EXTRA_LIVE_PACKAGES = (
@@ -136,6 +138,7 @@ EXTRA_LIVE_PACKAGES = (
     "tk",
     "git",
     "libisoburn",
+    "nftables",
 )
 
 SHARE_DIR = "usr/local/share/erplibre-install"
@@ -241,6 +244,7 @@ INSTALLER_PERMISSIONS = {
     "/usr/local/bin/erplibre-install-config": "0:0:755",
     "/usr/local/bin/erplibre-installer": "0:0:755",
     "/usr/local/bin/erplibre-installer-ui": "0:0:755",
+    "/usr/local/bin/erplibre-offline": "0:0:755",
     "/usr/local/bin/erplibre-todo": "0:0:755",
     f"/{SHARE_DIR}/erplibre-stage.sh": "0:0:755",
 }
