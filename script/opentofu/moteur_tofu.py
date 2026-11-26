@@ -391,12 +391,13 @@ class MoteurTofu(Moteur):
         erreurs = spec_parc.valider(spec, mod.DISTROS)
         if erreurs:
             raise ValueError("\n".join(erreurs))
-        cible = spec["cible"]
-        executer = self._executer or resolution.executer_ssh(cible["hote"])
-        adresse = ""
-        if not cible.get("api_url"):
-            adresse = resolution.adresse_hote(cible["hote"]["target"])
-        neuve, change = resolution.resoudre(spec, executer, adresse)
+        hote = spec["cible"]["hote"]
+        executer = self._executer or resolution.executer_ssh(hote)
+        neuve, change = resolution.resoudre(
+            spec,
+            executer,
+            lambda: resolution.ssh_hote(hote["target"], hote.get("port", "")),
+        )
         if change:
             spec_parc.sauver(neuve, self.racine)
             spec.clear()

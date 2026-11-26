@@ -168,26 +168,14 @@ class OpenTofuMenuMixin:
         """Exécuteur des commandes de l'hôte de `spec`, ou None.
 
         Bâti sur `pve.run` et `wrap_privilege` (`resolution.executer_ssh`).
-        L'élévation est vérifiée comme au choix d'un hôte Proxmox : root, ou
-        un sudo qui ne demande pas de mot de passe. Un sudo qui en demande un
-        bloquerait la résolution sur une invite que personne ne voit.
+        `resolution.elevation` décide de l'élévation : root, ou un sudo
+        qui ne demande pas de mot de passe ; sinon sa raison s'affiche.
         """
         hote = spec["cible"]["hote"]
         brut = resolution.executer_ssh({**hote, "sudo": ""})
-        code, qui = brut("id -u")
-        if code != 0:
-            print(f"  ✗ {t('SSH does not get through:')} {hote['target']}")
-            return None
-        if qui.strip() == "0":
-            sudo = ""
-        elif brut("sudo -n true")[0] == 0:
-            sudo = "sudo "
-        else:
-            print(
-                "  ✗ "
-                + t("qm needs root: no root, and sudo asks for a password.")
-            )
-            print(f"  → {t('Connect as root@, or allow NOPASSWD sudo.')}")
+        sudo, raison = resolution.elevation(brut)
+        if sudo is None:
+            print(f"  ✗ {hote['target']} : {raison}")
             return None
         return resolution.executer_ssh({**hote, "sudo": sudo})
 

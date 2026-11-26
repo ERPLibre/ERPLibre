@@ -26230,10 +26230,6 @@ TRANSLATIONS = {
         "fr": "Le jeton {parc} est créé mais n'a pas pu être stocké ; relancer en recréant le jeton.",
         "en": "Token {parc} was created but could not be stored; run again with token recreation.",
     },
-    "root@ or sudo NOPASSWD required": {
-        "fr": "root@ ou sudo NOPASSWD requis",
-        "en": "root@ or sudo NOPASSWD required",
-    },
     "Token creation output has no secret value.": {
         "fr": "La sortie de création du jeton ne contient pas de secret.",
         "en": "Token creation output has no secret value.",
@@ -26923,6 +26919,22 @@ TRANSLATIONS = {
     "Invalid spec: {err}": {
         "fr": "Spec invalide : {err}",
         "en": "Invalid spec: {err}",
+    },
+    "SSH does not get through (exit {code}).": {
+        "fr": "SSH ne passe pas (code {code}).",
+        "en": "SSH does not get through (exit {code}).",
+    },
+    "No root, and sudo asks for a password: connect as root@ or allow NOPASSWD sudo.": {
+        "fr": "Pas root, et sudo demande un mot de passe : se connecter en root@ ou permettre sudo NOPASSWD.",
+        "en": "No root, and sudo asks for a password: connect as root@ or allow NOPASSWD sudo.",
+    },
+    "The host gave an empty hostname.": {
+        "fr": "L'hôte a rendu un nom d'hôte vide.",
+        "en": "The host gave an empty hostname.",
+    },
+    "Target field {champ} must be empty or a port number.": {
+        "fr": "Le champ de cible {champ} doit être vide ou un numéro de port.",
+        "en": "Target field {champ} must be empty or a port number.",
     },
 }
 

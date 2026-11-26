@@ -60,8 +60,10 @@ def _spec(*vms):
             "stockage": "local-lvm",
             "stockage_snippets": "local",
             "pont": "vmbr0",
+            "ssh_user": "admin",
+            "ssh_port": 22,
         },
-        "compte": {"user": "erplibre", "ssh_key": ""},
+        "compte": {"user": "erplibre", "ssh_key": "~/.ssh/id_ed25519.pub"},
         "vms": list(vms),
     }
 
@@ -128,7 +130,27 @@ class TestRendu(unittest.TestCase):
         porte une IPv4 : un pont interne sans passerelle l'emporte, et
         l'écriture du snippet part vers une adresse injoignable."""
         ssh = _simple()["provider"]["proxmox"]["ssh"]
-        self.assertEqual(ssh["node"], [{"name": "pve1", "address": "pve.example.test"}])
+        self.assertEqual(
+            ssh["node"], [{"name": "pve1", "address": "pve.example.test", "port": 22}]
+        )
+
+    def test_compte_ssh_est_celui_de_l_hote_pas_de_la_vm(self):
+        spec = _spec(_vm("a-1", 201))
+        spec["cible"].update(ssh_user="ops", ssh_port=2222)
+        ssh = rp.rendre(spec, {"a-1": _donnees()}, CONF)["provider"]["proxmox"]["ssh"]
+        self.assertEqual(ssh["username"], "ops")
+        self.assertEqual(ssh["node"][0]["port"], 2222)
+        self.assertIsInstance(ssh["node"][0]["port"], int)
+
+    def test_snippet_nomme_par_parc_et_vm(self):
+        noms = set()
+        for parc in ("parc-a", "parc-b"):
+            spec = _spec(_vm("web", 201))
+            spec["nom"] = parc
+            rendu = rp.rendre(spec, {"web": _donnees()}, CONF)
+            fichier = rendu["resource"]["proxmox_virtual_environment_file"]["ud_web"]
+            noms.add(fichier["source_raw"]["file_name"])
+        self.assertEqual(noms, {"erplibre-parc-a-web.yml", "erplibre-parc-b-web.yml"})
 
     def test_adresse_ssh_ipv4_et_ipv6(self):
         for url, hote in (

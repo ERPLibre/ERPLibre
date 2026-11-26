@@ -244,6 +244,8 @@ class _Base(unittest.TestCase):
             stockage="local-lvm",
             stockage_snippets="local",
             pont="vmbr0",
+            ssh_user="admin",
+            ssh_port=22,
         )
         self.spec["compte"]["ssh_key"] = str(self.cle)
         self.spec["vms"][0].update(
@@ -313,6 +315,29 @@ class TestPlanifier(_Base):
             sp.charger("parc-a", self.racine)["vms"][0]["vmid"], 100
         )
         self.assertEqual(self.commandes, ["qm list"])
+
+    def test_ssh_g_lu_pour_les_champs_ssh_vides(self):
+        self.spec["cible"].update(api_url="", ssh_user="", ssh_port=None)
+        lu = {"adresse": "192.0.2.10", "user": "ops", "port": 2222}
+        with mock.patch.object(
+            mtt.resolution, "ssh_hote", return_value=lu
+        ) as ssh_hote:
+            res, _ = self.planifier()
+        self.assertTrue(res.ok, res.message)
+        ssh_hote.assert_called_once_with("hote-x", "")
+        cible = sp.charger("parc-a", self.racine)["cible"]
+        self.assertEqual(
+            (cible["api_url"], cible["ssh_user"], cible["ssh_port"]),
+            ("https://192.0.2.10:8006/", "ops", 2222),
+        )
+        doc = json.loads(
+            (
+                self.moteur.dossier_travail(self.spec) / "main.tf.json"
+            ).read_text()
+        )
+        ssh = doc["provider"]["proxmox"]["ssh"]
+        self.assertEqual(ssh["username"], "ops")
+        self.assertEqual(ssh["node"][0]["port"], 2222)
 
     def test_init_seulement_si_necessaire(self):
         self.planifier()

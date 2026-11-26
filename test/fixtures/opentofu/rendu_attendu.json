@@ -14,11 +14,12 @@
       "insecure": true,
       "ssh": {
         "agent": true,
-        "username": "erplibre",
+        "username": "admin",
         "node": [
           {
             "name": "pve1",
-            "address": "pve.example.test"
+            "address": "pve.example.test",
+            "port": 22
           }
         ]
       }
@@ -44,7 +45,7 @@
         "node_name": "pve1",
         "source_raw": {
           "data": "#cloud-config\n",
-          "file_name": "erplibre-parc-a-vm-1.yml"
+          "file_name": "erplibre-parc-a-parc-a-vm-1.yml"
         }
       }
     },

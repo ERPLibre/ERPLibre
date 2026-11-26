@@ -33,7 +33,9 @@ _CHAMPS_CIBLE = (
     "stockage",
     "stockage_snippets",
     "pont",
+    "ssh_user",
 )
+_PORT_MAX = 65535
 
 
 class SpecInvalide(Exception):
@@ -85,6 +87,8 @@ def nouvelle_spec(nom, hote):
             "stockage": "",
             "stockage_snippets": "",
             "pont": "",
+            "ssh_user": "",
+            "ssh_port": None,
         },
         "compte": {"user": "erplibre", "ssh_key": _cle_ssh_par_defaut()},
         "vms": [
@@ -252,6 +256,13 @@ def valider(spec, distros=None):
                 erreurs.append(t("A jump host is not supported yet."))
             if hote.get("sudo", "sudo ") not in ("sudo ", ""):
                 erreurs.append(t("The host sudo field must be 'sudo ' or empty."))
+        port = cible.get("ssh_port")
+        if port is not None and (not _entier(port) or not 0 < port <= _PORT_MAX):
+            erreurs.append(
+                t("Target field {champ} must be empty or a port number.").format(
+                    champ="ssh_port"
+                )
+            )
         if not isinstance(cible.get("insecure"), bool):
             erreurs.append(
                 t("Target field {champ} must be true or false.").format(

@@ -11,7 +11,7 @@ coffre du parc (`coffre.ecrire`) et ne le met dans aucun message ni journal.
 import copy
 import json
 
-from script.opentofu import coffre
+from script.opentofu import coffre, resolution
 from script.opentofu.moteur import Resultat
 from script.opentofu.spec import RACINE_PARCS
 from script.proxmox import proxmox_deploy as pve
@@ -148,15 +148,6 @@ def _json(executer, cmd):
         raise ValueError(t("Unreadable JSON from: {cmd}").format(cmd=cmd))
 
 
-def _elevation(executer_brut):
-    """Valeur de `hote.sudo` ("" si root, "sudo " si NOPASSWD), ou None."""
-    code, sortie = executer_brut("id -u")
-    if code == 0 and sortie.strip() == "0":
-        return ""
-    code, _ = executer_brut("sudo -n true")
-    return "sudo " if code == 0 else None
-
-
 def _echec(cmd, code):
     return Resultat(
         False,
@@ -189,9 +180,9 @@ def preparer_hote(spec, executer_brut, recreer=False, racine=RACINE_PARCS):
     neuve = copy.deepcopy(spec)
     parc = neuve["nom"]
     cible = neuve["cible"]
-    sudo = _elevation(executer_brut)
+    sudo, raison = resolution.elevation(executer_brut)
     if sudo is None:
-        return Resultat(False, t("root@ or sudo NOPASSWD required")), neuve
+        return Resultat(False, raison), neuve
     cible["hote"]["sudo"] = sudo
 
     def executer(cmd):

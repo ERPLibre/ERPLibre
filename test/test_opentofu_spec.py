@@ -98,6 +98,17 @@ class TestSpec(unittest.TestCase):
                 erreurs = sp.valider(s, distros)
                 self.assertTrue(erreurs, (chemin, retirer, valeur))
 
+    def test_compte_et_port_ssh_de_l_hote(self):
+        s = _spec()
+        for port in (None, 22, 2222):
+            s["cible"]["ssh_port"] = port
+            self.assertEqual(sp.valider(s), [], port)
+        for port in ("22", 0, 70000, True):
+            s["cible"]["ssh_port"] = port
+            self.assertEqual(len(sp.valider(s)), 1, port)
+        s["cible"].update(ssh_port=None, ssh_user=7)
+        self.assertEqual(len(sp.valider(s)), 1)
+
     def test_vmid_en_double(self):
         s = _spec()
         s["vms"] = [

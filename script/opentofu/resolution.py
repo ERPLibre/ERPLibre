@@ -33,23 +33,57 @@ class ResolutionImpossible(Exception):
     """Lecture de l'hôte ou donnée de VM impossible ; message traduit."""
 
 
-def adresse_hote(target):
-    """Valeur `hostname` de `ssh -G <target>` : l'adresse réelle de l'alias."""
+def ssh_hote(target, port=""):
+    """`{"adresse", "user", "port"}` de `ssh -G [-p port] <target>`.
+
+    L'adresse réelle de l'alias, le compte et le port que ssh emploie pour
+    joindre l'hôte : bpg ouvre sa propre connexion SSH vers le nœud pour
+    écrire les snippets, et doit utiliser ce même compte et ce même port.
+    `port` est le champ `hote.port` de la spec, vide pour celui de l'alias.
+    """
+    argv = ["ssh", "-G"] + (["-p", str(port)] if port else []) + [target]
     try:
-        res = subprocess.run(
-            ["ssh", "-G", target], capture_output=True, text=True, timeout=15
-        )
+        res = subprocess.run(argv, capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError) as exc:
         raise ResolutionImpossible(
             t("Cannot run ssh -G {cible}: {err}").format(cible=target, err=exc)
         )
+    valeurs = {}
     if res.returncode == 0:
         for ligne in res.stdout.splitlines():
             cle, _, valeur = ligne.partition(" ")
-            if cle == "hostname" and valeur.strip():
-                return valeur.strip()
-    raise ResolutionImpossible(
-        t("ssh -G {cible} gave no host address.").format(cible=target)
+            valeurs.setdefault(cle, valeur.strip())
+    port_lu = valeurs.get("port", "")
+    if not valeurs.get("hostname") or not port_lu.isdigit():
+        raise ResolutionImpossible(
+            t("ssh -G {cible} gave no host address.").format(cible=target)
+        )
+    return {
+        "adresse": valeurs["hostname"],
+        "user": valeurs.get("user", ""),
+        "port": int(port_lu),
+    }
+
+
+def elevation(executer_brut):
+    """`(sudo, raison)` : préfixe d'élévation de l'hôte, ou None et pourquoi.
+
+    `sudo` vaut "" pour root, "sudo " pour un sudo qui ne demande pas de
+    mot de passe, None sinon ; `raison` (traduite) distingue alors un hôte
+    que ssh ne joint pas d'un compte sans root ni sudo NOPASSWD. Un sudo qui
+    demande un mot de passe bloquerait sur une invite que personne ne voit.
+    `executer_brut` lance une commande sans élévation.
+    """
+    code, sortie = executer_brut("id -u")
+    if code != 0:
+        return None, t("SSH does not get through (exit {code}).").format(code=code)
+    if sortie.strip() == "0":
+        return "", ""
+    if executer_brut("sudo -n true")[0] == 0:
+        return "sudo ", ""
+    return None, t(
+        "No root, and sudo asks for a password: connect as root@ or allow "
+        "NOPASSWD sudo."
     )
 
 
@@ -108,20 +142,29 @@ def _vmid_libre(pris):
     return vmid
 
 
-def resoudre(spec, executer, adresse):
+def resoudre(spec, executer, lire_ssh):
     """(spec_neuve, change) : la spec avec ses champs vides remplis.
 
     N'écrit que les champs vides, ne mute pas `spec`, ne lit l'hôte que pour
-    ce qui manque. `ip` "auto" devient "dhcp" sur un pont qui donne sur le
-    LAN, sinon une adresse fixe dérivée du VMID avec sa passerelle et les
-    résolveurs de l'hôte.
+    ce qui manque. `lire_ssh()` rend le dict de `ssh_hote` ; il n'est appelé
+    que si `api_url`, `ssh_user` ou `ssh_port` est vide. `ip` "auto" devient
+    "dhcp" sur un pont qui donne sur le LAN, sinon une adresse fixe dérivée
+    du VMID avec sa passerelle et les résolveurs de l'hôte.
     """
     neuve = copy.deepcopy(spec)
     cible = neuve["cible"]
-    if not cible.get("api_url"):
-        cible["api_url"] = f"https://{adresse}:8006/"
+    if not all(cible.get(c) for c in ("api_url", "ssh_user", "ssh_port")):
+        ssh = lire_ssh()
+        if not cible.get("api_url"):
+            cible["api_url"] = f"https://{ssh['adresse']}:8006/"
+        if not cible.get("ssh_user"):
+            cible["ssh_user"] = ssh["user"]
+        if not cible.get("ssh_port"):
+            cible["ssh_port"] = ssh["port"]
     if not cible.get("noeud"):
         cible["noeud"] = _lire(executer, "hostname").strip()
+        if not cible["noeud"]:
+            raise ResolutionImpossible(t("The host gave an empty hostname."))
     if not cible.get("stockage"):
         cible["stockage"] = _stockage(executer, "images")
         if not cible["stockage"]:

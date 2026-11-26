@@ -42,19 +42,25 @@ def _taille_gio(disque):
     return int(disque[:-1])
 
 
-def _ssh(spec):
-    """Bloc `ssh` du fournisseur : agent, compte, et l'adresse du nœud.
+def _ssh(cible):
+    """Bloc `ssh` du fournisseur : agent, compte et port de l'hôte, adresse
+    du nœud.
 
-    L'adresse est l'hôte de `api_url`, celle que l'opérateur joint déjà.
-    Sans bloc `node`, bpg prend la première interface du nœud qui porte une
-    IPv4, et un pont interne sans passerelle est de celles-là : l'écriture
-    des snippets partirait vers une adresse injoignable de l'opérateur.
+    Le compte et le port sont ceux que `ssh -G` donne pour la cible de
+    l'hôte (`ssh_user`, `ssh_port`), pas le compte des VM : bpg se connecte
+    au nœud Proxmox. L'adresse est l'hôte de `api_url`, celle que
+    l'opérateur joint déjà. Sans bloc `node`, bpg prend la première
+    interface du nœud qui porte une IPv4, et un pont interne sans passerelle
+    est de celles-là : l'écriture des snippets partirait vers une adresse
+    injoignable de l'opérateur.
     """
-    cible = spec["cible"]
-    ssh = {"agent": True, "username": spec["compte"]["user"]}
+    ssh = {"agent": True, "username": cible.get("ssh_user") or ""}
     adresse = urlsplit(cible.get("api_url") or "").hostname
     if adresse and cible.get("noeud"):
-        ssh["node"] = [{"name": cible["noeud"], "address": adresse}]
+        noeud = {"name": cible["noeud"], "address": adresse}
+        if cible.get("ssh_port"):
+            noeud["port"] = int(cible["ssh_port"])
+        ssh["node"] = [noeud]
     return ssh
 
 
@@ -128,10 +134,9 @@ def _vm(cible, vm, donnees_vm, nom_img, nom_ud):
             {
                 "interface": "scsi0",
                 "datastore_id": cible["stockage"],
-                # Forme littérale plus `depends_on` : la doc bpg montre
-                # `import_from = <download_file>.id`, mais le format de cet
-                # identifiant n'est pas confirmé ; la référence remplacera la
-                # chaîne une fois la forme établie.
+                # Forme littérale `<stockage>:import/<fichier>` plus
+                # `depends_on`, éprouvée par un apply sur un vrai PVE ; la doc
+                # bpg montre aussi `import_from = <download_file>.id`.
                 "import_from": (
                     f"{cible['stockage_snippets']}:import/{donnees_vm['fichier']}"
                 ),
@@ -191,7 +196,9 @@ def rendre(spec, donnees, conf):
             "node_name": cible["noeud"],
             "source_raw": {
                 "data": d["user_data"],
-                "file_name": f"erplibre-{vm['nom']}.yml",
+                # Le parc dans le nom : deux parcs sur un même hôte et
+                # stockage ont chacun leur fichier pour une VM homonyme.
+                "file_name": f"erplibre-{spec['nom']}-{vm['nom']}.yml",
             },
         }
         machines[nom_vm] = _vm(cible, vm, d, nom_img, nom_ud)
@@ -213,7 +220,7 @@ def rendre(spec, donnees, conf):
             "proxmox": {
                 "endpoint": cible["api_url"],
                 "insecure": cible["insecure"],
-                "ssh": _ssh(spec),
+                "ssh": _ssh(cible),
             }
         },
         "resource": {
