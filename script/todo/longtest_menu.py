@@ -33,6 +33,7 @@ SCRIPTS_DEFAISABLES = (
     "install_nixos.py",
     "install_erplibre_home.py",
     "usb_passthrough.py",
+    "opentofu_proxmox.py",
 )
 
 # Le répertoire des tests longs, à la racine du dépôt.
@@ -150,6 +151,16 @@ class LongTestMenuMixin:
                     "USB passthrough, emulated deck: run it"
                 )
             },
+            {
+                "prompt_description": t(
+                    "OpenTofu on a disposable Proxmox: plan only (dry-run)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "OpenTofu on a disposable Proxmox: run it"
+                )
+            },
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
         # Ses entrées sont donc traitées à part plutôt que pliées dans la
@@ -171,6 +182,12 @@ class LongTestMenuMixin:
         usb = {
             "13": "--dry-run",
             "14": "",
+        }
+        # OpenTofu sur un Proxmox jetable : un seul étage, ni profondeur ni
+        # hôte de départ. 15 et 16, à la suite, sans renuméroter.
+        opentofu = {
+            "15": "--dry-run",
+            "16": "",
         }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
@@ -200,6 +217,9 @@ class LongTestMenuMixin:
                 continue
             if status in usb:
                 self._longtest_run("usb_passthrough.py", usb[status])
+                continue
+            if status in opentofu:
+                self._longtest_run("opentofu_proxmox.py", opentofu[status])
                 continue
             if status in scripts:
                 script, demander = scripts[status]

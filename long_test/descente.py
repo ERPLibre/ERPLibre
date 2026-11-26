@@ -44,6 +44,7 @@ SCRIPTS = (
     "install_erplibre_home.py",
     "qemu_cache.py",
     "usb_passthrough.py",
+    "opentofu_proxmox.py",
 )
 
 # L'autorité du cache de téléchargement, telle que le service l'écrit sur

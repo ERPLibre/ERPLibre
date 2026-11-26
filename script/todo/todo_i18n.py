@@ -26218,6 +26218,14 @@ TRANSLATIONS = {
         "en": "USB passthrough, emulated deck: run it",
     },
     # OpenTofu
+    "OpenTofu on a disposable Proxmox: plan only (dry-run)": {
+        "fr": "OpenTofu sur un Proxmox jetable : le plan seulement (à blanc)",
+        "en": "OpenTofu on a disposable Proxmox: plan only (dry-run)",
+    },
+    "OpenTofu on a disposable Proxmox: run it": {
+        "fr": "OpenTofu sur un Proxmox jetable : le lancer",
+        "en": "OpenTofu on a disposable Proxmox: run it",
+    },
     "Token {parc} was created but could not be stored; run again with token recreation.": {
         "fr": "Le jeton {parc} est créé mais n'a pas pu être stocké ; relancer en recréant le jeton.",
         "en": "Token {parc} was created but could not be stored; run again with token recreation.",
