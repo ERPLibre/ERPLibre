@@ -26217,6 +26217,103 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
+    # OpenTofu
+    "A VM entry must be an object.": {
+        "fr": "Une entrée de VM doit être un objet.",
+        "en": "A VM entry must be an object.",
+    },
+    "A jump host is not supported yet.": {
+        "fr": "Un hôte de rebond n'est pas encore pris en charge.",
+        "en": "A jump host is not supported yet.",
+    },
+    "Cannot read {chemin}: {err}": {
+        "fr": "Lecture impossible de {chemin} : {err}",
+        "en": "Cannot read {chemin}: {err}",
+    },
+    "Duplicate VM name: {nom}": {
+        "fr": "Nom de VM en double : {nom}",
+        "en": "Duplicate VM name: {nom}",
+    },
+    "Invalid VM name: {nom}": {
+        "fr": "Nom de VM invalide : {nom}",
+        "en": "Invalid VM name: {nom}",
+    },
+    "Invalid fleet name: {nom}": {
+        "fr": "Nom de parc invalide : {nom}",
+        "en": "Invalid fleet name: {nom}",
+    },
+    "Target field {champ} must be a string.": {
+        "fr": "Le champ de cible {champ} doit être une chaîne.",
+        "en": "Target field {champ} must be a string.",
+    },
+    "The account needs a user.": {
+        "fr": "Le compte exige un utilisateur.",
+        "en": "The account needs a user.",
+    },
+    "The host sudo field must be 'sudo ' or empty.": {
+        "fr": "Le champ sudo de l'hôte doit valoir 'sudo ' ou rester vide.",
+        "en": "The host sudo field must be 'sudo ' or empty.",
+    },
+    "The spec must be a JSON object.": {
+        "fr": "La spec doit être un objet JSON.",
+        "en": "The spec must be a JSON object.",
+    },
+    "The spec needs at least one VM.": {
+        "fr": "La spec exige au moins une VM.",
+        "en": "The spec needs at least one VM.",
+    },
+    "The target host needs a ssh target.": {
+        "fr": "L'hôte cible exige une cible ssh.",
+        "en": "The target host needs a ssh target.",
+    },
+    "The target must be of type proxmox.": {
+        "fr": "La cible doit être de type proxmox.",
+        "en": "The target must be of type proxmox.",
+    },
+    "Unsupported engine: {val}.": {
+        "fr": "Moteur non pris en charge : {val}.",
+        "en": "Unsupported engine: {val}.",
+    },
+    "Unsupported spec schema: {val}.": {
+        "fr": "Schéma de spec non pris en charge : {val}.",
+        "en": "Unsupported spec schema: {val}.",
+    },
+    "VM {nom}: a fixed ip needs a gateway.": {
+        "fr": "VM {nom} : une adresse fixe exige une passerelle.",
+        "en": "VM {nom}: a fixed ip needs a gateway.",
+    },
+    "VM {nom}: disk must look like 20G, got {val}.": {
+        "fr": "VM {nom} : le disque doit ressembler à 20G, reçu {val}.",
+        "en": "VM {nom}: disk must look like 20G, got {val}.",
+    },
+    "VM {nom}: dns must be a list.": {
+        "fr": "VM {nom} : dns doit être une liste.",
+        "en": "VM {nom}: dns must be a list.",
+    },
+    "VM {nom}: ip must be auto, dhcp or a.b.c.d/nn, got {val}.": {
+        "fr": "VM {nom} : ip doit valoir auto, dhcp ou a.b.c.d/nn, reçu {val}.",
+        "en": "VM {nom}: ip must be auto, dhcp or a.b.c.d/nn, got {val}.",
+    },
+    "VM {nom}: ram must be an integer >= {min} (MiB).": {
+        "fr": "VM {nom} : ram doit être un entier >= {min} (Mio).",
+        "en": "VM {nom}: ram must be an integer >= {min} (MiB).",
+    },
+    "VM {nom}: unknown distro {val}.": {
+        "fr": "VM {nom} : distribution inconnue {val}.",
+        "en": "VM {nom}: unknown distro {val}.",
+    },
+    "VM {nom}: unknown version {val} for {distro}.": {
+        "fr": "VM {nom} : version inconnue {val} pour {distro}.",
+        "en": "VM {nom}: unknown version {val} for {distro}.",
+    },
+    "VM {nom}: vcpus must be an integer >= 1.": {
+        "fr": "VM {nom} : vcpus doit être un entier >= 1.",
+        "en": "VM {nom}: vcpus must be an integer >= 1.",
+    },
+    "VM {nom}: vmid must be empty or an integer >= 100.": {
+        "fr": "VM {nom} : vmid doit être vide ou un entier >= 100.",
+        "en": "VM {nom}: vmid must be empty or an integer >= 100.",
+    },
 }
 
 

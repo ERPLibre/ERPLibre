@@ -28,3 +28,8 @@ sms/
 # fabricant et modèle, points de montage, venvs. Ils décrivent UNE machine et
 # n'ont rien à faire dans un dépôt dont le distant est public.
 diagnostic/
+
+# Parcs OpenTofu : la spec porte l'alias de l'hote, les noms de VM et, une fois
+# resolue, leurs adresses ; secrets.json porte le jeton et la phrase d'etat.
+# Un depot prive qui veut versionner ses specs retire cette ligne chez lui.
+opentofu/
