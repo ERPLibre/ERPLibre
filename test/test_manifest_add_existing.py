@@ -28,13 +28,19 @@ from test.test_manifest_repo import GEL, IDENTITE, MANIFESTE  # noqa: E402
 
 
 def git(chemin, *args):
-    return subprocess.run(
+    """La sortie de git ; un échec lève AssertionError avec la sortie
+    d'erreur de git, que CalledProcessError ne montre pas."""
+    fini = subprocess.run(
         ["git", "-C", chemin, *args],
-        check=True,
         capture_output=True,
         text=True,
         env=dict(os.environ, **IDENTITE),
-    ).stdout.strip()
+    )
+    if fini.returncode:
+        raise AssertionError(
+            f"git {' '.join(args)} : code {fini.returncode}\n{fini.stderr}"
+        )
+    return fini.stdout.strip()
 
 
 class Racine(unittest.TestCase):

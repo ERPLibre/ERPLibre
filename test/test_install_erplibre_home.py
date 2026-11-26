@@ -2525,10 +2525,27 @@ class TestAvecVraiRepo(CopieDuCheckout):
             (self.depot / manifeste).write_text(texte)
         depot_nu(self.amont, "addon", {"__init__.py": ""})
         branche = _git(GIT_REPO, "symbolic-ref", "--short", "HEAD")
+        # git-repo lance « ssh -V » au début de chaque sync, même sur des
+        # dépôts file://, et s'arrête si la commande échoue : un ssh qui
+        # répond à -V seul, et refuse tout le reste, le laisse continuer
+        # sans jamais joindre un hôte.
+        faux_bin = Path(self.tmp) / "bin-ssh-version"
+        faux_bin.mkdir()
+        (faux_bin / "ssh").write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "-V" ]; then\n'
+            '  echo "OpenSSH_9.9p1, test" >&2\n'
+            "  exit 0\n"
+            "fi\n"
+            'echo "ssh refusé par le test" >&2\n'
+            "exit 255\n"
+        )
+        (faux_bin / "ssh").chmod(0o755)
         self.env = {
             "ERPLIBRE_HOME_REPO": None,
             "REPO_URL": "file://%s" % GIT_REPO,
             "REPO_REV": branche,
+            "PATH": str(faux_bin) + os.pathsep + os.environ.get("PATH", ""),
         }
 
     def repo(self, *args):

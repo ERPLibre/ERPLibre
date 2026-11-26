@@ -153,9 +153,9 @@ class TestUniteSystemd(unittest.TestCase):
         nom = "nft" if nft else "iptables"
         unit = Path(cls.tmp) / f"erplibre-go-qemu-cache-{nom}.service"
         chemins = [
-            d
-            for d in os.environ.get("PATH", "").split(os.pathsep)
-            if d and not os.path.exists(os.path.join(d, "nft"))
+            cls._sans_nft(d, f"{nom}-{i}")
+            for i, d in enumerate(os.environ.get("PATH", "").split(os.pathsep))
+            if d
         ]
         if nft:
             faux = Path(cls.tmp) / "bin-nft"
@@ -186,6 +186,23 @@ class TestUniteSystemd(unittest.TestCase):
                 f"l'unité n'a pas pu être générée : {r.stdout}{r.stderr}"
             )
         return unit.read_text(encoding="utf-8")
+
+    @classmethod
+    def _sans_nft(cls, dossier, etiquette):
+        """`dossier` s'il ne porte pas nft, sinon un miroir de liens vers
+        tout ce qu'il porte, nft excepté.
+
+        Retirer le dossier entier retirerait aussi sed, bash et le reste
+        sur un système à /usr fusionné, où nft vit à côté d'eux dans
+        /usr/bin."""
+        if not os.path.exists(os.path.join(dossier, "nft")):
+            return dossier
+        miroir = Path(cls.tmp) / f"sans-nft-{etiquette}"
+        miroir.mkdir()
+        for nom in os.listdir(dossier):
+            if nom != "nft":
+                (miroir / nom).symlink_to(os.path.join(dossier, nom))
+        return str(miroir)
 
     @classmethod
     def tearDownClass(cls):
