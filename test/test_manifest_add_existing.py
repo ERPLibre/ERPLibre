@@ -85,11 +85,17 @@ class Racine(unittest.TestCase):
             return fh.read()
 
     def clone(self, relatif, branche="main", pousser=True):
-        """Un clone ordinaire à `relatif`, son remote origin nu à côté."""
-        nu = os.path.join(
-            self.racine, "nus", os.path.basename(relatif) + ".git"
+        """Un clone ordinaire à `relatif`, son remote origin nu à côté.
+
+        Chaque clone a SON dépôt nu, même quand deux clones occupent tour à
+        tour le même chemin : leurs premiers commits n'ont pas de parent, et
+        deux d'entre eux faits dans des secondes différentes divergent, ce
+        qui ferait refuser le push du second."""
+        dossier = os.path.join(self.racine, "nus")
+        os.makedirs(dossier, exist_ok=True)
+        nu = tempfile.mkdtemp(
+            prefix=os.path.basename(relatif) + ".", suffix=".git", dir=dossier
         )
-        os.makedirs(os.path.dirname(nu), exist_ok=True)
         subprocess.run(["git", "init", "-q", "--bare", nu], check=True)
         chemin = os.path.join(self.racine, relatif)
         os.makedirs(chemin)

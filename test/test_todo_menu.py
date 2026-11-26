@@ -2197,8 +2197,9 @@ class TestGitRepoPrepareForge(unittest.TestCase):
     def test_repositories_only_on_request(self):
         client = self.FauxClient({"OCA", "TechnoLibre"})
         self.assertTrue(self.preparer(client, [True, True]))
+        # Les dépôts se créent en parallèle : l'ordre d'arrivée varie.
         self.assertEqual(
-            [d[:2] for d in client.depots],
+            sorted(d[:2] for d in client.depots),
             [
                 ("OCA", "a.git"),
                 ("TechnoLibre", "b.git"),

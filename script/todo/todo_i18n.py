@@ -2030,10 +2030,6 @@ TRANSLATIONS = {
         "fr": "noms accentués gardés tels que saisis",
         "en": "accented names kept as typed",
     },
-    "no progress bar during the RSA generation": {
-        "fr": "sans barre de progression pendant la génération RSA",
-        "en": "no progress bar during the RSA generation",
-    },
     "a new RSA key of %s bits": {
         "fr": "une nouvelle clé RSA de %s bits",
         "en": "a new RSA key of %s bits",

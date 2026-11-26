@@ -3,13 +3,13 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Barre de télémétrie du suivi d'installation : CPU, RAM, disque.
 
-La RAM manquait, et son absence a coûté : une compilation mobile s'est fait
-tuer par le noyau sur une VM de 12 Go sans swap, pendant que le suivi affichait
-sereinement le CPU et le disque. L'épuisement mémoire ne se voit nulle part
-ailleurs — le disque va bien, la charge CPU aussi, et la machine meurt.
+L'épuisement mémoire ne se voit nulle part ailleurs : un processus que le
+noyau tue faute de RAM, sur un hôte sans swap, laisse le CPU et le disque au
+vert. La barre porte donc la RAM entre les deux.
 
 Ce qui se vérifie ici : le chiffre lu est celui que le noyau dit pouvoir
-rendre, le swap n'occupe la barre que s'il existe, et une lecture impossible
+rendre, le swap n'occupe la barre que s'il existe, le disque se mesure même
+quand le dossier des images n'existe pas encore, et une lecture impossible
 laisse la barre utile au lieu de la vider.
 """
 
@@ -96,10 +96,9 @@ class TestMemSegment(unittest.TestCase):
 class TestLogSilence(unittest.TestCase):
     """Une installation morte et une qui travaille portent le même sablier.
 
-    Vécu : une session ssh emportée, l'installation morte sans marqueur de
-    sortie, et le tableau de bord a montré « ⏳ » pendant 54 minutes. Le
-    marqueur manque dans les deux cas — seule la date d'écriture du journal
-    les sépare.
+    Une installation dont la session ssh est tombée meurt sans marqueur de
+    sortie, et garde « ⏳ » indéfiniment. Le marqueur manque dans les deux
+    cas : seule la date d'écriture du journal les sépare.
     """
 
     def setUp(self):
@@ -148,6 +147,40 @@ class TestLogSilence(unittest.TestCase):
         self.assertLessEqual(m.IDLE_HINT_SECS, 1200)
 
 
+class TestDiskSegment(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_an_existing_dir_is_its_own_ancestor(self):
+        self.assertEqual(m._existing_ancestor(self.tmp.name), self.tmp.name)
+
+    def test_a_missing_dir_climbs_to_what_exists(self):
+        absent = Path(self.tmp.name) / "libvirt" / "images"
+        self.assertEqual(m._existing_ancestor(str(absent)), self.tmp.name)
+
+    def test_the_root_ends_the_climb(self):
+        self.assertEqual(m._existing_ancestor("/"), "/")
+        self.assertEqual(m._existing_ancestor(""), "/")
+
+    def test_a_missing_dir_measures_the_filesystem_it_will_live_on(self):
+        """Un hôte sans /var/lib/libvirt/images garde son segment disque :
+        c'est le système de fichiers du parent qui recevra les images."""
+        absent = str(Path(self.tmp.name) / "libvirt" / "images")
+        attendu = m.shutil.disk_usage(self.tmp.name)
+        with mock.patch.object(
+            m.shutil, "disk_usage", wraps=m.shutil.disk_usage
+        ) as mesure:
+            segment = m._disk_tele(absent)
+        mesure.assert_called_once_with(self.tmp.name)
+        self.assertIn(f"💽 {absent}:", segment)
+        self.assertIn(m._fmt_size(attendu.total), segment)
+
+    def test_an_unmeasurable_disk_gives_no_segment(self):
+        with mock.patch.object(m.shutil, "disk_usage", side_effect=OSError):
+            self.assertEqual(m._disk_tele(self.tmp.name), "")
+
+
 class TestTheRealBar(unittest.TestCase):
     """La barre telle que le suivi la construit, sans lancer la TUI."""
 
@@ -193,6 +226,20 @@ class TestTheRealBar(unittest.TestCase):
         bar = self.app._collect_tele()
         self.assertLess(bar.index("CPU"), bar.index("RAM"))
         self.assertLess(bar.index("RAM"), bar.index("💽"))
+
+    def test_a_host_without_the_images_dir_keeps_the_whole_bar(self):
+        self.app._disk_dir = str(Path(self.tmp.name) / "absent" / "images")
+        bar = self.app._collect_tele()
+        self.assertIn("CPU", bar)
+        self.assertIn("RAM", bar)
+        self.assertIn(f"💽 {self.app._disk_dir}:", bar)
+
+    def test_an_unmeasurable_disk_keeps_cpu_and_ram(self):
+        with mock.patch.object(m.shutil, "disk_usage", side_effect=OSError):
+            bar = self.app._collect_tele()
+        self.assertIn("CPU", bar)
+        self.assertIn("RAM", bar)
+        self.assertNotIn("💽", bar)
 
     def test_the_bar_survives_a_mute_proc(self):
         with mock.patch.object(m, "_host_mem", return_value=(0, 0, 0, 0)):

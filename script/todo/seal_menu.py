@@ -172,10 +172,11 @@ def commandes_openssl(dossier, nom_commun, jours, organisation=""):
     p12 = os.path.join(dossier, NOM_P12)
     return [
         [
-            # -utf8 : un nom accentué arrive tel quel dans le sujet.
-            # -quiet : sans la barre de progression de la génération RSA,
-            # l'erreur d'openssl reste lisible.
-            "openssl", "req", "-x509", "-utf8", "-quiet",
+            # -utf8 : un nom accentué arrive tel quel dans le sujet. Pas de
+            # -quiet : OpenSSL 3.0 le refuse (« Unknown option »), et la
+            # progression RSA qu'il taisait est retirée de l'erreur par
+            # erreur_openssl().
+            "openssl", "req", "-x509", "-utf8",
             "-newkey", f"rsa:{TAILLE_CLE}",
             "-days", str(jours),
             "-keyout", cle,
@@ -194,6 +195,24 @@ def commandes_openssl(dossier, nom_commun, jours, organisation=""):
             "-passout", f"env:{VAR_MDP}",
         ],
     ]  # fmt: skip
+
+
+# Une ligne de la progression qu'openssl écrit sur stderr pendant la
+# génération d'une clé : points, « + », « * », ou le trait « ----- » qui la
+# clôt.
+_PROGRESSION = re.compile(r"^[.+*]+$|^-+$")
+
+
+def erreur_openssl(stderr):
+    """Le stderr d'openssl (octets ou texte) sans les lignes de progression
+    de la génération RSA : ce qui reste est le message d'erreur."""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode(errors="replace")
+    return "\n".join(
+        ligne
+        for ligne in (stderr or "").splitlines()
+        if ligne.strip() and not _PROGRESSION.match(ligne.strip())
+    )
 
 
 def format_commande(commande):
@@ -245,6 +264,9 @@ def generer_sceau(
         for commande in commandes:
             if annonce:
                 annonce(commande)
+            # capture_output : la progression de la génération RSA ne
+            # s'écrit pas sur le terminal, et l'erreur reste dans
+            # CalledProcessError.stderr.
             subprocess.run(commande, env=env, check=True, capture_output=True)
         rendus = []
         for nom in (NOM_CRT, NOM_P12):
@@ -904,7 +926,6 @@ class SealMenuMixin:
         for option, sens in (
             ("req -x509", t("a self-signed certificate, without a CA")),
             ("-utf8", t("accented names kept as typed")),
-            ("-quiet", t("no progress bar during the RSA generation")),
             (
                 f"-newkey rsa:{TAILLE_CLE}",
                 t("a new RSA key of %s bits") % TAILLE_CLE,
@@ -976,8 +997,9 @@ class SealMenuMixin:
             )
         except subprocess.CalledProcessError as erreur:
             print(f"❌ {t('openssl failed:')} {erreur}")
-            if erreur.stderr:
-                print(erreur.stderr.decode(errors="replace").strip())
+            message = erreur_openssl(erreur.stderr)
+            if message:
+                print(message)
             return
         except OSError as erreur:
             print(f"❌ {t('Cannot write the seal:')} {erreur}")

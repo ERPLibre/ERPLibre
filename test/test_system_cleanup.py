@@ -11,6 +11,7 @@ fabrique.
 """
 
 import os
+import stat
 import subprocess
 import tempfile
 import threading
@@ -292,6 +293,68 @@ class TestLEnsemble(Arbre):
         self.assertEqual(
             [c.nom for c in trouves], [".npm/_cacache", ".cache/pip"]
         )
+
+    def test_an_empty_dir_is_empty_whatever_its_blocks(self):
+        """ext4 compte 4 Kio pour un répertoire vide, tmpfs zéro : le
+        verdict « vide » ne dépend pas de ce que mesure le système de
+        fichiers. Les répertoires mesurent ici 4096 octets, partout."""
+        reel = sc._octets
+
+        def ext4(st):
+            return 4096 if stat.S_ISDIR(st.st_mode) else reel(st)
+
+        ecrire(os.path.join(self.home, ".cache/pip/a"), octets=1000)
+        os.makedirs(os.path.join(self.home, ".cache/go-build/00/01"))
+        with mock.patch.object(sc, "_octets", ext4):
+            self.assertGreater(
+                sc.mesurer(os.path.join(self.home, ".cache/go-build"))[0], 0
+            )
+            trouves = sc.candidats(
+                self.depot,
+                home=self.home,
+                tmp=self.tmp,
+                data_dir=self.data,
+                bases=set(),
+                actif=None,
+                uid=self.uid,
+            )
+        self.assertEqual([c.nom for c in trouves], [".cache/pip"])
+
+
+class TestLeContenu(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = tmp.name
+
+    def chemin(self, rel):
+        return os.path.join(self.base, rel)
+
+    def test_nested_empty_dirs_are_empty(self):
+        os.makedirs(self.chemin("a/b/c"))
+        os.makedirs(self.chemin("d"))
+        self.assertFalse(
+            sc.porte_du_contenu([self.chemin("a"), self.chemin("d")])
+        )
+
+    def test_one_file_deep_down_is_content(self):
+        ecrire(self.chemin("a/b/c/f"), octets=0)
+        self.assertTrue(sc.porte_du_contenu([self.chemin("a")]))
+
+    def test_a_link_is_content_and_is_not_followed(self):
+        """Le lien lui-même part avec le répertoire ; ce qu'il désigne,
+        plein ou non, n'entre pas dans le verdict."""
+        os.makedirs(self.chemin("a"))
+        ecrire(self.chemin("ailleurs/f"))
+        os.symlink(self.chemin("ailleurs"), self.chemin("a/lien"))
+        self.assertTrue(sc.porte_du_contenu([self.chemin("a")]))
+
+    def test_a_file_given_directly_is_content(self):
+        ecrire(self.chemin("f"), octets=0)
+        self.assertTrue(sc.porte_du_contenu([self.chemin("f")]))
+
+    def test_a_missing_path_is_empty(self):
+        self.assertFalse(sc.porte_du_contenu([self.chemin("absent")]))
 
 
 AUCUN_USAGE = (set(), [])

@@ -144,6 +144,28 @@ class TestCommandes(unittest.TestCase):
         self.assertIn(seal_menu.USAGE_CLE, req)
         self.assertIn("nonRepudiation", seal_menu.USAGE_CLE)
 
+    def test_aucune_option_qu_openssl_3_0_refuse(self):
+        """« -quiet » n'existe pas pour « req » dans OpenSSL 3.0, qui
+        répond « Unknown option » et ne produit aucun sceau."""
+        for commande in commandes_openssl("/d", "Nom", 30):
+            self.assertNotIn("-quiet", commande)
+
+    def test_l_erreur_affichee_n_a_plus_la_progression_rsa(self):
+        stderr = (
+            b".+...+++++++*..+.....+++\n"
+            b"..+.+++++*...+++\n"
+            b"-----\n"
+            b"req: Bad value for -days\n"
+        )
+        self.assertEqual(
+            seal_menu.erreur_openssl(stderr), "req: Bad value for -days"
+        )
+        self.assertEqual(seal_menu.erreur_openssl(None), "")
+        self.assertEqual(
+            seal_menu.erreur_openssl("Error: x\n  détail\n"),
+            "Error: x\n  détail",
+        )
+
 
 class TestFormatCommande(unittest.TestCase):
     def test_la_commande_affichee_redonne_la_commande_executee(self):

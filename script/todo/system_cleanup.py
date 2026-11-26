@@ -195,6 +195,43 @@ def mesurer(chemin):
     return total, recent
 
 
+def porte_du_contenu(chemins):
+    """Vrai dès qu'un de `chemins` est autre chose qu'un répertoire, ou
+    contient, à n'importe quelle profondeur, une entrée qui n'est pas un
+    répertoire : fichier, lien, socket. Un arbre fait de seuls répertoires
+    vides est vide, quel que soit le système de fichiers — ext4 compte un
+    bloc de 4 Kio par répertoire, tmpfs zéro. Ne suit aucun lien, ne
+    franchit aucun point de montage, et s'arrête à la première entrée
+    trouvée ; un répertoire illisible compte pour vide."""
+    for chemin in chemins:
+        try:
+            st = os.lstat(chemin)
+        except OSError:
+            continue
+        if not stat.S_ISDIR(st.st_mode):
+            return True
+        appareil = st.st_dev
+        pile = [chemin]
+        while pile:
+            try:
+                with os.scandir(pile.pop()) as entrees:
+                    for entree in entrees:
+                        if not entree.is_dir(follow_symlinks=False):
+                            return True
+                        try:
+                            meme = (
+                                entree.stat(follow_symlinks=False).st_dev
+                                == appareil
+                            )
+                        except OSError:
+                            continue
+                        if meme:
+                            pile.append(entree.path)
+            except OSError:
+                continue
+    return False
+
+
 def montages(chemin_mountinfo="/proc/self/mountinfo"):
     """Les points de montage du système, échappements octaux décodés.
     mountinfo liste aussi les bind mounts d'un même système de fichiers,
@@ -835,7 +872,10 @@ def candidats(
     utilises=None,
 ):
     """Tous les candidats, les plus gros d'abord. `utilises` est le rendu
-    de `usages()` ; lu ici quand il n'est pas fourni."""
+    de `usages()` ; lu ici quand il n'est pas fourni. Un candidat sans
+    aucun contenu (porte_du_contenu) n'est pas proposé, sa taille ne
+    tranche pas : elle compte les blocs des répertoires, nuls ou non selon
+    le système de fichiers. Les restes de TMP sont gardés même vides."""
     racine = os.path.realpath(racine)
     home = home or os.path.expanduser("~")
     uid = os.getuid() if uid is None else uid
@@ -852,7 +892,11 @@ def candidats(
         + venvs_voisins(racine, utilises)
     )
     return sorted(
-        (c for c in trouves if c.taille > 0 or c.categorie == TMP),
+        (
+            c
+            for c in trouves
+            if c.categorie == TMP or porte_du_contenu(c.chemins)
+        ),
         key=lambda c: -c.taille,
     )
 

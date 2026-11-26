@@ -397,13 +397,21 @@ class LIdentiteGit(unittest.TestCase):
 
     def test_each_field_stands_alone(self):
         """Remplir le seul courriel ne doit pas effacer le nom : les deux
-        retombent sur l'hôte SÉPARÉMENT."""
-        cc = DQ.build_cloud_config(
-            self._args(git_email="qui@exemple.invalid"), None, []
-        )
+        retombent sur l'hôte SÉPARÉMENT. L'identité de l'hôte est fixée ici :
+        le test ne dépend pas de la configuration git du compte qui le
+        lance."""
+        from unittest import mock
+
+        hote = {"user.name": "Hôte Inventé", "user.email": "hote@x.invalid"}
+        with mock.patch.object(
+            DQ, "_git_global", side_effect=lambda cle, home: hote.get(cle, "")
+        ):
+            cc = DQ.build_cloud_config(
+                self._args(git_email="qui@exemple.invalid"), None, []
+            )
         lu = self._identite(cc)
         self.assertEqual("qui@exemple.invalid", lu.get("email"))
-        self.assertNotEqual("", lu.get("name", ""))
+        self.assertEqual("Hôte Inventé", lu.get("name"))
 
     def test_the_option_reaches_the_command(self):
         """Le réglage doit atteindre deploy_qemu, sinon il n'existe pas."""

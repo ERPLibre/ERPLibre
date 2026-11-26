@@ -1650,6 +1650,35 @@ def _host_mem() -> tuple:
     return tuple(vals.get(k, 0) for k in wanted)
 
 
+def _existing_ancestor(path) -> str:
+    """`path` s'il existe, sinon son plus proche ancêtre existant ; « / » au
+    pire. C'est le système de fichiers qui recevra ce qu'on y écrira : le
+    dossier des images d'un hôte qui n'a encore aucune VM n'existe pas,
+    mais son parent dit déjà la place disponible."""
+    path = os.path.abspath(path or "/")
+    while not os.path.exists(path):
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    return path
+
+
+def _disk_tele(path) -> str:
+    """Segment « 💽 » de la barre : occupation du système de fichiers de
+    `path`, mesurée sur son plus proche ancêtre existant. Vide si même
+    celui-là ne se mesure pas : la barre garde alors le CPU et la RAM."""
+    try:
+        du = shutil.disk_usage(_existing_ancestor(path))
+    except OSError:
+        return ""
+    used_pct = int(du.used / du.total * 100) if du.total else 0
+    return (
+        f"💽 {path}: {_fmt_size(du.used)}/{_fmt_size(du.total)}"
+        f" ({used_pct}%) · {t('free space')} {_fmt_size(du.free)}"
+    )
+
+
 def _mem_tele(total, avail, sw_total, sw_free) -> str:
     """Segment « RAM » de la barre de télémétrie. Vide si /proc n'a rien dit.
 
@@ -3757,24 +3786,23 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                     self._log.write(line)
 
         def _collect_tele(self):
-            """(THREAD) chaîne de télémétrie hôte : CPU % + disque des images."""
+            """(THREAD) chaîne de télémétrie hôte : CPU %, RAM, disque des
+            images. Chaque segment se lit seul : un disque qui ne se mesure
+            pas retire son segment, pas la barre."""
             try:
                 ncpu = os.cpu_count() or 1
                 load1 = os.getloadavg()[0]
-                du = shutil.disk_usage(self._disk_dir)
-                used_pct = int(du.used / du.total * 100) if du.total else 0
                 # La RAM va entre le CPU et le disque : c'est la ressource dont
-                # l'épuisement ne se voit nulle part ailleurs. Une compilation
-                # mobile a été tuée par le noyau sur une VM de 12 Go sans swap,
-                # et ce suivi n'en montrait rien.
+                # l'épuisement ne se voit nulle part ailleurs. Un processus que
+                # le noyau tue faute de mémoire, sur un hôte sans swap, laisse
+                # sinon le CPU et le disque au vert.
                 mem = _mem_tele(*_host_mem())
+                disk = _disk_tele(self._disk_dir)
                 return (
                     f"  ⚙ CPU {min(999, int(load1 / ncpu * 100))}% "
                     f"({t('load')} {load1:.1f}/{ncpu})   "
                     + (f"{mem}   " if mem else "")
-                    + f"💽 {self._disk_dir}: {_fmt_size(du.used)}/"
-                    f"{_fmt_size(du.total)} ({used_pct}%) · "
-                    f"{t('free space')} {_fmt_size(du.free)}"
+                    + disk
                 )
             except Exception:
                 return ""
