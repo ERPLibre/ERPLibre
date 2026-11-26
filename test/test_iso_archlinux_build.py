@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -823,7 +824,9 @@ class TestPlan(unittest.TestCase):
                 "/w/profile",
             ],
         )
-        self.assertEqual(plan["env"], {"SOURCE_DATE_EPOCH": str(self.EPOCH)})
+        self.assertEqual(
+            plan["env"], {"SOURCE_DATE_EPOCH": str(self.EPOCH), "TZ": "UTC"}
+        )
         self.assertEqual(plan["clean"], "/w")
         name = os.path.basename(plan["iso"])
         self.assertRegex(
@@ -831,14 +834,33 @@ class TestPlan(unittest.TestCase):
         )
         self.assertEqual(plan["sha256"], plan["iso"] + ".sha256")
 
+    def test_iso_name_is_utc_date_whatever_the_local_zone(self):
+        """Le nom prédit suit la date UTC, celle que mkarchiso écrit sous
+        TZ=UTC : 03:00 UTC le 26 est encore le 25 dans un fuseau à -5."""
+        epoch = 1795662000  # 2026-11-26 03:00:00 UTC
+        old = os.environ.get("TZ")
+        try:
+            os.environ["TZ"] = "EST+5"
+            time.tzset()
+            self.assertEqual(
+                build_iso.iso_basename(epoch),
+                "erplibre-archlinux-2026.11.26-x86_64.iso",
+            )
+        finally:
+            if old is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = old
+            time.tzset()
+
     def test_old_archiso_uses_sudo_and_keep_work(self):
         plan = build_iso.build_plan(
             "/w", "/o", self.EPOCH, 88, True, euid=1000
         )
         self.assertTrue(plan["sudo"])
         self.assertEqual(
-            plan["mkarchiso"][:3],
-            ["sudo", "env", f"SOURCE_DATE_EPOCH={self.EPOCH}"],
+            plan["mkarchiso"][:4],
+            ["sudo", "env", f"SOURCE_DATE_EPOCH={self.EPOCH}", "TZ=UTC"],
         )
         self.assertNotIn("-r", plan["mkarchiso"])
         self.assertIsNone(plan["clean"])

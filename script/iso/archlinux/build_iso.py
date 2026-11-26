@@ -586,8 +586,14 @@ def edit_loader_conf_default_auto(text):
 
 
 def iso_version(epoch):
-    """iso_version de releng : date locale de SOURCE_DATE_EPOCH."""
-    return time.strftime("%Y.%m.%d", time.localtime(epoch))
+    """iso_version de releng : date UTC de SOURCE_DATE_EPOCH.
+
+    profiledef.sh la calcule avec « date », donc dans le fuseau du
+    processus mkarchiso ; le plan pose TZ=UTC pour que le nom prédit ici
+    soit celui que mkarchiso écrit, en conteneur (UTC par défaut) comme
+    sur l'hôte (fuseau local, sinon décalé d'un jour en soirée).
+    """
+    return time.strftime("%Y.%m.%d", time.gmtime(epoch))
 
 
 def iso_basename(epoch, name=ISO_NAME):
@@ -658,8 +664,9 @@ def build_plan(
     # SOURCE_DATE_EPOCH fixe la date dans iso_version et iso_label : le nom
     # du fichier produit est connu d'avance. Par sudo, l'environnement ne
     # passe pas : « env » le pose.
-    env_assign = f"SOURCE_DATE_EPOCH={epoch}"
-    argv = (["sudo", "env", env_assign] if sudo else []) + mkarchiso
+    env = {"SOURCE_DATE_EPOCH": str(epoch), "TZ": "UTC"}
+    env_assign = [f"{k}={v}" for k, v in env.items()]
+    argv = (["sudo", "env", *env_assign] if sudo else []) + mkarchiso
     iso = Path(output_dir) / iso_basename(epoch, iso_name)
     return {
         "work": str(work),
@@ -669,7 +676,7 @@ def build_plan(
         "iso": str(iso),
         "sha256": str(iso) + ".sha256",
         "sudo": sudo,
-        "env": {"SOURCE_DATE_EPOCH": str(epoch)},
+        "env": env,
         "mkarchiso": argv,
         "clean": None if keep_work else str(work),
     }
