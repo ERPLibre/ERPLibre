@@ -3,9 +3,12 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le moteur OpenTofu : traduction du plan et enchaînement des commandes.
 
-`fixtures/opentofu/show_plan.json` est écrite à la main d'après le format
-documenté de `tofu show -json` : elle est à remplacer par une sortie réelle
-capturée au test long (`long_test/`), le seul qui dispose de tofu et d'un PVE.
+`fixtures/opentofu/show_plan_reel.json` est une sortie réelle de `tofu show
+-json` (tofu 1.13.9, bpg 0.123.1) capturée au test long sur un premier plan,
+assainie : adresses du bloc de documentation, user-data et clé inventés,
+horodatage figé. Elle couvre la création. `fixtures/opentofu/show_plan.json`,
+écrite à la main d'après le format documenté, couvre ce qu'un premier plan ne
+montre pas : modification, remplacement et destruction.
 
 Un faux `tofu` (script Python écrit dans un dossier temporaire) journalise
 ses arguments, les NOMS des variables d'environnement utiles et un drapeau
@@ -45,6 +48,9 @@ def tearDownModule():
 
 DEPOT = Path(__file__).resolve().parent.parent
 FIXTURE = DEPOT / "test" / "fixtures" / "opentofu" / "show_plan.json"
+FIXTURE_REELLE = (
+    DEPOT / "test" / "fixtures" / "opentofu" / "show_plan_reel.json"
+)
 JETON = "tofu@pve!parc-a=SECRET-0123456789"
 QM_VIDE = (
     "      VMID NAME                 STATUS     MEM(MB)    BOOTDISK(GB) PID\n"
@@ -120,6 +126,37 @@ def _faux_qemu():
 
 def _charger_fixture():
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+class TestTraduirePlanReel(unittest.TestCase):
+    """Premier plan réel d'un parc d'une VM : trois créations."""
+
+    def setUp(self):
+        show = json.loads(FIXTURE_REELLE.read_text(encoding="utf-8"))
+        self.changements = mtt.traduire_plan(show)
+
+    def test_trois_creations_par_genre(self):
+        vus = sorted((c.action, c.ressource, c.vm) for c in self.changements)
+        self.assertEqual(
+            vus,
+            [
+                ("creer", mt.RESSOURCE_CLOUD_INIT, "test-tofu-vm-1"),
+                ("creer", mt.RESSOURCE_IMAGE, "debian_13_generic_amd64_qcow2"),
+                ("creer", mt.RESSOURCE_VM, "test-tofu-vm-1"),
+            ],
+        )
+
+    def test_creation_sans_details(self):
+        for c in self.changements:
+            self.assertEqual(c.details, [], c)
+
+    def test_vm_nouvelle_rien_de_detruit(self):
+        spec = {"vms": [{"nom": "test-tofu-vm-1"}]}
+        self.assertEqual(
+            mt.vms_nouvelles(self.changements), {"test-tofu-vm-1"}
+        )
+        self.assertEqual(mt.vms_detruites(self.changements, spec), set())
+        self.assertFalse(mt.est_destructeur(self.changements))
 
 
 class TestTraduirePlan(unittest.TestCase):

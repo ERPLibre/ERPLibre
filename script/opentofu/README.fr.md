@@ -23,8 +23,9 @@ journal du moteur en bas. Touches : `s` enregistrer, `p` planifier, `a`
 appliquer, `d` détruire, `q` quitter. Tant que `tofu` tourne, le formulaire
 est occupé : les actions et `Ctrl+Q` sont désactivés jusqu'au retour, donc un
 passage n'est jamais coupé en deux. Un apply qui remplace ou détruit une VM,
-et tout destroy, demandent de retaper le nom du parc. Un destroy retire aussi les alias SSH
-des VM de `~/.ssh/config`.
+et tout destroy, demandent de retaper le nom du parc. Un destroy, du menu ou
+du formulaire, retire aussi les alias SSH des VM de `~/.ssh/config`, comme un
+apply pour les VM qu'il détruit.
 
 ## Première utilisation
 
@@ -60,7 +61,8 @@ des VM de `~/.ssh/config`.
 | `cible.stockage` | stockage des disques et des images |
 | `cible.stockage_snippets` | stockage qui accepte les snippets (cloud-init) |
 | `cible.pont` | pont réseau |
-| `compte.user`, `compte.ssh_key` | compte créé dans les VM, chemin du fichier de clé publique qui y est posée (défaut `~/.ssh/id_ed25519.pub`), pas la clé elle-même |
+| `cible.ssh_user`, `cible.ssh_port` | compte et port que `ssh -G` donne pour la cible de l'hôte ; le fournisseur s'en sert pour écrire les snippets |
+| `compte.user`, `compte.ssh_key` | compte créé dans les VM, chemin du fichier de clé publique qui y est posée (défaut : le premier qui existe de `~/.ssh/id_ed25519.pub` et `~/.ssh/id_rsa.pub`, sinon `~/.ssh/id_ed25519.pub`), pas la clé elle-même |
 | `vms[].nom` | nom de VM, `^[a-z][a-z0-9-]{0,62}$`, unique dans le parc |
 | `vms[].vmid` | VMID Proxmox ; vide, le premier libre |
 | `vms[].distro`, `version`, `arch` | image du catalogue de déploiement |
@@ -71,16 +73,24 @@ des VM de `~/.ssh/config`.
 | `vms[].installer_erplibre`, `branche` | installer ERPLibre après l'apply, sur cette branche |
 
 Les champs laissés vides sont **résolus sur l'hôte** la première fois puis
-**réécrits dans la spec** : `api_url`, `noeud`, `stockage`,
-`stockage_snippets`, `pont`, `vmid`, et pour `ip: "auto"` l'adresse (`dhcp`
-sur un pont qui donne sur le LAN, sinon une adresse fixe dérivée du VMID,
-avec `passerelle` et `dns`). Un champ déjà rempli n'est jamais relu ni
-écrasé, donc un second plan juste après un apply est vide. Renommer une VM
-dans la spec fait détruire puis recréer la VM par `tofu` : le plan le dit et
-demande une confirmation.
+**réécrits dans la spec** : `api_url`, `ssh_user`, `ssh_port`, `noeud`,
+`stockage`, `stockage_snippets`, `pont`, `vmid`, et pour `ip: "auto"`
+l'adresse (`dhcp` sur un pont qui donne sur le LAN, sinon une adresse fixe
+dérivée du VMID, avec `passerelle` et `dns`). Un champ déjà rempli n'est
+jamais relu ni écrasé, donc un second plan juste après un apply est vide. Le
+cloud-init de chaque VM est écrit dans le stockage des snippets sous
+`erplibre-<parc>-<vm>.yml`.
 
-Une spec abîmée à la main (JSON invalide, champ manquant, VM en double)
-donne une liste d'erreurs lisibles, jamais une trace Python.
+Renommer une VM la fait détruire par `tofu` puis recréer **sous un nouveau
+VMID** : le plan le dit et demande une confirmation. Le formulaire vide le
+VMID d'une VM renommée, et une adresse dérivée de ce VMID redevient `auto`.
+En renommant à la main dans `spec.json`, vider soi-même `vmid` (et une telle
+`ip`) : sinon la VM neuve est créée sur le VMID de celle qui part, et
+l'apply échoue.
+
+Une spec abîmée à la main (JSON invalide, champ manquant ou mal typé, nom de
+VM ou VMID en double) donne une liste d'erreurs lisibles, jamais une trace
+Python.
 
 ## Secrets et état
 
@@ -91,17 +101,21 @@ donne une liste d'erreurs lisibles, jamais une trace Python.
   `enforced = true`), donc un état ou un plan en clair est refusé.
 - Le jeton et la phrase n'arrivent à `tofu` que par son environnement :
   jamais en ligne de commande, dans le `.tf.json` généré ni dans le journal,
-  qui les masque. Les variables `TF_LOG*` héritées sont retirées, car une
-  trace recopie l'en-tête d'autorisation.
-- **Un `secrets.json` perdu ou écrasé rend l'état illisible.** Le restaurer
-  depuis une sauvegarde. Sans sauvegarde, les VM existent toujours sur
-  l'hôte. Détruire UNIQUEMENT les VMID listés dans le `spec.json` du parc
-  (`vms[].vmid`), en confirmant chacun d'abord par `qm config <vmid>` (le
-  nom doit correspondre à la spec) ; ne toucher à aucune autre VM. Puis
-  supprimer le dossier d'état du parc, `private/opentofu/<parc>/.tofu/`, et
-  relancer Préparer l'hôte en répondant OUI à la recréation du jeton :
-  l'ancien jeton existe encore sur l'hôte sans secret local, donc la
-  préparation refuse autrement.
+  qui les masque. Toute variable `PROXMOX_VE_*` héritée est retirée, car
+  elle appartient à un autre parc ou hôte, comme les variables `TF_LOG*`, car
+  une trace recopie l'en-tête d'autorisation.
+- Quand `conf/opentofu.json` épingle une autre version du fournisseur, le plan
+  suivant lance `tofu init -upgrade` pour que le fichier de verrou suive.
+- **Un `secrets.json` perdu ou écrasé rend l'état illisible.** Le moteur refuse
+  alors de planifier plutôt que de créer une phrase neuve à côté de l'état
+  existant. Restaurer `secrets.json` depuis une sauvegarde. Sans sauvegarde, les
+  VM existent toujours sur l'hôte. Détruire UNIQUEMENT les VMID listés dans le
+  `spec.json` du parc (`vms[].vmid`), en confirmant chacun d'abord par `qm
+  config <vmid>` (le nom doit correspondre à la spec) ; ne toucher à aucune
+  autre VM. Puis supprimer le dossier d'état du parc,
+  `private/opentofu/<parc>/.tofu/`, et relancer Préparer l'hôte en répondant OUI
+  à la recréation du jeton : l'ancien jeton existe encore sur l'hôte sans secret
+  local, donc la préparation refuse autrement.
 
 ## Limites de la v1
 

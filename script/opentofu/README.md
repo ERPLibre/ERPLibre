@@ -23,7 +23,8 @@ engine log at the bottom. Keys: `s` save, `p` plan, `a` apply, `d` destroy,
 `q` quit. While `tofu` runs, the form is busy: the actions and `Ctrl+Q` are
 disabled until it returns, so a run is never cut halfway. An apply that
 replaces or destroys a VM, and every destroy, asks you to retype the fleet
-name. A destroy also removes the VMs' SSH aliases from `~/.ssh/config`.
+name. A destroy, from the menu or the form, also removes the VMs' SSH
+aliases from `~/.ssh/config`, and so does an apply for the VMs it destroys.
 
 ## First run
 
@@ -59,7 +60,8 @@ name. A destroy also removes the VMs' SSH aliases from `~/.ssh/config`.
 | `cible.stockage` | storage for disks and images |
 | `cible.stockage_snippets` | storage that accepts snippets (cloud-init) |
 | `cible.pont` | network bridge |
-| `compte.user`, `compte.ssh_key` | account created in the VMs, path of the public key file put in it (default `~/.ssh/id_ed25519.pub`), not the key itself |
+| `cible.ssh_user`, `cible.ssh_port` | account and port `ssh -G` gives for the host target; the provider uses them to write the snippets |
+| `compte.user`, `compte.ssh_key` | account created in the VMs, path of the public key file put in it (default: the first of `~/.ssh/id_ed25519.pub` and `~/.ssh/id_rsa.pub` that exists, else `~/.ssh/id_ed25519.pub`), not the key itself |
 | `vms[].nom` | VM name, `^[a-z][a-z0-9-]{0,62}$`, unique in the fleet |
 | `vms[].vmid` | Proxmox VMID; empty, the first free one |
 | `vms[].distro`, `version`, `arch` | image from the deployment catalog |
@@ -70,16 +72,23 @@ name. A destroy also removes the VMs' SSH aliases from `~/.ssh/config`.
 | `vms[].installer_erplibre`, `branche` | install ERPLibre after the apply, on that branch |
 
 The fields left empty are **resolved on the host** the first time and
-**written back to the spec**: `api_url`, `noeud`, `stockage`,
-`stockage_snippets`, `pont`, `vmid`, and for `ip: "auto"` the address (`dhcp`
-on a bridge that faces the LAN, otherwise a fixed address derived from the
-VMID, with `passerelle` and `dns`). A field already filled is never read
-again nor overwritten, so a second plan right after an apply is empty.
-Renaming a VM in the spec makes `tofu` destroy and recreate it: the plan says
-so and asks for a confirmation.
+**written back to the spec**: `api_url`, `ssh_user`, `ssh_port`, `noeud`,
+`stockage`, `stockage_snippets`, `pont`, `vmid`, and for `ip: "auto"` the
+address (`dhcp` on a bridge that faces the LAN, otherwise a fixed address
+derived from the VMID, with `passerelle` and `dns`). A field already filled
+is never read again nor overwritten, so a second plan right after an apply is
+empty. Each VM's cloud-init is written to the snippet storage as
+`erplibre-<fleet>-<vm>.yml`.
 
-A spec edited by hand and broken (invalid JSON, missing field, duplicate VM)
-gives a list of readable errors, not a traceback.
+Renaming a VM makes `tofu` destroy it and create a new one, **under a new
+VMID**: the plan says so and asks for a confirmation. The form clears the
+VMID of a renamed VM, and an address derived from that VMID goes back to
+`auto`. When renaming in `spec.json` by hand, empty `vmid` (and such an
+`ip`) yourself: otherwise the new VM is created on the VMID of the one being
+destroyed, and the apply fails.
+
+A spec edited by hand and broken (invalid JSON, missing or mistyped field,
+duplicate VM name or VMID) gives a list of readable errors, not a traceback.
 
 ## Secrets and state
 
@@ -90,16 +99,20 @@ gives a list of readable errors, not a traceback.
   state or plan is refused.
 - The token and the passphrase reach `tofu` through its environment only:
   never on the command line, in the generated `.tf.json` or in the log, which
-  masks them. The inherited `TF_LOG*` variables are dropped, since a trace
-  copies the authorization header.
-- **A lost or overwritten `secrets.json` makes the state unreadable.** Restore
-  it from a backup. Without a backup, the VMs still exist on the host.
-  Destroy ONLY the VMIDs listed in the fleet's `spec.json` (`vms[].vmid`),
-  and confirm each one first with `qm config <vmid>` (the name must match
-  the spec); touch no other VM. Then delete the fleet's state directory,
-  `private/opentofu/<fleet>/.tofu/`, and run Prepare the host again,
-  answering YES to recreating the token: the old token still exists on the
-  host with no local secret, so the preparation refuses otherwise.
+  masks them. Every inherited `PROXMOX_VE_*` variable is dropped, since it
+  belongs to another fleet or host, and so are the `TF_LOG*` variables, since
+  a trace copies the authorization header.
+- When `conf/opentofu.json` pins another provider version, the next plan runs
+  `tofu init -upgrade` so the lock file follows.
+- **A lost or overwritten `secrets.json` makes the state unreadable.** The
+  engine then refuses to plan rather than create a new passphrase next to the
+  existing state. Restore `secrets.json` from a backup. Without a backup, the
+  VMs still exist on the host. Destroy ONLY the VMIDs listed in the fleet's
+  `spec.json` (`vms[].vmid`), and confirm each one first with `qm config <vmid>`
+  (the name must match the spec); touch no other VM. Then delete the fleet's
+  state directory, `private/opentofu/<fleet>/.tofu/`, and run Prepare the host
+  again, answering YES to recreating the token: the old token still exists on
+  the host with no local secret, so the preparation refuses otherwise.
 
 ## Limits of v1
 

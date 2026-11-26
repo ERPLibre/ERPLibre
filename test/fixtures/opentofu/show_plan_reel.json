@@ -1,0 +1,1064 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.13.9",
+  "planned_values": {
+    "outputs": {
+      "vms": {
+        "sensitive": false
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "proxmox_download_file.img_debian_13_generic_amd64_qcow2",
+          "mode": "managed",
+          "type": "proxmox_download_file",
+          "name": "img_debian_13_generic_amd64_qcow2",
+          "provider_name": "registry.opentofu.org/bpg/proxmox",
+          "schema_version": 0,
+          "values": {
+            "checksum": null,
+            "checksum_algorithm": null,
+            "content_type": "import",
+            "datastore_id": "local",
+            "decompression_algorithm": null,
+            "file_name": "debian-13-generic-amd64.qcow2",
+            "node_name": "test-tofu-pve-1",
+            "overwrite": true,
+            "overwrite_unmanaged": true,
+            "upload_timeout": 600,
+            "url": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2",
+            "verify": true
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "proxmox_virtual_environment_file.ud_test_tofu_vm_1",
+          "mode": "managed",
+          "type": "proxmox_virtual_environment_file",
+          "name": "ud_test_tofu_vm_1",
+          "provider_name": "registry.opentofu.org/bpg/proxmox",
+          "schema_version": 0,
+          "values": {
+            "content_type": "snippets",
+            "datastore_id": "local",
+            "file_mode": null,
+            "node_name": "test-tofu-pve-1",
+            "overwrite": true,
+            "source_file": [],
+            "source_raw": [
+              {
+                "data": "#cloud-config\nhostname: test-tofu-vm-1\nusers:\n  - name: erplibre\n    ssh_authorized_keys:\n      - ssh-ed25519 AAAA-fausse-cle-de-test exemple@hote.invalid\n",
+                "file_name": "erplibre-test-tofu-vm-1.yml",
+                "resize": 0
+              }
+            ],
+            "timeout_upload": 1800,
+            "upload_mode": "stream"
+          },
+          "sensitive_values": {
+            "source_file": [],
+            "source_raw": [
+              {}
+            ]
+          }
+        },
+        {
+          "address": "proxmox_virtual_environment_vm.vm_test_tofu_vm_1",
+          "mode": "managed",
+          "type": "proxmox_virtual_environment_vm",
+          "name": "vm_test_tofu_vm_1",
+          "provider_name": "registry.opentofu.org/bpg/proxmox",
+          "schema_version": 0,
+          "values": {
+            "acpi": true,
+            "agent": [
+              {
+                "enabled": true,
+                "timeout": "2m",
+                "trim": false,
+                "type": "virtio",
+                "wait_for_ip": [
+                  {
+                    "cidrs": null,
+                    "disabled": true,
+                    "interfaces": null,
+                    "ipv4": false,
+                    "ipv6": false
+                  }
+                ]
+              }
+            ],
+            "amd_sev": [],
+            "audio_device": [],
+            "bios": "seabios",
+            "boot_order": [
+              "scsi0"
+            ],
+            "cdrom": [],
+            "clone": [],
+            "cpu": [
+              {
+                "affinity": null,
+                "architecture": null,
+                "cores": 1,
+                "flags": null,
+                "hotplugged": 0,
+                "limit": 0,
+                "numa": false,
+                "sockets": 1,
+                "type": "host"
+              }
+            ],
+            "delete_unreferenced_disks_on_destroy": true,
+            "description": null,
+            "disk": [
+              {
+                "aio": "io_uring",
+                "backup": true,
+                "cache": "none",
+                "datastore_id": "local",
+                "discard": "on",
+                "file_id": null,
+                "import_from": "local:import/debian-13-generic-amd64.qcow2",
+                "interface": "scsi0",
+                "iothread": true,
+                "queues": 0,
+                "replicate": true,
+                "serial": null,
+                "size": 8,
+                "speed": [],
+                "ssd": true
+              }
+            ],
+            "efi_disk": [],
+            "hook_script_file_id": null,
+            "hostpci": [],
+            "initialization": [
+              {
+                "datastore_id": "local",
+                "dns": [
+                  {
+                    "domain": null,
+                    "servers": [
+                      "198.51.100.1"
+                    ]
+                  }
+                ],
+                "interface": "scsi1",
+                "ip_config": [
+                  {
+                    "ipv4": [
+                      {
+                        "address": "10.10.10.150/24",
+                        "gateway": "10.10.10.1"
+                      }
+                    ],
+                    "ipv6": []
+                  }
+                ],
+                "user_account": []
+              }
+            ],
+            "keyboard_layout": "en-us",
+            "kvm_arguments": null,
+            "machine": null,
+            "memory": [
+              {
+                "dedicated": 1024,
+                "floating": 0,
+                "hugepages": null,
+                "keep_hugepages": false,
+                "shared": 0
+              }
+            ],
+            "migrate": false,
+            "name": "test-tofu-vm-1",
+            "network_device": [
+              {
+                "bridge": "vmbr0",
+                "disconnected": null,
+                "enabled": true,
+                "firewall": false,
+                "model": "virtio",
+                "mtu": 0,
+                "queues": 0,
+                "rate_limit": 0,
+                "trunks": null,
+                "vlan_id": 0
+              }
+            ],
+            "node_name": "test-tofu-pve-1",
+            "numa": [],
+            "on_boot": true,
+            "operating_system": [
+              {
+                "type": "l26"
+              }
+            ],
+            "pool_id": null,
+            "protection": false,
+            "purge_on_destroy": true,
+            "reboot": false,
+            "reboot_after_update": true,
+            "rng": [],
+            "scsi_hardware": "virtio-scsi-single",
+            "serial_device": [
+              {
+                "device": "socket"
+              }
+            ],
+            "smbios": [],
+            "started": true,
+            "startup": [],
+            "stop_on_destroy": true,
+            "tablet_device": true,
+            "tags": null,
+            "template": false,
+            "timeout_clone": 1800,
+            "timeout_create": 1800,
+            "timeout_migrate": 1800,
+            "timeout_move_disk": 1800,
+            "timeout_reboot": 1800,
+            "timeout_shutdown_vm": 1800,
+            "timeout_start_vm": 1800,
+            "timeout_stop_vm": 300,
+            "tpm_state": [],
+            "usb": [],
+            "vga": [
+              {
+                "clipboard": null,
+                "memory": 16,
+                "type": "serial0"
+              }
+            ],
+            "virtiofs": [],
+            "vm_id": 100,
+            "watchdog": []
+          },
+          "sensitive_values": {
+            "agent": [
+              {
+                "wait_for_ip": [
+                  {}
+                ]
+              }
+            ],
+            "amd_sev": [],
+            "audio_device": [],
+            "boot_order": [
+              false
+            ],
+            "cdrom": [],
+            "clone": [],
+            "cpu": [
+              {}
+            ],
+            "disk": [
+              {
+                "speed": []
+              }
+            ],
+            "efi_disk": [],
+            "hostpci": [],
+            "initialization": [
+              {
+                "dns": [
+                  {
+                    "servers": [
+                      false
+                    ]
+                  }
+                ],
+                "ip_config": [
+                  {
+                    "ipv4": [
+                      {}
+                    ],
+                    "ipv6": []
+                  }
+                ],
+                "user_account": []
+              }
+            ],
+            "ipv4_addresses": [],
+            "ipv6_addresses": [],
+            "mac_addresses": [],
+            "memory": [
+              {}
+            ],
+            "network_device": [
+              {}
+            ],
+            "network_interface_names": [],
+            "numa": [],
+            "operating_system": [
+              {}
+            ],
+            "rng": [],
+            "serial_device": [
+              {}
+            ],
+            "smbios": [],
+            "startup": [],
+            "tpm_state": [],
+            "usb": [],
+            "vga": [
+              {}
+            ],
+            "virtiofs": [],
+            "watchdog": []
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "proxmox_download_file.img_debian_13_generic_amd64_qcow2",
+      "mode": "managed",
+      "type": "proxmox_download_file",
+      "name": "img_debian_13_generic_amd64_qcow2",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "checksum": null,
+          "checksum_algorithm": null,
+          "content_type": "import",
+          "datastore_id": "local",
+          "decompression_algorithm": null,
+          "file_name": "debian-13-generic-amd64.qcow2",
+          "node_name": "test-tofu-pve-1",
+          "overwrite": true,
+          "overwrite_unmanaged": true,
+          "upload_timeout": 600,
+          "url": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2",
+          "verify": true
+        },
+        "after_unknown": {
+          "id": true,
+          "size": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "proxmox_virtual_environment_file.ud_test_tofu_vm_1",
+      "mode": "managed",
+      "type": "proxmox_virtual_environment_file",
+      "name": "ud_test_tofu_vm_1",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "content_type": "snippets",
+          "datastore_id": "local",
+          "file_mode": null,
+          "node_name": "test-tofu-pve-1",
+          "overwrite": true,
+          "source_file": [],
+          "source_raw": [
+            {
+              "data": "#cloud-config\nhostname: test-tofu-vm-1\nusers:\n  - name: erplibre\n    ssh_authorized_keys:\n      - ssh-ed25519 AAAA-fausse-cle-de-test exemple@hote.invalid\n",
+              "file_name": "erplibre-test-tofu-vm-1.yml",
+              "resize": 0
+            }
+          ],
+          "timeout_upload": 1800,
+          "upload_mode": "stream"
+        },
+        "after_unknown": {
+          "file_modification_date": true,
+          "file_name": true,
+          "file_size": true,
+          "file_tag": true,
+          "id": true,
+          "source_file": [],
+          "source_raw": [
+            {}
+          ]
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "source_file": [],
+          "source_raw": [
+            {}
+          ]
+        }
+      }
+    },
+    {
+      "address": "proxmox_virtual_environment_vm.vm_test_tofu_vm_1",
+      "mode": "managed",
+      "type": "proxmox_virtual_environment_vm",
+      "name": "vm_test_tofu_vm_1",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "acpi": true,
+          "agent": [
+            {
+              "enabled": true,
+              "timeout": "2m",
+              "trim": false,
+              "type": "virtio",
+              "wait_for_ip": [
+                {
+                  "cidrs": null,
+                  "disabled": true,
+                  "interfaces": null,
+                  "ipv4": false,
+                  "ipv6": false
+                }
+              ]
+            }
+          ],
+          "amd_sev": [],
+          "audio_device": [],
+          "bios": "seabios",
+          "boot_order": [
+            "scsi0"
+          ],
+          "cdrom": [],
+          "clone": [],
+          "cpu": [
+            {
+              "affinity": null,
+              "architecture": null,
+              "cores": 1,
+              "flags": null,
+              "hotplugged": 0,
+              "limit": 0,
+              "numa": false,
+              "sockets": 1,
+              "type": "host"
+            }
+          ],
+          "delete_unreferenced_disks_on_destroy": true,
+          "description": null,
+          "disk": [
+            {
+              "aio": "io_uring",
+              "backup": true,
+              "cache": "none",
+              "datastore_id": "local",
+              "discard": "on",
+              "file_id": null,
+              "import_from": "local:import/debian-13-generic-amd64.qcow2",
+              "interface": "scsi0",
+              "iothread": true,
+              "queues": 0,
+              "replicate": true,
+              "serial": null,
+              "size": 8,
+              "speed": [],
+              "ssd": true
+            }
+          ],
+          "efi_disk": [],
+          "hook_script_file_id": null,
+          "hostpci": [],
+          "initialization": [
+            {
+              "datastore_id": "local",
+              "dns": [
+                {
+                  "domain": null,
+                  "servers": [
+                    "198.51.100.1"
+                  ]
+                }
+              ],
+              "interface": "scsi1",
+              "ip_config": [
+                {
+                  "ipv4": [
+                    {
+                      "address": "10.10.10.150/24",
+                      "gateway": "10.10.10.1"
+                    }
+                  ],
+                  "ipv6": []
+                }
+              ],
+              "user_account": []
+            }
+          ],
+          "keyboard_layout": "en-us",
+          "kvm_arguments": null,
+          "machine": null,
+          "memory": [
+            {
+              "dedicated": 1024,
+              "floating": 0,
+              "hugepages": null,
+              "keep_hugepages": false,
+              "shared": 0
+            }
+          ],
+          "migrate": false,
+          "name": "test-tofu-vm-1",
+          "network_device": [
+            {
+              "bridge": "vmbr0",
+              "disconnected": null,
+              "enabled": true,
+              "firewall": false,
+              "model": "virtio",
+              "mtu": 0,
+              "queues": 0,
+              "rate_limit": 0,
+              "trunks": null,
+              "vlan_id": 0
+            }
+          ],
+          "node_name": "test-tofu-pve-1",
+          "numa": [],
+          "on_boot": true,
+          "operating_system": [
+            {
+              "type": "l26"
+            }
+          ],
+          "pool_id": null,
+          "protection": false,
+          "purge_on_destroy": true,
+          "reboot": false,
+          "reboot_after_update": true,
+          "rng": [],
+          "scsi_hardware": "virtio-scsi-single",
+          "serial_device": [
+            {
+              "device": "socket"
+            }
+          ],
+          "smbios": [],
+          "started": true,
+          "startup": [],
+          "stop_on_destroy": true,
+          "tablet_device": true,
+          "tags": null,
+          "template": false,
+          "timeout_clone": 1800,
+          "timeout_create": 1800,
+          "timeout_migrate": 1800,
+          "timeout_move_disk": 1800,
+          "timeout_reboot": 1800,
+          "timeout_shutdown_vm": 1800,
+          "timeout_start_vm": 1800,
+          "timeout_stop_vm": 300,
+          "tpm_state": [],
+          "usb": [],
+          "vga": [
+            {
+              "clipboard": null,
+              "memory": 16,
+              "type": "serial0"
+            }
+          ],
+          "virtiofs": [],
+          "vm_id": 100,
+          "watchdog": []
+        },
+        "after_unknown": {
+          "agent": [
+            {
+              "wait_for_ip": [
+                {}
+              ]
+            }
+          ],
+          "amd_sev": [],
+          "audio_device": [],
+          "boot_order": [
+            false
+          ],
+          "cdrom": [],
+          "clone": [],
+          "cpu": [
+            {
+              "units": true
+            }
+          ],
+          "disk": [
+            {
+              "file_format": true,
+              "path_in_datastore": true,
+              "speed": []
+            }
+          ],
+          "efi_disk": [],
+          "hostpci": [],
+          "hotplug": true,
+          "id": true,
+          "initialization": [
+            {
+              "dns": [
+                {
+                  "servers": [
+                    false
+                  ]
+                }
+              ],
+              "file_format": true,
+              "ip_config": [
+                {
+                  "ipv4": [
+                    {}
+                  ],
+                  "ipv6": []
+                }
+              ],
+              "meta_data_file_id": true,
+              "network_data_file_id": true,
+              "type": true,
+              "upgrade": true,
+              "user_account": [],
+              "user_data_file_id": true,
+              "vendor_data_file_id": true
+            }
+          ],
+          "ipv4_addresses": true,
+          "ipv6_addresses": true,
+          "mac_addresses": true,
+          "memory": [
+            {}
+          ],
+          "network_device": [
+            {
+              "mac_address": true
+            }
+          ],
+          "network_interface_names": true,
+          "numa": [],
+          "operating_system": [
+            {}
+          ],
+          "rng": [],
+          "serial_device": [
+            {}
+          ],
+          "smbios": [],
+          "startup": [],
+          "tpm_state": [],
+          "usb": [],
+          "vga": [
+            {}
+          ],
+          "virtiofs": [],
+          "watchdog": []
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "agent": [
+            {
+              "wait_for_ip": [
+                {}
+              ]
+            }
+          ],
+          "amd_sev": [],
+          "audio_device": [],
+          "boot_order": [
+            false
+          ],
+          "cdrom": [],
+          "clone": [],
+          "cpu": [
+            {}
+          ],
+          "disk": [
+            {
+              "speed": []
+            }
+          ],
+          "efi_disk": [],
+          "hostpci": [],
+          "initialization": [
+            {
+              "dns": [
+                {
+                  "servers": [
+                    false
+                  ]
+                }
+              ],
+              "ip_config": [
+                {
+                  "ipv4": [
+                    {}
+                  ],
+                  "ipv6": []
+                }
+              ],
+              "user_account": []
+            }
+          ],
+          "ipv4_addresses": [],
+          "ipv6_addresses": [],
+          "mac_addresses": [],
+          "memory": [
+            {}
+          ],
+          "network_device": [
+            {}
+          ],
+          "network_interface_names": [],
+          "numa": [],
+          "operating_system": [
+            {}
+          ],
+          "rng": [],
+          "serial_device": [
+            {}
+          ],
+          "smbios": [],
+          "startup": [],
+          "tpm_state": [],
+          "usb": [],
+          "vga": [
+            {}
+          ],
+          "virtiofs": [],
+          "watchdog": []
+        }
+      }
+    }
+  ],
+  "output_changes": {
+    "vms": {
+      "actions": [
+        "create"
+      ],
+      "before": null,
+      "after": {
+        "test-tofu-vm-1": {
+          "vmid": 100
+        }
+      },
+      "after_unknown": {
+        "test-tofu-vm-1": {
+          "ipv4": true
+        }
+      },
+      "before_sensitive": false,
+      "after_sensitive": false
+    }
+  },
+  "configuration": {
+    "provider_config": {
+      "proxmox": {
+        "name": "proxmox",
+        "full_name": "registry.opentofu.org/bpg/proxmox",
+        "version_constraint": "0.123.1",
+        "expressions": {
+          "endpoint": {
+            "constant_value": "https://198.51.100.2:8006/"
+          },
+          "insecure": {
+            "constant_value": true
+          },
+          "ssh": [
+            {
+              "agent": {
+                "constant_value": true
+              },
+              "node": [
+                {
+                  "address": {
+                    "constant_value": "198.51.100.2"
+                  },
+                  "name": {
+                    "constant_value": "test-tofu-pve-1"
+                  }
+                }
+              ],
+              "username": {
+                "constant_value": "erplibre"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "root_module": {
+      "outputs": {
+        "vms": {
+          "expression": {
+            "constant_value": {
+              "test-tofu-vm-1": {
+                "ipv4": "${proxmox_virtual_environment_vm.vm_test_tofu_vm_1.ipv4_addresses}",
+                "vmid": 100
+              }
+            },
+            "references": [
+              "proxmox_virtual_environment_vm.vm_test_tofu_vm_1.ipv4_addresses",
+              "proxmox_virtual_environment_vm.vm_test_tofu_vm_1"
+            ]
+          }
+        }
+      },
+      "resources": [
+        {
+          "address": "proxmox_download_file.img_debian_13_generic_amd64_qcow2",
+          "mode": "managed",
+          "type": "proxmox_download_file",
+          "name": "img_debian_13_generic_amd64_qcow2",
+          "provider_config_key": "proxmox",
+          "expressions": {
+            "content_type": {
+              "constant_value": "import"
+            },
+            "datastore_id": {
+              "constant_value": "local"
+            },
+            "file_name": {
+              "constant_value": "debian-13-generic-amd64.qcow2"
+            },
+            "node_name": {
+              "constant_value": "test-tofu-pve-1"
+            },
+            "overwrite_unmanaged": {
+              "constant_value": true
+            },
+            "url": {
+              "constant_value": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "proxmox_virtual_environment_file.ud_test_tofu_vm_1",
+          "mode": "managed",
+          "type": "proxmox_virtual_environment_file",
+          "name": "ud_test_tofu_vm_1",
+          "provider_config_key": "proxmox",
+          "expressions": {
+            "content_type": {
+              "constant_value": "snippets"
+            },
+            "datastore_id": {
+              "constant_value": "local"
+            },
+            "node_name": {
+              "constant_value": "test-tofu-pve-1"
+            },
+            "source_raw": [
+              {
+                "data": {
+                  "constant_value": "#cloud-config\nhostname: test-tofu-vm-1\nusers:\n  - name: erplibre\n    ssh_authorized_keys:\n      - ssh-ed25519 AAAA-fausse-cle-de-test exemple@hote.invalid\n"
+                },
+                "file_name": {
+                  "constant_value": "erplibre-test-tofu-vm-1.yml"
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "proxmox_virtual_environment_vm.vm_test_tofu_vm_1",
+          "mode": "managed",
+          "type": "proxmox_virtual_environment_vm",
+          "name": "vm_test_tofu_vm_1",
+          "provider_config_key": "proxmox",
+          "expressions": {
+            "agent": [
+              {
+                "enabled": {
+                  "constant_value": true
+                },
+                "timeout": {
+                  "constant_value": "2m"
+                },
+                "wait_for_ip": [
+                  {
+                    "disabled": {
+                      "constant_value": true
+                    }
+                  }
+                ]
+              }
+            ],
+            "boot_order": {
+              "constant_value": [
+                "scsi0"
+              ]
+            },
+            "cpu": [
+              {
+                "cores": {
+                  "constant_value": 1
+                },
+                "type": {
+                  "constant_value": "host"
+                }
+              }
+            ],
+            "disk": [
+              {
+                "datastore_id": {
+                  "constant_value": "local"
+                },
+                "discard": {
+                  "constant_value": "on"
+                },
+                "import_from": {
+                  "constant_value": "local:import/debian-13-generic-amd64.qcow2"
+                },
+                "interface": {
+                  "constant_value": "scsi0"
+                },
+                "iothread": {
+                  "constant_value": true
+                },
+                "size": {
+                  "constant_value": 8
+                },
+                "ssd": {
+                  "constant_value": true
+                }
+              }
+            ],
+            "initialization": [
+              {
+                "datastore_id": {
+                  "constant_value": "local"
+                },
+                "dns": [
+                  {
+                    "servers": {
+                      "constant_value": [
+                        "198.51.100.1"
+                      ]
+                    }
+                  }
+                ],
+                "interface": {
+                  "constant_value": "scsi1"
+                },
+                "ip_config": [
+                  {
+                    "ipv4": [
+                      {
+                        "address": {
+                          "constant_value": "10.10.10.150/24"
+                        },
+                        "gateway": {
+                          "constant_value": "10.10.10.1"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "user_data_file_id": {
+                  "constant_value": "${proxmox_virtual_environment_file.ud_test_tofu_vm_1.id}",
+                  "references": [
+                    "proxmox_virtual_environment_file.ud_test_tofu_vm_1.id",
+                    "proxmox_virtual_environment_file.ud_test_tofu_vm_1"
+                  ]
+                }
+              }
+            ],
+            "memory": [
+              {
+                "dedicated": {
+                  "constant_value": 1024
+                }
+              }
+            ],
+            "name": {
+              "constant_value": "test-tofu-vm-1"
+            },
+            "network_device": {
+              "constant_value": [
+                {
+                  "bridge": "vmbr0",
+                  "disconnected": null,
+                  "enabled": null,
+                  "firewall": null,
+                  "mac_address": null,
+                  "model": "virtio",
+                  "mtu": null,
+                  "queues": null,
+                  "rate_limit": null,
+                  "trunks": null,
+                  "vlan_id": null
+                }
+              ]
+            },
+            "node_name": {
+              "constant_value": "test-tofu-pve-1"
+            },
+            "operating_system": [
+              {
+                "type": {
+                  "constant_value": "l26"
+                }
+              }
+            ],
+            "scsi_hardware": {
+              "constant_value": "virtio-scsi-single"
+            },
+            "serial_device": [
+              {
+                "device": {
+                  "constant_value": "socket"
+                }
+              }
+            ],
+            "started": {
+              "constant_value": true
+            },
+            "stop_on_destroy": {
+              "constant_value": true
+            },
+            "vga": [
+              {
+                "type": {
+                  "constant_value": "serial0"
+                }
+              }
+            ],
+            "vm_id": {
+              "constant_value": 100
+            }
+          },
+          "schema_version": 0,
+          "depends_on": [
+            "proxmox_download_file.img_debian_13_generic_amd64_qcow2",
+            "proxmox_virtual_environment_file.ud_test_tofu_vm_1"
+          ]
+        }
+      ]
+    }
+  },
+  "relevant_attributes": [
+    {
+      "resource": "proxmox_virtual_environment_file.ud_test_tofu_vm_1",
+      "attribute": [
+        "id"
+      ]
+    },
+    {
+      "resource": "proxmox_virtual_environment_vm.vm_test_tofu_vm_1",
+      "attribute": [
+        "ipv4_addresses"
+      ]
+    }
+  ],
+  "timestamp": "2026-01-01T00:00:00Z",
+  "errored": false
+}
