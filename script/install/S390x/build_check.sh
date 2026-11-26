@@ -63,3 +63,21 @@ if [[ -n "${manquants}" ]]; then
   fi
   exit 1
 fi
+
+# Un cargo PRÉSENT n'est pas un cargo suffisant : cryptography verrouille ses
+# dépendances en Cargo.lock v4, que cargo ne lit qu'à partir de 1.78. Plus
+# ancien, pip échoue sur « lock file version 4 requires
+# -Znext-lockfile-bump », après la compilation de l'interpréteur. Ubuntu
+# 24.04 livre 1.75. Le seuil 1.78 est celui de CE venv ; install_os vise
+# celui d'Odoo, plus haut. el_rust_ensure pose rustup sans arrêter, d'où le
+# contrôle qui suit.
+. ./script/install/S390x/lib_rust.sh
+if ! EL_RUST_MIN_MINOR=78 el_cargo_assez_recent; then
+  EL_RUST_MIN_MINOR=78 el_rust_ensure
+  if ! EL_RUST_MIN_MINOR=78 el_cargo_assez_recent; then
+    echo "cargo 1.78 au moins est requis pour compiler cryptography ;"
+    echo "  rustup n'a pas pu le poser. Rejouez quand https://sh.rustup.rs"
+    echo "  est joignable : ./script/install/install_erplibre.sh"
+    exit 1
+  fi
+fi
