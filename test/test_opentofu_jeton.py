@@ -30,6 +30,57 @@ AJOUT = json.dumps(
 )
 
 
+PRIVILEGES_ATTENDUS = (
+    "Realm.AllocateUser",
+    "VM.PowerMgmt",
+    "VM.GuestAgent.Unrestricted",
+    "Sys.Console",
+    "Sys.Audit",
+    "Sys.AccessNetwork",
+    "VM.Config.Cloudinit",
+    "VM.Replicate",
+    "Pool.Allocate",
+    "SDN.Audit",
+    "Realm.Allocate",
+    "SDN.Use",
+    "Mapping.Modify",
+    "VM.Config.Memory",
+    "VM.GuestAgent.FileSystemMgmt",
+    "VM.Allocate",
+    "SDN.Allocate",
+    "VM.Console",
+    "VM.Clone",
+    "VM.Backup",
+    "Datastore.AllocateTemplate",
+    "VM.Snapshot",
+    "VM.Config.Network",
+    "Sys.Incoming",
+    "Sys.Modify",
+    "VM.Snapshot.Rollback",
+    "VM.Config.Disk",
+    "Datastore.Allocate",
+    "VM.Config.CPU",
+    "VM.Config.CDROM",
+    "Group.Allocate",
+    "Datastore.Audit",
+    "VM.Migrate",
+    "VM.GuestAgent.FileWrite",
+    "Mapping.Use",
+    "Datastore.AllocateSpace",
+    "Sys.Syslog",
+    "VM.Config.Options",
+    "Pool.Audit",
+    "User.Modify",
+    "VM.Config.HWType",
+    "VM.Audit",
+    "Sys.PowerMgmt",
+    "VM.GuestAgent.Audit",
+    "Mapping.Audit",
+    "VM.GuestAgent.FileRead",
+    "Permissions.Modify",
+)
+
+
 def setUpModule():
     todo_i18n._current_lang = "fr"
 
@@ -53,6 +104,8 @@ class Hote:
         if cmd == "sudo -n true":
             return (0 if self.sudo_ok else 1), ""
         if "token list" in cmd:
+            if "tofu@pve" not in self.users:
+                return 2, "user does not exist"
             return 0, json.dumps([{"tokenid": j} for j in self.jetons])
         if "user list" in cmd:
             return 0, json.dumps([{"userid": u} for u in self.users])
@@ -79,6 +132,7 @@ class TestPur(unittest.TestCase):
         self.assertNotIn(SECRET, str(c.exception))
 
     def test_commandes(self):
+        self.assertEqual(jp.PRIVILEGES, PRIVILEGES_ATTENDUS)
         privs = ",".join(jp.PRIVILEGES)
         self.assertIn("SDN.Use", jp.PRIVILEGES)
         self.assertIn("SDN.Audit", jp.PRIVILEGES)
@@ -155,15 +209,43 @@ class TestPreparer(unittest.TestCase):
         self.lancer(hote)
         self.assertNotIn("pveum user add tofu@pve", hote.journal)
 
-    def test_deja_prepare(self):
+    def test_jeton_connu_contenus_manquants(self):
         coffre.ecrire("parc-a", {"jeton": "tofu@pve!parc-a=zz"}, self.racine)
-        hote = Hote(jetons=["parc-a"])
+        hote = Hote(jetons=["parc-a"], users=["tofu@pve"], content="iso")
         res, _ = self.lancer(hote)
         self.assertTrue(res.ok)
         self.assertFalse(any("token add" in c for c in hote.journal))
+        self.assertIn("pvesm set local --content import,iso,snippets", hote.journal)
+        self.assertTrue(any("role add" in c for c in hote.journal))
+        self.assertTrue(any("aclmod" in c for c in hote.journal))
+
+    def test_tout_en_place_aucune_ecriture(self):
+        coffre.ecrire("parc-a", {"jeton": "tofu@pve!parc-a=zz"}, self.racine)
+        hote = Hote(
+            jetons=["parc-a"], users=["tofu@pve"], content="import,iso,snippets"
+        )
+        res, _ = self.lancer(hote)
+        self.assertTrue(res.ok)
+        self.assertEqual(res.message, "Hôte déjà préparé.")
+        for ecriture in ("token add", "token remove", "user add", "pvesm set"):
+            self.assertFalse(any(ecriture in c for c in hote.journal), ecriture)
+
+    def test_premiere_preparation_utilisateur_absent(self):
+        hote = Hote(users=[])
+        res, _ = self.lancer(hote)
+        self.assertTrue(res.ok)
+        self.assertFalse(any("token list" in c for c in hote.journal))
+
+    def test_coffre_illisible_apres_ajout(self):
+        from unittest import mock
+
+        with mock.patch.object(coffre, "ecrire", side_effect=OSError("x")):
+            res, _ = self.lancer(Hote())
+        self.assertFalse(res.ok)
+        self.assertIn("recréant", res.message)
 
     def test_existe_sans_secret_propose_recreer(self):
-        hote = Hote(jetons=["parc-a"])
+        hote = Hote(jetons=["parc-a"], users=["tofu@pve"])
         res, _ = self.lancer(hote)
         self.assertFalse(res.ok)
         self.assertIn("Recréer", res.message)
@@ -172,7 +254,7 @@ class TestPreparer(unittest.TestCase):
 
     def test_recreer(self):
         coffre.ecrire("parc-a", {"phrase_etat": "p" * 20}, self.racine)
-        hote = Hote(jetons=["parc-a"])
+        hote = Hote(jetons=["parc-a"], users=["tofu@pve"])
         res, _ = self.lancer(hote, recreer=True)
         self.assertTrue(res.ok)
         self.assertLess(

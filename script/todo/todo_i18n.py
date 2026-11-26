@@ -26218,6 +26218,10 @@ TRANSLATIONS = {
         "en": "USB passthrough, emulated deck: run it",
     },
     # OpenTofu
+    "Token {parc} was created but could not be stored; run again with token recreation.": {
+        "fr": "Le jeton {parc} est créé mais n'a pas pu être stocké ; relancer en recréant le jeton.",
+        "en": "Token {parc} was created but could not be stored; run again with token recreation.",
+    },
     "root@ or sudo NOPASSWD required": {
         "fr": "root@ ou sudo NOPASSWD requis",
         "en": "root@ or sudo NOPASSWD required",

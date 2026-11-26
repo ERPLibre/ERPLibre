@@ -148,7 +148,7 @@ def _json(executer, cmd):
         raise ValueError(t("Unreadable JSON from: {cmd}").format(cmd=cmd))
 
 
-def _elevation(spec, executer_brut):
+def _elevation(executer_brut):
     """Valeur de `hote.sudo` ("" si root, "sudo " si NOPASSWD), ou None."""
     code, sortie = executer_brut("id -u")
     if code == 0 and sortie.strip() == "0":
@@ -165,19 +165,31 @@ def _echec(cmd, code):
     )
 
 
+def _ids_jetons(jetons):
+    """Noms courts des jetons d'une liste `pveum user token list`."""
+    ids = set()
+    for j in jetons:
+        for cle in ("tokenid", "full-tokenid"):
+            ids.add(str(j.get(cle, "")).rsplit("!", 1)[-1])
+    return ids
+
+
 def preparer_hote(spec, executer_brut, recreer=False, racine=RACINE_PARCS):
     """(Resultat, spec_neuve) : l'hôte prêt pour tofu et le jeton au coffre.
 
     `executer_brut` lance une commande sans sudo, pour que le test root voie
     le vrai compte ; l'élévation est posée ici dans `hote.sudo` de la spec
-    rendue, que l'appelant sauve. Un jeton déjà connu des deux côtés ne
-    change rien. Un jeton présent sur l'hôte mais sans secret local n'est
-    recréé que si `recreer`, Proxmox ne montrant le secret qu'à la création.
+    rendue, que l'appelant sauve. Idempotente : le rôle (privilèges à jour)
+    et l'ACL sont toujours appliqués, l'utilisateur n'est créé que s'il
+    manque, les contenus du stockage ne sont modifiés que s'il en manque.
+    Seule l'étape du jeton est sautée quand il existe sur l'hôte et au
+    coffre. Un jeton présent sur l'hôte mais sans secret local n'est recréé
+    que si `recreer`, Proxmox ne montrant le secret qu'à la création.
     """
     neuve = copy.deepcopy(spec)
     parc = neuve["nom"]
     cible = neuve["cible"]
-    sudo = _elevation(neuve, executer_brut)
+    sudo = _elevation(executer_brut)
     if sudo is None:
         return Resultat(False, t("root@ or sudo NOPASSWD required")), neuve
     cible["hote"]["sudo"] = sudo
@@ -188,20 +200,19 @@ def preparer_hote(spec, executer_brut, recreer=False, racine=RACINE_PARCS):
     stockage = cible.get("stockage_snippets") or STOCKAGE_DEFAUT
     cible["stockage_snippets"] = stockage
     try:
-        jetons = _json(
-            executer, f"pveum user token list {UTILISATEUR} " "--output-format json"
-        )
         utilisateurs = _json(executer, "pveum user list --output-format json")
+        deja = any(u.get("userid") == UTILISATEUR for u in utilisateurs)
+        jetons = []
+        if deja:
+            jetons = _json(
+                executer,
+                f"pveum user token list {UTILISATEUR} --output-format json",
+            )
         config = _json(executer, f"pvesh get /storage/{stockage} --output-format json")
     except ValueError as exc:
         return Resultat(False, str(exc)), neuve
-    ids = {str(j.get("tokenid", "")).rsplit("!", 1)[-1] for j in jetons} | {
-        str(j.get("full-tokenid", "")).rsplit("!", 1)[-1] for j in jetons
-    }
-    existe = parc in ids
+    existe = parc in _ids_jetons(jetons)
     local = bool(coffre.lire(parc, racine).get("jeton"))
-    if existe and local and not recreer:
-        return Resultat(True, t("Host already prepared.")), neuve
     if existe and not local and not recreer:
         return (
             Resultat(
@@ -214,12 +225,23 @@ def preparer_hote(spec, executer_brut, recreer=False, racine=RACINE_PARCS):
             ),
             neuve,
         )
-    contenus = contenus_requis(config.get("content", ""))
-    deja = any(u.get("userid") == UTILISATEUR for u in utilisateurs)
-    cmds = commandes_preparation(parc, stockage, contenus, existe)
-    for cmd in cmds:
-        if cmd == _cmd_utilisateur() and deja:
-            continue
+    actuels = config.get("content", "")
+    contenus = contenus_requis(actuels)
+    faire_jeton = recreer or not existe
+    ecritures = 0
+    for cmd in commandes_preparation(parc, stockage, contenus, existe):
+        if cmd == _cmd_utilisateur():
+            if deja:
+                continue
+            ecritures += 1
+        elif cmd in (_cmd_retrait(parc), _cmd_ajout(parc)):
+            if not faire_jeton:
+                continue
+            ecritures += 1
+        elif cmd == _cmd_contenus(stockage, contenus):
+            if contenus == ",".join(sorted(c for c in actuels.split(",") if c)):
+                continue
+            ecritures += 1
         code, sortie = executer(cmd)
         if code != 0:
             return _echec(cmd, code), neuve
@@ -228,7 +250,21 @@ def preparer_hote(spec, executer_brut, recreer=False, racine=RACINE_PARCS):
                 jeton = extraire_jeton(sortie, parc)
             except ValueError as exc:
                 return Resultat(False, str(exc)), neuve
-            donnees = coffre.lire(parc, racine)
-            donnees["jeton"] = jeton
-            coffre.ecrire(parc, donnees, racine)
+            try:
+                donnees = coffre.lire(parc, racine)
+                donnees["jeton"] = jeton
+                coffre.ecrire(parc, donnees, racine)
+            except OSError:
+                return (
+                    Resultat(
+                        False,
+                        t(
+                            "Token {parc} was created but could not be "
+                            "stored; run again with token recreation."
+                        ).format(parc=parc),
+                    ),
+                    neuve,
+                )
+    if not ecritures:
+        return Resultat(True, t("Host already prepared.")), neuve
     return Resultat(True, t("Host prepared.")), neuve
