@@ -14178,6 +14178,22 @@ TRANSLATIONS = {
         "fr": "version installée",
         "en": "installed version",
     },
+    "Restart PostgreSQL": {
+        "fr": "Redémarrer PostgreSQL",
+        "en": "Restart PostgreSQL",
+    },
+    "The running server is restarted on its installed binary, with sudo, after a yes. Its open connections close: an Odoo or a migration running on it stops.": {
+        "fr": "Le serveur en marche est redémarré sur son binaire installé, avec sudo, après un oui. Ses connexions ouvertes tombent : un Odoo ou une migration qui tourne dessus s'arrête.",
+        "en": "The running server is restarted on its installed binary, with sudo, after a yes. Its open connections close: an Odoo or a migration running on it stops.",
+    },
+    "Restart PostgreSQL now? Its open connections close (y/N): ": {
+        "fr": "Redémarrer PostgreSQL maintenant ? Ses connexions ouvertes tombent (o/N) : ",
+        "en": "Restart PostgreSQL now? Its open connections close (y/N): ",
+    },
+    "PostgreSQL restarted.": {
+        "fr": "PostgreSQL redémarré.",
+        "en": "PostgreSQL restarted.",
+    },
     "A page listed for search engines that does not answer is": {
         "fr": "Une page listée pour les moteurs de recherche qui ne répond pas est",
         "en": "A page listed for search engines that does not answer is",

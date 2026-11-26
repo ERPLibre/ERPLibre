@@ -229,6 +229,57 @@ class TestHealthcheck(unittest.TestCase):
         self.assertIn("running version 18.6", resultat.resume)
         self.assertIn(f"$ {pg_state.COMMANDE_REDEMARRER}", resultat.details)
 
+    def test_the_alert_offers_to_restart_postgresql(self):
+        resultat = self.verdict(
+            [(pg_state.ARRET, pg_state.DECALAGE, ("18.6", "18.7"))]
+        )
+        (redemarrer,) = resultat.resolutions
+        self.assertEqual(redemarrer.cle, healthcheck.REDEMARRER_POSTGRESQL)
+        self.assertTrue(redemarrer.actionnable)
+        self.assertIn(
+            f"   $ {pg_state.COMMANDE_REDEMARRER}", redemarrer.lignes
+        )
+
+    def redemarrer(self, reponse, code=0):
+        lances, lignes = [], []
+        ctx = healthcheck.Contexte(tempfile.gettempdir())
+        change = healthcheck._redemarrer_postgresql(
+            ctx,
+            lambda _q: reponse,
+            lignes.append,
+            lancer=lambda commande: lances.append(commande) or code,
+        )
+        return change, lances, lignes
+
+    def test_the_restart_runs_only_on_a_yes(self):
+        change, lances, _ = self.redemarrer("")
+        self.assertFalse(change)
+        self.assertEqual(lances, [])
+        change, lances, _ = self.redemarrer("o")
+        self.assertTrue(change)
+        self.assertEqual(
+            lances, [["sudo", "systemctl", "restart", "postgresql"]]
+        )
+
+    def test_a_failed_restart_is_reported(self):
+        change, _, lignes = self.redemarrer("y", code=1)
+        self.assertFalse(change)
+        self.assertTrue(any(ligne.startswith("❌") for ligne in lignes))
+
+    def test_the_resolution_is_dispatched(self):
+        res = healthcheck.Resolution(
+            healthcheck.REDEMARRER_POSTGRESQL, "🐘", []
+        )
+        with mock.patch.object(
+            healthcheck, "_redemarrer_postgresql", return_value=True
+        ) as redemarrer:
+            self.assertTrue(
+                healthcheck.executer_resolution(
+                    healthcheck.Contexte(tempfile.gettempdir()), res
+                )
+            )
+        redemarrer.assert_called_once()
+
     def test_migration_only_defects_stay_out_of_the_healthcheck(self):
         resultat = self.verdict(
             [(pg_state.AVERTISSEMENT, pg_state.BINAIRE_INTROUVABLE, ())]

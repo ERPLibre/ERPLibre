@@ -1809,8 +1809,23 @@ def _version_postgresql(ctx, nom, texte, hote, port):
                 f"{texte} · {t('running version')} {serveur},"
                 f" {t('installed version')} {installee}",
                 [t(cle), f"$ {pg_state.COMMANDE_REDEMARRER}"],
+                resolutions=[
+                    Resolution(
+                        REDEMARRER_POSTGRESQL,
+                        f"🐘 {t('Restart PostgreSQL')}",
+                        [
+                            t(
+                                "The running server is restarted on its installed binary, with sudo, after a yes. Its open connections close: an Odoo or a migration running on it stops."
+                            ),
+                            f"   $ {pg_state.COMMANDE_REDEMARRER}",
+                        ],
+                    )
+                ],
             )
     return Resultat(nom, OK, texte)
+
+
+REDEMARRER_POSTGRESQL = "redemarrer_postgresql"
 
 
 def verifier_odoo(ctx):
@@ -2270,6 +2285,8 @@ def executer_resolution(
         return _rebatir_cache_qemu(sortie, rebatir_cache_qemu)
     if resolution.cle == HOOKS_GIT:
         return _installer_hooks(ctx, demander, sortie)
+    if resolution.cle == REDEMARRER_POSTGRESQL:
+        return _redemarrer_postgresql(ctx, demander, sortie)
     if resolution.cle == CLAUDE:
         return _deployer_commandes_claude(
             resolution.depots, demander, sortie, deployer_commande_claude
@@ -2312,6 +2329,29 @@ def _oui(demander, question):
     except EOFError:
         return False
     return reponse.strip().lower() in ("y", "yes", "o", "oui")
+
+
+def _redemarrer_postgresql(ctx, demander, sortie, lancer=None):
+    """Redémarre le serveur PostgreSQL du système par
+    pg_state.COMMANDE_REDEMARRER, sur un oui : ses connexions ouvertes
+    tombent. Rend True quand la commande a réussi ; la vérification qui
+    repasse ensuite dit si le serveur est devenu le binaire installé."""
+    if not _oui(
+        demander,
+        f"💬 {t('Restart PostgreSQL now? Its open connections close (y/N): ')}",
+    ):
+        sortie(t("Nothing changed."))
+        return False
+    lancer = lancer or _lancer_dans_le_terminal(ctx)
+    sortie(f"   $ {pg_state.COMMANDE_REDEMARRER}")
+    code = lancer(shlex.split(pg_state.COMMANDE_REDEMARRER))
+    if code:
+        sortie(
+            f"❌ {pg_state.COMMANDE_REDEMARRER} : {t('failure, code')} {code}"
+        )
+        return False
+    sortie(f"✅ {t('PostgreSQL restarted.')}")
+    return True
 
 
 def _installer_hooks(ctx, demander, sortie):
