@@ -14150,6 +14150,34 @@ TRANSLATIONS = {
         "fr": "aucune réponse",
         "en": "no answer",
     },
+    "The PostgreSQL server could not be checked: going on.": {
+        "fr": "Le serveur PostgreSQL n'a pas pu être vérifié : la migration continue.",
+        "en": "The PostgreSQL server could not be checked: going on.",
+    },
+    "The installed PostgreSQL server binary was not found: restart PostgreSQL after any update of its package.": {
+        "fr": "Binaire installé du serveur PostgreSQL introuvable : redémarrer PostgreSQL après toute mise à jour de son paquet.",
+        "en": "The installed PostgreSQL server binary was not found: restart PostgreSQL after any update of its package.",
+    },
+    "The running PostgreSQL server is not the installed one: restart it.": {
+        "fr": "Le serveur PostgreSQL en marche n'est pas celui installé : le redémarrer.",
+        "en": "The running PostgreSQL server is not the installed one: restart it.",
+    },
+    "This backup comes from a newer PostgreSQL than the server: its restore may fail.": {
+        "fr": "Cette sauvegarde vient d'un PostgreSQL plus récent que le serveur : sa restauration peut échouer.",
+        "en": "This backup comes from a newer PostgreSQL than the server: its restore may fail.",
+    },
+    "Odoo 20 needs PostgreSQL 16 or later.": {
+        "fr": "Odoo 20 exige PostgreSQL 16 ou plus récent.",
+        "en": "Odoo 20 needs PostgreSQL 16 or later.",
+    },
+    "running version": {
+        "fr": "version en marche",
+        "en": "running version",
+    },
+    "installed version": {
+        "fr": "version installée",
+        "en": "installed version",
+    },
     "A page listed for search engines that does not answer is": {
         "fr": "Une page listée pour les moteurs de recherche qui ne répond pas est",
         "en": "A page listed for search engines that does not answer is",

@@ -44,6 +44,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
+from script.database import pg_state
 from script.git import freeze_resolution
 from script.poetry import poetry_venv_drift as drift
 from script.todo import (
@@ -1778,13 +1779,38 @@ def verifier_postgresql(ctx):
         sortie = ctx.lancer(args)
         texte = sortie.stdout.strip() or sortie.stderr.strip()
         if sortie.returncode == 0:
-            return Resultat(nom, OK, texte)
+            return _version_postgresql(ctx, nom, texte, hote, port)
         return Resultat(nom, ECHEC, texte or t("no answer"))
     hote = hote or "localhost"
     ctx.noter(f"python3 -c 'socket.create_connection((\"{hote}\", {port}))'")
     if _port_ouvert(hote, port):
         return Resultat(nom, OK, f"{hote}:{port} {t('accepts connections')}")
     return Resultat(nom, ECHEC, f"{hote}:{port} {t('no answer')}")
+
+
+def _version_postgresql(ctx, nom, texte, hote, port):
+    """Le verdict d'un serveur qui accepte les connexions : ALERTE quand
+    il n'est plus le binaire installé (pg_state.DECALAGE), puisque le
+    premier chargement d'une bibliothèque, plpgsql par exemple, échouera
+    jusqu'à son redémarrage. Les autres défauts de pg_state ne
+    concernent qu'une migration."""
+    env = dict(os.environ, PGPORT=str(port))
+    if hote:
+        env["PGHOST"] = hote
+    defauts = pg_state.verifier(
+        env, lancer=lambda args, **kw: ctx.lancer(args, env=kw.get("env"))
+    )
+    for _gravite, cle, valeurs in defauts:
+        if cle == pg_state.DECALAGE:
+            serveur, installee = valeurs
+            return Resultat(
+                nom,
+                ALERTE,
+                f"{texte} · {t('running version')} {serveur},"
+                f" {t('installed version')} {installee}",
+                [t(cle), f"$ {pg_state.COMMANDE_REDEMARRER}"],
+            )
+    return Resultat(nom, OK, texte)
 
 
 def verifier_odoo(ctx):
