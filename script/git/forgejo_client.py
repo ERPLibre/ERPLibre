@@ -7,9 +7,10 @@
 Le client sert à préparer une forge qui reçoit les dépôts du manifeste :
 vérifier qu'elle répond, s'assurer que chaque organisation existe (la créer
 privée sinon), créer un dépôt privé quand la forge ne crée pas les dépôts
-au premier push, déposer une clé SSH, et lister ou ouvrir des pull
-requests. Chaque appel « assurer_* » est idempotent : ce qui existe déjà
-est rendu tel quel, jamais recréé ni modifié.
+au premier push, déposer une clé SSH, lister ou ouvrir des pull requests,
+lire l'état, les revues et le statut combiné du commit de tête d'une
+pull request. Chaque appel « assurer_* » est idempotent : ce qui existe
+déjà est rendu tel quel, jamais recréé ni modifié.
 
 L'API vit sous « <base>/api/v1 », la base étant l'URL web de la forge
 (« https://hôte[:port] »), qui diffère de l'URL SSH des remotes. Le jeton
@@ -59,6 +60,9 @@ _NOM_DEPOT = re.compile(r"^[-.\w]+$")
 # Un jeton ne contient ni blanc ni caractère de contrôle : requests refuse
 # l'en-tête et recopie sa valeur dans son message d'erreur.
 _JETON = re.compile(r"[\x21-\x7e]+")
+# Un commit complet, SHA-1 ou SHA-256 : jamais un nom de branche, qu'une
+# route « /commits/{ref} » lirait aussi.
+_SHA = re.compile(r"[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?")
 
 
 def nom_organisation_valide(nom):
@@ -515,30 +519,91 @@ class ClientForgejo:
 
     # ── Pull requests ────────────────────────────────────────────────
 
-    def pull_requests(self, proprietaire, nom, etat="open", **filtres):
-        """Les pull requests de `etat` (« open », « closed », « all »),
-        toutes pages lues jusqu'à une page vide, ou jusqu'à une page qui
-        répète la précédente. `filtres` passe tel quel dans la requête
-        (« base », « head » : noms de branches)."""
+    def _pages(
+        self, chemin, params=None, cle="number", limite=None, ok=(200,)
+    ):
+        """Les éléments (dict) de toutes les pages de `chemin`, lues jusqu'à
+        une page vide, une page qui répète la précédente (même liste de
+        `cle`), ou `limite` éléments (None : pas de borne). `params` (dict)
+        passe dans la requête avec « page » et « limit », posés en dernier :
+        un filtre de même nom ne les remplace pas. Un statut admis par `ok`
+        hors 2xx (un 404) rend ce qui a été lu, [] dès la première page."""
         res = []
         page = 1
         precedent = None
         while True:
             lot = self._appel(
                 "GET",
-                f"/repos/{self._q(proprietaire)}/{self._q(nom)}/pulls",
+                chemin,
+                ok=ok,
                 attendu=list,
-                params=dict(filtres, state=etat, page=page, limit=PAGE),
+                params=dict(params or {}, page=page, limit=PAGE),
             )[1]
-            lot = [pr for pr in lot if isinstance(pr, dict)]
+            if lot is None:
+                return res
+            lot = [e for e in lot if isinstance(e, dict)]
             # Une page identique à la précédente : le serveur ignore la
             # pagination, et relire ne rendrait jamais une page vide.
-            numeros = [pr.get("number") for pr in lot]
-            if not lot or numeros == precedent:
+            cles = [e.get(cle) for e in lot]
+            if not lot or cles == precedent:
                 return res
             res.extend(lot)
-            precedent = numeros
+            if limite is not None and len(res) >= limite:
+                return res[:limite]
+            precedent = cles
             page += 1
+
+    def pull_requests(
+        self, proprietaire, nom, etat="open", tri=None, limite=None, **filtres
+    ):
+        """Les pull requests de `etat` (« open », « closed », « all »),
+        toutes pages lues (voir `_pages`), au plus `limite`. `tri`
+        (« recentupdate », « oldest »…) passe en « sort » ; `filtres` passe
+        tel quel dans la requête (« base », « head » : noms de branches)."""
+        params = dict(filtres, state=etat)
+        if tri:
+            params["sort"] = tri
+        return self._pages(
+            f"/repos/{self._q(proprietaire)}/{self._q(nom)}/pulls",
+            params,
+            "number",
+            limite,
+        )
+
+    def pull_request(self, proprietaire, nom, numero):
+        """La pull request `numero`, ou None si elle manque (404)."""
+        statut, corps = self._appel(
+            "GET",
+            f"/repos/{self._q(proprietaire)}/{self._q(nom)}/pulls"
+            f"/{int(numero)}",
+            ok=(200, 404),
+        )
+        return corps if statut == 200 else None
+
+    def revues_pull_request(self, proprietaire, nom, numero):
+        """Les revues de la pull request `numero`, toutes pages, dans
+        l'ordre chronologique de la forge ; [] si elle manque (404)."""
+        return self._pages(
+            f"/repos/{self._q(proprietaire)}/{self._q(nom)}/pulls"
+            f"/{int(numero)}/reviews",
+            cle="id",
+            ok=(200, 404),
+        )
+
+    def statut_combine(self, proprietaire, nom, sha):
+        """Le statut combiné du commit `sha` (dict : « state »,
+        « total_count », « statuses »), ou None (404, 422). Un commit sans
+        statut rend {} ou un « total_count » nul. ValueError, sans appel,
+        quand `sha` n'est pas un commit complet de 40 ou 64 hexadécimaux."""
+        if not isinstance(sha, str) or not _SHA.fullmatch(sha):
+            raise ValueError(f"not a commit SHA: {sha!r}")
+        statut, corps = self._appel(
+            "GET",
+            f"/repos/{self._q(proprietaire)}/{self._q(nom)}/commits"
+            f"/{self._q(sha)}/status",
+            ok=(200, 404, 422),
+        )
+        return corps if statut == 200 else None
 
     def pull_request_ouverte(self, proprietaire, nom, tete, base):
         """La pull request ouverte de la branche `tete` vers `base`, ou

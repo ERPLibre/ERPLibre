@@ -11,6 +11,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Added
 
+- TODO › Repo › Follow the pull requests of a forge shows, for each clone and for ERPLibre, its pull requests on the forge (open, draft, merged, closed) with their comments, review and CI status. It brings the merged work back into the local branches without forcing any of them, then offers to move the freeze of the frozen projects forward; it pushes nothing and deletes no branch
 - `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › ERPLibre Home › Plugins on/off turn deck plugins off, those of the deck program and those of `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` in `streamdeck.conf` (0.5 to 60 seconds, 1 by default) sets how often the session pages refresh; TODO › ERPLibre Home › Session refresh edits it
 - A cellular gateway on a USB modem, reachable from **Mobile gateway** in Odoo: it relays the SMS

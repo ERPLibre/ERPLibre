@@ -456,6 +456,121 @@ class TestPullRequests(unittest.TestCase):
         )
 
 
+class TestRetourPullRequests(unittest.TestCase):
+    """La lecture d'une pull request, de ses revues et du statut combiné
+    du commit de tête, et la pagination partagée (`_pages`)."""
+
+    SHA = "a" * 40
+
+    def test_une_pull_request_lue_par_son_numero(self):
+        pr = {"number": 7, "title": "t"}
+        c, s = client({("GET", "/repos/P/d/pulls/7"): Reponse(200, pr)})
+        self.assertEqual(c.pull_request("P", "d", "7"), pr)
+        self.assertEqual(s.appels[0]["chemin"], "/repos/P/d/pulls/7")
+        self.assertIsNone(c.pull_request("P", "d", 8))
+
+    def test_les_revues_de_toutes_les_pages(self):
+        pages = {1: [{"id": 1}, {"id": 2}], 2: [{"id": 3}]}
+
+        def lister(kw):
+            return Reponse(200, pages.get(kw["params"]["page"], []))
+
+        c, s = client({("GET", "/repos/P/d/pulls/7/reviews"): lister})
+        self.assertEqual(
+            [r["id"] for r in c.revues_pull_request("P", "d", 7)], [1, 2, 3]
+        )
+        self.assertEqual(
+            [(a["params"]["page"], a["params"]["limit"]) for a in s.appels],
+            [(1, fc.PAGE), (2, fc.PAGE), (3, fc.PAGE)],
+        )
+
+    def test_une_page_de_revues_repetee_arrete_la_lecture(self):
+        c, s = client(
+            {("GET", "/repos/P/d/pulls/7/reviews"): Reponse(200, [{"id": 1}])}
+        )
+        self.assertEqual(c.revues_pull_request("P", "d", 7), [{"id": 1}])
+        self.assertEqual(len(s.appels), 2)
+
+    def test_les_revues_d_une_pull_request_absente(self):
+        c, _s = client({})
+        self.assertEqual(c.revues_pull_request("P", "d", 7), [])
+
+    def test_le_statut_combine_du_commit(self):
+        chemin = f"/repos/P/d/commits/{self.SHA}/status"
+        statut = {"state": "success", "total_count": 1, "statuses": []}
+        c, s = client({("GET", chemin): Reponse(200, statut)})
+        self.assertEqual(c.statut_combine("P", "d", self.SHA), statut)
+        self.assertEqual(s.appels[0]["chemin"], chemin)
+        c, _s = client({("GET", chemin): Reponse(200, {})})
+        self.assertEqual(c.statut_combine("P", "d", self.SHA), {})
+
+    def test_un_statut_absent_ou_refuse_rend_none(self):
+        chemin = f"/repos/P/d/commits/{self.SHA}/status"
+        for code in (404, 422):
+            with self.subTest(code=code):
+                c, _s = client({("GET", chemin): Reponse(code)})
+                self.assertIsNone(c.statut_combine("P", "d", self.SHA))
+
+    def test_une_erreur_du_statut_masque_le_jeton(self):
+        chemin = f"/repos/P/d/commits/{self.SHA}/status"
+        c, _s = client(
+            {("GET", chemin): Reponse(500, {"message": "panne jeton-secret"})},
+            jeton_api="jeton-secret",
+        )
+        with self.assertRaises(fc.ErreurForgejo) as ctx:
+            c.statut_combine("P", "d", self.SHA)
+        self.assertEqual(ctx.exception.statut, 500)
+        self.assertNotIn("jeton-secret", str(ctx.exception))
+
+    def test_un_nom_de_branche_n_est_jamais_lu_comme_commit(self):
+        c, s = client({})
+        for ref in ("main", "a" * 39, "-" + "a" * 40, None):
+            with self.subTest(ref=ref):
+                with self.assertRaises(ValueError):
+                    c.statut_combine("P", "d", ref)
+        self.assertEqual(s.appels, [])
+
+    def test_les_fermees_triees_et_bornees(self):
+        def lister(kw):
+            return Reponse(200, [{"number": n} for n in range(1, 6)])
+
+        c, s = client({("GET", "/repos/P/d/pulls"): lister})
+        prs = c.pull_requests(
+            "P", "d", etat="closed", tri="recentupdate", limite=3
+        )
+        self.assertEqual([p["number"] for p in prs], [1, 2, 3])
+        self.assertEqual(len(s.appels), 1)
+        self.assertEqual(s.appels[0]["params"]["sort"], "recentupdate")
+        self.assertEqual(s.appels[0]["params"]["state"], "closed")
+
+    def test_un_filtre_nomme_limit_ne_remplace_pas_la_page(self):
+        c, s = client({("GET", "/repos/P/d/pulls"): Reponse(200, [])})
+        c.pull_requests("P", "d", limit=999, page=42)
+        self.assertEqual(s.appels[0]["params"]["limit"], fc.PAGE)
+        self.assertEqual(s.appels[0]["params"]["page"], 1)
+
+    def test_le_jeton_ne_passe_que_dans_l_en_tete(self):
+        chemin = f"/repos/P/d/commits/{self.SHA}/status"
+        c, s = client(
+            {
+                ("GET", "/repos/P/d/pulls/7"): Reponse(200, {"number": 7}),
+                ("GET", "/repos/P/d/pulls/7/reviews"): Reponse(200, []),
+                ("GET", chemin): Reponse(200, {}),
+            },
+            jeton_api="jeton-secret",
+        )
+        c.pull_request("P", "d", 7)
+        c.revues_pull_request("P", "d", 7)
+        c.statut_combine("P", "d", self.SHA)
+        self.assertEqual(len(s.appels), 3)
+        for appel in s.appels:
+            self.assertEqual(
+                appel["headers"]["Authorization"], "token jeton-secret"
+            )
+            self.assertNotIn("jeton-secret", appel["chemin"])
+            self.assertNotIn("jeton-secret", repr(appel["params"]))
+
+
 class TestCreationsConcurrentes(unittest.TestCase):
     """Entre la lecture et la création, un autre client a créé la même
     chose : la réponse « existe déjà » fait relire l'existant."""

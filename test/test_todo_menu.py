@@ -998,6 +998,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "📡 Push the repositories to a remote": "_git_repo_pousser_remote",
         "📬 Open pull requests on a forge": "_git_repo_pull_requests",
         "🧭 Sync from a forge: private manifest overlay": "_git_repo_surcouche",
+        "📥 Follow the pull requests of a forge": "_git_repo_suivre_pull_requests",
     }
 
     def test_the_upstream_remotes_come_before_the_dry_run(self):
@@ -2117,6 +2118,309 @@ class TestGitRepoPullRequests(unittest.TestCase):
         self.client.assurer_pull_request.assert_not_called()
 
 
+class TestGitRepoSuivrePullRequests(unittest.TestCase):
+    """Le suivi des pull requests d'une forge : rapport, rapatriement du
+    travail fusionné sous le verrou, puis gel des projets déjà gelés. Git,
+    l'API, le verrou et les fichiers du gel sont remplacés."""
+
+    BASE = "ssh://git@forge.example.invalid:2222"
+    SHA = "c" * 40
+    GEL = "d" * 40
+
+    def setUp(self):
+        import contextlib
+        from unittest import mock
+
+        from script.git import repo_pull
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.repo_pull = repo_pull
+        self.addCleanup(mock.patch.stopall)
+        fpr = git_repo_menu.forge_pull_requests
+        self.vrai_lire = fpr.lire
+        projets = [
+            {
+                "cle": f"{n}+x/{n}",
+                "chemin": f"/r/x/{n}",
+                "affiche": f"x/{n}",
+                "nom": n,
+                "remote": "Orig",
+                "branche": "X.0",
+                "proprietaire": "P",
+            }
+            for n in ("a", "b")
+        ]
+        self.racine = {
+            "cle": "E",
+            "chemin": git_repo_menu.RACINE,
+            "nom": "E",
+            "remote": "origin",
+            "branche": "dev",
+            "proprietaire": "P",
+        }
+
+        def patcher(cible, nom, **kw):
+            return mock.patch.object(cible, nom, **kw).start()
+
+        patcher(
+            git_repo_menu.push_remote,
+            "projet_racine",
+            side_effect=lambda racine: dict(self.racine),
+        )
+        patcher(
+            git_repo_menu.repo_upgrade,
+            "url_du_remote",
+            side_effect=lambda c, n: (
+                f"{self.BASE}/P/"
+                f"{c.rsplit('/', 1)[-1] if c.startswith('/r/') else 'E'}.git"
+            ),
+        )
+        patcher(git_repo_menu.repo_upgrade, "git", return_value=("", "", 0))
+        patcher(git_repo_menu.repo_upgrade, "commit_de", return_value=self.GEL)
+        patcher(
+            git_repo_menu.forge_manifest,
+            "base_du_remote",
+            return_value=self.BASE,
+        )
+        self.surcouches = patcher(
+            git_repo_menu.forge_manifest, "surcouches", return_value=[]
+        )
+        self.prs = {
+            "E": [self.pr(5, "fusionnee", "dev")],
+            "a": [self.pr(9, "fusionnee", "X.0")],
+            "b": [self.pr(1, "ouverte", "X.0")],
+        }
+
+        def lire(client, o, d, locales, reference):
+            if isinstance(self.prs[d], Exception):
+                raise self.prs[d]
+            return [dict(pr) for pr in self.prs[d]]
+
+        self.lire = patcher(fpr, "lire", side_effect=lire)
+        patcher(fpr, "branches_locales", return_value=set())
+        patcher(fpr, "deja_local", return_value=False)
+        self.rapatrier = patcher(
+            fpr,
+            "rapatrier",
+            side_effect=lambda chemin, remote, base: {
+                "etat": "avance",
+                "detail": "",
+                "sha": self.SHA,
+                "ancien": self.GEL,
+            },
+        )
+        self.verrou = patcher(
+            repo_pull, "verrou", side_effect=lambda r: contextlib.nullcontext()
+        )
+        self.gel = patcher(
+            git_repo_menu, "gel_des_sources", return_value=(2, 3)
+        )
+        patcher(git_repo_menu, "etat_manifeste_local", return_value=(0, 3))
+        gfm = git_repo_menu.git_freeze_manifest
+        patcher(gfm, "freeze_sources", return_value=[])
+        patcher(gfm, "default_sources", return_value=[])
+        patcher(
+            gfm,
+            "read_sources",
+            return_value={"a+x/a": [("m.xml", {"freeze-revision": self.GEL})]},
+        )
+        patcher(
+            gfm,
+            "read_remotes",
+            return_value={"Orig": "https://code.example.invalid/Orig/"},
+        )
+        fr = git_repo_menu.freeze_resolution
+        self.publication = patcher(
+            fr, "publication", return_value=(True, "X.0")
+        )
+        self.ecrire = patcher(
+            fr,
+            "mettre_a_jour_gel",
+            return_value=({"manifest/m.xml": ["a+x/a"]}, []),
+        )
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        patcher(
+            Menu,
+            "_git_repo_projets_absolus",
+            side_effect=lambda: [dict(p) for p in projets],
+        )
+        self.remote = patcher(
+            Menu, "_git_repo_choisir_remote_forge", return_value="forge"
+        )
+        self.client = mock.Mock()
+        self.forge = patcher(
+            Menu, "_git_forge_client", return_value=self.client
+        )
+        self.obj = Menu()
+
+    def pr(self, numero, etat, base):
+        return {
+            "numero": numero,
+            "titre": f"PR {numero}",
+            "url": f"https://forge.example.invalid/P/d/pulls/{numero}",
+            "etat": etat,
+            "tete": "t",
+            "base": base,
+            "sha_tete": self.SHA,
+            "sha_fusion": self.SHA if etat == "fusionnee" else "",
+            "fusionnee_le": "2000-01-02" if etat == "fusionnee" else "",
+            "commentaires": 0,
+            "revue": None,
+            "ci": None,
+        }
+
+    def lancer(self, saisie="", confirms=()):
+        with self.mock.patch.object(
+            self.menu.click, "prompt", return_value=saisie
+        ), self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ) as confirm, self.mock.patch(
+            "builtins.print"
+        ) as imprime:
+            res = self.obj._git_repo_suivre_pull_requests()
+        self.confirm = confirm
+        self.lignes = [
+            " ".join(str(a) for a in appel.args)
+            for appel in imprime.call_args_list
+        ]
+        return res
+
+    def test_without_a_forge_remote_nothing_is_read(self):
+        self.remote.return_value = None
+        self.assertEqual(self.lancer(), 0)
+        self.forge.assert_not_called()
+
+    def test_an_empty_answer_fetches_nothing(self):
+        self.assertEqual(self.lancer(""), 0)
+        self.rapatrier.assert_not_called()
+        self.assertTrue(
+            any("#9" in ligne and "#5" not in ligne for ligne in self.lignes)
+        )
+
+    def test_all_fetches_each_pair_erplibre_first(self):
+        self.assertEqual(self.lancer("all", [True]), 0)
+        self.assertEqual(
+            [c.args for c in self.rapatrier.call_args_list],
+            [
+                (self.menu.RACINE, "forge", "dev"),
+                ("/r/x/a", "forge", "X.0"),
+            ],
+        )
+        self.verrou.assert_called_once_with(self.menu.RACINE)
+
+    def test_a_held_lock_fetches_nothing(self):
+        self.verrou.side_effect = self.repo_pull.Occupe("pris")
+        self.assertEqual(self.lancer("all"), 1)
+        self.rapatrier.assert_not_called()
+
+    def test_a_checkout_without_freeze_writes_no_freeze(self):
+        self.gel.return_value = (0, 3)
+        self.lancer("all")
+        self.ecrire.assert_not_called()
+
+    def test_preview_then_write_after_confirmation(self):
+        self.lancer("2", [True])
+        self.assertEqual(
+            [c.kwargs["ecrire"] for c in self.ecrire.call_args_list],
+            [False, True],
+        )
+        depots = self.ecrire.call_args.args[1]
+        self.assertEqual(
+            [
+                (d["path"], d["head"], d["freeze_revision"], d["branch"])
+                for d in depots
+            ],
+            [("x/a", self.SHA, self.GEL, "X.0")],
+        )
+
+    def test_a_refusal_only_previews(self):
+        self.lancer("2", [False])
+        self.assertEqual(
+            [c.kwargs["ecrire"] for c in self.ecrire.call_args_list], [False]
+        )
+
+    def test_an_unpublished_commit_stays_out_even_with_an_overlay(self):
+        self.surcouches.return_value = ["forge"]
+        self.publication.return_value = (False, "git -C x/a push u X.0")
+        self.lancer("2")
+        self.ecrire.assert_not_called()
+        self.confirm.assert_not_called()
+
+    def test_a_clone_without_the_forge_remote_is_skipped_silently(self):
+        """Un clone jamais poussé vers cette forge n'a pas son remote : il
+        n'est ni lu, ni compté en erreur."""
+        url = self.menu.repo_upgrade.url_du_remote.side_effect
+        self.menu.repo_upgrade.url_du_remote.side_effect = lambda c, n: (
+            None if c == "/r/x/b" else url(c, n)
+        )
+        self.assertEqual(self.lancer(""), 0)
+        self.assertNotIn("b", [c.args[2] for c in self.lire.call_args_list])
+        self.assertFalse(any("x/b" in ligne for ligne in self.lignes))
+        self.assertFalse(
+            any(
+                self.menu.t("repositories in error") in ligne
+                for ligne in self.lignes
+            )
+        )
+
+    def test_a_number_typed_twice_brings_back_once(self):
+        self.assertEqual(self.lancer("2,2", [False]), 0)
+        self.assertEqual(
+            [c.args for c in self.rapatrier.call_args_list],
+            [("/r/x/a", "forge", "X.0")],
+        )
+
+    def test_a_repository_absent_from_the_forge_is_reported(self):
+        self.prs["a"] = self.menu.forgejo_client.ErreurForgejo(
+            "GET : 404", 404
+        )
+        self.assertGreaterEqual(self.lancer(""), 1)
+        self.assertTrue(
+            any(
+                "x/a" in ligne
+                and self.menu.t("absent from the forge") in ligne
+                for ligne in self.lignes
+            )
+        )
+        self.assertTrue(any("#1" in ligne for ligne in self.lignes))
+
+    def test_merged_commits_missing_upstream_are_flagged(self):
+        """Le commit rapatrié manque à la branche de suivi du remote du
+        manifeste : un avertissement, sauf sous une surcouche du remote."""
+        self.menu.repo_upgrade.git.return_value = ("", "", 1)
+        avis = self.menu.t("push them to origin")
+        self.lancer("all", [False])
+        self.assertEqual(sum(avis in ligne for ligne in self.lignes), 1)
+        self.assertEqual(sum("      ⚠" in ligne for ligne in self.lignes), 2)
+        self.surcouches.return_value = ["forge"]
+        self.lancer("all", [False])
+        self.assertEqual(sum("      ⚠" in ligne for ligne in self.lignes), 1)
+
+    def test_control_characters_never_reach_the_terminal(self):
+        self.lire.side_effect = self.vrai_lire
+        brute = {
+            "number": 3,
+            "title": "a\x1b[2Jb",
+            "html_url": "https://forge.example.invalid/\x1b]8;;x",
+            "state": "open",
+            "head": {"ref": "t", "sha": self.SHA},
+            "base": {"ref": "X.0"},
+        }
+        self.client.pull_requests.side_effect = (
+            lambda o, d, etat="open", **kw: ([brute] if etat == "open" else [])
+        )
+        self.client.revues_pull_request.return_value = []
+        self.client.statut_combine.return_value = {}
+        self.lancer("")
+        self.assertTrue(any("a?[2Jb" in ligne for ligne in self.lignes))
+        self.assertFalse(any("\x1b" in ligne for ligne in self.lignes))
+
+
 class TestGitRepoPrepareForge(unittest.TestCase):
     """La préparation d'une forge Forgejo avant le push : organisations
     absentes créées privées après confirmation, dépôts créés par l'API
@@ -3084,6 +3388,9 @@ class TestGitRepoPublish(unittest.TestCase):
         )
         self.assertEqual(self.menu.choix_numeros("all", lst), lst)
         self.assertIsNone(self.menu.choix_numeros("4", lst))
+        self.assertEqual(
+            self.menu.choix_numeros("1,2,1", lst), [{"n": 1}, {"n": 2}]
+        )
 
     def test_a_refused_plan_pushes_nothing_and_asks_nothing(self):
         plan = dict(self._plan(), refus="remote moved")

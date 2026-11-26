@@ -1038,6 +1038,38 @@ never forced, then a pull request goes from it to the manifest branch in the sam
 subject of its last commit. A clone is skipped when the manifest branch is missing on the forge, or when it already
 holds the branch's commit. An open pull request for the same pair is reused, never duplicated.
 
+#### Follow the pull requests of a forge
+
+TODO › Repo › Follow the pull requests of a forge takes a forge remote of the clones and reads, through the API, the
+forge repository of every clone that carries it, plus the ERPLibre repository when it carries the same remote. A pull
+request concerns a clone when its head is one of the clone's local branches, from the same forge repository and not
+from a fork of the same name, or when its base is the clone's manifest branch. Every open one is read; among the
+closed ones, only the five most recently updated. Each line gives the state (open, draft, merged, closed), the number
+of comments (💬, the `comments` field of the pull request), then, for an open one, the review — the last decisive
+review of each reviewer: one request for changes outweighs the approvals — and the CI, the combined status of the head
+commit, which Forgejo Actions fills in. A merged one says whether its merge commit is already in the local branch of
+its base. Titles and URLs come from the forge: their control characters are shown as `?`. A repository missing from
+the forge is reported and the others go on.
+
+The merged work that the local branches lack is then offered, one line per repository and base, by numbers, `all`, or
+Enter for none. Fetching it runs under the lock of the pull passes, ERPLibre first, then the clones in parallel. The
+fetch moves the tracking ref `<remote>/<base>` only. A missing local branch is created, without upstream
+configuration, so `repo sync` and `repo prune` leave it alone; an existing one only moves by fast-forward: when
+checked out, on a work tree without tracked changes; otherwise git refuses a non-fast-forward and a branch checked out
+in another worktree. A local branch that is ahead, diverged, or that a shallow clone cannot compare is left as is and
+reported, as is a clone in the middle of a rebase or a merge. No checked-out branch changes outside a fast-forward,
+no branch is deleted, nothing is pushed and nothing is written on the forge. A merged commit that the tracking branch
+of the manifest remote lacks is flagged: the next sync would bring back the upstream tip; push it (Push the
+repositories to a remote, mode `all`) or sync through an overlay of that remote.
+
+When the checkout has a freeze, the freeze of the projects that are already frozen then moves to the fetched commit,
+only forward: the merged commit must descend from the frozen one, and the project must be declared with a `path` and
+merged into its manifest branch. The commit must also be published at the manifest URL — a commit on the forge only
+would break every installation without the private overlay, since `manifest/` is tracked; the command to push it is
+shown otherwise. TODO previews each file and project, then writes after a confirmation, No by default. Changing the
+freeze removes `fork-upstream-freeze-revision`, and the files of other Odoo versions that carry the same freeze
+move too. The token needs no `issue` scope: everything is read from the pull request and repository endpoints.
+
 #### Prepare a Forgejo forge
 
 A new remote set from a forge URL offers, before pushing, to check the forge through its API (Forgejo, `/api/v1`)
@@ -1178,6 +1210,40 @@ branche extraite n'est pas celle de son manifeste. Après une seule confirmation
 en parallèle et jamais de force, puis une pull request va d'elle vers la branche du manifeste dans le même dépôt de la
 forge, titrée du sujet de son dernier commit. Un clone est écarté quand la branche du manifeste manque sur la forge, ou
 qu'elle porte déjà le commit de la branche. Une pull request ouverte pour la même paire est reprise, jamais doublée.
+
+#### Suivre les pull requests d'une forge
+
+TODO › Repo › Suivre les pull requests d'une forge prend un remote de forge des clones et lit, par l'API, le dépôt de
+la forge de chaque clone qui le porte, plus le dépôt ERPLibre quand il porte le même remote. Une pull request concerne
+un clone quand sa tête est l'une de ses branches locales, venue du même dépôt de la forge et non d'un fork homonyme, ou
+quand sa base est la branche du manifeste du clone. Toutes les ouvertes sont lues ; parmi les fermées, les cinq
+modifiées le plus récemment. Chaque ligne donne l'état (ouverte, brouillon, fusionnée, fermée), le nombre de
+commentaires (💬, le champ `comments` de la pull request), puis, pour une ouverte, la revue — le dernier avis décisif
+de chaque relecteur : une demande de changements l'emporte sur les approbations — et la CI, le statut combiné du
+commit de tête, que Forgejo Actions renseigne. Une fusionnée dit si son commit de fusion est déjà dans la branche
+locale de sa base. Les titres et les URL viennent de la forge : leurs caractères de contrôle s'affichent en `?`. Un
+dépôt absent de la forge est signalé et les autres continuent.
+
+Le travail fusionné qui manque aux branches locales est ensuite proposé, une ligne par dépôt et par base, par
+numéros, `all`, ou Entrée pour aucun. Le rapatriement tourne sous le verrou des passes de tirage, ERPLibre d'abord,
+puis les clones en parallèle. Le fetch ne déplace que la ref de suivi `<remote>/<base>`. Une branche locale absente
+est créée, sans configuration de suivi, si bien que `repo sync` et `repo prune` l'ignorent ; une branche existante
+n'avance qu'en fast-forward : extraite, sur un arbre sans modification suivie ; sinon git refuse un non-fast-forward
+et une branche extraite dans un autre worktree. Une branche locale en avance, divergée, ou qu'un clone superficiel ne
+permet pas de comparer reste telle quelle et est signalée, comme un clone au milieu d'un rebase ou d'une fusion.
+Aucune branche extraite ne change hors d'un fast-forward, aucune branche n'est supprimée, rien n'est poussé et rien
+ne s'écrit sur la forge. Un commit fusionné qui manque à la branche de suivi du remote du manifeste est signalé : la
+synchronisation suivante ramènerait la pointe de l'amont ; le pousser (Pousser les dépôts vers un remote, mode `all`)
+ou synchroniser par une surcouche de ce remote.
+
+Quand le checkout a un gel, le gel des projets déjà gelés avance ensuite vers le commit rapatrié, vers l'avant
+seulement : le commit fusionné doit descendre du commit gelé, et le projet doit être déclaré avec un `path` et
+fusionné dans sa branche du manifeste. Le commit doit aussi être publié à l'URL du manifeste — un commit présent sur
+la forge seulement casserait toute installation sans la surcouche privée, puisque `manifest/` est versionné ; la
+commande pour le pousser est affichée sinon. TODO montre chaque fichier et chaque projet, puis écrit après une
+confirmation, Non par défaut. Changer le gel retire `fork-upstream-freeze-revision`, et les fichiers des autres
+versions d'Odoo qui portent le même gel avancent aussi. Le jeton n'a pas besoin de la portée `issue` : tout se lit
+par les routes des pull requests et du dépôt.
 
 #### Préparer une forge Forgejo
 

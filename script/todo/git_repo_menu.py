@@ -28,6 +28,11 @@ de sa branche, dans ses fichiers de `manifest/` (`git_manifest_odoo<V>.xml`,
 argument de la reconfiguration, jamais un état enregistré : le mode que
 l'en-tête affiche se lit dans le manifeste local que git-repo utilise.
 
+Le SUIVI des pull requests d'une forge lit celles qui concernent chaque
+clone, rapatrie la branche de base de celles qui sont fusionnées sans jamais
+forcer une branche locale, puis propose d'avancer le gel des projets déjà
+gelés (`forge_pull_requests`).
+
 Module à part plutôt que méthodes de `TODO` : le fichier principal passe les
 cinq mille lignes, et chaque sujet y a désormais le sien.
 """
@@ -46,7 +51,9 @@ sys.path.append(new_path)
 
 from script.git import (  # noqa: E402
     forge_manifest,
+    forge_pull_requests,
     forgejo_client,
+    freeze_resolution,
     git_freeze_diff,
     git_freeze_manifest,
     manifest_freeze,
@@ -54,6 +61,11 @@ from script.git import (  # noqa: E402
     push_remote,
     repo_apply,
     repo_upgrade,
+)
+from script.todo.git_fork_menu import (  # noqa: E402
+    ICONES_ETAT,
+    LIBELLES_CI,
+    LIBELLES_REVUE,
 )
 from script.todo.todo_couleur import bleu_poudre, retour  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -99,6 +111,22 @@ DECOMPTES = {
     "rebase": "rebased",
     "avance": "fast-forwarded",
     "publie": "published",
+}
+
+
+# Les états de `forge_pull_requests.rapatrier`, traduits en clés
+# d'affichage, pour la même raison qu'ETATS.
+RAPATRIEMENTS = {
+    "creee": "branch created",
+    "a_jour": "already up to date",
+    "avance": "fast-forwarded (one)",
+    "en_avance": "the local branch is ahead",
+    "diverge": "diverged: left as is",
+    "indetermine": "undetermined (shallow clone): left as is",
+    "sale": "the work tree has uncommitted changes",
+    "operation_en_cours": "an operation is in progress",
+    "refus": "refused by git",
+    "echec_fetch": "fetch failed",
 }
 
 
@@ -190,11 +218,12 @@ def choix_numeros(saisie, candidats):
 
     « all » les rend tous ; sinon des numéros séparés par des virgules,
     chacun entre 1 et len(candidats). Un numéro hors de ces bornes ou qui
-    n'est pas un entier rend None.
+    n'est pas un entier rend None. Un numéro répété ne compte qu'une fois,
+    à sa première place : chaque élément se traite une seule fois.
     """
     if saisie == "all":
         return list(candidats)
-    choisis = []
+    numeros = []
     for morceau in saisie.split(","):
         try:
             numero = int(morceau)
@@ -202,8 +231,38 @@ def choix_numeros(saisie, candidats):
             return None
         if not 1 <= numero <= len(candidats):
             return None
-        choisis.append(candidats[numero - 1])
-    return choisis
+        if numero not in numeros:
+            numeros.append(numero)
+    return [candidats[n - 1] for n in numeros]
+
+
+def ligne_pull_request(pr):
+    """La ligne d'une pull request de `forge_pull_requests.lire` : icône,
+    numéro, titre, commentaires, puis revue et CI d'une ouverte, date de
+    fusion et présence locale d'une fusionnée. L'URL suit, sauf pour une
+    fermée ou une fusionnée déjà locale."""
+    morceaux = [f"{ICONES_ETAT[pr['etat']]} #{pr['numero']} {pr['titre']}"]
+    if pr.get("commentaires"):
+        morceaux.append(f"💬 {pr['commentaires']}")
+    url = pr.get("url")
+    if pr["etat"] in ("ouverte", "brouillon"):
+        morceaux.append(t(LIBELLES_REVUE[pr.get("revue")]))
+        if pr.get("ci"):
+            morceaux.append(t(LIBELLES_CI[pr["ci"]]))
+    elif pr["etat"] == "fusionnee":
+        morceaux.append(
+            f"{t('merged (pull request)')} {pr.get('fusionnee_le', '')}".rstrip()
+        )
+        if pr.get("local"):
+            morceaux.append(f"✓ {t('local')}")
+            url = ""
+        else:
+            morceaux.append(f"⬇ {t('to bring back')}")
+    else:
+        morceaux.append(t("closed (pull request)"))
+        url = ""
+    ligne = " · ".join(morceaux)
+    return f"{ligne} — {url}" if url else ligne
 
 
 class GitRepoMenuMixin:
@@ -254,6 +313,11 @@ class GitRepoMenuMixin:
                     "🧭 Sync from a forge: private manifest overlay"
                 )
             },
+            {
+                "prompt_description": t(
+                    "📥 Follow the pull requests of a forge"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -301,6 +365,8 @@ class GitRepoMenuMixin:
             self._git_repo_pull_requests()
         elif status == "18":
             self._git_repo_surcouche()
+        elif status == "19":
+            self._git_repo_suivre_pull_requests()
         else:
             print(t("Command not found !"))
 
@@ -2332,6 +2398,337 @@ class GitRepoMenuMixin:
                 f" {pr.get('html_url', '')}".rstrip()
             )
         return echecs
+
+    def _git_repo_suivre_pull_requests(self):
+        """Suit les pull requests de la forge d'un remote des clones.
+
+        Les dépôts lus sont les clones de la version active, plus ERPLibre
+        quand il porte le même remote. Le rapport montre, par dépôt, les
+        pull requests qui le concernent (`forge_pull_requests.lire`). Le
+        travail fusionné qui manque aux branches locales se rapatrie sur
+        demande, sous le verrou des passes, ERPLibre d'abord : un manifeste
+        fusionné peut changer la branche d'un clone. Le gel des projets
+        déjà gelés avance ensuite, après aperçu et confirmation. Aucun push,
+        aucune écriture sur la forge, aucune branche supprimée.
+
+        Rend le nombre d'échecs : dépôts illisibles et rapatriements
+        refusés."""
+        print(f"📥 {t('Follow the pull requests of a forge')}")
+        projets = self._git_repo_projets_absolus()
+        nom = self._git_repo_choisir_remote_forge(projets)
+        if not nom:
+            return 0
+        # La base se déduit des clones seuls : `base_du_remote` exige un
+        # propriétaire et un nom cohérents avec l'URL du remote.
+        base = forge_manifest.base_du_remote(projets, nom)
+        if not base:
+            print(
+                f"⚠  {t('The forge URL cannot be deduced from this remote.')}"
+            )
+            return 0
+        racine = push_remote.projet_racine(RACINE)
+        if racine is not None and repo_upgrade.url_du_remote(RACINE, nom):
+            racine["affiche"] = f"ERPLibre ({racine['branche']})"
+            racine["racine"] = True
+            projets = [racine] + projets
+        client = self._git_forge_client(base)
+        if client is None:
+            return 0
+        lus = self._git_repo_lire_pull_requests(client, projets, nom)
+        erreurs = sum(bool(err) for _p, _prs, err in lus)
+        if not self._git_repo_rapport_pull_requests(lus, nom):
+            return erreurs
+        return erreurs + self._git_repo_rapatrier_fusionnees(lus, nom)
+
+    def _git_repo_lire_pull_requests(self, client, projets, nom):
+        """[(projet, pull requests, erreur)] dans l'ordre de `projets`, lus
+        en parallèle. Une pull request fusionnée porte en plus « local » :
+        son commit est déjà dans la branche locale de sa base. Un dépôt
+        illisible a une erreur et aucune pull request ; les autres
+        continuent. Un clone sans le remote `nom` n'a jamais été poussé
+        vers cette forge, et une URL qui ne nomme pas de dépôt n'en désigne
+        aucun : l'un et l'autre sont omis, sans erreur, comme le fait
+        l'ouverture des pull requests."""
+
+        def lire(p):
+            depot = manifest_repo.depot_de_l_url(
+                repo_upgrade.url_du_remote(p["chemin"], nom)
+            )
+            if not depot:
+                return None
+            try:
+                prs = forge_pull_requests.lire(
+                    client,
+                    depot[0],
+                    depot[1],
+                    forge_pull_requests.branches_locales(p["chemin"]),
+                    p["branche"],
+                )
+            except forgejo_client.ErreurForgejo as exc:
+                if exc.statut == 404:
+                    return p, [], t("absent from the forge")
+                return p, [], forge_pull_requests.affichable(exc)
+            for pr in prs:
+                fusionnee = pr["etat"] == "fusionnee"
+                pr["local"] = fusionnee and forge_pull_requests.deja_local(
+                    p["chemin"], pr
+                )
+            return p, prs, ""
+
+        lus = push_remote._en_parallele(lire, projets, push_remote.PARALLELE)
+        return [lu for lu in lus if lu is not None]
+
+    def _git_repo_rapport_pull_requests(self, lus, nom):
+        """Imprime le rapport de `lus` : un bloc par dépôt qui a des pull
+        requests, les dépôts en erreur, puis le total par état. Rend le
+        nombre de pull requests."""
+        compte = dict.fromkeys(ICONES_ETAT, 0)
+        erreurs = 0
+        for p, prs, err in lus:
+            if err:
+                erreurs += 1
+                print(f"   ⚠  {p['affiche']}: {err}")
+                continue
+            if not prs:
+                continue
+            print(f"── {p['affiche']} ({nom} → {p['branche'] or '?'})")
+            for pr in prs:
+                compte[pr["etat"]] += 1
+                print(f"  {ligne_pull_request(pr)}")
+        total = sum(compte.values())
+        if total:
+            print(
+                f"   {total} {t('pull requests')}: "
+                + " · ".join(
+                    f"{ICONES_ETAT[e]} {n}" for e, n in compte.items()
+                )
+            )
+        else:
+            print(f"   {t('No pull request on the forge for these clones.')}")
+        if erreurs:
+            print(f"   ⚠  {erreurs} {t('repositories in error')}")
+        return total
+
+    def _git_repo_rapatrier_fusionnees(self, lus, nom):
+        """Propose de rapatrier la base des pull requests fusionnées dont
+        le commit manque à la branche locale, une ligne par (dépôt, base).
+        Le rapatriement et le gel tournent sous le verrou des passes du
+        checkout. Rend le nombre de rapatriements en échec."""
+        paires = {}
+        for p, prs, _err in lus:
+            for pr in prs:
+                if pr["etat"] != "fusionnee" or pr.get("local"):
+                    continue
+                if not pr["base"]:
+                    continue
+                cle = (p["chemin"], pr["base"])
+                paires.setdefault(cle, {"p": p, "base": pr["base"], "prs": []})
+                paires[cle]["prs"].append(pr["numero"])
+        if not paires:
+            return 0
+        candidats = list(paires.values())
+        print()
+        for i, c in enumerate(candidats, 1):
+            numeros = ", ".join(f"#{n}" for n in c["prs"])
+            print(
+                f"   {i}. {c['p']['affiche']}:"
+                f" {forge_pull_requests.affichable(c['base'])} ← {numeros}"
+            )
+        saisie = click.prompt(
+            f"💬 {t('Bring back the merged work? Numbers, all, or Enter for none')}",
+            default="",
+            show_default=False,
+        ).strip()
+        if not saisie:
+            print(f"↩️  {t('Cancelled: nothing was fetched.')}")
+            return 0
+        choisis = choix_numeros(saisie, candidats)
+        if choisis is None:
+            print(t("Command not found !"))
+            return 0
+        from script.git import repo_pull
+
+        try:
+            with repo_pull.verrou(RACINE):
+                return self._git_repo_rapatrier_choisis(choisis, nom)
+        except repo_pull.Occupe:
+            print(f"⚠  {t('Another pull is running on this checkout.')}")
+            return 1
+
+    def _git_repo_rapatrier_choisis(self, choisis, nom):
+        """Rapatrie chaque (dépôt, base) de `choisis` depuis le remote
+        `nom` : ERPLibre seul d'abord, puis les clones en parallèle, relus
+        quand ERPLibre a avancé. Avertit quand le commit rapatrié manque à
+        la branche de suivi du remote du manifeste : la synchronisation
+        suivante ramènerait la pointe de l'amont, sauf sous une surcouche
+        de ce remote. Puis avance le gel. Rend le nombre d'échecs."""
+        racines = [c for c in choisis if c["p"].get("racine")]
+        clones = [c for c in choisis if not c["p"].get("racine")]
+        resultats = [
+            (
+                c,
+                forge_pull_requests.rapatrier(
+                    c["p"]["chemin"], nom, c["base"]
+                ),
+            )
+            for c in racines
+        ]
+        if any(r["etat"] in ("creee", "avance") for _c, r in resultats):
+            relus = {p["chemin"]: p for p in self._git_repo_projets_absolus()}
+            clones = [
+                dict(c, p=relus.get(c["p"]["chemin"], c["p"])) for c in clones
+            ]
+        resultats += list(
+            zip(
+                clones,
+                push_remote._en_parallele(
+                    lambda c: forge_pull_requests.rapatrier(
+                        c["p"]["chemin"], nom, c["base"]
+                    ),
+                    clones,
+                    push_remote.PARALLELE,
+                ),
+            )
+        )
+        surcouche = nom in forge_manifest.surcouches(RACINE)
+        echecs = 0
+        rapatries = {}
+        for c, r in resultats:
+            p, etat = c["p"], r["etat"]
+            base = forge_pull_requests.affichable(c["base"])
+            libelle = t(RAPATRIEMENTS[etat])
+            if etat in ("creee", "avance"):
+                print(
+                    f"   ✅ {p['affiche']}: {base} → {r['sha'][:10]} ({libelle})"
+                )
+            elif etat == "a_jour":
+                print(f"   =  {p['affiche']}: {base} {libelle}")
+            else:
+                detail = r["detail"]
+                if detail == forge_pull_requests.NOM_INVALIDE:
+                    detail = t(detail)
+                detail = forge_pull_requests.affichable(detail)
+                print(
+                    f"   ⚠  {p['affiche']}: {base} {libelle} {detail}".rstrip()
+                )
+                echecs += etat != "en_avance"
+            if etat not in forge_pull_requests.ETATS_GELABLES:
+                continue
+            if not p.get("racine"):
+                # Deux bases pour un clone : celle du manifeste l'emporte.
+                if p["chemin"] not in rapatries or c["base"] == p["branche"]:
+                    rapatries[p["chemin"]] = (c["base"], r)
+                if surcouche:
+                    continue
+            _out, _err, code = repo_upgrade.git(
+                [
+                    "merge-base",
+                    "--is-ancestor",
+                    r["sha"],
+                    f"refs/remotes/{p['remote']}/{c['base']}",
+                ],
+                p["chemin"],
+            )
+            if code:
+                message = (
+                    t("push them to origin")
+                    if p.get("racine")
+                    else t(
+                        "the merged commits are on the forge only: a sync brings back the upstream tip; push them (entry 16, mode all) or use an overlay (entry 18)"
+                    )
+                )
+                print(f"      ⚠  {message}")
+        projets = list({c["p"]["chemin"]: c["p"] for c in clones}.values())
+        self._git_repo_avancer_gel(projets, rapatries)
+        return echecs
+
+    def _git_repo_avancer_gel(self, projets, rapatries):
+        """Avance le gel des `projets` déjà gelés vers le commit rapatrié
+        (`forge_pull_requests.candidats_gel`), quand le checkout a un gel.
+
+        Seul un commit publié à l'URL du manifeste s'écrit : `manifest/`
+        est versionné, et un gel que personne ne peut rapatrier casserait
+        l'installation suivante. L'aperçu montre chaque fichier et chaque
+        clé, puis l'écriture attend une confirmation, non par défaut."""
+        sources = gel_des_sources()
+        if not sources or not sources[0]:
+            return False
+        if not any(
+            r["etat"] in forge_pull_requests.ETATS_GELABLES
+            for _base, r in rapatries.values()
+        ):
+            return False
+        depart = os.getcwd()
+        try:
+            os.chdir(RACINE)
+            portee = git_freeze_manifest.freeze_sources()
+            lus = list(
+                dict.fromkeys(git_freeze_manifest.default_sources() + portee)
+            )
+            definitions = git_freeze_manifest.read_sources(portee)
+            fetch = git_freeze_manifest.read_remotes(
+                git_freeze_manifest.sans_surcouches(lus)
+            )
+        except OSError as exc:
+            print(f"⚠  {exc}")
+            return False
+        finally:
+            os.chdir(depart)
+        depots, ignores = forge_pull_requests.candidats_gel(
+            projets, rapatries, definitions, fetch
+        )
+        print(f"🧊 {t('Freeze the versions')}")
+        for p, motif in ignores:
+            print(f"   - {p['affiche']}: {t(motif)}")
+        if not depots:
+            print(f"   {t('Nothing changed.')}")
+            return False
+        publications = push_remote._en_parallele(
+            lambda d: freeze_resolution.publication(RACINE, d),
+            depots,
+            push_remote.PARALLELE,
+        )
+        publies = []
+        for d, (publie, detail) in zip(depots, publications):
+            if publie:
+                publies.append(d)
+                print(f"   ✅ {d['path']} — {t('pushed on')} {detail}")
+            elif publie is False:
+                print(
+                    f"   ⚠  {d['path']} — {t('not pushed, push it first:')}"
+                    f" {detail}"
+                )
+            else:
+                print(f"   ❌ {d['path']} — {detail}")
+        if not publies:
+            print(f"   {t('Nothing changed.')}")
+            return False
+        changes, _sans_base = freeze_resolution.mettre_a_jour_gel(
+            RACINE, publies, ecrire=False
+        )
+        if not changes:
+            print(f"   {t('Nothing changed.')}")
+            return False
+        for fichier, cles in changes.items():
+            print(f"   {fichier}: {', '.join(cles)}")
+        if not click.confirm(
+            t("Write these changes to the manifest files?"), default=False
+        ):
+            print(f"↩️  {t('Cancelled: nothing was written.')}")
+            return False
+        changes, sans_base = freeze_resolution.mettre_a_jour_gel(
+            RACINE, publies, ecrire=True
+        )
+        print(f"✅ {t('Freeze updated in:')} {', '.join(changes)}")
+        if sans_base:
+            print(
+                f"   {t('Their fork-upstream-freeze-revision is removed: make repo_freeze UPSTREAM=1 computes it again.')}"
+            )
+        print(f"   {t('Commit these manifests to share the new freeze.')}")
+        etat = etat_manifeste_local()
+        if etat and etat[0]:
+            print(f"   {t('Apply with: Switch to production.')}")
+        return True
 
     def _git_repo_comparer(self):
         """Compare deux gels, puis ouvre l'historique d'un projet sur demande.

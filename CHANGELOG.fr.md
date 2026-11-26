@@ -11,6 +11,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Ajouté
 
+- TODO › Repo › Suivre les pull requests d'une forge montre, pour chaque clone et pour ERPLibre, ses pull requests sur la forge (ouverte, brouillon, fusionnée, fermée) avec leurs commentaires, leur revue et l'état de leur CI. Il rapatrie le travail fusionné dans les branches locales sans en forcer aucune, puis propose d'avancer le gel des projets gelés ; il ne pousse rien et ne supprime aucune branche
 - `DECK_PLUGINS_OFF` dans `streamdeck.conf` et TODO › ERPLibre Home › Plugins on/off coupent des plugins du deck, ceux du programme du deck et ceux de `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` dans `streamdeck.conf` (0,5 à 60 secondes, 1 par défaut) règle la fréquence de rafraîchissement des pages de session ; TODO › ERPLibre Home › Rafraîchissement le modifie
 - Une passerelle cellulaire sur un modem USB, accessible depuis **Passerelle mobile** dans Odoo :

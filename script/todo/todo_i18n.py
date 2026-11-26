@@ -26783,6 +26783,115 @@ TRANSLATIONS = {
         "fr": "Une forge Forgejo reçoit le projet : le lancer",
         "en": "Forgejo forge receives the project: run it",
     },
+    # Dépôts — suivre les pull requests d'une forge
+    "📥 Follow the pull requests of a forge": {
+        "fr": "📥 Suivre les pull requests d'une forge",
+        "en": "📥 Follow the pull requests of a forge",
+    },
+    "Follow the pull requests of a forge": {
+        "fr": "Suivre les pull requests d'une forge",
+        "en": "Follow the pull requests of a forge",
+    },
+    "merged (pull request)": {
+        "fr": "fusionnée",
+        "en": "merged (pull request)",
+    },
+    "closed (pull request)": {
+        "fr": "fermée",
+        "en": "closed (pull request)",
+    },
+    "to bring back": {
+        "fr": "à rapatrier",
+        "en": "to bring back",
+    },
+    "absent from the forge": {
+        "fr": "absent de la forge",
+        "en": "absent from the forge",
+    },
+    "no remote": {
+        "fr": "aucun remote",
+        "en": "no remote",
+    },
+    "No pull request on the forge for these clones.": {
+        "fr": "Aucune pull request sur la forge pour ces clones.",
+        "en": "No pull request on the forge for these clones.",
+    },
+    "pull requests": {
+        "fr": "pull requests",
+        "en": "pull requests",
+    },
+    "repositories in error": {
+        "fr": "dépôts en erreur",
+        "en": "repositories in error",
+    },
+    "Bring back the merged work? Numbers, all, or Enter for none": {
+        "fr": "Rapatrier le travail fusionné ? Numéros, all, ou Entrée pour aucun",
+        "en": "Bring back the merged work? Numbers, all, or Enter for none",
+    },
+    "Cancelled: nothing was fetched.": {
+        "fr": "Annulé : rien n'a été récupéré.",
+        "en": "Cancelled: nothing was fetched.",
+    },
+    "branch created": {
+        "fr": "branche créée",
+        "en": "branch created",
+    },
+    "the local branch is ahead": {
+        "fr": "la branche locale est en avance",
+        "en": "the local branch is ahead",
+    },
+    "diverged: left as is": {
+        "fr": "divergée : laissée telle quelle",
+        "en": "diverged: left as is",
+    },
+    "undetermined (shallow clone): left as is": {
+        "fr": "indéterminé (clone superficiel) : laissée telle quelle",
+        "en": "undetermined (shallow clone): left as is",
+    },
+    "an operation is in progress": {
+        "fr": "une opération est en cours",
+        "en": "an operation is in progress",
+    },
+    "refused by git": {
+        "fr": "refusé par git",
+        "en": "refused by git",
+    },
+    "invalid branch name": {
+        "fr": "nom de branche invalide",
+        "en": "invalid branch name",
+    },
+    "the merged commits are on the forge only: a sync brings back the upstream tip; push them (entry 16, mode all) or use an overlay (entry 18)": {
+        "fr": "les commits fusionnés ne sont que sur la forge : une synchronisation ramène la pointe de l'amont ; les pousser (entrée 16, mode all) ou utiliser une surcouche (entrée 18)",
+        "en": "the merged commits are on the forge only: a sync brings back the upstream tip; push them (entry 16, mode all) or use an overlay (entry 18)",
+    },
+    "push them to origin": {
+        "fr": "les pousser vers origin",
+        "en": "push them to origin",
+    },
+    "not frozen": {
+        "fr": "non gelé",
+        "en": "not frozen",
+    },
+    "freeze already on this commit": {
+        "fr": "gel déjà sur ce commit",
+        "en": "freeze already on this commit",
+    },
+    "merged into another branch": {
+        "fr": "fusionnée dans une autre branche",
+        "en": "merged into another branch",
+    },
+    "no path in the manifest": {
+        "fr": "aucun path dans le manifeste",
+        "en": "no path in the manifest",
+    },
+    "the freeze is not an ancestor of the merged commit": {
+        "fr": "le gel n'est pas un ancêtre du commit fusionné",
+        "en": "the freeze is not an ancestor of the merged commit",
+    },
+    "freeze commit not in the clone": {
+        "fr": "commit gelé absent du clone",
+        "en": "freeze commit not in the clone",
+    },
 }
 
 
