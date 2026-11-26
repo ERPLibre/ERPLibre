@@ -403,6 +403,37 @@ fausserait le verdict : un rattachement automatique posé, une
 correspondance non vide, un deck réel, l'UDC de `dummy_hcd` pris par un
 autre gadget, un service deck qui tourne.
 
+## forge_push.py — une forge Forgejo dans une VM reçoit-elle tout le projet ?
+
+Une VM, créée par `script/forgejo/forge_vm.py`, le même déploiement que
+`TODO › Exécution › Répertoire git › Repo › Pousser les dépôts vers un remote`, en répondant `qemu` : Ubuntu 24.04,
+le code de CE checkout par un bundle git, `.venv.erplibre` seul, sans Odoo,
+puis Forgejo en push-to-create, inscriptions fermées, dépôts privés par
+défaut et push de clone superficiel accepté. La course attend cloud-init
+avant le premier téléchargement : la VM ne fait confiance au cache de
+téléchargement de l'hôte qu'une fois son autorité posée par cloud-init.
+
+Elle crée ensuite, privée, chaque organisation propriétaire des clones,
+pousse en parallèle et sans force le dépôt ERPLibre et chaque clone de la
+version d'Odoo active sur sa branche du manifeste, puis vérifie sur la forge
+que chaque branche porte le commit poussé. Aucun clone de l'hôte n'est
+modifié : le push vise une URL, aucun remote n'est ajouté. Le mot de passe
+administrateur est tiré au hasard et passé sur l'entrée standard ; le jeton
+ne vit que dans le processus.
+
+```
+./long_test/forge_push.py                  # toute la course
+./long_test/forge_push.py --projets 5      # ERPLibre et 5 clones
+./long_test/forge_push.py --dry-run        # le plan, rien de créé
+./long_test/forge_push.py --detruire       # défaire la dernière course
+```
+
+Il demande `sudo` pour créer la VM, et le cache de téléchargement quand il
+est installé. Le rapport, `~/.erplibre/longtest/forge-push-<horodatage>.json`,
+nomme la VM et son UUID avant tout push ; `--detruire` défait cette VM
+seule, et refuse tant qu'un test long tourne. Une VM qui existait déjà sous
+le même nom n'est jamais inscrite, donc jamais détruite.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un

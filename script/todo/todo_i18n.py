@@ -26778,6 +26778,15 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
+    # Tests longs — une forge Forgejo reçoit le projet
+    "Forgejo forge receives the project: plan only (dry-run)": {
+        "fr": "Une forge Forgejo reçoit le projet : le plan seulement (à blanc)",
+        "en": "Forgejo forge receives the project: plan only (dry-run)",
+    },
+    "Forgejo forge receives the project: run it": {
+        "fr": "Une forge Forgejo reçoit le projet : le lancer",
+        "en": "Forgejo forge receives the project: run it",
+    },
 }
 
 

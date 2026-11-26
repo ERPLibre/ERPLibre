@@ -44,6 +44,7 @@ SCRIPTS = (
     "install_erplibre_home.py",
     "qemu_cache.py",
     "usb_passthrough.py",
+    "forge_push.py",
 )
 
 # L'autorité du cache de téléchargement, telle que le service l'écrit sur
@@ -355,12 +356,11 @@ class Descente:
         session longue.
 
         `parent` : si l'hôte qui HÉBERGE la machine attendue cesse de
-        répondre, on abandonne tout de suite. Constaté : l'étage 1 a redémarré
-        pendant l'installation de l'étage 4, ce qui a éteint les étages 2, 3 et
-        4 d'un coup ; la descente a attendu son délai entier — quarante
-        minutes — un ssh qui ne pouvait plus aboutir, puis a rendu « jamais
-        joignable en ssh ». Le diagnostic était faux : la machine n'était pas
-        lente, sa MAISON n'existait plus.
+        répondre, on abandonne tout de suite. Un parent qui redémarre éteint
+        d'un coup tous les étages qu'il porte : sans ce contrôle, la descente
+        attendrait son délai entier un ssh qui ne peut plus aboutir, puis
+        conclurait « jamais joignable en ssh » — un diagnostic faux, la
+        machine n'étant pas lente mais privée de l'hôte qui la porte.
         """
         if self.dry_run:
             return 0
@@ -506,10 +506,9 @@ class Descente:
             self.dire("      ✗ la CLI QEMU/KVM a échoué")
             return None
         # L'entrée ~/.ssh/config, que la CLI n'écrit PAS. Sans elle,
-        # « ssh deep-pve-1 » rend « Name or service not known » et la descente
-        # attendait son plein délai avant de conclure « jamais joignable » —
-        # sur une VM qui répondait parfaitement à son adresse. Vécu au premier
-        # lancement réel.
+        # « ssh <alias> » rend « Name or service not known » et la descente
+        # attendrait son plein délai avant de conclure « jamais joignable »,
+        # sur une VM qui répond pourtant à son adresse.
         from script.todo.todo import TODO
 
         todo = TODO.__new__(TODO)
@@ -662,7 +661,7 @@ class Descente:
                     return self.rapport(interrompu=True)
 
             # En dry-run, aucune étape n'a été mesurée : les marquer
-            # « atteintes » produisait un rapport indiscernable d'une vraie
+            # « atteintes » produirait un rapport indiscernable d'une vraie
             # réussite, JSON compris, et un code de sortie 0.
             etage["etape"] = "plan" if self.dry_run else "termine"
             etage["ok"] = not self.dry_run
@@ -935,8 +934,8 @@ def profondeur_de(cible):
     """La profondeur d'imbrication de `cible`, d'après sa chaîne de rebonds.
 
     C'est la seule mesure dont on dispose de l'extérieur, et elle est exacte
-    pour les hôtes que nous avons déployés : c'est nous qui écrivons ces
-    entrées, un ProxyJump par étage.
+    pour les hôtes que ce module déploie : il écrit lui-même ces entrées, un
+    ProxyJump par étage.
     """
     try:
         from script.todo.todo import TODO

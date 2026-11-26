@@ -388,6 +388,36 @@ when the host already carries what it would remove or what would skew the
 verdict: an installed auto-reattach, a non-empty mapping, a real deck, the
 `dummy_hcd` UDC held by another gadget, a running deck service.
 
+## forge_push.py — does a Forgejo forge in a VM receive the whole project?
+
+One VM, created by `script/forgejo/forge_vm.py`, the same deployment as
+`TODO › Execute › Git repository › Repo › Push the repositories to a remote`, answering `qemu`: Ubuntu 24.04,
+the code of THIS checkout through a git bundle, `.venv.erplibre` only, no
+Odoo, then Forgejo with push-to-create, registration closed, private
+repositories by default and shallow pushes accepted. The run waits for
+cloud-init before the first download: the VM trusts the host's download
+cache only once cloud-init has installed its authority.
+
+Then it creates, private, every owner organisation of the clones, pushes in
+parallel and without force the ERPLibre repository and each clone of the
+active Odoo version on its manifest branch, and checks on the forge that each
+branch carries the pushed commit. No clone of the host is modified: the push
+targets a URL, no remote is added. The administrator password is drawn at
+random and passed on standard input; the token lives only in the process.
+
+```
+./long_test/forge_push.py                  # the whole run
+./long_test/forge_push.py --projets 5      # ERPLibre and 5 clones
+./long_test/forge_push.py --dry-run        # the plan, nothing created
+./long_test/forge_push.py --detruire       # undo the last run
+```
+
+It needs `sudo` to create the VM and the download cache when it is
+installed. The report, `~/.erplibre/longtest/forge-push-<timestamp>.json`,
+names the VM and its UUID before anything is pushed; `--detruire` undoes
+that VM alone, and refuses while a long test runs. A VM that already
+existed under the same name is never recorded, so never destroyed.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
@@ -818,6 +848,37 @@ refuse de partir quand l'hôte porte déjà ce qu'elle retirerait ou ce qui
 fausserait le verdict : un rattachement automatique posé, une
 correspondance non vide, un deck réel, l'UDC de `dummy_hcd` pris par un
 autre gadget, un service deck qui tourne.
+
+## forge_push.py — une forge Forgejo dans une VM reçoit-elle tout le projet ?
+
+Une VM, créée par `script/forgejo/forge_vm.py`, le même déploiement que
+`TODO › Exécution › Répertoire git › Repo › Pousser les dépôts vers un remote`, en répondant `qemu` : Ubuntu 24.04,
+le code de CE checkout par un bundle git, `.venv.erplibre` seul, sans Odoo,
+puis Forgejo en push-to-create, inscriptions fermées, dépôts privés par
+défaut et push de clone superficiel accepté. La course attend cloud-init
+avant le premier téléchargement : la VM ne fait confiance au cache de
+téléchargement de l'hôte qu'une fois son autorité posée par cloud-init.
+
+Elle crée ensuite, privée, chaque organisation propriétaire des clones,
+pousse en parallèle et sans force le dépôt ERPLibre et chaque clone de la
+version d'Odoo active sur sa branche du manifeste, puis vérifie sur la forge
+que chaque branche porte le commit poussé. Aucun clone de l'hôte n'est
+modifié : le push vise une URL, aucun remote n'est ajouté. Le mot de passe
+administrateur est tiré au hasard et passé sur l'entrée standard ; le jeton
+ne vit que dans le processus.
+
+```
+./long_test/forge_push.py                  # toute la course
+./long_test/forge_push.py --projets 5      # ERPLibre et 5 clones
+./long_test/forge_push.py --dry-run        # le plan, rien de créé
+./long_test/forge_push.py --detruire       # défaire la dernière course
+```
+
+Il demande `sudo` pour créer la VM, et le cache de téléchargement quand il
+est installé. Le rapport, `~/.erplibre/longtest/forge-push-<horodatage>.json`,
+nomme la VM et son UUID avant tout push ; `--detruire` défait cette VM
+seule, et refuse tant qu'un test long tourne. Une VM qui existait déjà sous
+le même nom n'est jamais inscrite, donc jamais détruite.
 
 ## Partir d'un hôte qu'on possède déjà
 

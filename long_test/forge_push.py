@@ -41,7 +41,12 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 sys.path.insert(0, os.path.join(RACINE, "long_test"))
 
-from descente import detruire_etage1, dire, drapeaux_cache  # noqa: E402
+from descente import (  # noqa: E402
+    autre_descente,
+    detruire_etage1,
+    dire,
+    drapeaux_cache,
+)
 
 from script.forgejo import forge_vm  # noqa: E402
 from script.git import forgejo_client as fc  # noqa: E402
@@ -386,7 +391,15 @@ def dernier_rapport():
 
 
 def detruire(dry_run=False):
-    """Défait la VM du dernier rapport, par son UUID."""
+    """Défait la VM du dernier rapport, par son UUID. Refuse tant qu'un
+    test long tourne : sa course peut être celle du dernier rapport."""
+    autres = autre_descente()
+    if autres:
+        dire(
+            f"⛔ un test long tourne ({', '.join(map(str, autres))}) :"
+            " rien ne sera défait."
+        )
+        return 1
     chemin, rapport = dernier_rapport()
     if not rapport:
         dire("rien à défaire")

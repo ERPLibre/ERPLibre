@@ -383,6 +383,36 @@ when the host already carries what it would remove or what would skew the
 verdict: an installed auto-reattach, a non-empty mapping, a real deck, the
 `dummy_hcd` UDC held by another gadget, a running deck service.
 
+## forge_push.py — does a Forgejo forge in a VM receive the whole project?
+
+One VM, created by `script/forgejo/forge_vm.py`, the same deployment as
+`TODO › Execute › Git repository › Repo › Push the repositories to a remote`, answering `qemu`: Ubuntu 24.04,
+the code of THIS checkout through a git bundle, `.venv.erplibre` only, no
+Odoo, then Forgejo with push-to-create, registration closed, private
+repositories by default and shallow pushes accepted. The run waits for
+cloud-init before the first download: the VM trusts the host's download
+cache only once cloud-init has installed its authority.
+
+Then it creates, private, every owner organisation of the clones, pushes in
+parallel and without force the ERPLibre repository and each clone of the
+active Odoo version on its manifest branch, and checks on the forge that each
+branch carries the pushed commit. No clone of the host is modified: the push
+targets a URL, no remote is added. The administrator password is drawn at
+random and passed on standard input; the token lives only in the process.
+
+```
+./long_test/forge_push.py                  # the whole run
+./long_test/forge_push.py --projets 5      # ERPLibre and 5 clones
+./long_test/forge_push.py --dry-run        # the plan, nothing created
+./long_test/forge_push.py --detruire       # undo the last run
+```
+
+It needs `sudo` to create the VM and the download cache when it is
+installed. The report, `~/.erplibre/longtest/forge-push-<timestamp>.json`,
+names the VM and its UUID before anything is pushed; `--detruire` undoes
+that VM alone, and refuses while a long test runs. A VM that already
+existed under the same name is never recorded, so never destroyed.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you

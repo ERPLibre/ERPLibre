@@ -33,6 +33,7 @@ SCRIPTS_DEFAISABLES = (
     "install_nixos.py",
     "install_erplibre_home.py",
     "usb_passthrough.py",
+    "forge_push.py",
 )
 
 # Le répertoire des tests longs, à la racine du dépôt.
@@ -150,6 +151,16 @@ class LongTestMenuMixin:
                     "USB passthrough, emulated deck: run it"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Forgejo forge receives the project: plan only (dry-run)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Forgejo forge receives the project: run it"
+                )
+            },
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
         # Ses entrées sont donc traitées à part plutôt que pliées dans la
@@ -171,6 +182,11 @@ class LongTestMenuMixin:
         usb = {
             "13": "--dry-run",
             "14": "",
+        }
+        # La forge Forgejo : une VM, ni profondeur ni hôte de départ.
+        forge = {
+            "15": "--dry-run",
+            "16": "",
         }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
@@ -200,6 +216,9 @@ class LongTestMenuMixin:
                 continue
             if status in usb:
                 self._longtest_run("usb_passthrough.py", usb[status])
+                continue
+            if status in forge:
+                self._longtest_run("forge_push.py", forge[status])
                 continue
             if status in scripts:
                 script, demander = scripts[status]
@@ -320,10 +339,11 @@ class LongTestMenuMixin:
     def _longtest_depth(self):
         """Profondeur demandée. Trois par défaut, parce que trois marche.
 
-        Mesuré sur cette machine : les trois premiers étages prennent 280, 495
-        et 1 064 secondes — une demi-heure. Le quatrième a demandé 7 h 18
-        d'installation et 4 h 20 d'amorçage, et les suivants se comptent en
-        jours. Dix par défaut promettait ce qu'aucune machine ne tient.
+        Sur un hôte à virtualisation imbriquée, les trois premiers étages
+        prennent de l'ordre de 280, 495 et 1 064 secondes — une demi-heure.
+        Le quatrième demande des heures d'installation et d'amorçage, et les
+        suivants se comptent en jours. Dix par défaut promettrait ce
+        qu'aucune machine ne tient.
         """
         brut = input(f"{t('Depth (default 3): ')}").strip()
         return int(brut) if brut.isdigit() and int(brut) > 0 else 3
