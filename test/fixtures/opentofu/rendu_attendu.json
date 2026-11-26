@@ -9,7 +9,11 @@
     "proxmox": {
       "endpoint": "https://pve.example.test:8006",
       "insecure": true,
-      "ssh": {"agent": true, "username": "erplibre"}
+      "ssh": {
+        "agent": true,
+        "username": "erplibre",
+        "node": [{"name": "pve1", "address": "pve.example.test"}]
+      }
     }
   },
   "resource": {

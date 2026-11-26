@@ -120,6 +120,27 @@ class TestRendu(unittest.TestCase):
             "proxmox_virtual_environment_download_file", json.dumps(_simple())
         )
 
+    def test_adresse_ssh_du_noeud_est_celle_de_l_api(self):
+        """Sans bloc `node`, bpg prend la première interface du nœud qui
+        porte une IPv4 : un pont interne sans passerelle l'emporte, et
+        l'écriture du snippet part vers une adresse injoignable."""
+        ssh = _simple()["provider"]["proxmox"]["ssh"]
+        self.assertEqual(
+            ssh["node"], [{"name": "pve1", "address": "pve.example.test"}]
+        )
+
+    def test_adresse_ssh_ipv4_et_ipv6(self):
+        for url, hote in (
+            ("https://192.0.2.7:8006/", "192.0.2.7"),
+            ("https://[2001:db8::7]:8006/", "2001:db8::7"),
+        ):
+            with self.subTest(url=url):
+                spec = _spec(_vm("a-1", 201))
+                spec["cible"]["api_url"] = url
+                rendu = rp.rendre(spec, {"a-1": _donnees()}, CONF)
+                noeud = rendu["provider"]["proxmox"]["ssh"]["node"][0]
+                self.assertEqual(noeud["address"], hote)
+
     def test_pas_de_registre_hashicorp(self):
         self.assertNotIn("registry.terraform.io", json.dumps(_simple()))
 

@@ -10,6 +10,7 @@ des objets, et une référence entre ressources une chaîne `${...}`.
 """
 
 import re
+from urllib.parse import urlsplit
 
 from script.todo.todo_i18n import t
 
@@ -24,6 +25,22 @@ def _assainir(nom):
 def _taille_gio(disque):
     """Entier de Gio d'une taille « 20G »."""
     return int(disque[:-1])
+
+
+def _ssh(spec):
+    """Bloc `ssh` du fournisseur : agent, compte, et l'adresse du nœud.
+
+    L'adresse est l'hôte de `api_url`, celle que l'opérateur joint déjà.
+    Sans bloc `node`, bpg prend la première interface du nœud qui porte une
+    IPv4, et un pont interne sans passerelle est de celles-là : l'écriture
+    des snippets partirait vers une adresse injoignable de l'opérateur.
+    """
+    cible = spec["cible"]
+    ssh = {"agent": True, "username": spec["compte"]["user"]}
+    adresse = urlsplit(cible.get("api_url") or "").hostname
+    if adresse and cible.get("noeud"):
+        ssh["node"] = [{"name": cible["noeud"], "address": adresse}]
+    return ssh
 
 
 def _image(cible, donnees):
@@ -169,7 +186,7 @@ def rendre(spec, donnees, conf):
             "proxmox": {
                 "endpoint": cible["api_url"],
                 "insecure": cible["insecure"],
-                "ssh": {"agent": True, "username": spec["compte"]["user"]},
+                "ssh": _ssh(spec),
             }
         },
         "resource": {
