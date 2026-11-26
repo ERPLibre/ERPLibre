@@ -12,13 +12,11 @@ indépendants du moteur.
 """
 
 import json
-import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
-from script.opentofu import coffre, rendu_proxmox, resolution
+from script.opentofu import coffre, outil, rendu_proxmox, resolution
 from script.opentofu import spec as spec_parc
 from script.opentofu.moteur import Changement, Moteur, Resultat, enregistrer
 from script.todo.todo_i18n import t
@@ -233,13 +231,7 @@ class MoteurTofu(Moteur):
         """Chemin de `tofu` : celui donné, le PATH, puis ~/.local/bin."""
         if self._binaire:
             return self._binaire
-        trouve = shutil.which("tofu")
-        if trouve:
-            return trouve
-        local = Path.home() / ".local" / "bin" / "tofu"
-        if local.is_file() and os.access(local, os.X_OK):
-            return str(local)
-        return None
+        return outil.trouver_tofu()
 
     def dossier_travail(self, spec):
         """`<racine>/<parc>/.tofu` ; ValueError sur un nom de parc invalide."""

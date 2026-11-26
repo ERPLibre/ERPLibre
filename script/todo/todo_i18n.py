@@ -26412,6 +26412,38 @@ TRANSLATIONS = {
             "OpenTofu menu."
         ),
     },
+    "Unsupported architecture for tofu: {arch}": {
+        "fr": "Architecture non prise en charge pour tofu : {arch}",
+        "en": "Unsupported architecture for tofu: {arch}",
+    },
+    "tofu download failed: {err}": {
+        "fr": "Le téléchargement de tofu a échoué : {err}",
+        "en": "tofu download failed: {err}",
+    },
+    "GPG signature of {nom} is not valid for the pinned key.": {
+        "fr": "La signature GPG de {nom} n'est pas valide pour la clé épinglée.",
+        "en": "GPG signature of {nom} is not valid for the pinned key.",
+    },
+    "Checksum of {nom} is missing or does not match.": {
+        "fr": "La somme de {nom} est absente ou ne correspond pas.",
+        "en": "Checksum of {nom} is missing or does not match.",
+    },
+    "Archive does not hold a usable tofu: {err}": {
+        "fr": "L'archive ne contient pas de tofu utilisable : {err}",
+        "en": "Archive does not hold a usable tofu: {err}",
+    },
+    "Installed tofu reports {trouvee}, expected {attendue}.": {
+        "fr": "Le tofu installé annonce {trouvee}, attendu {attendue}.",
+        "en": "Installed tofu reports {trouvee}, expected {attendue}.",
+    },
+    "tofu {version} installed in {dest}.": {
+        "fr": "tofu {version} installé dans {dest}.",
+        "en": "tofu {version} installed in {dest}.",
+    },
+    "Cannot install tofu: {err}": {
+        "fr": "Impossible d'installer tofu : {err}",
+        "en": "Cannot install tofu: {err}",
+    },
     "tofu version -json failed: {err}": {
         "fr": "tofu version -json a échoué : {err}",
         "en": "tofu version -json failed: {err}",

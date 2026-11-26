@@ -28,6 +28,7 @@ sys.argv = ["todo.py"]
 from script.opentofu import coffre as cf  # noqa: E402
 from script.opentofu import moteur as mt  # noqa: E402
 from script.opentofu import moteur_tofu as mtt  # noqa: E402
+from script.opentofu import outil  # noqa: E402
 from script.opentofu import spec as sp  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
@@ -561,7 +562,7 @@ class TestLectures(_Base):
 
     def test_indisponible_sans_binaire(self):
         moteur = mtt.MoteurTofu(racine=self.racine)
-        with mock.patch.object(mtt.shutil, "which", return_value=None):
+        with mock.patch.object(outil.shutil, "which", return_value=None):
             with mock.patch.object(mtt.Path, "home", return_value=self.tmp):
                 ok, raison = moteur.disponible()
                 res, _ = moteur.planifier(self.spec, self.lignes.append)
@@ -575,7 +576,7 @@ class TestLectures(_Base):
         local.write_text("#!/bin/sh\n")
         local.chmod(stat.S_IRWXU)
         moteur = mtt.MoteurTofu(racine=self.racine)
-        with mock.patch.object(mtt.shutil, "which", return_value=None):
+        with mock.patch.object(outil.shutil, "which", return_value=None):
             with mock.patch.object(mtt.Path, "home", return_value=self.tmp):
                 self.assertEqual(moteur.binaire(), str(local))
 
