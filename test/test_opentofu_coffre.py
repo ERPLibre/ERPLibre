@@ -58,16 +58,16 @@ class TestCoffre(unittest.TestCase):
 
     def test_environnement(self):
         cf.ecrire("parc-a", {"jeton": JETON}, self.racine)
-        base = {"PATH": "/bin"}
+        base = {"PATH": "/doublure/bin"}
         env = cf.environnement("parc-a", base, self.racine)
         self.assertEqual(env["PROXMOX_VE_API_TOKEN"], JETON)
-        self.assertEqual(env["PATH"], "/bin")
+        self.assertEqual(env["PATH"], "/doublure/bin")
         self.assertEqual(env["TF_IN_AUTOMATION"], "1")
         self.assertEqual(env["TF_INPUT"], "0")
         phrase = cf.lire("parc-a", self.racine)["phrase_etat"]
         self.assertIn(phrase, env["TF_ENCRYPTION"])
         self.assertTrue(Path(env["TF_PLUGIN_CACHE_DIR"]).is_dir())
-        self.assertEqual(base, {"PATH": "/bin"})
+        self.assertEqual(base, {"PATH": "/doublure/bin"})
 
     def test_environnement_sans_jeton(self):
         env = cf.environnement("parc-a", {}, self.racine)
@@ -89,12 +89,12 @@ class TestCoffre(unittest.TestCase):
             "TF_LOG_PATH": "/tmp/trace.log",
             "TF_LOG_CORE": "TRACE",
             "TF_LOG_PROVIDER": "TRACE",
-            "PATH": "/bin",
+            "PATH": "/doublure/bin",
         }
         env = cf.environnement("parc-a", base, self.racine)
         for nom in ("TF_LOG", "TF_LOG_PATH", "TF_LOG_CORE", "TF_LOG_PROVIDER"):
             self.assertNotIn(nom, env)
-        self.assertEqual(env["PATH"], "/bin")
+        self.assertEqual(env["PATH"], "/doublure/bin")
         self.assertIn("TF_LOG", base)
 
     def test_environnement_ne_touche_pas_os_environ(self):

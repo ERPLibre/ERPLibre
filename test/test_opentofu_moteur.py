@@ -10,6 +10,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from script.opentofu import moteur as mo  # noqa: E402
+from script.todo import todo_i18n  # noqa: E402
+
+_LANGUE_ORIGINE = todo_i18n._current_lang
+
+
+def setUpModule():
+    """Fixe « fr » en mémoire. set_lang() écrirait env_var.sh, qui est suivi."""
+    todo_i18n._current_lang = "fr"
+
+
+def tearDownModule():
+    todo_i18n._current_lang = _LANGUE_ORIGINE
 
 
 class TestMoteur(unittest.TestCase):
