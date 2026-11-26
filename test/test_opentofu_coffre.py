@@ -97,6 +97,33 @@ class TestCoffre(unittest.TestCase):
         self.assertEqual(env["PATH"], "/doublure/bin")
         self.assertIn("TF_LOG", base)
 
+    def test_environnement_retire_tout_proxmox_ve_herite(self):
+        base = {
+            "PROXMOX_VE_ENDPOINT": "https://autre.invalid:8006/",
+            "PROXMOX_VE_INSECURE": "false",
+            "PROXMOX_VE_SSH_USERNAME": "autre",
+            "PROXMOX_VE_API_TOKEN": "tofu@pve!autre=AMBIANT",
+            "PATH": "/doublure/bin",
+        }
+        cf.ecrire("parc-a", {"jeton": JETON}, self.racine)
+        env = cf.environnement("parc-a", base, self.racine)
+        herites = sorted(k for k in env if k.startswith("PROXMOX_VE_"))
+        self.assertEqual(herites, ["PROXMOX_VE_API_TOKEN"])
+        self.assertEqual(env["PROXMOX_VE_API_TOKEN"], JETON)
+        self.assertIn("PROXMOX_VE_SSH_USERNAME", base)
+
+    def test_phrase_jamais_creee_a_cote_d_un_etat(self):
+        """Une phrase neuve ne déchiffre pas un état chiffré par la perdue."""
+        etat = self.racine / "parc-a" / ".tofu" / "terraform.tfstate"
+        etat.parent.mkdir(parents=True)
+        etat.write_text("{}")
+        with self.assertRaises(ValueError) as e:
+            cf.phrase_etat("parc-a", self.racine)
+        self.assertIn("README", str(e.exception))
+        self.assertEqual(cf.lire("parc-a", self.racine), {})
+        cf.ecrire("parc-a", {"phrase_etat": "p" * 20}, self.racine)
+        self.assertEqual(cf.phrase_etat("parc-a", self.racine), "p" * 20)
+
     def test_environnement_ne_touche_pas_os_environ(self):
         avant = dict(os.environ)
         cf.environnement("parc-a", None, self.racine)

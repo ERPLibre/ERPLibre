@@ -101,6 +101,29 @@ class TestMoteur(unittest.TestCase):
         finally:
             mo._REGISTRE.pop("faux")
 
+    def test_genres_de_ressource(self):
+        self.assertEqual(
+            (mo.RESSOURCE_VM, mo.RESSOURCE_CLOUD_INIT, mo.RESSOURCE_IMAGE),
+            ("vm", "cloud-init", "image"),
+        )
+
+    def test_contrat_du_constructeur(self):
+        """Tout moteur accepte `racine` et `executer` par mot-clé."""
+
+        class Minimal(mo.Moteur):
+            nom = "minimal"
+            disponible = preparer = planifier = appliquer = None
+            detruire = etat = sorties = None
+
+        executer = object()
+        m = Minimal(racine="/doublure/parcs", executer=executer, autre=1)
+        self.assertEqual(m.racine, "/doublure/parcs")
+        self.assertIs(m.executer, executer)
+        self.assertIsNone(Minimal().executer)
+
+    def test_moteurs_connus(self):
+        self.assertIn("tofu", mo.moteurs_connus())
+        self.assertNotIn("inexistant", mo.moteurs_connus())
 
     def test_moteur_tofu_charge_a_la_demande(self):
         # Processus neuf : aucun module n'a encore importé moteur_tofu.

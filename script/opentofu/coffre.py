@@ -33,6 +33,7 @@ _PHRASE_MIN = 16
 # passer par `masquer`.
 _TRACES = ("TF_LOG", "TF_LOG_PATH", "TF_LOG_CORE", "TF_LOG_PROVIDER")
 _MASQUE = "***"
+_PREFIXE_PROXMOX = "PROXMOX_VE_"
 
 
 def charger_conf(chemin=None):
@@ -85,10 +86,25 @@ def ecrire(nom, donnees, racine=RACINE_PARCS):
 
 
 def phrase_etat(nom, racine=RACINE_PARCS):
-    """Phrase de chiffrement de l'état ; créée au premier appel, puis stable."""
+    """Phrase de chiffrement de l'état ; créée au premier appel, puis stable.
+
+    Lève ValueError (message traduit, qui renvoie au remède du README) au
+    lieu d'en créer une quand le parc a déjà un `.tofu/terraform.tfstate` :
+    une phrase neuve ne déchiffre pas l'état chiffré par celle qui manque,
+    et l'écrire masquerait la perte.
+    """
     donnees = lire(nom, racine)
     phrase = donnees.get("phrase_etat")
     if not phrase:
+        etat = dossier_parc(nom, racine) / ".tofu" / "terraform.tfstate"
+        if etat.exists():
+            raise ValueError(
+                t(
+                    "Fleet {nom} has a tofu state but no state passphrase: a "
+                    "new one cannot read it. See the lost secrets.json remedy "
+                    "in script/opentofu/README.md."
+                ).format(nom=nom)
+            )
         phrase = secrets.token_urlsafe(32)
         donnees["phrase_etat"] = phrase
         ecrire(nom, donnees, racine)
@@ -135,17 +151,18 @@ def environnement(nom, base=None, racine=RACINE_PARCS):
     """Copie de `base` (os.environ par défaut) prête pour un sous-processus tofu.
 
     Porte le jeton Proxmox quand il est stocké, le chiffrement de l'état, le
-    cache partagé des fournisseurs et les réglages non interactifs. Sans jeton
-    stocké, un `PROXMOX_VE_API_TOKEN` hérité est retiré : il appartient à un
-    autre parc ou à un autre hôte. Les variables de trace `TF_LOG*` héritées
-    sont retirées aussi. Ni `base` ni os.environ ne sont modifiés.
+    cache partagé des fournisseurs et les réglages non interactifs. Toute
+    variable `PROXMOX_VE_*` héritée est retirée : bpg la lit en repli de son
+    bloc `provider`, et elle appartient à un autre parc ou à un autre hôte.
+    Les variables de trace `TF_LOG*` héritées sont retirées aussi. Ni `base`
+    ni os.environ ne sont modifiés.
     """
     env = dict(os.environ if base is None else base)
+    for nom_var in [k for k in env if k.startswith(_PREFIXE_PROXMOX)]:
+        del env[nom_var]
     jeton = lire(nom, racine).get("jeton")
     if jeton:
         env["PROXMOX_VE_API_TOKEN"] = jeton
-    else:
-        env.pop("PROXMOX_VE_API_TOKEN", None)
     for nom_var in _TRACES:
         env.pop(nom_var, None)
     env["TF_ENCRYPTION"] = tf_encryption(phrase_etat(nom, racine))

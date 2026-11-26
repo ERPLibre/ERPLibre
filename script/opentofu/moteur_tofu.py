@@ -18,7 +18,15 @@ from pathlib import Path
 
 from script.opentofu import coffre, outil, rendu_proxmox, resolution
 from script.opentofu import spec as spec_parc
-from script.opentofu.moteur import Changement, Moteur, Resultat, enregistrer
+from script.opentofu.moteur import (
+    RESSOURCE_CLOUD_INIT,
+    RESSOURCE_IMAGE,
+    RESSOURCE_VM,
+    Changement,
+    Moteur,
+    Resultat,
+    enregistrer,
+)
 from script.todo.todo_i18n import t
 
 _DOCUMENT = "main.tf.json"
@@ -30,9 +38,9 @@ _LONGUEUR_MAX = 60
 
 # Type de ressource bpg → (genre affiché, préfixe posé par `rendu_proxmox`).
 _RESSOURCES = {
-    "proxmox_virtual_environment_vm": ("vm", "vm_"),
-    "proxmox_virtual_environment_file": ("cloud-init", "ud_"),
-    "proxmox_download_file": ("image", "img_"),
+    "proxmox_virtual_environment_vm": (RESSOURCE_VM, "vm_"),
+    "proxmox_virtual_environment_file": (RESSOURCE_CLOUD_INIT, "ud_"),
+    "proxmox_download_file": (RESSOURCE_IMAGE, "img_"),
 }
 _ACTIONS = {
     ("create",): "creer",
@@ -161,7 +169,7 @@ def _nommer(type_ressource, nom):
     genre, prefixe = _RESSOURCES.get(type_ressource, (type_ressource, ""))
     if prefixe and nom.startswith(prefixe):
         nom = nom[len(prefixe) :]
-    if genre in ("vm", "cloud-init"):
+    if genre in (RESSOURCE_VM, RESSOURCE_CLOUD_INIT):
         nom = nom.replace("_", "-")
     return nom, genre
 
@@ -220,10 +228,9 @@ class MoteurTofu(Moteur):
         mod_qemu=None,
         racine=spec_parc.RACINE_PARCS,
     ):
+        super().__init__(racine=Path(racine), executer=executer)
         self._binaire = binaire
-        self._executer = executer
         self._mod_qemu = mod_qemu
-        self.racine = Path(racine)
 
     # Outil et dossiers
 
@@ -320,6 +327,7 @@ class MoteurTofu(Moteur):
                 [binaire, *args],
                 cwd=dossier,
                 env=env,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -355,6 +363,7 @@ class MoteurTofu(Moteur):
                 [binaire, *args],
                 cwd=dossier,
                 env=env,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -392,7 +401,7 @@ class MoteurTofu(Moteur):
         if erreurs:
             raise ValueError("\n".join(erreurs))
         hote = spec["cible"]["hote"]
-        executer = self._executer or resolution.executer_ssh(hote)
+        executer = self.executer or resolution.executer_ssh(hote)
         neuve, change = resolution.resoudre(
             spec,
             executer,
@@ -416,14 +425,22 @@ class MoteurTofu(Moteur):
         return document
 
     def _init_requis(self, dossier, providers):
-        """Vrai sans `.terraform/` ou si les fournisseurs ont changé."""
-        if not self._initialise(dossier):
-            return True
+        """`(requis, upgrade)` du `tofu init` à lancer avant le plan.
+
+        Requis sans `.terraform/` ou si les fournisseurs diffèrent de ceux du
+        dernier init. `upgrade` quand ce dernier init est connu et différait :
+        `.terraform.lock.hcl` épingle l'ancienne version, qu'un init sans
+        `-upgrade` refuse de quitter.
+        """
+        chemin = dossier / _PROVIDERS_INIT
         try:
-            connus = json.loads((dossier / _PROVIDERS_INIT).read_text("utf-8"))
+            connus = json.loads(chemin.read_text("utf-8"))
         except (OSError, ValueError):
-            return True
-        return connus != providers
+            connus = None
+        change = chemin.exists() and connus != providers
+        if not self._initialise(dossier) or connus != providers:
+            return True, change
+        return False, False
 
     def _preparer(self, spec, journal):
         """Résolution, rendu, puis `tofu init` quand il est requis.
@@ -442,10 +459,12 @@ class MoteurTofu(Moteur):
             return Resultat(False, t("Invalid spec: {err}").format(err=exc), 1)
         dossier = self.dossier_travail(spec)
         providers = document["terraform"]["required_providers"]
-        if self._init_requis(dossier, providers):
-            res, _ = self._diffuser(
-                spec, ["init", "-input=false", "-no-color"], journal
-            )
+        requis, upgrade = self._init_requis(dossier, providers)
+        if requis:
+            args = ["init", "-input=false", "-no-color"]
+            if upgrade:
+                args.append("-upgrade")
+            res, _ = self._diffuser(spec, args, journal)
             if not res.ok:
                 return res
             (dossier / _PROVIDERS_INIT).write_text(
@@ -456,26 +475,15 @@ class MoteurTofu(Moteur):
     # Interface Moteur
 
     def disponible(self):
-        """`(True, version)` lue par `tofu version -json`, sinon le remède."""
+        """`(True, version)` lue par `outil.version_tofu`, sinon le remède."""
         binaire = self.binaire()
         if not binaire:
             return False, _remede_absent()
-        try:
-            res = subprocess.run(
-                [binaire, "version", "-json"],
-                capture_output=True,
-                text=True,
-                timeout=30,
+        version = outil.version_tofu(binaire)
+        if not version:
+            return False, t("Cannot read the version of {chemin}.").format(
+                chemin=binaire
             )
-            version = json.loads(res.stdout)["terraform_version"]
-        except (
-            OSError,
-            subprocess.SubprocessError,
-            ValueError,
-            KeyError,
-            TypeError,
-        ) as exc:
-            return False, t("tofu version -json failed: {err}").format(err=exc)
         return True, version
 
     def preparer(self, spec):

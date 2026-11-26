@@ -17,6 +17,11 @@ from dataclasses import dataclass, field
 from script.todo.todo_i18n import t
 
 ACTIONS = ("creer", "modifier", "remplacer", "detruire")
+# Genres de ressource d'un `Changement` : la VM elle-même, son fichier
+# cloud-init, l'image disque qu'elle importe.
+RESSOURCE_VM = "vm"
+RESSOURCE_CLOUD_INIT = "cloud-init"
+RESSOURCE_IMAGE = "image"
 
 
 @dataclass
@@ -49,6 +54,17 @@ class Moteur(abc.ABC):
 
     nom: str = ""
 
+    def __init__(self, racine=None, executer=None, **kw):
+        """Tout moteur accepte ces deux mots-clés, que `moteur_pour` relaie.
+
+        `racine` : dossier des parcs (None : celui du moteur). `executer` :
+        exécuteur `cmd -> (code, sortie)` des commandes de l'hôte, élévation
+        comprise (None : le moteur le bâtit depuis la spec). Les autres
+        mots-clés sont propres à chaque moteur.
+        """
+        self.racine = racine
+        self.executer = executer
+
     @abc.abstractmethod
     def disponible(self):
         """Rend `(ok, raison)` : le moteur peut-il tourner ici."""
@@ -59,7 +75,12 @@ class Moteur(abc.ABC):
 
     @abc.abstractmethod
     def planifier(self, spec, journal):
-        """Rend `(Resultat, [Changement])` sans rien modifier."""
+        """Rend `(Resultat, [Changement])` sans toucher au parc.
+
+        Effet de bord : les champs vides que la résolution remplit sont
+        écrits dans le dict `spec` reçu, en place, et la spec résolue est
+        sauvée ; l'appelant affiche et réutilise ces valeurs.
+        """
 
     @abc.abstractmethod
     def appliquer(self, spec, journal):

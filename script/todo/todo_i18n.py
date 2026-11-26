@@ -26480,10 +26480,6 @@ TRANSLATIONS = {
         "fr": "Impossible d'installer tofu : {err}",
         "en": "Cannot install tofu: {err}",
     },
-    "tofu version -json failed: {err}": {
-        "fr": "tofu version -json a échoué : {err}",
-        "en": "tofu version -json failed: {err}",
-    },
     "Cannot run tofu: {err}": {
         "fr": "Impossible de lancer tofu : {err}",
         "en": "Cannot run tofu: {err}",
@@ -26935,6 +26931,14 @@ TRANSLATIONS = {
     "Target field {champ} must be empty or a port number.": {
         "fr": "Le champ de cible {champ} doit être vide ou un numéro de port.",
         "en": "Target field {champ} must be empty or a port number.",
+    },
+    "Cannot read the version of {chemin}.": {
+        "fr": "Version de {chemin} illisible.",
+        "en": "Cannot read the version of {chemin}.",
+    },
+    "Fleet {nom} has a tofu state but no state passphrase: a new one cannot read it. See the lost secrets.json remedy in script/opentofu/README.md.": {
+        "fr": "Le parc {nom} a un état tofu mais pas de phrase d'état : une phrase neuve ne le lirait pas. Voir le remède du secrets.json perdu dans script/opentofu/README.fr.md.",
+        "en": "Fleet {nom} has a tofu state but no state passphrase: a new one cannot read it. See the lost secrets.json remedy in script/opentofu/README.md.",
     },
 }
 

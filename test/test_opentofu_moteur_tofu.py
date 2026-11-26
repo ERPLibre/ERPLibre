@@ -345,10 +345,44 @@ class TestPlanifier(_Base):
         self.assertEqual(
             self.sous_commandes(), ["init", "plan", "show", "plan", "show"]
         )
+        self.assertNotIn("-upgrade", self.appels()[0]["args"])
         dossier = self.moteur.dossier_travail(self.spec)
         (dossier / ".init_providers.json").write_text('{"autre": {}}')
         self.planifier()
         self.assertEqual(self.sous_commandes()[5], "init")
+        # Fournisseur changé : le verrou `.terraform.lock.hcl` épingle
+        # l'ancien, et seul `-upgrade` le laisse monter.
+        self.assertIn("-upgrade", self.appels()[5]["args"])
+
+    def test_init_sans_upgrade_quand_rien_n_est_connu(self):
+        self.planifier()
+        dossier = self.moteur.dossier_travail(self.spec)
+        (dossier / ".init_providers.json").unlink()
+        self.planifier()
+        inits = [a["args"] for a in self.appels() if a["args"][0] == "init"]
+        self.assertEqual(len(inits), 2)
+        for args in inits:
+            self.assertNotIn("-upgrade", args)
+
+    def test_sous_processus_sans_entree_standard(self):
+        vrai = mtt.subprocess.Popen
+        with mock.patch.object(mtt.subprocess, "Popen", wraps=vrai) as popen:
+            res, _ = self.planifier()
+        self.assertTrue(res.ok, res.message)
+        self.assertEqual(popen.call_count, 3)
+        for appel in popen.call_args_list:
+            self.assertIs(appel.kwargs.get("stdin"), mtt.subprocess.DEVNULL)
+
+    def test_phrase_perdue_a_cote_d_un_etat(self):
+        self.planifier()
+        dossier = self.moteur.dossier_travail(self.spec)
+        (dossier / "terraform.tfstate").write_text("{}")
+        cf.ecrire("parc-a", {}, self.racine)
+        n = len(self.appels())
+        res, _ = self.planifier()
+        self.assertFalse(res.ok)
+        self.assertIn("README", res.message)
+        self.assertEqual(len(self.appels()), n)
 
     def test_resolution_impossible_sans_exception(self):
         self.moteur = mtt.MoteurTofu(
@@ -623,6 +657,17 @@ class TestLectures(_Base):
             {"version": {"texte": '{"terraform_version": "1.13.10"}'}}
         )
         self.assertEqual(self.moteur.disponible(), (True, "1.13.10"))
+
+    def test_disponible_lit_la_version_par_l_outil(self):
+        with mock.patch.object(
+            mtt.outil, "version_tofu", return_value="9.9.9"
+        ) as version:
+            self.assertEqual(self.moteur.disponible(), (True, "9.9.9"))
+        version.assert_called_once_with(str(self.binaire))
+        with mock.patch.object(mtt.outil, "version_tofu", return_value=""):
+            ok, raison = self.moteur.disponible()
+        self.assertFalse(ok)
+        self.assertIn(str(self.binaire), raison)
 
     def test_indisponible_sans_binaire(self):
         moteur = mtt.MoteurTofu(racine=self.racine)
