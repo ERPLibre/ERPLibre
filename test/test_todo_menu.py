@@ -1749,7 +1749,7 @@ class TestGitForgeCreerVm(unittest.TestCase):
         return base, "\n".join(sortie)
 
     def test_the_vm_is_created_and_its_secrets_stored(self):
-        base, sortie = self.creer(["forge-x", "forge-admin"], [True])
+        base, sortie = self.creer(["forge-x", "forge-admin"], [False, True])
         self.assertEqual(base, self.BASE)
         args = self.deployer.call_args
         self.assertEqual(args[0][:2], ("forge-x", "forge-admin"))
@@ -1773,12 +1773,14 @@ class TestGitForgeCreerVm(unittest.TestCase):
                 "web": self.WEB,
                 "jeton": "jeton-neuf",
                 "ip": "192.0.2.7",
+                "runner": "",
             },
         )
+        self.assertIs(args.kwargs["runner"], False)
 
     def test_without_vault_the_password_is_shown_once(self):
         self.coffre = False
-        base, sortie = self.creer(["forge-x", "forge-admin"], [True])
+        base, sortie = self.creer(["forge-x", "forge-admin"], [False, True])
         self.assertEqual(base, self.BASE)
         self.assertEqual(sortie.count("mdp-tire-au-hasard"), 1)
 
@@ -1791,18 +1793,18 @@ class TestGitForgeCreerVm(unittest.TestCase):
 
     def test_refused_sudo_creates_nothing(self):
         self.sudo.return_value = self.mock.Mock(returncode=1)
-        base, _ = self.creer(["forge-x", "forge-admin"], [True])
+        base, _ = self.creer(["forge-x", "forge-admin"], [False, True])
         self.assertIsNone(base)
         self.deployer.assert_not_called()
 
     def test_a_failed_deployment_leaves_no_session(self):
         self.deployer.return_value = None
-        base, _ = self.creer(["forge-x", "forge-admin"], [True])
+        base, _ = self.creer(["forge-x", "forge-admin"], [False, True])
         self.assertIsNone(base)
         self.assertFalse(getattr(self.obj, "_git_forge_session", {}))
 
     def test_the_session_spares_the_token_question(self):
-        self.creer(["forge-x", "forge-admin"], [True])
+        self.creer(["forge-x", "forge-admin"], [False, True])
         client = self.mock.Mock()
         client.version.return_value = "17.0"
         client.identite.return_value = "forge-admin"
@@ -1823,6 +1825,28 @@ class TestGitForgeCreerVm(unittest.TestCase):
         # Ni jeton à saisir ni HTTP en clair à confirmer : la forge vient
         # d'être créée par cette session.
         confirm.assert_not_called()
+
+    def test_the_runner_answer_reaches_the_deployment(self):
+        self.deployer.return_value = dict(self.forge, runner="erplibre-host")
+        base, sortie = self.creer(["forge-x", "forge-admin"], [True, True])
+        self.assertEqual(base, self.BASE)
+        self.assertIs(self.deployer.call_args.kwargs["runner"], True)
+        self.assertEqual(
+            self.obj._git_forge_session[self.BASE]["runner"], "erplibre-host"
+        )
+        self.assertIn("erplibre-host", sortie)
+
+    def test_a_runner_that_failed_leaves_a_working_forge(self):
+        self.deployer.return_value = dict(self.forge, runner="")
+        base, sortie = self.creer(["forge-x", "forge-admin"], [True, True])
+        self.assertEqual(base, self.BASE)
+        self.assertIn(
+            self.menu.t(
+                "The CI runner is not installed; the forge works without it."
+                " Log:"
+            ),
+            sortie,
+        )
 
 
 class TestGitRepoSurcouche(unittest.TestCase):
@@ -2029,9 +2053,13 @@ class TestGitRepoPullRequests(unittest.TestCase):
             for c in sorted(self.tetes)
         ]
 
+        self.refs = set()
+
         def git(args, cwd, delai=None):
             if args[:2] == ["rev-parse", "--abbrev-ref"]:
                 return self.tetes[cwd] + "\n", "", 0
+            if args[:2] == ["rev-parse", "--verify"]:
+                return "", "", 0 if args[-1] in self.refs else 1
             if args[0] == "log":
                 return "Sujet du commit\n", "", 0
             return "", "", 1
@@ -2078,12 +2106,21 @@ class TestGitRepoPullRequests(unittest.TestCase):
         mock.patch.object(
             Menu, "_git_forge_client", return_value=self.client
         ).start()
+        # Le checkout réel n'est jamais lu : ERPLibre n'est candidat que
+        # dans les tests qui le posent.
+        self.racine = mock.patch.object(
+            git_repo_menu.push_remote, "projet_racine", return_value=None
+        ).start()
         self.obj = Menu()
 
-    def lancer(self, confirms):
+    def lancer(self, confirms, prompts=()):
         with self.mock.patch.object(
             self.menu.click, "confirm", side_effect=list(confirms)
-        ), self.mock.patch("builtins.print"):
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=list(prompts)
+        ), self.mock.patch(
+            "builtins.print"
+        ):
             return self.obj._git_repo_pull_requests()
 
     def test_one_pull_request_per_clone_off_its_manifest_branch(self):
@@ -2121,6 +2158,180 @@ class TestGitRepoPullRequests(unittest.TestCase):
         self.client.commit_de_branche.return_value = "tete"
         self.lancer([True])
         self.client.assurer_pull_request.assert_not_called()
+
+    # ── ERPLibre ─────────────────────────────────────────────────────
+
+    def poser_racine(self, seul=False):
+        """ERPLibre sur « dev/racine », remote « forge » ; `seul` met
+        chaque clone sur sa branche du manifeste."""
+        if seul:
+            self.tetes.update({"/r/a": "X.0"})
+        self.racine.return_value = {
+            "cle": "E",
+            "chemin": self.menu.RACINE,
+            "nom": "E",
+            "remote": "forge",
+            "branche": "dev/racine",
+            "proprietaire": "Proprio",
+        }
+        self.tetes[self.menu.RACINE] = "dev/racine"
+        self.client.depot.return_value = {
+            "default_branch": "develop",
+            "has_actions": False,
+        }
+        self.client.assurer_actions.return_value = "activee"
+
+    def test_erplibre_alone_is_not_stopped_by_the_clones(self):
+        self.poser_racine(seul=True)
+        self.assertEqual(self.lancer([True, True], ["develop"]), 0)
+        (cibles,) = self.pousser.call_args[0]
+        self.assertEqual(
+            cibles,
+            [
+                {
+                    "chemin": self.menu.RACINE,
+                    "remote": "forge",
+                    "specs": ["refs/heads/dev/racine:refs/heads/dev/racine"],
+                }
+            ],
+        )
+        self.client.assurer_pull_request.assert_called_once_with(
+            "Proprio", "E", "dev/racine", "develop", "Sujet du commit"
+        )
+
+    def test_the_root_pr_goes_to_the_prompted_base_after_actions(self):
+        self.poser_racine()
+        ordre = []
+        self.client.assurer_actions.side_effect = lambda o, r: (
+            ordre.append(("actions", o, r)) or "activee"
+        )
+        self.client.assurer_pull_request.side_effect = lambda o, r, *a: (
+            ordre.append(("pr", o, r)) or ("creee", {"number": 1})
+        )
+        self.assertEqual(self.lancer([True, True], ["18.0"]), 0)
+        self.assertEqual(
+            ordre,
+            [
+                ("actions", "Proprio", "E"),
+                ("pr", "Proprio", "E"),
+                ("pr", "Proprio", "a"),
+            ],
+        )
+        self.assertEqual(
+            self.client.assurer_pull_request.call_args_list[0][0][2:4],
+            ("dev/racine", "18.0"),
+        )
+
+    def test_declining_the_root_keeps_the_clones_only(self):
+        self.poser_racine()
+        self.assertEqual(self.lancer([False, True]), 0)
+        self.client.assurer_actions.assert_not_called()
+        self.client.assurer_pull_request.assert_called_once_with(
+            "Proprio", "a", "dev/a", "X.0", "Sujet du commit"
+        )
+
+    def test_a_missing_base_is_offered_for_a_plain_push(self):
+        self.poser_racine(seul=True)
+        self.client.commit_de_branche.side_effect = lambda o, r, b: (
+            None if b == "develop" else "base"
+        )
+        self.refs = {"refs/heads/develop"}
+        with self.mock.patch.object(
+            self.menu.push_remote, "pousser_un", return_value=(0, "")
+        ) as pousser_un:
+            self.lancer([True, True, True], ["develop"])
+        pousser_un.assert_called_once_with(
+            self.menu.RACINE,
+            "forge",
+            ["refs/heads/develop:refs/heads/develop"],
+        )
+        self.client.assurer_actions.assert_called_once_with("Proprio", "E")
+
+    def test_declining_the_missing_base_skips_the_root(self):
+        self.poser_racine(seul=True)
+        self.client.commit_de_branche.return_value = None
+        self.refs = {"refs/remotes/origin/develop"}
+        with self.mock.patch.object(
+            self.menu.push_remote, "pousser_un"
+        ) as pousser_un:
+            self.assertEqual(self.lancer([True, True, False], ["develop"]), 0)
+        pousser_un.assert_not_called()
+        self.pousser.assert_not_called()
+        self.client.assurer_actions.assert_not_called()
+
+    def test_a_refused_actions_unit_still_opens_the_root_pr(self):
+        """Le PATCH d'Actions est réservé aux administrateurs du dépôt : un
+        refus avertit, et la pull request d'ERPLibre s'ouvre quand même."""
+        self.poser_racine(seul=True)
+        self.client.assurer_actions.side_effect = (
+            self.menu.forgejo_client.ErreurForgejo("PATCH : 403", 403)
+        )
+        with self.mock.patch("builtins.print") as imprime:
+            with self.mock.patch.object(
+                self.menu.click, "confirm", side_effect=[True, True]
+            ), self.mock.patch.object(
+                self.menu.click, "prompt", side_effect=["develop"]
+            ):
+                self.assertEqual(self.obj._git_repo_pull_requests(), 0)
+        self.client.assurer_pull_request.assert_called_once_with(
+            "Proprio", "E", "dev/racine", "develop", "Sujet du commit"
+        )
+        lignes = [" ".join(map(str, c.args)) for c in imprime.call_args_list]
+        self.assertTrue(
+            any(
+                self.menu.t("Actions could not be enabled on") in ligne
+                for ligne in lignes
+            )
+        )
+        self.assertFalse(
+            any(self.menu.t("Actions enabled on") in ligne for ligne in lignes)
+        )
+
+    def test_an_actions_patch_without_effect_is_not_reported_enabled(self):
+        self.poser_racine(seul=True)
+        self.client.assurer_actions.return_value = "inactive"
+        with self.mock.patch("builtins.print") as imprime:
+            self.assertEqual(self.lancer([True, True], ["develop"]), 0)
+        lignes = [" ".join(map(str, c.args)) for c in imprime.call_args_list]
+        self.assertFalse(
+            any(self.menu.t("Actions enabled on") in ligne for ligne in lignes)
+        )
+        self.client.assurer_pull_request.assert_called_once()
+
+    def test_the_default_base_is_never_the_head(self):
+        """Sur develop, avec develop pour branche par défaut de la forge,
+        la base proposée est master."""
+        self.poser_racine(seul=True)
+        self.racine.return_value["branche"] = "develop"
+        self.tetes[self.menu.RACINE] = "develop"
+        self.client.depot.return_value["default_branch"] = "develop"
+        defauts = []
+
+        def demander(question, default=None, **kw):
+            defauts.append(default)
+            return default
+
+        with self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=[True, True]
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=demander
+        ), self.mock.patch(
+            "builtins.print"
+        ):
+            self.obj._git_repo_pull_requests()
+        self.assertEqual(defauts, ["master"])
+        self.client.assurer_pull_request.assert_called_once_with(
+            "Proprio", "E", "develop", "master", "Sujet du commit"
+        )
+
+    def test_a_forge_without_the_erplibre_repository_skips_it(self):
+        self.poser_racine()
+        self.client.depot.return_value = None
+        self.assertEqual(self.lancer([True, True]), 0)
+        self.client.assurer_actions.assert_not_called()
+        self.client.assurer_pull_request.assert_called_once_with(
+            "Proprio", "a", "dev/a", "X.0", "Sujet du commit"
+        )
 
 
 class TestGitRepoSuivrePullRequests(unittest.TestCase):

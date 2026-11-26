@@ -27056,6 +27056,38 @@ TRANSLATIONS = {
         "fr": "pas un miroir",
         "en": "not a mirror",
     },
+    "Also install a CI runner (Forgejo Actions, host mode) that runs the unit tests on each pull request?": {
+        "fr": "Installer aussi un runner de CI (Forgejo Actions, mode hôte) qui lance les tests unitaires sur chaque pull request ?",
+        "en": "Also install a CI runner (Forgejo Actions, host mode) that runs the unit tests on each pull request?",
+    },
+    "CI: runner": {
+        "fr": "CI : runner",
+        "en": "CI: runner",
+    },
+    "The CI runner is not installed; the forge works without it. Log:": {
+        "fr": "Le runner de CI n'est pas installé ; la forge fonctionne sans lui. Journal :",
+        "en": "The CI runner is not installed; the forge works without it. Log:",
+    },
+    "Also open a pull request for the ERPLibre repository?": {
+        "fr": "Ouvrir aussi une pull request pour le dépôt ERPLibre ?",
+        "en": "Also open a pull request for the ERPLibre repository?",
+    },
+    "Base branch of the ERPLibre pull request": {
+        "fr": "Branche de base de la pull request d'ERPLibre",
+        "en": "Base branch of the ERPLibre pull request",
+    },
+    "is absent from the forge: push it now?": {
+        "fr": "est absente de la forge : la pousser maintenant ?",
+        "en": "is absent from the forge: push it now?",
+    },
+    "Actions enabled on": {
+        "fr": "Actions activé sur",
+        "en": "Actions enabled on",
+    },
+    "This forge does not report Actions on the repository; the CI may not run.": {
+        "fr": "Cette forge ne rapporte pas Actions sur le dépôt ; la CI pourrait ne pas tourner.",
+        "en": "This forge does not report Actions on the repository; the CI may not run.",
+    },
     "owner already ends in -mirror": {
         "fr": "le propriétaire finit déjà par -mirror",
         "en": "owner already ends in -mirror",
@@ -27063,6 +27095,14 @@ TRANSLATIONS = {
     "heads an open pull request: not followed": {
         "fr": "tête d'une pull request ouverte : pas suivie",
         "en": "heads an open pull request: not followed",
+    },
+    "Actions could not be enabled on": {
+        "fr": "Actions n'a pas pu être activé sur",
+        "en": "Actions could not be enabled on",
+    },
+    "the forge kept it off ([actions] ENABLED?)": {
+        "fr": "la forge l'a laissé éteint ([actions] ENABLED ?)",
+        "en": "the forge kept it off ([actions] ENABLED?)",
     },
 }
 

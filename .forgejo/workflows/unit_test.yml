@@ -1,0 +1,84 @@
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Les tests unitaires du dépôt sur chaque pull request, dans un
+# forgejo-runner en mode hôte (script/forgejo/install_forgejo_runner.sh).
+#
+# Le déclencheur est « pull_request » SEUL : un push sur une branche qui
+# n'est la tête d'aucune pull request ouverte ne lance rien. Un push sur la
+# tête d'une pull request ouverte, y compris l'avance en fast-forward du
+# minuteur des miroirs, émet « synchronize » et lance la CI : le menu des
+# miroirs ne suit donc ni la branche extraite ni une tête de pull request
+# ouverte au moment où il tourne ; une pull request ouverte ensuite depuis
+# une branche suivie reçoit un run à chaque avance. Aucun « uses: » : en
+# mode hôte, une action comme actions/checkout demanderait Node.js et le
+# réseau vers son dépôt d'actions. Une forge sans runner de cette
+# étiquette laisse le job en attente ; GitHub ignore .forgejo/.
+name: unit-tests
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  unit:
+    runs-on: erplibre-host
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    # Les valeurs de l'évènement n'arrivent au shell que par l'environnement,
+    # jamais interpolées dans un « run: » : un nom de branche y deviendrait
+    # du code.
+    env:
+      SERVEUR: ${{ github.server_url }}
+      DEPOT_NOM: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      TETE: ${{ github.event.pull_request.head.sha }}
+      TETE_NOM: ${{ github.head_ref }}
+      BASE: ${{ github.base_ref }}
+      GIT_AUTHOR_NAME: ERPLibre CI
+      GIT_AUTHOR_EMAIL: ci@example.invalid
+      GIT_COMMITTER_NAME: ERPLibre CI
+      GIT_COMMITTER_EMAIL: ci@example.invalid
+    steps:
+      # Un dépôt nu persistant sert de cache, sous verrou ; le jeton du job
+      # n'atteint git que par GIT_CONFIG_* : ni ligne de commande, ni
+      # .git/config, ni URL. Le checkout porte la tête de la pull request
+      # sur une branche de son nom et la base sous le sien, avec « origin »
+      # sur l'URL de la forge sans jeton, comme un checkout de développement.
+      # Une tête poussée de force après l'évènement fait échouer la
+      # dernière vérification : le run est périmé.
+      - name: checkout
+        env:
+          JETON: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cache="${EL_CI_CACHE:-$HOME/.cache/erplibre-ci}/erplibre.git"
+          mkdir -p "${cache%/*}"
+          exec 9>"$cache.lock"
+          flock 9
+          [ -d "$cache" ] || git init -q --bare "$cache"
+          auth=$(printf 'x-access-token:%s' "$JETON" | base64 -w0)
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git -C "$cache" fetch -q --no-tags --force \
+              "${SERVEUR%/}/$DEPOT_NOM.git" \
+              "refs/pull/$PR/head:refs/heads/ci-head" \
+              "refs/heads/$BASE:refs/heads/ci-base"
+          rm -rf src
+          git clone -q --no-checkout "$cache" src
+          exec 9>&-
+          git -C src remote set-url origin "${SERVEUR%/}/$DEPOT_NOM.git"
+          git -C src checkout -q -B "$TETE_NOM" "$TETE"
+          if [ "$BASE" != "$TETE_NOM" ]; then
+            git -C src branch -q -f "$BASE" refs/remotes/origin/ci-base
+          fi
+          test "$(git -C src rev-parse HEAD)" = "$TETE"
+      - name: venv
+        working-directory: src
+        run: ./script/forgejo/ci_venv.sh
+      - name: unit tests
+        working-directory: src
+        env:
+          UNIT_JOBS: "3"
+          UNIT_TIMEOUT: "900"
+        run: ./script/test/run_unit_test.sh --slowest=15

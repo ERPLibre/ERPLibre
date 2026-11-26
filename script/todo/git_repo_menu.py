@@ -2008,7 +2008,10 @@ class GitRepoMenuMixin:
         sans coffre, le mot de passe s'affiche une fois. La clé d'hôte SSH
         de la forge est enregistrée pour le push, et la session retient
         l'URL web et le jeton : la préparation de la forge ne les redemande
-        pas. Une étape échouée laisse la VM en place, avec son journal."""
+        pas. Une étape échouée laisse la VM en place, avec son journal.
+
+        Un runner de CI (Forgejo Actions, mode hôte) s'offre aussi, Oui par
+        défaut : son échec laisse la forge utilisable et se signale."""
         import subprocess
         import time
 
@@ -2052,6 +2055,10 @@ class GitRepoMenuMixin:
                 f"⚠  {t('Invalid account, or the name of an owner of the repositories.')}"
             )
             return None
+        runner = click.confirm(
+            f"💬 {t('Also install a CI runner (Forgejo Actions, host mode) that runs the unit tests on each pull request?')}",
+            default=True,
+        )
         if not click.confirm(f"💬 {t('Create the VM')} {nom}?", default=True):
             return None
         if subprocess.run(["sudo", "-v"]).returncode:
@@ -2082,6 +2089,7 @@ class GitRepoMenuMixin:
             etape,
             cache=cache,
             preambule=getattr(self, "_qemu_cloud_init_wait", lambda: "true")(),
+            runner=runner,
         )
         if forge is None:
             print(
@@ -2098,9 +2106,17 @@ class GitRepoMenuMixin:
             "web": forge["web"],
             "jeton": forge["jeton"],
             "ip": forge["ip"],
+            "runner": forge.get("runner", ""),
         }
         cle = forgejo_client.cle_forge(forge["web"])
         print(f"   {t('Forge:')} {forge['web']} · {admin}")
+        if forge.get("runner"):
+            print(f"   ✓ {t('CI: runner')} {forge['runner']}")
+        elif runner:
+            print(
+                f"   ⚠  {t('The CI runner is not installed; the forge works without it. Log:')}"
+                f" {journal}"
+            )
 
         def ranger():
             return self._git_forge_ranger(
@@ -2330,7 +2346,8 @@ class GitRepoMenuMixin:
 
     def _git_repo_pull_requests(self):
         """Ouvre sur la forge une pull request par clone dont la branche
-        extraite diffère de la branche du manifeste.
+        extraite diffère de la branche du manifeste, et, sur demande, une
+        pour ERPLibre lui-même.
 
         Le remote choisi est un remote de forge des clones. Chaque branche
         se pousse sous son nom, en parallèle et sans force, puis la pull
@@ -2339,7 +2356,11 @@ class GitRepoMenuMixin:
         manifeste manque sur la forge, ou quand elle porte déjà le commit de
         la branche : il n'y a rien à fusionner. Une pull request ouverte
         pour la même paire est reprise, jamais doublée. Le titre est le
-        sujet du dernier commit de la branche."""
+        sujet du dernier commit de la branche.
+
+        La pull request d'ERPLibre va de sa branche extraite vers une base
+        demandée (`_git_repo_racine_pull_request`), et Actions s'active sur
+        son dépôt : c'est le seul dépôt de la forge qui porte une CI."""
         print(f"📬 {t('Open pull requests on a forge')}")
         projets = self._git_repo_projets_absolus()
         nom = self._git_repo_choisir_remote_forge(projets)
@@ -2362,11 +2383,22 @@ class GitRepoMenuMixin:
             ):
                 continue
             candidats.append(dict(p, tete=tete, depot=depot[:2]))
-        if not candidats:
+        # ERPLibre : sa « branche » est la branche extraite, sa base se
+        # demande plus loin.
+        racine = push_remote.projet_racine(RACINE, nom)
+        racine_voulue = None
+        if racine is not None and click.confirm(
+            t("Also open a pull request for the ERPLibre repository?"),
+            default=True,
+        ):
+            racine_voulue = racine
+        if not candidats and racine_voulue is None:
             print(
                 f"   {t('No clone is on a branch other than its manifest branch.')}"
             )
             return 0
+        if racine_voulue is not None:
+            print(f"   ▸ ERPLibre: {racine_voulue['branche']} → ?")
         for c in candidats:
             print(f"   ▸ {c['affiche']}: {c['tete']} → {c['branche']}")
         base = forge_manifest.base_du_remote(projets, nom)
@@ -2384,7 +2416,21 @@ class GitRepoMenuMixin:
             return 0
         client = self._git_forge_client(base)
         if client is None:
-            return len(candidats)
+            return len(candidats) + (racine_voulue is not None)
+        echecs = 0
+        if racine_voulue is not None:
+            try:
+                c = self._git_repo_racine_pull_request(
+                    client, racine_voulue, nom
+                )
+            except forgejo_client.ErreurForgejo as exc:
+                echecs += 1
+                print(f"   ⚠  ERPLibre: {exc}")
+                c = None
+            if c is not None:
+                candidats.insert(0, c)
+        if not candidats:
+            return echecs
         cibles = [
             {
                 "chemin": c["chemin"],
@@ -2394,7 +2440,6 @@ class GitRepoMenuMixin:
             for c in candidats
         ]
         resultats = push_remote.pousser_en_parallele(cibles)
-        echecs = 0
         for c, r in zip(candidats, resultats):
             if r["code"]:
                 echecs += 1
@@ -2434,6 +2479,100 @@ class GitRepoMenuMixin:
                 f" {pr.get('html_url', '')}".rstrip()
             )
         return echecs
+
+    def _git_repo_racine_pull_request(self, client, racine, nom):
+        """Le candidat de la pull request d'ERPLibre (`racine`, de
+        `push_remote.projet_racine`) pour la boucle de
+        `_git_repo_pull_requests`, ou None quand il est écarté.
+
+        Le dépôt doit exister sur la forge. La base se demande : la branche
+        par défaut du dépôt quand elle diffère de la branche extraite,
+        sinon « develop », ou « master » quand la branche extraite est
+        develop ; la proposition n'est jamais la tête elle-même. Une base
+        absente de la forge s'offre au push, Non par défaut, depuis la
+        branche locale ou sa branche de suivi « origin », jamais forcé.
+        Actions s'active ensuite sur le dépôt (`assurer_actions`) ; un
+        refus de la forge, PATCH réservé aux administrateurs du dépôt,
+        n'est qu'un avertissement, et la pull request s'ouvre sans CI.
+        Lève ErreurForgejo."""
+        tete = racine["branche"]
+        proprietaire, depot = racine["proprietaire"], racine["nom"]
+        if depot.endswith(".git"):
+            depot = depot[: -len(".git")]
+        lu = client.depot(proprietaire, depot)
+        if lu is None:
+            print(
+                f"   - ERPLibre: {proprietaire}/{depot}"
+                f" {t('is absent from the forge: push the repositories first.')}"
+            )
+            return None
+        defaut = lu.get("default_branch") or ""
+        repli = "master" if tete == "develop" else "develop"
+        base = click.prompt(
+            t("Base branch of the ERPLibre pull request"),
+            default=defaut if defaut and defaut != tete else repli,
+        ).strip()
+        if not base or base == tete:
+            print(f"   - ERPLibre: {t('nothing to merge.')}")
+            return None
+        if client.commit_de_branche(proprietaire, depot, base) is None:
+            src = next(
+                (
+                    ref
+                    for ref in (
+                        f"refs/heads/{base}",
+                        f"refs/remotes/origin/{base}",
+                    )
+                    if not repo_upgrade.git(
+                        ["rev-parse", "--verify", "-q", ref], RACINE
+                    )[2]
+                ),
+                None,
+            )
+            if src is None:
+                print(
+                    f"   - ERPLibre: {base}"
+                    f" {t('is absent from the forge: push the repositories first.')}"
+                )
+                return None
+            if not click.confirm(
+                f"{base} {t('is absent from the forge: push it now?')}",
+                default=False,
+            ):
+                return None
+            code, err = push_remote.pousser_un(
+                RACINE, nom, [f"{src}:refs/heads/{base}"]
+            )
+            if code:
+                print(f"   ⚠  ERPLibre: {err[-300:]}")
+                return None
+        try:
+            etat = client.assurer_actions(proprietaire, depot)
+        except forgejo_client.ErreurForgejo as exc:
+            etat = None
+            print(
+                f"   ⚠  {t('Actions could not be enabled on')}"
+                f" {proprietaire}/{depot}: {exc}"
+            )
+        if etat == "activee":
+            print(f"   ✓ {t('Actions enabled on')} {proprietaire}/{depot}")
+        elif etat == "inactive":
+            print(
+                f"   ⚠  {t('Actions could not be enabled on')}"
+                f" {proprietaire}/{depot}:"
+                f" {t('the forge kept it off ([actions] ENABLED?)')}"
+            )
+        elif etat == "inconnu":
+            print(
+                f"   ⚠  {t('This forge does not report Actions on the repository; the CI may not run.')}"
+            )
+        return dict(
+            racine,
+            affiche="ERPLibre",
+            tete=tete,
+            branche=base,
+            depot=(proprietaire, depot),
+        )
 
     def _git_repo_suivre_pull_requests(self):
         """Suit les pull requests de la forge d'un remote des clones.

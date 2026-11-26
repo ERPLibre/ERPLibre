@@ -9,9 +9,11 @@ vérifier qu'elle répond, s'assurer que chaque organisation existe (la créer
 privée sinon), créer un dépôt privé quand la forge ne crée pas les dépôts
 au premier push, déposer une clé SSH, lister ou ouvrir des pull requests,
 lire l'état, les revues et le statut combiné du commit de tête d'une
-pull request, et créer des miroirs en lecture seule d'un dépôt d'origine.
-Chaque appel « assurer_* » est idempotent : ce qui existe déjà est rendu
-tel quel, jamais recréé ni modifié.
+pull request, créer des miroirs en lecture seule d'un dépôt d'origine, et
+activer Forgejo Actions sur un dépôt. Chaque appel « assurer_* » est
+idempotent : ce qui existe déjà est rendu tel quel, jamais recréé ni
+modifié — sauf `assurer_actions`, dont c'est l'objet, et qui ne touche
+qu'à l'unité Actions.
 
 L'API vit sous « <base>/api/v1 », la base étant l'URL web de la forge
 (« https://hôte[:port] »), qui diffère de l'URL SSH des remotes. Le jeton
@@ -687,6 +689,34 @@ class ClientForgejo:
         )
         return corps if statut == 200 else None
 
+    # ── CI (Forgejo Actions) ─────────────────────────────────────────
+
+    def assurer_actions(self, proprietaire, nom):
+        """Active l'unité Actions du dépôt. Rend « active » quand elle
+        l'est déjà, « inconnu » quand la forge ne rapporte pas ce champ,
+        sans rien toucher. Sinon un PATCH « has_actions » suivi d'une
+        relecture : « activee » quand le dépôt relu porte has_actions vrai,
+        « inactive » quand la forge a accepté le PATCH sans l'appliquer
+        (Actions désactivé dans app.ini). ErreurForgejo quand le dépôt
+        manque ou que la forge refuse le PATCH."""
+        depot = self.depot(proprietaire, nom)
+        if depot is None:
+            raise ErreurForgejo(
+                f"{proprietaire}/{nom}: no such repository", 404
+            )
+        if "has_actions" not in depot:
+            return "inconnu"
+        if depot["has_actions"] is True:
+            return "active"
+        self._appel(
+            "PATCH",
+            f"/repos/{self._q(proprietaire)}/{self._q(nom)}",
+            ok=(200,),
+            json={"has_actions": True},
+        )
+        relu = self.depot(proprietaire, nom) or {}
+        return "activee" if relu.get("has_actions") is True else "inactive"
+
     def pull_request_ouverte(self, proprietaire, nom, tete, base):
         """La pull request ouverte de la branche `tete` vers `base`, ou
         None. Le filtre de la requête est revérifié sur chaque réponse : un
@@ -731,6 +761,27 @@ class ClientForgejo:
             if pr is None:
                 raise
             return "existante", pr
+
+
+def detail_statut(statut):
+    """(résumé, URL) d'un statut combiné (`statut_combine`) : le résumé
+    « <succès>/<total> », suivi du contexte du premier statut en
+    « failure » ou « error » s'il y en a un, et l'URL de ce statut en échec,
+    sinon celle du premier statut. ("", "") pour None ou un statut sans
+    élément."""
+    statuts = [
+        s for s in (statut or {}).get("statuses") or [] if isinstance(s, dict)
+    ]
+    if not statuts:
+        return "", ""
+    succes = sum(s.get("state") == "success" for s in statuts)
+    echec = next(
+        (s for s in statuts if s.get("state") in ("failure", "error")), None
+    )
+    resume = f"{succes}/{len(statuts)}"
+    if echec is not None:
+        resume += f" {echec.get('context') or ''}".rstrip()
+    return resume, (echec or statuts[0]).get("target_url") or ""
 
 
 def plan_proprietaires(client, noms):

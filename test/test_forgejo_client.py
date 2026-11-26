@@ -572,6 +572,100 @@ class TestRetourPullRequests(unittest.TestCase):
             self.assertNotIn("jeton-secret", repr(appel["params"]))
 
 
+class TestCi(unittest.TestCase):
+    """La CI d'un dépôt : l'activation d'Actions, l'état d'un statut
+    combiné de la forme de Forgejo (`forge_pull_requests.etat_ci`, la règle
+    partagée avec le suivi des pull requests) et son détail."""
+
+    def test_actions_s_active_seulement_quand_il_est_eteint(self):
+        patchs = []
+
+        def patcher(kw):
+            patchs.append(kw["json"])
+            return Reponse(200, {})
+
+        c, _s = client(
+            {
+                ("GET", "/repos/P/d"): lambda kw: Reponse(
+                    200, {"has_actions": bool(patchs)}
+                ),
+                ("PATCH", "/repos/P/d"): patcher,
+            }
+        )
+        self.assertEqual(c.assurer_actions("P", "d"), "activee")
+        self.assertEqual(patchs, [{"has_actions": True}])
+        c, s = client(
+            {("GET", "/repos/P/d"): Reponse(200, {"has_actions": True})}
+        )
+        self.assertEqual(c.assurer_actions("P", "d"), "active")
+        self.assertEqual([a["methode"] for a in s.appels], ["GET"])
+
+    def test_un_patch_sans_effet_n_est_pas_une_activation(self):
+        """Une forge dont Actions est éteint dans app.ini accepte le PATCH
+        et garde has_actions faux : la relecture le dit."""
+        c, s = client(
+            {
+                ("GET", "/repos/P/d"): Reponse(200, {"has_actions": False}),
+                ("PATCH", "/repos/P/d"): Reponse(200, {}),
+            }
+        )
+        self.assertEqual(c.assurer_actions("P", "d"), "inactive")
+        self.assertEqual(
+            [a["methode"] for a in s.appels], ["GET", "PATCH", "GET"]
+        )
+
+    def test_une_forge_muette_sur_actions_n_est_pas_touchee(self):
+        c, s = client({("GET", "/repos/P/d"): Reponse(200, {"name": "d"})})
+        self.assertEqual(c.assurer_actions("P", "d"), "inconnu")
+        self.assertEqual([a["methode"] for a in s.appels], ["GET"])
+
+    def test_un_depot_absent_leve(self):
+        c, s = client({})
+        with self.assertRaises(fc.ErreurForgejo):
+            c.assurer_actions("P", "d")
+        self.assertEqual([a["methode"] for a in s.appels], ["GET"])
+
+    def test_l_etat_d_un_statut_de_forgejo(self):
+        from script.git import forge_pull_requests as fpr
+
+        def statut(etat, *etats):
+            return {
+                "state": etat,
+                "total_count": len(etats),
+                "statuses": [
+                    {"context": f"c{i}", "state": e}
+                    for i, e in enumerate(etats)
+                ],
+            }
+
+        self.assertIsNone(fpr.etat_ci(statut("")))
+        self.assertIsNone(fpr.etat_ci(statut("pending")))
+        self.assertEqual(fpr.etat_ci(statut("success", "success")), "succes")
+        self.assertEqual(
+            fpr.etat_ci(statut("failure", "success", "failure")), "echec"
+        )
+        self.assertEqual(fpr.etat_ci(statut("error", "error")), "echec")
+        self.assertEqual(fpr.etat_ci(statut("pending", "pending")), "en_cours")
+
+    def test_le_detail_d_un_statut(self):
+        self.assertEqual(fc.detail_statut(None), ("", ""))
+        self.assertEqual(fc.detail_statut({"statuses": []}), ("", ""))
+        ok = {
+            "statuses": [
+                {"context": "a", "state": "success", "target_url": "u1"},
+                {"context": "b", "state": "pending", "target_url": "u2"},
+            ]
+        }
+        self.assertEqual(fc.detail_statut(ok), ("1/2", "u1"))
+        ko = {
+            "statuses": [
+                {"context": "a", "state": "success", "target_url": "u1"},
+                {"context": "unit", "state": "failure", "target_url": "u3"},
+            ]
+        }
+        self.assertEqual(fc.detail_statut(ko), ("1/2 unit", "u3"))
+
+
 class TestCreationsConcurrentes(unittest.TestCase):
     """Entre la lecture et la création, un autre client a créé la même
     chose : la réponse « existe déjà » fait relire l'existant."""

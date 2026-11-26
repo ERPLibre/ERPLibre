@@ -20,6 +20,11 @@ L'appelant décide de le ranger ou de le montrer.
 Chaque étape finie appelle `etape(nom, ok, detail)`, qui rend `ok` ;
 les commandes lancées et leur sortie vont au `journal`.
 
+Avec `runner=True`, `deployer` pose ensuite la CI : un forgejo-runner en
+mode hôte, étiquette `LABEL_CI`, et le venv de CI bâti d'avance
+(`installer_runner`). Cette étape n'arrête rien : la forge est déjà prête
+à recevoir des pushes quand elle commence.
+
 Le minuteur des miroirs (`forge_sync`) s'installe à part, sur une forge
 déjà prête, par `installer_synchro` ; `ecrire_config_synchro`,
 `lancer_passe` et `lire_etat_synchro` le pilotent par SSH, `sudo -n` sur
@@ -74,6 +79,21 @@ OPTIONS_SSH = [
 ]
 ETAPES = ("vm", "ssh", "cloud-init", "code", "venv", "forgejo", "api")
 
+# La CI de la forge : l'étiquette des jobs (« runs-on: » du workflow), le
+# compte système du runner, le cache persistant des jobs (venv, dépôt nu),
+# le délai de l'installation (le venv de CI se bâtit d'avance), et les
+# fichiers de l'arbre de travail de la VM dont ce pré-bâti a besoin.
+LABEL_CI = "erplibre-host"
+UTILISATEUR_RUNNER = "forgejo-runner"
+CACHE_CI = "/var/lib/forgejo-runner/cache"
+DELAI_RUNNER = 3600
+FICHIERS_CI_VENV = (
+    "conf/python-erplibre-venv",
+    "conf/python-erplibre-version",
+    "requirement/erplibre_require-ments.txt",
+    "script/install",
+    "script/forgejo/ci_venv.sh",
+)
 # Un hôte de forge déjà connu (pas une VM créée par cette session) : sa clé
 # d'hôte se vérifie, une clé nouvelle s'accepte et se retient.
 OPTIONS_SSH_CONNU = [
@@ -156,6 +176,67 @@ def commande_forgejo(admin, preambule="true"):
         f" && {{ {preambule}; }} </dev/null"
         f" && cd ~/git/erplibre && env {exports}"
         " ./script/forgejo/install_forgejo.sh"
+    )
+
+
+def etapes(runner=False):
+    """Les étapes de `deployer`, dans l'ordre : `ETAPES`, puis les étapes
+    optionnelles après « api », toujours dans le même ordre, chacune
+    présente quand son mot-clé l'est (« runner » pour `runner`). Une étape
+    optionnelle nouvelle s'ajoute ici, avec son mot-clé."""
+    return ETAPES + (("runner",) if runner else ())
+
+
+def _preambule_net(preambule):
+    """`preambule` sans « ; » final, ou « true » s'il est vide : collé
+    devant « ; cd … » ou dans « { …; } », un « ; » final ferait un « ;; »
+    que bash refuse."""
+    return (preambule or "").strip().rstrip(";").strip() or "true"
+
+
+def commande_runner(nom_runner, preambule="true"):
+    """La commande distante qui installe le runner de CI depuis le checkout
+    de la VM (`install_forgejo_runner.sh`, nom `nom_runner`, étiquette
+    `LABEL_CI`), puis bâtit d'avance le venv de CI sous le compte du
+    runner, dans un dossier temporaire qui reçoit par tar les
+    `FICHIERS_CI_VENV` de l'arbre de travail : ce compte ne lit pas le
+    dossier personnel de l'utilisateur de la VM. « sudo -u » ouvre une
+    session PAM qui lit /etc/environment, d'où les variables du cache de
+    téléchargement. Le dossier temporaire part dans tous les cas ; le code
+    rendu est celui de la dernière commande lancée. Aucun secret."""
+    reglages = {
+        "FORGEJO_RUNNER_NAME": nom_runner,
+        "FORGEJO_RUNNER_LABEL": LABEL_CI,
+        "FORGEJO_HTTP_PORT": str(PORT_HTTP),
+    }
+    exports = " ".join(f"{k}={shlex.quote(v)}" for k, v in reglages.items())
+    runner = shlex.quote(UTILISATEUR_RUNNER)
+    fichiers = " ".join(shlex.quote(f) for f in FICHIERS_CI_VENV)
+    batir = shlex.quote('cd "$1" && ./script/forgejo/ci_venv.sh')
+    return (
+        f"{{ {_preambule_net(preambule)}; }} </dev/null"
+        f" && cd ~/git/erplibre && env {exports}"
+        " ./script/forgejo/install_forgejo_runner.sh"
+        f" && d=$(sudo -u {runner} mktemp -d)"
+        f' && tar -c {fichiers} | sudo -u {runner} tar -x -C "$d"'
+        f" && sudo -u {runner} -H env EL_CI_CACHE={shlex.quote(CACHE_CI)}"
+        f' bash -c {batir} _ "$d"'
+        '; rc=$?; [ -n "${d:-}" ] && sudo rm -rf "$d"; exit $rc'
+    )
+
+
+def installer_runner(cible, journal, nom_runner, preambule="true"):
+    """Installe ou met à niveau le runner de CI sur `cible` par
+    `commande_runner` ; rejouable. Rend vrai quand tout a abouti."""
+    return (
+        ssh(
+            cible,
+            commande_runner(nom_runner, preambule),
+            journal,
+            DELAI_RUNNER,
+            "",
+        )
+        == 0
     )
 
 
@@ -493,12 +574,19 @@ def deployer(
     exerces=(),
     cle_pub=None,
     preambule="true",
+    runner=False,
 ):
     """Crée la VM `nom` et y installe une forge amorcée. Rend un dict
     (« nom », « uuid », « ip », « web », « base_ssh », « admin »,
-    « mot_de_passe », « jeton », « version », « client ») ou, à la première
-    étape échouée, None — la VM créée reste alors en place et
+    « mot_de_passe », « jeton », « version », « client », « runner ») ou, à
+    la première étape échouée, None — la VM créée reste alors en place et
     `etape("vm", …)` a reçu son nom.
+
+    `runner` ajoute l'étape « runner » après « api » (`etapes`) : le runner
+    de CI et son venv (`installer_runner`). Elle n'est PAS fatale : la forge
+    est déjà prête pour les pushes, et l'installateur ne redémarre Forgejo
+    que si app.ini a changé, puis attend qu'il réponde. « runner » vaut
+    `LABEL_CI` quand le runner est posé, "" sinon.
 
     `adresse_de(nom)` rend l'IPv4 de la VM, `venv_cmd` est la commande qui
     pose .venv.erplibre depuis la racine du checkout de la VM, `cache` les
@@ -511,9 +599,7 @@ def deployer(
     certificate in certificate chain ». Il tourne seul dans l'étape
     « cloud-init », puis en tête de l'installation du venv et de celle de
     Forgejo, dont la session doit porter ses exports."""
-    # Le fragment se termine souvent par « ; » : collé devant « ; cd … »,
-    # il ferait un « ;; » que bash refuse.
-    preambule = preambule.strip().rstrip(";").strip() or "true"
+    preambule = _preambule_net(preambule)
     cle_pub = cle_publique() if cle_pub is None else cle_pub
     if not cle_pub:
         etape("vm", False, "no public key in ~/.ssh")
@@ -565,6 +651,11 @@ def deployer(
         etape("api", False, str(exc))
         return None
     etape("api", True, f"Forgejo {version}")
+    pose = ""
+    if runner:
+        ok = installer_runner(cible, journal, f"{nom}-host", preambule)
+        etape("runner", ok, LABEL_CI if ok else "see the log")
+        pose = LABEL_CI if ok else ""
     return {
         "nom": nom,
         "uuid": uuid,
@@ -576,4 +667,5 @@ def deployer(
         "jeton": jeton,
         "version": version,
         "client": client,
+        "runner": pose,
     }

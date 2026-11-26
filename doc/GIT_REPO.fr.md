@@ -601,6 +601,15 @@ en parallèle et jamais de force, puis une pull request va d'elle vers la branch
 forge, titrée du sujet de son dernier commit. Un clone est écarté quand la branche du manifeste manque sur la forge, ou
 qu'elle porte déjà le commit de la branche. Une pull request ouverte pour la même paire est reprise, jamais doublée.
 
+Quand le checkout ERPLibre porte le même remote, TODO offre aussi, Oui par défaut, une pull request pour ERPLibre
+lui-même, de sa branche extraite vers une base demandée : la branche par défaut du dépôt de la forge quand elle
+diffère de la branche extraite, sinon `develop`, ou `master` quand la branche extraite est `develop`. Le dépôt
+ERPLibre doit déjà être sur la forge. Une base absente de la forge s'offre au push, Non par défaut, depuis la branche
+locale ou sa branche de suivi `origin`, jamais forcé. Actions s'active ensuite sur ce dépôt (voir CI sur la forge plus
+bas), avant l'ouverture de la pull request ; une forge qui ne rapporte pas Actions sur le dépôt est signalée. Une
+forge qui refuse d'activer Actions (réservé aux administrateurs du dépôt), ou le laisse éteint, donne un
+avertissement, et la pull request s'ouvre quand même.
+
 #### Suivre les pull requests d'une forge
 
 TODO › Repo › Suivre les pull requests d'une forge prend un remote de forge des clones et lit, par l'API, le dépôt de
@@ -717,6 +726,62 @@ La dernière ligne remplace le jeton ; un ancien reste valide tant qu'il n'est p
 (Paramètres › Applications). Il faut une forge posée par `install_forgejo.sh` et `sudo` sans mot de passe sur son
 hôte. L'installateur refuse un `[repository] ROOT` sous `/home`, `/root` ou `/run/user` : l'unité pose
 `ProtectHome=true`, et chaque dépôt rangé là se lirait `depot_absent`.
+
+#### CI sur la forge : Forgejo Actions avec un runner hôte
+
+Créer une VM de forge (`qemu` comme URL du remote) offre aussi, Oui par défaut, un runner de CI : `forgejo-runner` en
+mode HÔTE, posé par `script/forgejo/install_forgejo_runner.sh` sous le compte système `forgejo-runner`, avec
+l'étiquette `erplibre-host`. Pas de Docker : les jobs tournent directement dans la VM, qui reste petite et n'a besoin
+ni d'images ni de registre. Un runner qui ne s'installe pas laisse une forge utilisable, et le journal dit pourquoi. La
+somme de contrôle du binaire du runner est obligatoire, et le secret d'enregistrement partagé n'apparaît dans aucune
+ligne de commande.
+
+Les jobs appellent des outils de l'hôte directement, sans conteneur : `make`, `psql`, `openssl` et `git`.
+L'installateur ajoute ceux qui manquent avec le gestionnaire de paquets qu'il trouve (`apt-get`, `dnf`, `zypper` ou
+`pacman` ; `postgresql-client` sous Debian et Ubuntu, `postgresql` ailleurs) et n'en appelle aucun quand tous sont là :
+le rejouer ne change rien. `FORGEJO_RUNNER_PACKAGES` remplace cette liste (noms de paquets séparés par des espaces) ;
+vide, aucun paquet ne s'installe. Un hôte sans gestionnaire de paquets connu arrête l'installateur, sauf si cette
+variable est vide. Sans ces outils, ce sont les tests qui les appellent qui échouent, pas l'installation. Les tests qui
+committent posent leur propre identité git : le compte `forgejo-runner` n'a besoin d'aucune identité globale.
+
+Actions s'active dans `app.ini`, clé par clé, jamais en réécrivant le fichier, et les dépôts créés ensuite n'ont pas
+l'unité Actions (`[repository] DEFAULT_REPO_UNITS` sans `repo.actions`). Seul le dépôt ERPLibre lance des jobs : son
+unité Actions s'active quand TODO ouvre sa pull request. Les dépôts d'addons, qui peuvent porter des
+`.github/workflows` que Forgejo lirait, et les miroirs en lecture seule ne créent jamais de run. Une pull request
+ouverte avant l'activation d'Actions reçoit sa CI à son prochain push.
+
+Le workflow, `.forgejo/workflows/unit_test.yml`, lance `script/test/run_unit_test.sh` sur chaque pull request (`opened`,
+`synchronize`, `reopened`), et sur aucun push. Un push sur la tête d'une pull request ouverte est un `synchronize`, y
+compris une avance en fast-forward du minuteur des miroirs, et lance la CI sur du code venu de l'origine : l'entrée des
+miroirs ne suit donc ni la branche extraite ni une branche qui porte une pull request ouverte. Cela se vérifie quand
+l'entrée tourne : une pull request ouverte plus tard depuis une branche suivie reçoit un run à chaque avance du
+minuteur. Le job rapatrie la tête de la pull request et sa base dans un dépôt nu persistant, le jeton du job ne passant
+à git que par `GIT_CONFIG_*`, puis extrait la tête sur une branche de son nom, avec `origin` sur l'URL de la forge sans
+jeton. `script/forgejo/ci_venv.sh` lie `.venv.erplibre` à un venv persistant sous
+`/var/lib/forgejo-runner/cache/venv/<version de python>-<clé>`, la clé étant une empreinte de
+`conf/python-erplibre-version` et de `requirement/erplibre_require-ments.txt` : il ne se rebâtit que quand l'un d'eux
+change, et les `EL_CI_VENV_KEEP` venvs les plus récents se gardent (3 par défaut). La création de la forge bâtit ce venv
+d'avance : la première pull request ne l'attend pas. Le runner prend un job à la fois : l'installateur refuse une
+`FORGEJO_RUNNER_CAPACITY` autre que 1, car l'élagage retirerait un venv qu'un job concurrent utilise encore.
+
+Le modèle de confiance du mode hôte : le code d'une pull request tourne sous `forgejo-runner`, sans conteneur. Il peut
+lire le jeton du runner et altérer les caches du venv et de git pour les jobs suivants. `ProtectHome` lui cache le
+checkout et les clés SSH de l'opérateur, `NoNewPrivileges` le tient loin de tout setuid, et le compte n'est ni dans
+`sudo` ni dans le groupe de Forgejo. C'est acceptable sur une forge privée et jetable, inscriptions fermées, dont les
+seuls auteurs de pull requests sont ses opérateurs ; n'ouvrez pas une telle forge à des contributeurs extérieurs.
+
+Sur un autre Forgejo sans runner de cette étiquette, les jobs restent en attente ; GitHub ignore `.forgejo/`. L'état de
+la CI d'une pull request se lit dans TODO › Repo › Suivre les pull requests d'une forge. Pour réinstaller ou mettre à
+niveau le runner, dans la VM :
+
+```bash
+cd ~/git/erplibre && ./script/forgejo/install_forgejo_runner.sh
+sudo systemctl status forgejo-runner
+sudo journalctl -u forgejo-runner -f
+```
+
+Une forge créée avant ce runner garde Actions sur ses dépôts existants : `DEFAULT_REPO_UNITS` ne vaut que pour les
+dépôts créés ensuite.
 
 #### Installer ou reconfigurer sur les commits
 

@@ -19,6 +19,7 @@ réservée à la documentation).
 
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -336,6 +337,87 @@ class TestLeMinuteurDesMiroirs(unittest.TestCase):
             fv.ETAPES,
             ("vm", "ssh", "cloud-init", "code", "venv", "forgejo", "api"),
         )
+
+
+class TestLeRunner(unittest.TestCase):
+    """L'étape « runner » de `deployer` et sa commande distante : jamais
+    fatale, sans secret, et un shell valide quel que soit le préambule.
+    Les doublures sont celles de `TestDeployer`."""
+
+    setUp = TestDeployer.setUp
+    etape = TestDeployer.etape
+
+    def deployer(self, runner=False):
+        return fv.deployer(
+            "forge-x",
+            "forge-admin",
+            self.journal,
+            self._tmp.name,
+            lambda nom: IP,
+            "venv-cmd",
+            self.etape,
+            cle_pub="/k.pub",
+            preambule="attendre;",
+            runner=runner,
+        )
+
+    def test_the_runner_step_follows_the_api(self):
+        with mock.patch.object(
+            fv, "amorcer", return_value=(mock.Mock(), "jeton", "17.0")
+        ):
+            forge = self.deployer(runner=True)
+        self.assertEqual([e for e, _ in self.etapes], list(fv.etapes(True)))
+        self.assertEqual(forge["runner"], fv.LABEL_CI)
+        commande = self.lances[-1][0][-1]
+        self.assertIn("install_forgejo_runner.sh", commande)
+        self.assertIn("FORGEJO_RUNNER_NAME=forge-x-host", commande)
+        for secret in (forge["mot_de_passe"], "jeton"):
+            self.assertNotIn(secret, commande)
+
+    def test_a_failed_runner_still_returns_the_forge(self):
+        def ssh(cible, commande, journal, delai, entree=None):
+            return 1 if "install_forgejo_runner.sh" in commande else 0
+
+        with mock.patch.object(
+            fv, "amorcer", return_value=(mock.Mock(), "jeton", "17.0")
+        ), mock.patch.object(fv, "ssh", side_effect=ssh):
+            forge = self.deployer(runner=True)
+        self.assertEqual(self.etapes[-1], ("runner", False))
+        self.assertIsNotNone(forge)
+        self.assertEqual(forge["runner"], "")
+
+    def test_by_default_no_runner(self):
+        with mock.patch.object(
+            fv, "amorcer", return_value=(mock.Mock(), "jeton", "17.0")
+        ):
+            forge = self.deployer()
+        self.assertEqual([e for e, _ in self.etapes], list(fv.ETAPES))
+        self.assertEqual(forge["runner"], "")
+        self.assertFalse(
+            any("install_forgejo_runner" in a[-1] for a, _ in self.lances)
+        )
+
+    def test_the_command_is_valid_shell_and_quotes_its_values(self):
+        commande = fv.commande_runner("x-host", "attendre;")
+        res = subprocess.run(
+            ["bash", "-n"], input=commande, capture_output=True, text=True
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn(";;", commande)
+        self.assertTrue(commande.startswith("{ attendre; } </dev/null"))
+        drole = fv.commande_runner("x; rm -rf /")
+        self.assertIn("FORGEJO_RUNNER_NAME='x; rm -rf /'", drole)
+        # Le dossier temporaire part même quand le pré-bâti échoue.
+        self.assertTrue(commande.endswith("exit $rc"))
+        for f in fv.FICHIERS_CI_VENV:
+            self.assertIn(f, commande)
+            self.assertTrue(os.path.exists(os.path.join(fv.RACINE, f)), f)
+
+    def test_the_steps(self):
+        self.assertEqual(fv.etapes(), fv.ETAPES)
+        self.assertEqual(fv.etapes(True), fv.ETAPES + ("runner",))
+        self.assertEqual(fv._preambule_net(" a; "), "a")
+        self.assertEqual(fv._preambule_net(" ; "), "true")
 
 
 if __name__ == "__main__":

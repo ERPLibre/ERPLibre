@@ -585,6 +585,15 @@ never forced, then a pull request goes from it to the manifest branch in the sam
 subject of its last commit. A clone is skipped when the manifest branch is missing on the forge, or when it already
 holds the branch's commit. An open pull request for the same pair is reused, never duplicated.
 
+When the ERPLibre checkout carries the same remote, TODO also offers, Yes by default, a pull request for ERPLibre
+itself, from its checked-out branch to a base asked for: the default branch of the forge repository when it differs
+from the checked-out branch, otherwise `develop`, or `master` when the checked-out branch is `develop`. The ERPLibre
+repository must already be on the forge. A base missing from the forge is offered for a push, No by default, from the
+local branch or from its `origin` tracking branch, never forced. Actions is then enabled on that repository (see CI on
+the forge below), before the pull request opens; a forge that does not report Actions on the repository is flagged. A
+forge that refuses to enable Actions (repository admins only), or keeps it off, is reported as a warning, and the pull
+request still opens.
+
 #### Follow the pull requests of a forge
 
 TODO › Repo › Follow the pull requests of a forge takes a forge remote of the clones and reads, through the API, the
@@ -696,6 +705,61 @@ The last line replaces the token; an older one stays valid until it is revoked i
 Applications). This needs a forge installed by `install_forgejo.sh` and `sudo` without a password on its host. The
 installer refuses a `[repository] ROOT` under `/home`, `/root` or `/run/user`: the unit sets `ProtectHome=true`, and
 every repository there would read as `depot_absent`.
+
+#### CI on the forge: Forgejo Actions with a host runner
+
+Creating a forge VM (`qemu` as the remote URL) also offers, Yes by default, a CI runner: `forgejo-runner` in HOST
+mode, installed by `script/forgejo/install_forgejo_runner.sh` under the `forgejo-runner` system account, with the label
+`erplibre-host`. There is no Docker: jobs run directly on the VM, which keeps the VM small and needs neither images
+nor a registry. A runner that fails to install leaves a working forge, and the log says why. The checksum of the
+runner binary is mandatory, and the shared registration secret never appears on a command line.
+
+The jobs call host tools directly, without a container: `make`, `psql`, `openssl` and `git`. The installer adds the
+missing ones with the package manager it finds (`apt-get`, `dnf`, `zypper` or `pacman`; `postgresql-client` on Debian
+and Ubuntu, `postgresql` elsewhere) and calls none when all are present, so replaying it changes nothing.
+`FORGEJO_RUNNER_PACKAGES` replaces this list (space-separated package names); set empty, no package is installed. A
+host without a known package manager stops the installer, unless this variable is empty. Without these tools, the
+tests that call them fail, not the installation. The tests that commit set their own git identity: the
+`forgejo-runner` account needs no global one.
+
+Actions is enabled in `app.ini`, key by key, never by rewriting the file, and the repositories created afterwards get
+no Actions unit (`[repository] DEFAULT_REPO_UNITS` without `repo.actions`). Only the ERPLibre repository runs jobs: its
+Actions unit is turned on when TODO opens its pull request. The addon repositories, which may carry
+`.github/workflows` that Forgejo would read, and the read-only mirrors never create a run. A pull request opened
+before Actions was enabled gets its CI on its next push.
+
+The workflow, `.forgejo/workflows/unit_test.yml`, runs `script/test/run_unit_test.sh` on every pull request (`opened`,
+`synchronize`, `reopened`), and on no push. A push to the head branch of an open pull request is a `synchronize`,
+including a fast-forward by the mirror timer, and runs the CI on code that came from the origin: the mirror entry
+therefore follows neither the checked-out branch nor a branch that heads an open pull request. This is checked when the
+entry runs: a pull request opened later from a followed branch gets a run at each advance of the timer. The job fetches
+the head of the pull request and its base into a persistent bare repository, with the job token passed to git through
+`GIT_CONFIG_*` only, then checks out the head on a branch of its name, with `origin` on the token-free forge URL.
+`script/forgejo/ci_venv.sh` links `.venv.erplibre` to a persistent venv under
+`/var/lib/forgejo-runner/cache/venv/<python version>-<key>`, the key being a digest of `conf/python-erplibre-version`
+and `requirement/erplibre_require-ments.txt`: it is rebuilt only when one of them changes, and the `EL_CI_VENV_KEEP`
+most recent venvs are kept (3 by default). The forge creation builds this venv ahead, so the first pull request does not
+wait for it. The runner takes one job at a time: the installer refuses a `FORGEJO_RUNNER_CAPACITY` other than 1, since
+pruning would remove a venv that a concurrent job still uses.
+
+The trust model of host mode: the code of a pull request runs as `forgejo-runner`, without a container. It can read
+the runner token and alter the venv and git caches for the next jobs. `ProtectHome` hides the operator's checkout and
+SSH keys from it, `NoNewPrivileges` keeps it away from any setuid, and the account is in neither `sudo` nor the
+Forgejo group. This is acceptable on a private, disposable forge with closed registration whose only pull request
+authors are its operators; do not open such a forge to outside contributors.
+
+On another Forgejo without a runner of this label, the jobs stay pending; GitHub ignores `.forgejo/`. The CI state of
+a pull request shows in TODO › Repo › Follow the pull requests of a forge. To install or upgrade the runner again, in
+the VM:
+
+```bash
+cd ~/git/erplibre && ./script/forgejo/install_forgejo_runner.sh
+sudo systemctl status forgejo-runner
+sudo journalctl -u forgejo-runner -f
+```
+
+A forge created before this runner keeps Actions on its existing repositories: `DEFAULT_REPO_UNITS` only applies to
+repositories created afterwards.
 
 #### Install or reconfigure on the commits
 
