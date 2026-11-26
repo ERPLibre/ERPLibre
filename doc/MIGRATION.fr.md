@@ -38,31 +38,58 @@ make docker_show_databases
 - Redémarrez votre démon
 - Régénérez le mot de passe maître manuellement
 
-## Migration Odoo 12 vers Odoo 13
+## Migration de base de données entre versions d'Odoo
 
-Remplacez BD par le nom de votre base de données.
+**TODO › Exécuter › Code › Mise à jour › Mise à jour Odoo - Migration de base
+de données** migre une base d'Odoo 8 jusqu'à 20, une version à la fois. C'est
+la référence : en plus d'OpenUpgrade, elle installe les versions manquantes,
+désinstalle les modules absents de la version suivante, lance les
+vérifications et les correctifs de chaque saut, et reprend là où elle s'est
+arrêtée. Les touches depuis un clone neuf sont dans le README, section
+*Migrer une base de données entre versions d'Odoo*.
 
-D'abord, assurez-vous que tous les addons sont mis à jour avec le script.
+Les commandes ci-dessous sont celles que lance chaque saut, pour une
+exécution à la main ou un diagnostic. Remplacez `N` par la version cible, `BD`
+par le nom de la base et `VENV` par la clé `odooN.0_…` de
+`conf/supported_version_erplibre.json`. D'abord, mettez à jour les addons de
+la base :
 
 ```bash
 ./script/addons/update_addons_all.sh BD
 ```
 
-Exécutez la migration avec OpenUpgrade, depuis son clone de la version cible et dans le venv d'Odoo 13.0, dont
-le nom est la clé `odoo13.0_…` de `conf/supported_version_erplibre.json`.
+### Cible Odoo 13 ou avant
+
+OpenUpgrade est un Odoo complet : la configuration prend ses addons et son
+cœur à la place de ceux d'Odoo, et son lanceur tourne dans le venv de la
+version cible. Jusqu'à Odoo 9, le cœur est `openerp/addons` et le lanceur
+`openerp-server`, et jusqu'à Odoo 10 le serveur HTTP s'éteint par
+`--no-xmlrpc` au lieu de `--no-http`.
 
 ```bash
-make config_gen_migration
-./.venv.odoo13.0_python3.7.17/bin/python ./odoo13.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --no-http --update all --stop-after-init -d BD
+OU=$PWD/odooN.0/OCA_OpenUpgrade
+./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py --ignore-odoo-path \
+  --extra-addons-path $OU,$OU/addons,$OU/odoo/addons && ./script/generate_config.sh
+./.venv.VENV/bin/pip install odoorpc==0.7.0 openupgradelib
+./.venv.VENV/bin/python $OU/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d BD
 ```
 
-## Migration Odoo 13 vers Odoo 14
+### Cible Odoo 14 ou après
 
-Remplacez BD par le nom de votre base de données.
+OpenUpgrade n'apporte que ses scripts de migration, lancés par `run.sh` avec
+le module `openupgrade_framework` et `erplibre_openupgrade_compat`, qui
+corrige openupgradelib et vit dans `script/odoo/openupgrade_addons`. Les
+limites de mémoire et de temps sont levées : celles d'Odoo arrêtent une mise
+à jour de toute une base.
 
 ```bash
-make config_gen_migration
-./run.sh --upgrade-path=./odoo14.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --no-http --stop-after-init --load=base,web,openupgrade_framework -d BD
+./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py \
+  --extra-addons-path $PWD/odooN.0/OCA_OpenUpgrade,$PWD/script/odoo/openupgrade_addons \
+  && ./script/generate_config.sh
+./run.sh --upgrade-path=./odooN.0/OCA_OpenUpgrade/openupgrade_scripts/scripts \
+  --update all -c config.conf --stop-after-init --no-http \
+  --limit-memory-hard=0 --limit-memory-soft=0 --limit-time-real 99999 --limit-time-cpu 99999 \
+  --load=base,web,openupgrade_framework,erplibre_openupgrade_compat -d BD
 ```
 
 ## PostgreSQL pendant la migration
