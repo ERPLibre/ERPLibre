@@ -19,8 +19,7 @@ pour rien :
 `verifier` rend la liste de ces défauts ; les autres fonctions en sont les
 pièces, chacune testable sans serveur. Le serveur est joint par psql, avec
 l'environnement donné : celui d'Odoo, que db_restore.environnement_pg tire
-de config.conf, plus PGHOST et PGPORT du cluster de migration quand la
-migration y tourne.
+de config.conf.
 
 Seul ce qui fera certainement échouer un saut arrête la migration : un
 serveur qu'on ne sait pas interroger, ou dont on ne connaît pas le binaire,
@@ -33,6 +32,7 @@ import os
 import re
 import shutil
 import subprocess
+import zipfile
 
 # MIN_PG_VERSION d'Odoo 20 : en dessous, une base échoue sur
 # « any_value() n'existe pas ».
@@ -187,8 +187,8 @@ def verifier(
     ce qui le complète. ARRET quand un saut échouerait à coup sûr,
     AVERTISSEMENT quand la migration peut continuer.
 
-    `bindirs` donne où lire la version installée : le cluster de migration
-    connaît le sien. None cherche celui du système, et seulement pour un
+    `bindirs` donne où lire la version installée, pour un serveur dont on
+    connaît l'exécutable. None cherche celui du système, et seulement pour un
     serveur local (serveur_local). `version_dump` est la version majeure
     du serveur qui a produit la sauvegarde, `cible` la version d'Odoo
     visée."""
@@ -215,6 +215,19 @@ def verifier(
     if cible is not None and cible >= 20 and serveur_majeure < PG_MIN_ODOO_20:
         defauts.append((ARRET, TROP_ANCIEN_ODOO_20, (serveur_majeure,)))
     return defauts
+
+
+def version_du_dump(chemin_zip):
+    """La version majeure du serveur qui a produit le dump.sql de la
+    sauvegarde `chemin_zip`, lue dans son en-tête, ou None."""
+    try:
+        with zipfile.ZipFile(chemin_zip) as archive:
+            with archive.open("dump.sql") as dump:
+                tete = dump.read(4096).decode("utf-8", "replace")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return None
+    trouve = re.search(r"Dumped from database version (\d+)", tete)
+    return int(trouve.group(1)) if trouve else None
 
 
 def bibliotheque_en_cause(lignes):

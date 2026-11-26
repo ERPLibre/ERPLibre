@@ -64,3 +64,19 @@ Remplacez BD par le nom de votre base de données.
 make config_gen_migration
 ./run.sh --upgrade-path=./odoo14.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --no-http --stop-after-init --load=base,web,openupgrade_framework -d BD
 ```
+
+## PostgreSQL pendant la migration
+
+Un seul PostgreSQL 18 porte toute la chaîne, d'Odoo 12 à 18 : aucun saut n'exige une autre version. Une sauvegarde ne
+se restaure que dans un serveur de même version majeure ou plus récent.
+
+À son début et à chaque reprise, la migration vérifie le serveur qu'elle utilise, par la connexion de `config.conf`, et
+ne s'arrête en disant pourquoi que lorsqu'un saut échouerait à coup sûr : un serveur local, joint par son socket Unix,
+doit être celui installé. Après une mise à jour du paquet PostgreSQL, un serveur démarré avant garde l'ancien
+exécutable, et la première bibliothèque qu'il charge échoue sur « undefined symbol » : le saut vers 13 charge
+plpgsql. Le redémarrer, `sudo systemctl restart postgresql`, puis relancer la migration, qui reprend là où elle
+s'est arrêtée. Un serveur en TCP, un conteneur ou un autre hôte, n'est pas comparé.
+
+Une sauvegarde d'un PostgreSQL plus récent que le serveur, ou un serveur que la vérification ne sait pas interroger,
+ne donne qu'un avertissement. Une commande qui échoue sur une bibliothèque que le serveur ne charge pas dit de le
+redémarrer, et `TODO › Bilan de santé` signale le même écart entre serveur en marche et serveur installé.

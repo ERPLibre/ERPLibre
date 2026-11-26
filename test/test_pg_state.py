@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,6 +105,19 @@ class TestVersions(unittest.TestCase):
             )
         )
         self.assertFalse(pg_state.bibliotheque_en_cause(None))
+
+    def test_the_dump_version_is_read_from_the_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chemin = os.path.join(tmp, "b.zip")
+            with zipfile.ZipFile(chemin, "w") as archive:
+                archive.writestr(
+                    "dump.sql",
+                    "--\n-- Dumped from database version 17.4\n",
+                )
+            self.assertEqual(pg_state.version_du_dump(chemin), 17)
+            self.assertIsNone(
+                pg_state.version_du_dump(os.path.join(tmp, "absent.zip"))
+            )
 
     def test_only_a_socket_is_a_local_server(self):
         self.assertTrue(pg_state.serveur_local({}))

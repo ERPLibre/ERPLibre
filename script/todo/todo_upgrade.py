@@ -37,6 +37,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.database import pg_state
 from script.execute import execute
 from script.git.git_tool import GitTool
 from script.git.manifest_freeze import manifest_branch
@@ -1519,6 +1520,9 @@ class TodoUpgrade:
                 f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{next_version * 10}-{(next_version + 1) * 10}.html"
             )
 
+        if not self.verifier_postgresql(end_version):
+            return
+
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         msg = "0 - Inspect zip"
         self.print_step(msg)
@@ -2567,9 +2571,12 @@ class TodoUpgrade:
                         f" -d {database_name_upgrade}"
                     )
                 if file_path_fix_migration:
-                    status, cmd_executed = self.todo_upgrade_execute(
+                    # La sortie est lue : un serveur qui ne charge pas
+                    # plpgsql.so y est reconnu et signalé avant l'invite.
+                    status, cmd_executed, _sortie = self.todo_upgrade_execute(
                         cmd_fix_migration,
                         single_source_odoo=True,
+                        get_output=True,
                     )
 
                     # A fix that did not run must not be recorded as applied,
@@ -4239,6 +4246,44 @@ class TodoUpgrade:
         )
         return erplibre_version
 
+    def verifier_postgresql(self, cible):
+        """Vérifie le serveur que la migration va utiliser (pg_state) :
+        rend False et dit pourquoi quand un saut vers Odoo `cible`
+        échouerait sans que la base y soit pour rien. Appelée à chaque
+        début et à chaque reprise, puisqu'une mise à jour du paquet peut
+        tomber entre deux. Le serveur du système se redémarre par sudo :
+        la commande est donnée, pas lancée."""
+        from script.database import db_restore
+
+        # La connexion d'Odoo, celle de config.conf, et non celle
+        # qu'auraient les valeurs par défaut de libpq.
+        defauts = pg_state.verifier(
+            db_restore.environnement_pg("postgres"),
+            version_dump=pg_state.version_du_dump(self.file_path),
+            cible=cible,
+        )
+        etiquettes = {
+            pg_state.DECALAGE: (t("running version"), t("installed version")),
+            pg_state.DUMP_PLUS_RECENT: (
+                t("backup version"),
+                t("server version"),
+            ),
+            pg_state.TROP_ANCIEN_ODOO_20: (t("server version"),),
+        }
+        for gravite, cle, valeurs in defauts:
+            marque = "❌" if gravite == pg_state.ARRET else "⚠️"
+            detail = ", ".join(
+                f"{nom} {valeur}"
+                for nom, valeur in zip(etiquettes.get(cle, ()), valeurs)
+            )
+            print(f"{marque} {t(cle)}" + (f" ({detail})" if detail else ""))
+            if cle == pg_state.DECALAGE:
+                print(f"   $ {pg_state.COMMANDE_REDEMARRER}")
+        if any(gravite == pg_state.ARRET for gravite, _, _ in defauts):
+            print(f"ℹ {t('Rerun the migration once fixed: it resumes here.')}")
+            return False
+        return True
+
     def todo_upgrade_execute(
         self,
         cmd,
@@ -4250,6 +4295,12 @@ class TodoUpgrade:
         wait_at_error=True,
         attempt=1,
     ):
+        """Lance `cmd` et, quand elle échoue, propose de la refaire.
+
+        Quand la sortie est lue (`get_output`) et montre un serveur
+        PostgreSQL qui ne charge pas ses bibliothèques, le message nomme le
+        remède avant l'invite : redémarrer le serveur, pas toucher la
+        base."""
         if output_is_json and not get_output:
             get_output = True
         output = None
@@ -4274,6 +4325,15 @@ class TodoUpgrade:
         self.lst_command_executed.append(cmd_executed)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
+        if (
+            (status is None or status)
+            and output is not None
+            and pg_state.bibliotheque_en_cause(output)
+        ):
+            print(
+                f"🛑 {t('PostgreSQL cannot load one of its libraries: the running server is older than its package. Restart it, then redo the command.')}"
+            )
+            print(f"   $ {pg_state.COMMANDE_REDEMARRER}")
         # None means « the command never reported a status » -> treat it as a
         # failure, never as a success (defence in depth: exec_command_live now
         # always sets one, but a silent None must not skip this prompt).

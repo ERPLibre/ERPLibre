@@ -14315,6 +14315,22 @@ TRANSLATIONS = {
         "fr": "PostgreSQL redémarré.",
         "en": "PostgreSQL restarted.",
     },
+    "backup version": {
+        "fr": "version de la sauvegarde",
+        "en": "backup version",
+    },
+    "server version": {
+        "fr": "version du serveur",
+        "en": "server version",
+    },
+    "Rerun the migration once fixed: it resumes here.": {
+        "fr": "Relancer la migration une fois corrigé : elle reprend ici.",
+        "en": "Rerun the migration once fixed: it resumes here.",
+    },
+    "PostgreSQL cannot load one of its libraries: the running server is older than its package. Restart it, then redo the command.": {
+        "fr": "PostgreSQL ne charge pas l'une de ses bibliothèques : le serveur en marche est plus ancien que son paquet. Le redémarrer, puis refaire la commande.",
+        "en": "PostgreSQL cannot load one of its libraries: the running server is older than its package. Restart it, then redo the command.",
+    },
     "A page listed for search engines that does not answer is": {
         "fr": "Une page listée pour les moteurs de recherche qui ne répond pas est",
         "en": "A page listed for search engines that does not answer is",
