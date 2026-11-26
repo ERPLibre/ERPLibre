@@ -26238,6 +26238,42 @@ TRANSLATIONS = {
         "fr": "    {champ} : {avant} → {apres}",
         "en": "    {champ} : {avant} → {apres}",
     },
+    "Cannot run ssh -G {cible}: {err}": {
+        "fr": "Impossible d'exécuter ssh -G {cible} : {err}",
+        "en": "Cannot run ssh -G {cible}: {err}",
+    },
+    "ssh -G {cible} gave no host address.": {
+        "fr": "ssh -G {cible} n'a donné aucune adresse d'hôte.",
+        "en": "ssh -G {cible} gave no host address.",
+    },
+    "Reading the host failed (exit {code}): {cmd}": {
+        "fr": "Lecture de l'hôte en échec (code {code}) : {cmd}",
+        "en": "Reading the host failed (exit {code}): {cmd}",
+    },
+    "No active storage accepts disk images on the host.": {
+        "fr": "Aucun stockage actif de l'hôte n'accepte d'images disque.",
+        "en": "No active storage accepts disk images on the host.",
+    },
+    "No storage accepts snippets: run Prepare the host (Préparer l'hôte) first.": {
+        "fr": "Aucun stockage n'accepte les snippets : lancer d'abord « Préparer l'hôte ».",
+        "en": "No storage accepts snippets: run Prepare the host (Préparer l'hôte) first.",
+    },
+    "The host has no network bridge.": {
+        "fr": "L'hôte n'a aucun pont réseau.",
+        "en": "The host has no network bridge.",
+    },
+    "SSH public key unreadable: {err}": {
+        "fr": "Clé publique SSH illisible : {err}",
+        "en": "SSH public key unreadable: {err}",
+    },
+    "SSH public key is empty: {chemin}": {
+        "fr": "Clé publique SSH vide : {chemin}",
+        "en": "SSH public key is empty: {chemin}",
+    },
+    "Image URL of {distro} {version} is not resolved: {url}": {
+        "fr": "L'URL de l'image {distro} {version} n'est pas résolue : {url}",
+        "en": "Image URL of {distro} {version} is not resolved: {url}",
+    },
     "No changes.": {
         "fr": "Aucun changement.",
         "en": "No changes.",
