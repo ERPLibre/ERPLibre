@@ -444,11 +444,14 @@ class TestManifeste(unittest.TestCase):
         sans_couleur.start()
         self.addCleanup(sans_couleur.stop)
 
-    def ctx_snapshot(self, depots, sales=()):
-        """Un Contexte dont `repo_state snapshot` rend `depots` et dont
-        `git status` dit modifiés les chemins de `sales`."""
+    def ctx_snapshot(self, depots, sales=(), mode=None):
+        """Un Contexte dont `repo_state snapshot` rend `depots`, dans le
+        mode `mode` du checkout, et dont `git status` dit modifiés les
+        chemins de `sales`."""
         ctx = h.Contexte(tempfile.gettempdir())
-        sortie = json.dumps({"local_manifest": True, "repos": depots})
+        sortie = json.dumps(
+            {"local_manifest": True, "mode": mode, "repos": depots}
+        )
 
         def lancer(args, *a, **k):
             if "status" in args:
@@ -498,23 +501,57 @@ class TestManifeste(unittest.TestCase):
         self.assertNotIn("A/sale", "\n".join(remettre.lignes))
 
     def test_a_repository_without_freeze_is_proposed_a_first_one(self):
-        """Parmi des dépôts gelés, un clone sans gel est proposé à « mettre
+        """Dans un checkout gelé, un clone sans gel est proposé à « mettre
         à jour le gel avec HEAD », sans changer le statut de la
-        vérification ; sans aucun gel dans le checkout, rien n'est proposé."""
+        vérification."""
         gele = self.depot(
             "A/gel",
             "a" * 40,
             {"ahead": 0, "behind": 0, "alignment": "conforme"},
         )
         sans = self.depot("A/sans_gel")
-        resultat = h.verifier_manifeste(self.ctx_snapshot([gele, sans]))
+        resultat = h.verifier_manifeste(
+            self.ctx_snapshot([gele, sans], mode="frozen")
+        )
         self.assertEqual(resultat.statut, h.OK)
         (maj,) = resultat.resolutions
         self.assertEqual(maj.cle, h.freeze_resolution.MAJ_GEL)
         self.assertEqual([d["path"] for d in maj.depots], ["A/sans_gel"])
         self.assertIn(f"   A/sans_gel — {t('no freeze yet')}", maj.lignes)
-        resultat = h.verifier_manifeste(self.ctx_snapshot([sans]))
-        self.assertEqual(resultat.resolutions, [])
+
+    def test_branch_mode_proposes_no_first_freeze(self):
+        """En mode branches, un clone sans gel suit sa branche : rien n'est
+        proposé, même quand d'autres dépôts portent un gel, comme les
+        fragments communs aux versions."""
+        gele = self.depot(
+            "A/gel",
+            "a" * 40,
+            {"ahead": 0, "behind": 0, "alignment": "conforme"},
+        )
+        sans = self.depot("A/sans_gel")
+        for mode in ("branches", None):
+            with self.subTest(mode=mode):
+                resultat = h.verifier_manifeste(
+                    self.ctx_snapshot([gele, sans], mode=mode)
+                )
+                self.assertEqual(resultat.resolutions, [])
+
+    def test_branch_mode_still_offers_the_other_resolutions(self):
+        """Le mode branches n'écarte que SANS_GEL : un dépôt en retard sur
+        son gel reste proposé à y être remis."""
+        retard = self.depot(
+            "A/retard",
+            "b" * 40,
+            {"ahead": 0, "behind": 2, "alignment": "en_retard"},
+        )
+        resultat = h.verifier_manifeste(
+            self.ctx_snapshot(
+                [retard, self.depot("A/sans_gel")], mode="branches"
+            )
+        )
+        (remettre,) = resultat.resolutions
+        self.assertEqual(remettre.cle, h.freeze_resolution.REMETTRE)
+        self.assertEqual([d["path"] for d in remettre.depots], ["A/retard"])
 
     def test_no_resolution_when_every_repository_is_on_its_freeze(self):
         resultat = h.verifier_manifeste(
