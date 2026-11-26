@@ -132,13 +132,16 @@ def environnement(nom, base=None, racine=RACINE_PARCS):
     """Copie de `base` (os.environ par défaut) prête pour un sous-processus tofu.
 
     Porte le jeton Proxmox quand il est stocké, le chiffrement de l'état, le
-    cache partagé des fournisseurs et les réglages non interactifs. Ni `base`
-    ni os.environ ne sont modifiés.
+    cache partagé des fournisseurs et les réglages non interactifs. Sans jeton
+    stocké, un `PROXMOX_VE_API_TOKEN` hérité est retiré : il appartient à un
+    autre parc ou à un autre hôte. Ni `base` ni os.environ ne sont modifiés.
     """
     env = dict(os.environ if base is None else base)
     jeton = lire(nom, racine).get("jeton")
     if jeton:
         env["PROXMOX_VE_API_TOKEN"] = jeton
+    else:
+        env.pop("PROXMOX_VE_API_TOKEN", None)
     env["TF_ENCRYPTION"] = tf_encryption(phrase_etat(nom, racine))
     CACHE_PLUGINS.mkdir(parents=True, exist_ok=True)
     env["TF_PLUGIN_CACHE_DIR"] = str(CACHE_PLUGINS)

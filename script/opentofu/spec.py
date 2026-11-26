@@ -44,7 +44,15 @@ class SpecInvalide(Exception):
 
 
 def dossier_parc(nom, racine=RACINE_PARCS):
-    """Dossier d'un parc sous `racine`."""
+    """Dossier d'un parc sous `racine`.
+
+    Lève ValueError (message traduit) quand `nom` n'est pas un nom de parc :
+    tout chemin de parc passe par ici, et un nom comme `../x` sortirait de
+    `racine`. `fullmatch` refuse aussi un saut de ligne final que `$` laisse
+    passer.
+    """
+    if not isinstance(nom, str) or not _RE_PARC.fullmatch(nom):
+        raise ValueError(t("Invalid fleet name: {nom}").format(nom=nom))
     return Path(racine) / nom
 
 
@@ -217,7 +225,10 @@ def valider(spec, distros=None):
 
 def charger(nom, racine=RACINE_PARCS):
     """Lit et valide la spec d'un parc ; lève `SpecInvalide` sinon."""
-    chemin = dossier_parc(nom, racine) / "spec.json"
+    try:
+        chemin = dossier_parc(nom, racine) / "spec.json"
+    except ValueError as exc:
+        raise SpecInvalide([str(exc)])
     try:
         spec = json.loads(chemin.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:

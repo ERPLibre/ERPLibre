@@ -26389,6 +26389,80 @@ TRANSLATIONS = {
     "VM {nom}: vmid must be empty or an integer >= 100.": {
         "fr": "VM {nom} : vmid doit être vide ou un entier >= 100.",
         "en": "VM {nom}: vmid must be empty or an integer >= 100.",
+    },    "(known after apply)": {
+        "fr": "(après apply)",
+        "en": "(known after apply)",
+    },
+    "(sensitive)": {
+        "fr": "(sensible)",
+        "en": "(sensitive)",
+    },
+    "Plan first.": {
+        "fr": "Planifier d'abord.",
+        "en": "Plan first.",
+    },
+    "OpenTofu (tofu) is not installed: install it from the OpenTofu menu.": {
+        "fr": (
+            "OpenTofu (tofu) n'est pas installé : l'installer depuis le "
+            "menu OpenTofu."
+        ),
+        "en": (
+            "OpenTofu (tofu) is not installed: install it from the "
+            "OpenTofu menu."
+        ),
+    },
+    "tofu version -json failed: {err}": {
+        "fr": "tofu version -json a échoué : {err}",
+        "en": "tofu version -json failed: {err}",
+    },
+    "Cannot run tofu: {err}": {
+        "fr": "Impossible de lancer tofu : {err}",
+        "en": "Cannot run tofu: {err}",
+    },
+    "tofu {commande} failed (exit {code}).": {
+        "fr": "tofu {commande} a échoué (code {code}).",
+        "en": "tofu {commande} failed (exit {code}).",
+    },
+    "Interrupted: tofu stopped; plan again to see where the fleet stands.": {
+        "fr": (
+            "Interrompu : tofu s'est arrêté ; planifier de nouveau pour "
+            "voir où en est le parc."
+        ),
+        "en": (
+            "Interrupted: tofu stopped; plan again to see where the fleet "
+            "stands."
+        ),
+    },
+    "The tofu state is locked. If no other tofu is running, release it "
+    "from {dossier} with: tofu force-unlock {id}": {
+        "fr": (
+            "L'état tofu est verrouillé. Si aucun autre tofu ne tourne, "
+            "le libérer depuis {dossier} avec : tofu force-unlock {id}"
+        ),
+        "en": (
+            "The tofu state is locked. If no other tofu is running, "
+            "release it from {dossier} with: tofu force-unlock {id}"
+        ),
+    },
+    "Unreadable tofu output: {err}": {
+        "fr": "Sortie de tofu illisible : {err}",
+        "en": "Unreadable tofu output: {err}",
+    },
+    "Plan ready: {n} change(s).": {
+        "fr": "Plan prêt : {n} changement(s).",
+        "en": "Plan ready: {n} change(s).",
+    },
+    "Apply done.": {
+        "fr": "Application terminée.",
+        "en": "Apply done.",
+    },
+    "Destroy done.": {
+        "fr": "Destruction terminée.",
+        "en": "Destroy done.",
+    },
+    "Nothing to destroy: this fleet has no tofu state.": {
+        "fr": "Rien à détruire : ce parc n'a pas d'état tofu.",
+        "en": "Nothing to destroy: this fleet has no tofu state.",
     },
 }
 

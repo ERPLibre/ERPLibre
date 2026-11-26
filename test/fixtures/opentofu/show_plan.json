@@ -1,0 +1,472 @@
+{
+  "applyable": true,
+  "complete": true,
+  "configuration": {
+    "provider_config": {
+      "proxmox": {
+        "full_name": "registry.opentofu.org/bpg/proxmox",
+        "name": "proxmox",
+        "version_constraint": "0.123.1"
+      }
+    }
+  },
+  "errored": false,
+  "format_version": "1.2",
+  "planned_values": {
+    "root_module": {}
+  },
+  "resource_changes": [
+    {
+      "address": "proxmox_download_file.img_debian_13_genericcloud_amd64_qcow2",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "after": {
+          "checksum": null,
+          "checksum_algorithm": null,
+          "content_type": "import",
+          "datastore_id": "local",
+          "file_name": "debian-13-genericcloud-amd64.qcow2",
+          "id": "local:import/debian-13-genericcloud-amd64.qcow2",
+          "node_name": "pve1",
+          "overwrite": true,
+          "overwrite_unmanaged": true,
+          "url": "https://images.example.invalid/debian-13-genericcloud-amd64.qcow2"
+        },
+        "after_sensitive": {},
+        "after_unknown": {},
+        "before": {
+          "checksum": null,
+          "checksum_algorithm": null,
+          "content_type": "import",
+          "datastore_id": "local",
+          "file_name": "debian-13-genericcloud-amd64.qcow2",
+          "id": "local:import/debian-13-genericcloud-amd64.qcow2",
+          "node_name": "pve1",
+          "overwrite": true,
+          "overwrite_unmanaged": true,
+          "url": "https://images.example.invalid/debian-13-genericcloud-amd64.qcow2"
+        },
+        "before_sensitive": {}
+      },
+      "mode": "managed",
+      "name": "img_debian_13_genericcloud_amd64_qcow2",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "type": "proxmox_download_file"
+    },
+    {
+      "address": "proxmox_virtual_environment_vm.vm_essai_vm_2",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "acpi": true,
+          "bios": "seabios",
+          "boot_order": [
+            "scsi0"
+          ],
+          "cpu": [
+            {
+              "cores": 2,
+              "sockets": 1,
+              "type": "host"
+            }
+          ],
+          "disk": [
+            {
+              "datastore_id": "local-lvm",
+              "discard": "on",
+              "file_format": "raw",
+              "import_from": "local:import/debian-13-genericcloud-amd64.qcow2",
+              "interface": "scsi0",
+              "iothread": true,
+              "size": 20,
+              "ssd": true
+            }
+          ],
+          "initialization": [
+            {
+              "datastore_id": "local-lvm",
+              "dns": [
+                {
+                  "domain": "",
+                  "servers": [
+                    "192.0.2.1"
+                  ]
+                }
+              ],
+              "interface": "scsi1",
+              "ip_config": [
+                {
+                  "ipv4": [
+                    {
+                      "address": "192.0.2.50/24",
+                      "gateway": "192.0.2.1"
+                    }
+                  ],
+                  "ipv6": []
+                }
+              ],
+              "user_data_file_id": "local:snippets/erplibre-essai-vm-2.yml"
+            }
+          ],
+          "memory": [
+            {
+              "dedicated": 4096,
+              "floating": 0,
+              "shared": 0
+            }
+          ],
+          "name": "essai-vm-2",
+          "network_device": [
+            {
+              "bridge": "vmbr0",
+              "enabled": true,
+              "model": "virtio",
+              "vlan_id": 0
+            }
+          ],
+          "node_name": "pve1",
+          "started": true,
+          "stop_on_destroy": true,
+          "vm_id": 101
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "ipv4_addresses": true,
+          "mac_addresses": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "vm_essai_vm_2",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "type": "proxmox_virtual_environment_vm"
+    },
+    {
+      "address": "proxmox_virtual_environment_vm.vm_essai_vm_1",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "after": {
+          "acpi": true,
+          "bios": "seabios",
+          "boot_order": [
+            "scsi0"
+          ],
+          "cpu": [
+            {
+              "cores": 2,
+              "sockets": 1,
+              "type": "host"
+            }
+          ],
+          "disk": [
+            {
+              "datastore_id": "local-lvm",
+              "discard": "on",
+              "file_format": "raw",
+              "import_from": "local:import/debian-13-genericcloud-amd64.qcow2",
+              "interface": "scsi0",
+              "iothread": true,
+              "size": 20,
+              "ssd": true
+            }
+          ],
+          "id": "100",
+          "initialization": [
+            {
+              "datastore_id": "local-lvm",
+              "dns": [
+                {
+                  "domain": "",
+                  "servers": [
+                    "192.0.2.1"
+                  ]
+                }
+              ],
+              "interface": "scsi1",
+              "ip_config": [
+                {
+                  "ipv4": [
+                    {
+                      "address": "192.0.2.50/24",
+                      "gateway": "192.0.2.1"
+                    }
+                  ],
+                  "ipv6": []
+                }
+              ],
+              "user_data_file_id": "local:snippets/erplibre-essai-vm-1.yml"
+            }
+          ],
+          "ipv4_addresses": [],
+          "mac_addresses": [
+            "BC:24:11:00:00:01"
+          ],
+          "memory": [
+            {
+              "dedicated": 4096,
+              "floating": 0,
+              "shared": 0
+            }
+          ],
+          "name": "essai-vm-1",
+          "network_device": [
+            {
+              "bridge": "vmbr0",
+              "enabled": true,
+              "model": "virtio",
+              "vlan_id": 0
+            }
+          ],
+          "node_name": "pve1",
+          "started": true,
+          "stop_on_destroy": true,
+          "vm_id": 100
+        },
+        "after_sensitive": {},
+        "after_unknown": {},
+        "before": {
+          "acpi": true,
+          "bios": "seabios",
+          "boot_order": [
+            "scsi0"
+          ],
+          "cpu": [
+            {
+              "cores": 2,
+              "sockets": 1,
+              "type": "host"
+            }
+          ],
+          "disk": [
+            {
+              "datastore_id": "local-lvm",
+              "discard": "on",
+              "file_format": "raw",
+              "import_from": "local:import/debian-13-genericcloud-amd64.qcow2",
+              "interface": "scsi0",
+              "iothread": true,
+              "size": 20,
+              "ssd": true
+            }
+          ],
+          "id": "100",
+          "initialization": [
+            {
+              "datastore_id": "local-lvm",
+              "dns": [
+                {
+                  "domain": "",
+                  "servers": [
+                    "192.0.2.1"
+                  ]
+                }
+              ],
+              "interface": "scsi1",
+              "ip_config": [
+                {
+                  "ipv4": [
+                    {
+                      "address": "192.0.2.50/24",
+                      "gateway": "192.0.2.1"
+                    }
+                  ],
+                  "ipv6": []
+                }
+              ],
+              "user_data_file_id": "local:snippets/erplibre-essai-vm-1.yml"
+            }
+          ],
+          "ipv4_addresses": [],
+          "mac_addresses": [
+            "BC:24:11:00:00:01"
+          ],
+          "memory": [
+            {
+              "dedicated": 2048,
+              "floating": 0,
+              "shared": 0
+            }
+          ],
+          "name": "essai-vm-1",
+          "network_device": [
+            {
+              "bridge": "vmbr0",
+              "enabled": true,
+              "model": "virtio",
+              "vlan_id": 0
+            }
+          ],
+          "node_name": "pve1",
+          "started": true,
+          "stop_on_destroy": true,
+          "vm_id": 100
+        },
+        "before_sensitive": {}
+      },
+      "mode": "managed",
+      "name": "vm_essai_vm_1",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "type": "proxmox_virtual_environment_vm"
+    },
+    {
+      "action_reason": "replace_because_cannot_update",
+      "address": "proxmox_virtual_environment_file.ud_essai_vm_1",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "after": {
+          "content_type": "snippets",
+          "datastore_id": "local",
+          "node_name": "pve1",
+          "overwrite": true,
+          "source_raw": [
+            {
+              "data": "#cloud-config\nhostname: essai-vm-1\npackages: [git]\n",
+              "file_name": "erplibre-essai-vm-1.yml",
+              "resize": 0
+            }
+          ],
+          "timeout_upload": 1800
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "file_modification_date": true,
+          "id": true
+        },
+        "before": {
+          "content_type": "snippets",
+          "datastore_id": "local",
+          "file_modification_date": "2026-01-01T00:00:00Z",
+          "id": "local:snippets/erplibre-essai-vm-1.yml",
+          "node_name": "pve1",
+          "overwrite": true,
+          "source_raw": [
+            {
+              "data": "#cloud-config\nhostname: essai-vm-1\n",
+              "file_name": "erplibre-essai-vm-1.yml",
+              "resize": 0
+            }
+          ],
+          "timeout_upload": 1800
+        },
+        "before_sensitive": {}
+      },
+      "mode": "managed",
+      "name": "ud_essai_vm_1",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "replace_paths": [
+        [
+          "source_raw",
+          0,
+          "data"
+        ]
+      ],
+      "type": "proxmox_virtual_environment_file"
+    },
+    {
+      "address": "proxmox_virtual_environment_vm.vm_ancienne",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "after": null,
+        "after_sensitive": false,
+        "after_unknown": {},
+        "before": {
+          "acpi": true,
+          "bios": "seabios",
+          "boot_order": [
+            "scsi0"
+          ],
+          "cpu": [
+            {
+              "cores": 2,
+              "sockets": 1,
+              "type": "host"
+            }
+          ],
+          "disk": [
+            {
+              "datastore_id": "local-lvm",
+              "discard": "on",
+              "file_format": "raw",
+              "import_from": "local:import/debian-13-genericcloud-amd64.qcow2",
+              "interface": "scsi0",
+              "iothread": true,
+              "size": 20,
+              "ssd": true
+            }
+          ],
+          "id": "102",
+          "initialization": [
+            {
+              "datastore_id": "local-lvm",
+              "dns": [
+                {
+                  "domain": "",
+                  "servers": [
+                    "192.0.2.1"
+                  ]
+                }
+              ],
+              "interface": "scsi1",
+              "ip_config": [
+                {
+                  "ipv4": [
+                    {
+                      "address": "192.0.2.50/24",
+                      "gateway": "192.0.2.1"
+                    }
+                  ],
+                  "ipv6": []
+                }
+              ],
+              "user_data_file_id": "local:snippets/erplibre-ancienne.yml"
+            }
+          ],
+          "ipv4_addresses": [],
+          "mac_addresses": [
+            "BC:24:11:00:00:01"
+          ],
+          "memory": [
+            {
+              "dedicated": 2048,
+              "floating": 0,
+              "shared": 0
+            }
+          ],
+          "name": "ancienne",
+          "network_device": [
+            {
+              "bridge": "vmbr0",
+              "enabled": true,
+              "model": "virtio",
+              "vlan_id": 0
+            }
+          ],
+          "node_name": "pve1",
+          "started": true,
+          "stop_on_destroy": true,
+          "vm_id": 102
+        },
+        "before_sensitive": {}
+      },
+      "mode": "managed",
+      "name": "vm_ancienne",
+      "provider_name": "registry.opentofu.org/bpg/proxmox",
+      "type": "proxmox_virtual_environment_vm"
+    }
+  ],
+  "terraform_version": "1.13.10",
+  "timestamp": "2026-01-01T00:00:00Z"
+}

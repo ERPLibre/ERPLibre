@@ -74,6 +74,15 @@ class TestCoffre(unittest.TestCase):
         self.assertNotIn("PROXMOX_VE_API_TOKEN", env)
         self.assertIn("TF_ENCRYPTION", env)
 
+    def test_environnement_retire_un_jeton_ambiant(self):
+        base = {"PROXMOX_VE_API_TOKEN": "tofu@pve!autre=AMBIANT"}
+        env = cf.environnement("parc-a", base, self.racine)
+        self.assertNotIn("PROXMOX_VE_API_TOKEN", env)
+        self.assertIn("PROXMOX_VE_API_TOKEN", base)
+        cf.ecrire("parc-a", {"jeton": JETON}, self.racine)
+        env = cf.environnement("parc-a", base, self.racine)
+        self.assertEqual(env["PROXMOX_VE_API_TOKEN"], JETON)
+
     def test_environnement_ne_touche_pas_os_environ(self):
         avant = dict(os.environ)
         cf.environnement("parc-a", None, self.racine)

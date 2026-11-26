@@ -82,6 +82,22 @@ class TestSpec(unittest.TestCase):
                 sp.charger("parc-a", racine)
             self.assertTrue(cm.exception.erreurs)
 
+    def test_nom_de_parc_refuse_dans_le_chemin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp) / "parcs"
+            for nom in ("../x", "a/b", "", "Parc", ".", "a" * 32):
+                with self.assertRaises(ValueError, msg=nom):
+                    sp.dossier_parc(nom, racine)
+            s = _spec()
+            s["nom"] = "../evade"
+            with self.assertRaises(ValueError):
+                sp.sauver(s, racine)
+            self.assertFalse((Path(tmp) / "evade").exists())
+            with self.assertRaises(sp.SpecInvalide):
+                sp.charger("../evade", racine)
+            attendu = racine / "parc-a"
+            self.assertEqual(sp.dossier_parc("parc-a", racine), attendu)
+
     def test_private_opentofu_ignore(self):
         for chemin in (
             "private/opentofu/x/spec.json",
