@@ -732,6 +732,28 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestOpenTofuMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu OpenTofu : chaque entrée porte sa méthode dans « method »."""
+
+    SOURCE = TODO_DIR / "opentofu_menu.py"
+    ENTRY = "def prompt_execute_opentofu(self):"
+    END = "    def _tofu_"
+    MINIMUM = 8
+
+    EXPECTED = {
+        "Create a fleet": "_tofu_creer_parc",
+        "Edit a fleet": "_tofu_editer_parc",
+        "List the fleets": "_tofu_lister_parcs",
+        "Plan": "_tofu_plan",
+        "Apply": "_tofu_apply",
+        "Destroy": "_tofu_destroy",
+        "Show the tofu state": "_tofu_etat",
+        "Show the VM addresses": "_tofu_adresses",
+        "Prepare the host": "_tofu_preparer_hote",
+        "Check or install tofu": "_tofu_outil",
+    }
+
+
 class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Git, où les entrées de todo.json s'insèrent entre sections.
 

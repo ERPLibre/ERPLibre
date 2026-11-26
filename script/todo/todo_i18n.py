@@ -26529,6 +26529,221 @@ TRANSLATIONS = {
         "fr": "Rien à détruire : ce parc n'a pas d'état tofu.",
         "en": "Nothing to destroy: this fleet has no tofu state.",
     },
+    "OpenTofu - Deploy a fleet from a spec": {
+        "fr": "🏗 OpenTofu - Déployer un parc depuis une spec",
+        "en": "🏗 OpenTofu - Deploy a fleet from a spec",
+    },
+    "Deploy a fleet with OpenTofu!": {
+        "fr": "Déployer un parc avec OpenTofu !",
+        "en": "Deploy a fleet with OpenTofu!",
+    },
+    "Fleets": {
+        "fr": "Parcs",
+        "en": "Fleets",
+    },
+    "Operations": {
+        "fr": "Opérations",
+        "en": "Operations",
+    },
+    "Tool": {
+        "fr": "Outil",
+        "en": "Tool",
+    },
+    "Create a fleet": {
+        "fr": "🆕 Créer un parc",
+        "en": "🆕 Create a fleet",
+    },
+    "Edit a fleet (form)": {
+        "fr": "✏ Modifier un parc (formulaire)",
+        "en": "✏ Edit a fleet (form)",
+    },
+    "List the fleets": {
+        "fr": "📋 Lister les parcs",
+        "en": "📋 List the fleets",
+    },
+    "Plan (preview the changes)": {
+        "fr": "🔍 Planifier (aperçu des changements)",
+        "en": "🔍 Plan (preview the changes)",
+    },
+    "Apply the plan (create or update the VMs)": {
+        "fr": "🚀 Appliquer le plan (créer ou modifier les VM)",
+        "en": "🚀 Apply the plan (create or update the VMs)",
+    },
+    "Destroy the fleet VMs": {
+        "fr": "🗑 Détruire les VM du parc",
+        "en": "🗑 Destroy the fleet VMs",
+    },
+    "Show the tofu state": {
+        "fr": "📄 Afficher l'état tofu",
+        "en": "📄 Show the tofu state",
+    },
+    "Show the VM addresses": {
+        "fr": "🌐 Afficher les adresses des VM",
+        "en": "🌐 Show the VM addresses",
+    },
+    "Prepare the host (role, user, API token)": {
+        "fr": "🔑 Préparer l'hôte (rôle, utilisateur, jeton d'API)",
+        "en": "🔑 Prepare the host (role, user, API token)",
+    },
+    "Check or install tofu": {
+        "fr": "🧰 Vérifier ou installer tofu",
+        "en": "🧰 Check or install tofu",
+    },
+    "No fleet yet: create one first.": {
+        "fr": "Aucun parc : en créer un d'abord.",
+        "en": "No fleet yet: create one first.",
+    },
+    "Which fleet?": {
+        "fr": "Quel parc ?",
+        "en": "Which fleet?",
+    },
+    "Invalid spec for fleet {nom}:": {
+        "fr": "Spec invalide pour le parc {nom} :",
+        "en": "Invalid spec for fleet {nom}:",
+    },
+    "invalid spec": {
+        "fr": "spec invalide",
+        "en": "invalid spec",
+    },
+    "Type the fleet name ({nom}) to confirm: ": {
+        "fr": "Retaper le nom du parc ({nom}) pour confirmer : ",
+        "en": "Type the fleet name ({nom}) to confirm: ",
+    },
+    "The name does not match: cancelled.": {
+        "fr": "Le nom ne correspond pas : annulé.",
+        "en": "The name does not match: cancelled.",
+    },
+    "Fleet name (lowercase letters, digits, dash): ": {
+        "fr": "Nom du parc (minuscules, chiffres, tiret) : ",
+        "en": "Fleet name (lowercase letters, digits, dash): ",
+    },
+    "Fleet {nom} already exists.": {
+        "fr": "Le parc {nom} existe déjà.",
+        "en": "Fleet {nom} already exists.",
+    },
+    "SSH target of the Proxmox host [{defaut}]: ": {
+        "fr": "Cible SSH de l'hôte Proxmox [{defaut}] : ",
+        "en": "SSH target of the Proxmox host [{defaut}]: ",
+    },
+    "SSH target of the Proxmox host (user@host or ssh alias): ": {
+        "fr": "Cible SSH de l'hôte Proxmox (compte@hôte ou alias ssh) : ",
+        "en": "SSH target of the Proxmox host (user@host or ssh alias): ",
+    },
+    "Fleet {nom} saved in {chemin}.": {
+        "fr": "Parc {nom} enregistré dans {chemin}.",
+        "en": "Fleet {nom} saved in {chemin}.",
+    },
+    "Open the fleet form now? [y/N] ": {
+        "fr": "Ouvrir le formulaire du parc maintenant ? [o/N] ",
+        "en": "Open the fleet form now? [y/N] ",
+    },
+    "The fleet form (TUI) is not available yet.": {
+        "fr": "Le formulaire du parc (TUI) n'est pas encore disponible.",
+        "en": "The fleet form (TUI) is not available yet.",
+    },
+    "Fleets in {racine}:": {
+        "fr": "Parcs dans {racine} :",
+        "en": "Fleets in {racine}:",
+    },
+    "{n} VM(s) on {cible}": {
+        "fr": "{n} VM sur {cible}",
+        "en": "{n} VM(s) on {cible}",
+    },
+    "Nothing to apply.": {
+        "fr": "Rien à appliquer.",
+        "en": "Nothing to apply.",
+    },
+    "This plan replaces or destroys VMs.": {
+        "fr": "Ce plan remplace ou détruit des VM.",
+        "en": "This plan replaces or destroys VMs.",
+    },
+    "Apply this plan? [y/N] ": {
+        "fr": "Appliquer ce plan ? [o/N] ",
+        "en": "Apply this plan? [y/N] ",
+    },
+    "This destroys every VM of fleet {nom}: {vms}": {
+        "fr": "Ceci détruit toutes les VM du parc {nom} : {vms}",
+        "en": "This destroys every VM of fleet {nom}: {vms}",
+    },
+    "Empty state: nothing applied yet.": {
+        "fr": "État vide : rien n'a encore été appliqué.",
+        "en": "Empty state: nothing applied yet.",
+    },
+    "No outputs: apply the fleet first.": {
+        "fr": "Aucune sortie : appliquer le parc d'abord.",
+        "en": "No outputs: apply the fleet first.",
+    },
+    "DHCP (address known by the host)": {
+        "fr": "DHCP (adresse connue de l'hôte)",
+        "en": "DHCP (address known by the host)",
+    },
+    "{vm}: no tofu output, skipped.": {
+        "fr": "{vm} : aucune sortie tofu, sautée.",
+        "en": "{vm}: no tofu output, skipped.",
+    },
+    "{vm}: no address yet; see Show the VM addresses later.": {
+        "fr": (
+            "{vm} : pas encore d'adresse ; voir Afficher les adresses des VM "
+            "plus tard."
+        ),
+        "en": "{vm}: no address yet; see Show the VM addresses later.",
+    },
+    "{vm}: does not answer ssh yet.": {
+        "fr": "{vm} : ne répond pas encore en ssh.",
+        "en": "{vm}: does not answer ssh yet.",
+    },
+    "Preparing {cible}: role {role}, user {user}, token {jeton}.": {
+        "fr": (
+            "Préparation de {cible} : rôle {role}, utilisateur {user}, jeton "
+            "{jeton}."
+        ),
+        "en": "Preparing {cible}: role {role}, user {user}, token {jeton}.",
+    },
+    "Recreate the fleet API token (the current one stops working)? [y/N] ": {
+        "fr": (
+            "Recréer le jeton d'API du parc (l'actuel cesse de fonctionner) ? "
+            "[o/N] "
+        ),
+        "en": (
+            "Recreate the fleet API token (the current one stops working)? "
+            "[y/N] "
+        ),
+    },
+    "tofu is not installed.": {
+        "fr": "tofu n'est pas installé.",
+        "en": "tofu is not installed.",
+    },
+    "tofu {version} satisfies {plancher}.": {
+        "fr": "tofu {version} satisfait {plancher}.",
+        "en": "tofu {version} satisfies {plancher}.",
+    },
+    "tofu {version} does not satisfy {plancher}.": {
+        "fr": "tofu {version} ne satisfait pas {plancher}.",
+        "en": "tofu {version} does not satisfy {plancher}.",
+    },
+    "Distribution package:": {
+        "fr": "Paquet de la distribution :",
+        "en": "Distribution package:",
+    },
+    "Run it now? [y/N] ": {
+        "fr": "La lancer maintenant ? [o/N] ",
+        "en": "Run it now? [y/N] ",
+    },
+    "The package install failed (exit {code}).": {
+        "fr": "L'installation du paquet a échoué (code {code}).",
+        "en": "The package install failed (exit {code}).",
+    },
+    "Install tofu {version} from the signed upstream archive into "
+    "~/.local/bin? [y/N] ": {
+        "fr": (
+            "Installer tofu {version} depuis l'archive signée de l'éditeur "
+            "dans ~/.local/bin ? [o/N] "
+        ),
+        "en": (
+            "Install tofu {version} from the signed upstream archive into "
+            "~/.local/bin? [y/N] "
+        ),
+    },
 }
 
 

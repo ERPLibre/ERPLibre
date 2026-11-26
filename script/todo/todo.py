@@ -181,6 +181,7 @@ from script.todo.install_update_menu import InstallUpdateMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.module_menu import ModuleMenuMixin
+from script.todo.opentofu_menu import OpenTofuMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.python_menu import PythonMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -280,6 +281,7 @@ class TODO(
     QemuAccessMixin,
     QemuUsbMixin,
     ProxmoxMenuMixin,
+    OpenTofuMenuMixin,
     LongTestMenuMixin,
     TransformMenuMixin,
     VpnMenuMixin,
@@ -1378,6 +1380,7 @@ class TODO(
         "prompt_execute_qemu": "QEMU/KVM",
         "_qemu_usb_menu": "USB",
         "prompt_execute_proxmox": "Proxmox VE",
+        "prompt_execute_opentofu": "OpenTofu",
         "prompt_execute_vpn": "VPN",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
@@ -1927,6 +1930,11 @@ class TODO(
             },
             {
                 "prompt_description": t(
+                    "OpenTofu - Deploy a fleet from a spec"
+                )
+            },
+            {
+                "prompt_description": t(
                     "Deploy - Install NTFY notification server"
                 )
             },
@@ -1969,12 +1977,14 @@ class TODO(
             elif status == "7":
                 self.prompt_execute_proxmox()
             elif status == "8":
-                self._deploy_ntfy_server()
+                self.prompt_execute_opentofu()
             elif status == "9":
-                self.prompt_execute_qemu_cache()
+                self._deploy_ntfy_server()
             elif status == "10":
-                self._deploy_asterisk_server()
+                self.prompt_execute_qemu_cache()
             elif status == "11":
+                self._deploy_asterisk_server()
+            elif status == "12":
                 self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
