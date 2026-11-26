@@ -147,6 +147,28 @@ def formater_plan(changements):
     return lignes
 
 
+def vms_nouvelles(changements):
+    """Noms des VM que le plan crée ou remplace : celles à attendre, puis à
+    installer, après l'apply."""
+    return {
+        c.vm
+        for c in changements
+        if c.ressource == RESSOURCE_VM and c.action in ("creer", "remplacer")
+    }
+
+
+def vms_detruites(changements, spec):
+    """Noms des VM que le plan détruit et que `spec` ne garde pas : celles
+    dont l'alias ssh disparaît après l'apply."""
+    gardees = {vm["nom"] for vm in spec["vms"]}
+    detruites = {
+        c.vm
+        for c in changements
+        if c.ressource == RESSOURCE_VM and c.action == "detruire"
+    }
+    return detruites - gardees
+
+
 def est_destructeur(changements):
     """Vrai si le plan remplace ou détruit au moins une ressource."""
     return any(c.action in ("remplacer", "detruire") for c in changements)

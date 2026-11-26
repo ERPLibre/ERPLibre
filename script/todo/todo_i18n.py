@@ -26940,6 +26940,14 @@ TRANSLATIONS = {
         "fr": "Le parc {nom} a un état tofu mais pas de phrase d'état : une phrase neuve ne le lirait pas. Voir le remède du secrets.json perdu dans script/opentofu/README.fr.md.",
         "en": "Fleet {nom} has a tofu state but no state passphrase: a new one cannot read it. See the lost secrets.json remedy in script/opentofu/README.md.",
     },
+    "Engine {nom}: version {version}": {
+        "fr": "Moteur {nom} : version {version}",
+        "en": "Engine {nom}: version {version}",
+    },
+    "Engine {nom} cannot start: {err}": {
+        "fr": "Le moteur {nom} ne démarre pas : {err}",
+        "en": "Engine {nom} cannot start: {err}",
+    },
 }
 
 

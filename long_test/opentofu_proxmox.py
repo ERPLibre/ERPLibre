@@ -78,10 +78,15 @@ ETAPES = (
     "absence",
 )
 # Ce que le premier plan doit annoncer, et rien d'autre : (action, genre).
-PLAN_1_ATTENDU = (
-    ("creer", "cloud-init"),
-    ("creer", "image"),
-    ("creer", "vm"),
+PLAN_1_ATTENDU = tuple(
+    sorted(
+        ("creer", genre)
+        for genre in (
+            moteur.RESSOURCE_CLOUD_INIT,
+            moteur.RESSOURCE_IMAGE,
+            moteur.RESSOURCE_VM,
+        )
+    )
 )
 # La VM du parc, à la mesure de l'étage 1 (4 vCPU, 4096 Mo, 25 Go) qui
 # porte aussi Proxmox lui-même.
@@ -430,7 +435,9 @@ class Descente(deep_proxmox.Descente):
         capture = self._capturer_plan(mot, spec, "show_plan.json")
         lignes = "; ".join(moteur.formater_plan(changements))
         vus = tuple(sorted((c.action, c.ressource) for c in changements))
-        vms = {c.vm for c in changements if c.ressource != "image"}
+        vms = {
+            c.vm for c in changements if c.ressource != moteur.RESSOURCE_IMAGE
+        }
         if vus != PLAN_1_ATTENDU or vms != {VM}:
             return False, f"plan inattendu : {lignes}"
         return True, lignes + (f" ; plan JSON : {capture}" if capture else "")
@@ -482,11 +489,7 @@ class Descente(deep_proxmox.Descente):
         if not res.ok:
             return False, res.message
         ctx["applique"] = True
-        nouvelles = {
-            c.vm
-            for c in ctx["changements"]
-            if c.ressource == "vm" and c.action in ("creer", "remplacer")
-        }
+        nouvelles = moteur.vms_nouvelles(ctx["changements"])
         # Après un apply réussi, rien ne rend l'étape fausse : une sortie
         # manquante ou un après-apply qui casse est un avertissement, que
         # l'étape ssh constatera.

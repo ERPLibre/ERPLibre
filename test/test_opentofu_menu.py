@@ -367,6 +367,29 @@ class TestApply(Base):
         apres, _ = self._apply(["1", "o"])
         self.assertEqual(apres.call_args.args[2], set())
 
+    def test_apply_retire_seulement_l_alias_des_vm_detruites(self):
+        Faux.plan = [
+            mo.Changement("detruire", "parc-a-vm-9", "vm"),
+            mo.Changement("detruire", "parc-a-vm-9", "cloud-init"),
+            mo.Changement("detruire", "debian-13.qcow2", "image"),
+            mo.Changement("detruire", VM, "cloud-init"),
+        ]
+        with mock.patch.object(TODO, "_tofu_retirer_alias") as retirer:
+            self._apply(["1", "parc-a"])
+        retirer.assert_called_once()
+        self.assertEqual(retirer.call_args.args[1], ["parc-a-vm-9"])
+
+    def test_moteur_qui_refuse_les_mots_cles(self):
+        class Rigide(Faux):
+            def __init__(self):
+                pass
+
+        self.parc()
+        with mock.patch.dict(mo._REGISTRE, {"tofu": Rigide}):
+            sortie = self.lancer("_tofu_etat", ["1"])
+        self.assertIn("✗", sortie)
+        self.assertNotIn("Traceback", sortie)
+
     def test_le_moteur_recoit_l_executeur_et_la_racine(self):
         executer = mock.Mock()
         self.todo._tofu_executer = lambda spec: executer
@@ -713,10 +736,41 @@ class TestEditerParc(Base):
         ):
             self.lancer("_tofu_editer_parc", [], "parc-a")
             apres.assert_not_called()
-            recu["quand_applique"](spec, {"parc-a-vm-1"})
+            recu["quand_applique"](spec, {"parc-a-vm-1"}, set())
         apres.assert_called_once_with(
             spec, {"parc-a-vm-1": {"vmid": 101, "ip": ""}}, {"parc-a-vm-1"}
         )
+
+    def _formulaire(self):
+        """Les rappels que `_tofu_editer_parc` passe au formulaire."""
+        recu = {}
+
+        def formulaire(spec, moteur, enregistrer, **kw):
+            recu.update(kw)
+
+        with mock.patch(
+            "script.todo.opentofu_form.run_opentofu_form", formulaire
+        ):
+            self.lancer("_tofu_editer_parc", [], "parc-a")
+        return recu
+
+    def test_un_apply_du_formulaire_retire_les_alias_des_vm_detruites(self):
+        spec = self.parc()
+        recu = self._formulaire()
+        with (
+            mock.patch.object(TODO, "_tofu_apres_apply") as apres,
+            mock.patch.object(TODO, "_tofu_retirer_alias") as retirer,
+        ):
+            recu["quand_applique"](spec, set(), {"parc-a-vm-9"})
+        retirer.assert_called_once_with(spec, ["parc-a-vm-9"])
+        apres.assert_called_once()
+
+    def test_un_destroy_du_formulaire_retire_les_alias(self):
+        spec = self.parc()
+        recu = self._formulaire()
+        with mock.patch.object(TODO, "_tofu_apres_destroy") as apres:
+            recu["quand_detruit"](spec)
+        apres.assert_called_once_with(spec)
 
 
 class TestPreparerHote(Base):

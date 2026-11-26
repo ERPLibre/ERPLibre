@@ -189,6 +189,15 @@ class OpenTofuMenuMixin:
         except KeyError as exc:
             print(f"✗ {exc.args[0] if exc.args else exc}")
             return None
+        except TypeError as exc:
+            # Un moteur qui ne suit pas le contrat de `Moteur.__init__`.
+            print(
+                "✗ "
+                + t("Engine {nom} cannot start: {err}").format(
+                    nom=spec.get("moteur"), err=exc
+                )
+            )
+            return None
 
     def _tofu_nom_retape(self, spec):
         """Vrai si l'opérateur retape exactement le nom du parc."""
@@ -289,15 +298,16 @@ class OpenTofuMenuMixin:
         if mot is None:
             return
         racine = self._tofu_racine()
-        # Un apply lancé du formulaire mène aux mêmes suites que celui du
-        # menu, une fois l'écran fermé.
+        # Un apply ou un destroy lancé du formulaire mène aux mêmes suites
+        # que celui du menu, une fois l'écran fermé.
         run_opentofu_form(
             spec,
             mot,
             lambda s: spec_parc.sauver(s, racine),
-            quand_applique=lambda s, n: self._tofu_apres_apply(
-                s, mot.sorties(s), n
+            quand_applique=lambda s, n, d: self._tofu_suites_apply(
+                s, mot, n, d
             ),
+            quand_detruit=lambda s: self._tofu_apres_destroy(s),
         )
 
     def _tofu_lister_parcs(self):
@@ -358,9 +368,10 @@ class OpenTofuMenuMixin:
         """Planifie, montre le plan, confirme, applique, puis l'après-apply.
 
         Un plan qui remplace ou détruit une ressource exige de retaper le
-        nom du parc ; sinon un oui suffit. Les alias des VM que le plan
-        détruit sans les garder dans la spec sont retirés. Seules les VM
-        que le plan crée ou remplace sont attendues et installées.
+        nom du parc ; sinon un oui suffit. Les suites (`_tofu_suites_apply`)
+        retirent les alias des VM que le plan détruit sans les garder dans
+        la spec, et n'attendent et n'installent que les VM que le plan crée
+        ou remplace.
         """
         spec = self._tofu_parc()
         if not spec:
@@ -384,18 +395,12 @@ class OpenTofuMenuMixin:
             print(f"✗ {res.message}")
             return
         print(f"✓ {res.message}")
-        gardees = {vm["nom"] for vm in spec["vms"]}
-        disparues = {
-            c.vm for c in changements if c.action == "detruire"
-        } - gardees
-        if disparues:
-            self._tofu_retirer_alias(spec, sorted(disparues))
-        nouvelles = {
-            c.vm
-            for c in changements
-            if c.ressource == "vm" and c.action in ("creer", "remplacer")
-        }
-        self._tofu_apres_apply(spec, mot.sorties(spec), nouvelles)
+        self._tofu_suites_apply(
+            spec,
+            mot,
+            moteur.vms_nouvelles(changements),
+            moteur.vms_detruites(changements, spec),
+        )
 
     def _tofu_destroy(self):
         """Détruit les VM du parc après que son nom a été retapé."""
@@ -448,6 +453,14 @@ class OpenTofuMenuMixin:
     # ------------------------------------------------------------------ #
     # Après l'apply, après le destroy
     # ------------------------------------------------------------------ #
+
+    def _tofu_suites_apply(self, spec, mot, nouvelles, detruites):
+        """Suites d'un apply réussi, du menu comme du formulaire : retire
+        les alias des VM `detruites`, puis `_tofu_apres_apply` sur les
+        sorties du moteur `mot`."""
+        if detruites:
+            self._tofu_retirer_alias(spec, sorted(detruites))
+        self._tofu_apres_apply(spec, mot.sorties(spec), nouvelles)
 
     def _tofu_apres_apply(self, spec, sorties, nouvelles=None):
         """Alias ssh, attente de ssh, puis installation suivie d'ERPLibre.

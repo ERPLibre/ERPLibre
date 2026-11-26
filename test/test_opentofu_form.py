@@ -61,8 +61,8 @@ class FauxMoteur:
         self.barriere = None
         self.apply_ok = True
 
-    def binaire(self):
-        return None
+    def disponible(self):
+        return True, "9.8.7"
 
     def planifier(self, spec, journal):
         self.appels.append("planifier")
@@ -102,6 +102,48 @@ def _textes(app):
     return "\n".join(out)
 
 
+class TestRenommer(unittest.TestCase):
+    """Une VM renommée est une VM neuve pour `tofu` : son ancien VMID et
+    l'adresse qui en dérive iraient en collision avec la VM qu'il détruit."""
+
+    def _base(self, **champs):
+        base = sp.nouvelle_spec("parc-a", "hote-x")["vms"][0]
+        base.update(
+            vmid=105,
+            ip="10.10.10.155/24",
+            passerelle="10.10.10.1",
+            dns=["192.0.2.1"],
+        )
+        base.update(champs)
+        return base
+
+    def test_renommer_vide_le_vmid_et_l_adresse_derivee(self):
+        vm = vm_depuis_saisie(self._base(), {"nom": "web", "vmid": "105"})
+        self.assertIsNone(vm["vmid"])
+        self.assertEqual(
+            (vm["ip"], vm["passerelle"], vm["dns"]), ("auto", "", [])
+        )
+
+    def test_renommer_garde_une_adresse_choisie(self):
+        base = self._base(ip="10.10.10.20/24")
+        vm = vm_depuis_saisie(base, {"nom": "web", "vmid": "105"})
+        self.assertIsNone(vm["vmid"])
+        self.assertEqual(vm["ip"], "10.10.10.20/24")
+        self.assertEqual(vm["passerelle"], "10.10.10.1")
+
+    def test_renommer_garde_un_vmid_saisi(self):
+        vm = vm_depuis_saisie(self._base(), {"nom": "web", "vmid": "130"})
+        self.assertEqual(vm["vmid"], 130)
+        self.assertEqual(vm["ip"], "10.10.10.155/24")
+
+    def test_sans_renommer_rien_ne_change(self):
+        vm = vm_depuis_saisie(
+            self._base(), {"nom": "parc-a-vm-1", "vmid": "105"}
+        )
+        self.assertEqual(vm["vmid"], 105)
+        self.assertEqual(vm["ip"], "10.10.10.155/24")
+
+
 class TestSaisie(unittest.TestCase):
     def test_entiers_convertis_texte_garde(self):
         base = sp.nouvelle_spec("parc-a", "hote-x")["vms"][0]
@@ -124,7 +166,13 @@ class TestSaisie(unittest.TestCase):
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestEcran(unittest.TestCase):
     def _rendu(
-        self, gestes, changements=None, jeton=None, quand=None, regler=None
+        self,
+        gestes,
+        changements=None,
+        jeton=None,
+        quand=None,
+        regler=None,
+        detruit=None,
     ):
         """Monte l'écran, joue `gestes`, rend (app, moteur, sauvés, sortie).
         `regler(moteur)` ajuste le moteur factice avant le montage."""
@@ -144,6 +192,7 @@ class TestEcran(unittest.TestCase):
                     moteur,
                     sauves.append,
                     quand_applique=quand,
+                    quand_detruit=detruit,
                     run_app=False,
                 )
                 async with app.run_test(size=(200, 50)) as pilote:
@@ -330,16 +379,63 @@ class TestEcran(unittest.TestCase):
             await self._attendre(app, pilote)
             await self._retaper(app, pilote, "a", "parc-a")
 
-        def quand(spec, nouvelles):
-            appels.append((spec["cible"]["stockage"], nouvelles))
+        def quand(spec, nouvelles, detruites):
+            appels.append((spec["cible"]["stockage"], nouvelles, detruites))
 
         app, moteur, _, _ = self._rendu(gestes, plan, quand=quand)
         self.assertEqual(moteur.appels, ["planifier", "appliquer"])
         self.assertEqual(appels, [])
         app.conclure()
         self.assertEqual(
-            appels, [("local-lvm", {"parc-a-vm-1", "parc-a-vm-3"})]
+            appels, [("local-lvm", {"parc-a-vm-1", "parc-a-vm-3"}, set())]
         )
+
+    def test_apply_transmet_les_vm_detruites(self):
+        appels = []
+        plan = [
+            Changement("detruire", "parc-a-vm-9", "vm"),
+            Changement("detruire", "parc-a-vm-9", "cloud-init"),
+            Changement("detruire", "parc-a-vm-1", "cloud-init"),
+        ]
+
+        async def gestes(app, pilote):
+            await pilote.press("p")
+            await self._attendre(app, pilote)
+            await self._retaper(app, pilote, "a", "parc-a")
+
+        app, _, _, _ = self._rendu(
+            gestes, plan, quand=lambda *a: appels.append(a[1:])
+        )
+        app.conclure()
+        self.assertEqual(appels, [(set(), {"parc-a-vm-9"})])
+
+    def test_destroy_reussi_mene_au_retrait_des_alias(self):
+        detruits, appliques = [], []
+
+        async def gestes(app, pilote):
+            await self._appliquer(app, pilote)
+            await self._retaper(app, pilote, "d", "parc-a")
+
+        app, moteur, _, _ = self._rendu(
+            gestes,
+            quand=lambda *a: appliques.append(a),
+            detruit=detruits.append,
+        )
+        self.assertEqual(moteur.appels, ["planifier", "appliquer", "detruire"])
+        self.assertEqual(detruits, [])
+        app.conclure()
+        self.assertEqual([s["nom"] for s in detruits], ["parc-a"])
+        # L'apply précède le destroy : ses VM n'existent plus.
+        self.assertEqual(appliques, [])
+
+    def test_onglet_tofu_montre_la_disponibilite_du_moteur(self):
+        async def gestes(app, pilote):
+            from textual.widgets import Static
+
+            return str(app.query_one("#t_outil", Static).render())
+
+        _, _, _, texte = self._rendu(gestes)
+        self.assertIn("9.8.7", texte)
 
     def test_apply_en_echec_ne_mene_a_rien(self):
         appels = []

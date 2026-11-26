@@ -17,9 +17,15 @@ pures d'ici restent importables sans Textual.
 
 import copy
 
-from script.opentofu import coffre, outil
+from script.opentofu import coffre, resolution
 from script.opentofu import spec as spec_parc
-from script.opentofu.moteur import Resultat, est_destructeur, formater_plan
+from script.opentofu.moteur import (
+    Resultat,
+    est_destructeur,
+    formater_plan,
+    vms_detruites,
+    vms_nouvelles,
+)
 from script.todo.todo_i18n import t
 
 # Champs texte de la modale d'une VM, dans l'ordre d'affichage ; les deux
@@ -76,6 +82,12 @@ def vm_depuis_saisie(base, valeurs):
     `vcpus` et `ram` deviennent des entiers quand la saisie en est un ;
     `vmid` vide vaut None ; `dns` se découpe aux virgules ; un booléen passe
     tel quel. `base` n'est pas modifiée.
+
+    Renommer une VM la fait détruire et recréer par le moteur : un VMID
+    laissé tel quel se vide alors, pour que la VM neuve n'entre pas en
+    collision avec celle qui part, et une adresse dérivée de ce VMID
+    (`resolution.ip_derivee`) laissée telle quelle redevient `auto`. Un
+    VMID ou une adresse que la saisie change est gardé.
     """
     vm = copy.deepcopy(base)
     for champ, valeur in valeurs.items():
@@ -91,6 +103,12 @@ def vm_depuis_saisie(base, valeurs):
             vm[champ] = [x.strip() for x in texte.split(",") if x.strip()]
         else:
             vm[champ] = texte
+    renommee = base.get("nom") and vm.get("nom") != base.get("nom")
+    if renommee and base.get("vmid") is not None:
+        if vm.get("vmid") == base["vmid"]:
+            vm["vmid"] = None
+            if vm.get("ip") == base.get("ip") and resolution.ip_derivee(base):
+                vm.update(ip="auto", passerelle="", dns=[])
     return vm
 
 
@@ -127,15 +145,24 @@ def _texte(valeur):
 
 
 def run_opentofu_form(
-    spec, moteur, enregistrer, *, quand_applique=None, run_app=True
+    spec,
+    moteur,
+    enregistrer,
+    *,
+    quand_applique=None,
+    quand_detruit=None,
+    run_app=True,
 ):
     """Formulaire du parc `spec`. Rend la dernière spec sauvée par
     `enregistrer`, ou None si rien n'a été sauvé.
 
-    `quand_applique(spec, nouvelles)` s'appelle une fois, APRÈS la sortie de
-    l'écran (il peut alors écrire et questionner dans le terminal), si au
-    moins un apply a réussi : `spec` est la dernière spec appliquée,
-    `nouvelles` les VM que les plans appliqués créaient ou remplaçaient.
+    Les deux rappels s'appellent APRÈS la sortie de l'écran (ils peuvent
+    alors écrire et questionner dans le terminal), `quand_detruit` d'abord.
+    `quand_detruit(spec)` : un destroy a réussi ; `spec` est la spec
+    détruite. `quand_applique(spec, nouvelles, detruites)` : un apply a
+    réussi après le dernier destroy ; `spec` est la dernière spec appliquée,
+    `nouvelles` les VM que les plans appliqués créaient ou remplaçaient,
+    `detruites` celles qu'ils détruisaient et que `spec` n'a plus.
     `run_app=False` rend l'application sans la lancer (tests sans terminal) ;
     `app.conclure()` fait alors ce qui suit la sortie.
     """
@@ -201,11 +228,15 @@ def run_opentofu_form(
             self._plan = None
             self._occupe = False
             self._quitter_arme = False
-            # Apply réussi dans la séance : la spec appliquée et les VM
-            # créées ou remplacées, pour `quand_applique` après la sortie.
+            # Apply réussi dans la séance : la spec appliquée, les VM
+            # créées ou remplacées et les VM détruites, pour
+            # `quand_applique` après la sortie.
             self.applique = False
             self.spec_appliquee = None
             self.nouvelles = set()
+            self.detruites = set()
+            # Spec du dernier destroy réussi, pour `quand_detruit`.
+            self.detruit = None
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -307,14 +338,13 @@ def run_opentofu_form(
                 vms.move_cursor(row=min(curseur, len(self.s["vms"]) - 1))
 
         def _remplir_tofu(self):
-            binaire = getattr(self.moteur, "binaire", None)
-            binaire = binaire() if callable(binaire) else outil.trouver_tofu()
-            if binaire:
-                texte = t("tofu: {chemin}, version {version}").format(
-                    chemin=binaire, version=outil.version_tofu(binaire) or "?"
+            ok, info = self.moteur.disponible()
+            if ok:
+                texte = t("Engine {nom}: version {version}").format(
+                    nom=getattr(self.moteur, "nom", ""), version=info
                 )
             else:
-                texte = t("tofu is not installed.")
+                texte = f"✗ {info}"
             self.query_one("#t_outil", Static).update(texte)
             nom = self.s["nom"]
             self.query_one("#t_jeton", Static).update(
@@ -526,12 +556,22 @@ def run_opentofu_form(
             if operation == "appliquer" and res.ok:
                 self.applique = True
                 self.spec_appliquee = copy.deepcopy(travail)
-                self.nouvelles |= {
-                    c.vm
-                    for c in self._plan or ()
-                    if c.ressource == "vm"
-                    and c.action in ("creer", "remplacer")
-                }
+                self.nouvelles |= vms_nouvelles(self._plan or ())
+                self.detruites |= vms_detruites(self._plan or (), travail)
+            if operation == "detruire" and res.ok:
+                # Les VM d'un apply antérieur n'existent plus : rien à
+                # attendre ni à installer, et les alias que cet apply
+                # devait retirer partent avec ceux du destroy.
+                self.detruit = copy.deepcopy(travail)
+                self.detruit["vms"] += [
+                    {"nom": nom}
+                    for nom in sorted(self.detruites)
+                    if nom not in {vm["nom"] for vm in travail["vms"]}
+                ]
+                self.applique = False
+                self.spec_appliquee = None
+                self.nouvelles = set()
+                self.detruites = set()
             if operation != "planifier":
                 self._plan = None
                 return
@@ -548,11 +588,17 @@ def run_opentofu_form(
                 self._enregistrer()
 
         def conclure(self):
-            """Après la sortie de l'écran : `quand_applique` si un apply a
-            réussi ; rend la dernière spec sauvée, ou None."""
+            """Après la sortie de l'écran : `quand_detruit` si un destroy a
+            réussi, puis `quand_applique` si un apply a réussi après lui ;
+            rend la dernière spec sauvée, ou None."""
+            if self.detruit is not None and quand_detruit is not None:
+                quand_detruit(copy.deepcopy(self.detruit))
             if self.applique and quand_applique is not None:
+                gardees = {vm["nom"] for vm in self.spec_appliquee["vms"]}
                 quand_applique(
-                    copy.deepcopy(self.spec_appliquee), set(self.nouvelles)
+                    copy.deepcopy(self.spec_appliquee),
+                    set(self.nouvelles),
+                    self.detruites - gardees,
                 )
             return self.result
 

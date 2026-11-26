@@ -210,6 +210,24 @@ def resoudre(spec, executer, lire_ssh):
     return neuve, neuve != spec
 
 
+def ip_derivee(vm):
+    """Vrai si l'adresse fixe de `vm` est celle que `resoudre` dérive de son
+    VMID sur le réseau de sa passerelle (`pve.ipconfig_for`).
+
+    Une telle adresse suit le VMID et n'est pas un choix de l'opérateur : un
+    VMID qui change la rend caduque. Faux pour `auto`, `dhcp`, une VM sans
+    VMID ou une adresse que la dérivation ne donne pas.
+    """
+    ip, passerelle, vmid = vm.get("ip"), vm.get("passerelle"), vm.get("vmid")
+    if not isinstance(ip, str) or "/" not in ip or not passerelle:
+        return False
+    if not isinstance(vmid, int) or isinstance(vmid, bool):
+        return False
+    masque = ip.split("/", 1)[1]
+    pont = {"address": f"{passerelle}/{masque}"}
+    return pve.ipconfig_for(pont, vmid) == f"ip={ip},gw={passerelle}"
+
+
 def _cle_publique(chemin):
     try:
         with open(os.path.expanduser(chemin), encoding="utf-8") as fh:
