@@ -2751,6 +2751,127 @@ TRANSLATIONS = {
         "fr": "Forks",
         "en": "Forks",
     },
+    # Git › Worktrees
+    "Worktrees": {
+        "fr": "Worktrees",
+        "en": "Worktrees",
+    },
+    "🗂  List the worktrees with their path": {
+        "fr": "🗂  Lister les worktrees avec leur chemin",
+        "en": "🗂  List the worktrees with their path",
+    },
+    "➕ Create a worktree on a branch": {
+        "fr": "➕ Créer un worktree sur une branche",
+        "en": "➕ Create a worktree on a branch",
+    },
+    "🗑  Delete a worktree": {
+        "fr": "🗑  Supprimer un worktree",
+        "en": "🗑  Delete a worktree",
+    },
+    "🧽 Forget the worktrees whose directory is gone": {
+        "fr": "🧽 Oublier les worktrees dont le répertoire a disparu",
+        "en": "🧽 Forget the worktrees whose directory is gone",
+    },
+    "📍 Find the worktree that holds a branch": {
+        "fr": "📍 Retrouver le worktree qui tient une branche",
+        "en": "📍 Find the worktree that holds a branch",
+    },
+    "Worktrees of this checkout": {
+        "fr": "Worktrees de ce checkout",
+        "en": "Worktrees of this checkout",
+    },
+    "detached": {
+        "fr": "détaché",
+        "en": "detached",
+    },
+    "main worktree": {
+        "fr": "worktree principal",
+        "en": "main worktree",
+    },
+    "locked": {
+        "fr": "verrouillé",
+        "en": "locked",
+    },
+    "directory missing": {
+        "fr": "répertoire disparu",
+        "en": "directory missing",
+    },
+    "Branch of the worktree (Enter to cancel): ": {
+        "fr": "Branche du worktree (Entrée pour annuler) : ",
+        "en": "Branch of the worktree (Enter to cancel): ",
+    },
+    "This branch is already checked out in": {
+        "fr": "Cette branche est déjà extraite dans",
+        "en": "This branch is already checked out in",
+    },
+    "New branch: start it from (Enter for master): ": {
+        "fr": "Nouvelle branche : la faire partir de (Entrée pour master) : ",
+        "en": "New branch: start it from (Enter for master): ",
+    },
+    "Directory": {
+        "fr": "Répertoire",
+        "en": "Directory",
+    },
+    "This directory already exists:": {
+        "fr": "Ce répertoire existe déjà :",
+        "en": "This directory already exists:",
+    },
+    "Worktree created:": {
+        "fr": "Worktree créé :",
+        "en": "Worktree created:",
+    },
+    "It holds the tracked files only: no venv, no addons, no config.conf. Run the tooling with the venv of the main checkout.": {
+        "fr": "Il ne porte que les fichiers suivis : ni venv, ni addons, ni config.conf. Lancer l'outillage avec le venv du checkout principal.",
+        "en": "It holds the tracked files only: no venv, no addons, no config.conf. Run the tooling with the venv of the main checkout.",
+    },
+    "No worktree besides the main checkout.": {
+        "fr": "Aucun worktree en dehors du checkout principal.",
+        "en": "No worktree besides the main checkout.",
+    },
+    "Number, Enter to cancel: ": {
+        "fr": "Numéro, Entrée pour annuler : ",
+        "en": "Number, Enter to cancel: ",
+    },
+    "Delete the worktree": {
+        "fr": "Supprimer le worktree",
+        "en": "Delete the worktree",
+    },
+    "These changes will be LOST. Delete anyway? (y/N): ": {
+        "fr": "Ces changements seront PERDUS. Supprimer quand même ? (o/N) : ",
+        "en": "These changes will be LOST. Delete anyway? (y/N): ",
+    },
+    "Worktree deleted:": {
+        "fr": "Worktree supprimé :",
+        "en": "Worktree deleted:",
+    },
+    "Also delete the branch": {
+        "fr": "Supprimer aussi la branche",
+        "en": "Also delete the branch",
+    },
+    "if it is merged? (y/N): ": {
+        "fr": "si elle est fusionnée ? (o/N) : ",
+        "en": "if it is merged? (y/N): ",
+    },
+    "No stale worktree entry.": {
+        "fr": "Aucune entrée de worktree orpheline.",
+        "en": "No stale worktree entry.",
+    },
+    "Forget these entries? (y/N): ": {
+        "fr": "Oublier ces entrées ? (o/N) : ",
+        "en": "Forget these entries? (y/N): ",
+    },
+    "Branch to find (Enter to cancel): ": {
+        "fr": "Branche à retrouver (Entrée pour annuler) : ",
+        "en": "Branch to find (Enter to cancel): ",
+    },
+    "checked out in no worktree.": {
+        "fr": "extraite dans aucun worktree.",
+        "en": "checked out in no worktree.",
+    },
+    "no such local branch.": {
+        "fr": "aucune branche locale de ce nom.",
+        "en": "no such local branch.",
+    },
     "Branches": {
         "fr": "Branches",
         "en": "Branches",

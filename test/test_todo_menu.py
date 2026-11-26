@@ -768,6 +768,11 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "🔄 Synchronise one repository": "_git_synchroniser_depot",
         "🧊 Freeze one repository on a commit": "_git_regeler_depot",
         "🧹 Clean the merged branches of a repository": "_git_nettoyer_branches",
+        "🗂  List the worktrees with their path": "_git_worktree_lister",
+        "➕ Create a worktree on a branch": "_git_worktree_creer",
+        "🗑  Delete a worktree": "_git_worktree_supprimer",
+        "🧽 Forget the worktrees whose directory is gone": "_git_worktree_nettoyer",
+        "📍 Find the worktree that holds a branch": "_git_worktree_branche",
         "📋 List the pull requests of an organisation": "_git_lister_pull_requests",
         "📬 Open a pull request from the current branch": "_git_creer_pull_request",
         "🚦 Status of my pull requests (review, CI, merged)": "_git_statut_mes_pull_requests",
@@ -886,6 +891,17 @@ class TestGitMenuSections(unittest.TestCase):
                     t("Branches"),
                     t("🧹 Clean the merged branches of a repository"),
                 ),
+                (t("Worktrees"), t("🗂  List the worktrees with their path")),
+                (t("Worktrees"), t("➕ Create a worktree on a branch")),
+                (t("Worktrees"), t("🗑  Delete a worktree")),
+                (
+                    t("Worktrees"),
+                    t("🧽 Forget the worktrees whose directory is gone"),
+                ),
+                (
+                    t("Worktrees"),
+                    t("📍 Find the worktree that holds a branch"),
+                ),
                 (
                     t("Pull requests"),
                     t("📋 List the pull requests of an organisation"),
@@ -937,7 +953,7 @@ class TestGitMenuSections(unittest.TestCase):
         self.assertIn((t("Tools"), "Y"), rangs)
 
     def test_the_typed_number_skips_the_sections(self):
-        """[22] est l'éditeur vim, après vingt et une entrées et six sections."""
+        """[27] est l'éditeur vim, après vingt-six entrées et sept sections."""
         from unittest import mock
 
         self.obj.config_file = mock.Mock()
@@ -946,7 +962,7 @@ class TestGitMenuSections(unittest.TestCase):
         with (
             mock.patch.object(self.TODO, "fill_help_info", return_value=""),
             mock.patch(
-                "script.todo.todo.click.prompt", side_effect=["22", "1", "0"]
+                "script.todo.todo.click.prompt", side_effect=["27", "1", "0"]
             ),
             mock.patch.object(
                 self.TODO,
