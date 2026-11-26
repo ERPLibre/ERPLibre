@@ -26896,6 +26896,34 @@ TRANSLATIONS = {
         "fr": "Un parc garde au moins une VM.",
         "en": "A fleet keeps at least one VM.",
     },
+    "VM {nom}: {champ} must be a text.": {
+        "fr": "VM {nom} : {champ} doit être un texte.",
+        "en": "VM {nom}: {champ} must be a text.",
+    },
+    "VM {nom}: {champ} must be true or false.": {
+        "fr": "VM {nom} : {champ} doit valoir true ou false.",
+        "en": "VM {nom}: {champ} must be true or false.",
+    },
+    "VM {nom}: {champ} must be a non-empty text.": {
+        "fr": "VM {nom} : {champ} doit être un texte non vide.",
+        "en": "VM {nom}: {champ} must be a non-empty text.",
+    },
+    "VMID {vmid} is used by several VMs: {noms}.": {
+        "fr": "Le VMID {vmid} sert à plusieurs VM : {noms}.",
+        "en": "VMID {vmid} is used by several VMs: {noms}.",
+    },
+    "Target field {champ} must be true or false.": {
+        "fr": "Le champ de cible {champ} doit valoir true ou false.",
+        "en": "Target field {champ} must be true or false.",
+    },
+    "The account needs an SSH public key.": {
+        "fr": "Le compte a besoin d'une clé publique SSH.",
+        "en": "The account needs an SSH public key.",
+    },
+    "Invalid spec: {err}": {
+        "fr": "Spec invalide : {err}",
+        "en": "Invalid spec: {err}",
+    },
 }
 
 

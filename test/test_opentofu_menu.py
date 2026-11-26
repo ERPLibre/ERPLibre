@@ -119,7 +119,8 @@ class Base(unittest.TestCase):
 
     def parc(self, nom="parc-a", **vm):
         spec = sp.nouvelle_spec(nom, CIBLE)
-        spec["compte"]["ssh_key"] = ""
+        # Clé publique sans clé privée voisine : aucun IdentityFile écrit.
+        spec["compte"]["ssh_key"] = str(self.tmp / "absente.pub")
         spec["vms"][0].update(vm)
         sp.sauver(spec, self.racine)
         return spec

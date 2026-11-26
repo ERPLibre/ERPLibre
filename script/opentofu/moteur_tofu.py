@@ -234,8 +234,10 @@ class MoteurTofu(Moteur):
         return outil.trouver_tofu()
 
     def dossier_travail(self, spec):
-        """`<racine>/<parc>/.tofu` ; ValueError sur un nom de parc invalide."""
-        return spec_parc.dossier_parc(spec["nom"], self.racine) / ".tofu"
+        """`<racine>/<parc>/.tofu` ; ValueError sur un nom de parc invalide
+        ou absent, et sur une spec qui n'est pas un objet."""
+        nom = spec.get("nom") if isinstance(spec, dict) else None
+        return spec_parc.dossier_parc(nom, self.racine) / ".tofu"
 
     def _creer_dossier(self, spec):
         parc = spec_parc.dossier_parc(spec["nom"], self.racine)
@@ -423,13 +425,20 @@ class MoteurTofu(Moteur):
         return connus != providers
 
     def _preparer(self, spec, journal):
-        """Résolution, rendu, puis `tofu init` quand il est requis."""
+        """Résolution, rendu, puis `tofu init` quand il est requis.
+
+        `spec.valider` contrôle d'abord chaque champ lu ; un KeyError ou un
+        TypeError qui lui échapperait encore devient un « spec invalide »
+        affichable, jamais une trace.
+        """
         if not self.binaire():
             return Resultat(False, _remede_absent(), 127)
         try:
             document = self._resoudre_et_rendre(spec)
         except (resolution.ResolutionImpossible, ValueError, OSError) as exc:
             return Resultat(False, str(exc), 1)
+        except (KeyError, TypeError) as exc:
+            return Resultat(False, t("Invalid spec: {err}").format(err=exc), 1)
         dossier = self.dossier_travail(spec)
         providers = document["terraform"]["required_providers"]
         if self._init_requis(dossier, providers):

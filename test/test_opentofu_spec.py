@@ -11,9 +11,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.argv = ["todo.py"]
+from script.opentofu import moteur as mo  # noqa: E402
 from script.opentofu import spec as sp  # noqa: E402
 
 DEPOT = Path(__file__).resolve().parent.parent
@@ -62,6 +64,69 @@ class TestSpec(unittest.TestCase):
         self.assertEqual(len(sp.valider(s, distros)), 1)
         s["vms"][0].update(distro="debian", version="99")
         self.assertEqual(len(sp.valider(s, distros)), 1)
+
+    def test_champ_absent_ou_mal_type_donne_une_erreur(self):
+        """Chaque champ que le moteur lit est contrôlé : présence et type,
+        jamais un KeyError ni un TypeError plus loin."""
+        distros = {"debian": ({"13": "trixie"},)}
+        cas = (
+            (("cible", "insecure"), "oui"),
+            (("compte", "user"), ""),
+            (("compte", "user"), 7),
+            (("compte", "ssh_key"), ""),
+            (("compte", "ssh_key"), None),
+            (("vms", 0, "arch"), ""),
+            (("vms", 0, "arch"), 64),
+            (("vms", 0, "demarrer"), "oui"),
+            (("vms", 0, "installer_erplibre"), 1),
+            (("vms", 0, "distro"), ["debian"]),
+            (("vms", 0, "version"), {"13": 1}),
+            (("vms", 0, "passerelle"), 1),
+        )
+        for chemin, valeur in cas:
+            for retirer in (True, False):
+                s = _spec()
+                noeud = s
+                for cle in chemin[:-1]:
+                    noeud = noeud[cle]
+                if retirer:
+                    del noeud[chemin[-1]]
+                else:
+                    noeud[chemin[-1]] = valeur
+                if retirer and chemin[-1] == "passerelle":
+                    continue
+                erreurs = sp.valider(s, distros)
+                self.assertTrue(erreurs, (chemin, retirer, valeur))
+
+    def test_vmid_en_double(self):
+        s = _spec()
+        s["vms"] = [
+            dict(s["vms"][0], nom="a", vmid=120),
+            dict(s["vms"][0], nom="b", vmid=120),
+            dict(s["vms"][0], nom="c", vmid=None),
+            dict(s["vms"][0], nom="d", vmid=None),
+        ]
+        erreurs = sp.valider(s)
+        self.assertEqual(len(erreurs), 1)
+        self.assertIn("120", erreurs[0])
+
+    def test_moteur_connu_accepte_inconnu_refuse(self):
+        s = _spec()
+        s["moteur"] = "inexistant"
+        self.assertEqual(len(sp.valider(s)), 1)
+        with mock.patch.dict(mo._REGISTRE, {"autre": object}):
+            s["moteur"] = "autre"
+            self.assertEqual(sp.valider(s), [])
+
+    def test_cle_ssh_jamais_vide_a_la_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(Path, "home", return_value=Path(tmp)):
+                cle = sp.nouvelle_spec("parc-a", "h")["compte"]["ssh_key"]
+                self.assertEqual(cle, "~/.ssh/id_ed25519.pub")
+                (Path(tmp) / ".ssh").mkdir()
+                (Path(tmp) / ".ssh" / "id_rsa.pub").write_text("x")
+                cle = sp.nouvelle_spec("parc-a", "h")["compte"]["ssh_key"]
+                self.assertEqual(cle, str(Path(tmp) / ".ssh" / "id_rsa.pub"))
 
     def test_aller_retour(self):
         with tempfile.TemporaryDirectory() as tmp:

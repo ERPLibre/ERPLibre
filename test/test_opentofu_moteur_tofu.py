@@ -345,6 +345,45 @@ class TestPlanifier(_Base):
         self.assertIn("ram", res.message)
         self.assertEqual(self.appels(), [])
 
+    def test_champ_retire_rend_un_echec_sans_exception(self):
+        chemins = (
+            ("nom",),
+            ("cible",),
+            ("cible", "hote"),
+            ("cible", "insecure"),
+            ("compte",),
+            ("compte", "user"),
+            ("compte", "ssh_key"),
+            ("vms",),
+            ("vms", 0, "nom"),
+            ("vms", 0, "arch"),
+            ("vms", 0, "distro"),
+            ("vms", 0, "version"),
+            ("vms", 0, "demarrer"),
+            ("vms", 0, "installer_erplibre"),
+            ("vms", 0, "disque"),
+        )
+        for chemin in chemins:
+            spec = json.loads(json.dumps(self.spec))
+            noeud = spec
+            for cle in chemin[:-1]:
+                noeud = noeud[cle]
+            del noeud[chemin[-1]]
+            res, changements = self.moteur.planifier(spec, self.lignes.append)
+            self.assertFalse(res.ok, chemin)
+            self.assertTrue(res.message, chemin)
+            self.assertEqual(changements, [], chemin)
+        self.assertEqual(self.appels(), [])
+
+    def test_erreur_de_cle_au_rendu_devient_spec_invalide(self):
+        with mock.patch.object(
+            mtt.rendu_proxmox, "rendre", side_effect=KeyError("pont")
+        ):
+            res, changements = self.planifier()
+        self.assertFalse(res.ok)
+        self.assertIn("Spec invalide", res.message)
+        self.assertEqual(changements, [])
+
     def test_plan_en_echec(self):
         self.comportement({"plan": {"lignes": ["Error: boom"], "code": 1}})
         res, changements = self.planifier()

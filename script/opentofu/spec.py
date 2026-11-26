@@ -17,6 +17,7 @@ import re
 import tempfile
 from pathlib import Path
 
+from script.opentofu import moteur as moteur_parc
 from script.todo.todo_i18n import t
 
 RACINE_PARCS = Path(__file__).resolve().parent.parent.parent / "private" / "opentofu"
@@ -57,12 +58,16 @@ def dossier_parc(nom, racine=RACINE_PARCS):
 
 
 def _cle_ssh_par_defaut():
-    """Première clé publique usuelle de ~/.ssh, ou "" s'il n'y en a pas."""
+    """Première clé publique usuelle de ~/.ssh, sinon `~/.ssh/id_ed25519.pub`.
+
+    Le champ n'est jamais vide : une clé absente fait échouer la
+    résolution, dont le message nomme le fichier attendu.
+    """
     for nom in ("id_ed25519.pub", "id_rsa.pub"):
         chemin = Path.home() / ".ssh" / nom
         if chemin.is_file():
             return str(chemin)
-    return ""
+    return "~/.ssh/id_ed25519.pub"
 
 
 def nouvelle_spec(nom, hote):
@@ -117,6 +122,10 @@ def _entier(valeur):
     return isinstance(valeur, int) and not isinstance(valeur, bool)
 
 
+def _texte_plein(valeur):
+    return isinstance(valeur, str) and bool(valeur)
+
+
 def _valider_vm(vm, distros, vus):
     """Erreurs d'une VM ; `vus` accumule les noms pour repérer les doublons."""
     if not isinstance(vm, dict):
@@ -153,15 +162,34 @@ def _valider_vm(vm, distros, vus):
         )
     elif ip not in ("auto", "dhcp") and not vm.get("passerelle"):
         erreurs.append(t("VM {nom}: a fixed ip needs a gateway.").format(nom=nom))
-    if not isinstance(vm.get("dns", []), list):
+    elif not isinstance(vm.get("passerelle", ""), str):
+        erreurs.append(
+            t("VM {nom}: {champ} must be a text.").format(nom=nom, champ="passerelle")
+        )
+    dns = vm.get("dns", [])
+    if not isinstance(dns, list) or not all(isinstance(x, str) for x in dns):
         erreurs.append(t("VM {nom}: dns must be a list.").format(nom=nom))
+    for champ in ("demarrer", "installer_erplibre"):
+        if not isinstance(vm.get(champ), bool):
+            erreurs.append(
+                t("VM {nom}: {champ} must be true or false.").format(
+                    nom=nom, champ=champ
+                )
+            )
+    for champ in ("arch", "distro", "version"):
+        if not _texte_plein(vm.get(champ)):
+            erreurs.append(
+                t("VM {nom}: {champ} must be a non-empty text.").format(
+                    nom=nom, champ=champ
+                )
+            )
     vmid = vm.get("vmid")
     if vmid is not None and (not _entier(vmid) or vmid < 100):
         erreurs.append(
             t("VM {nom}: vmid must be empty or an integer >= 100.").format(nom=nom)
         )
-    if distros is not None:
-        distro, version = vm.get("distro"), vm.get("version")
+    distro, version = vm.get("distro"), vm.get("version")
+    if distros is not None and _texte_plein(distro) and _texte_plein(version):
         if distro not in distros:
             erreurs.append(
                 t("VM {nom}: unknown distro {val}.").format(nom=nom, val=distro)
@@ -175,11 +203,30 @@ def _valider_vm(vm, distros, vus):
     return erreurs
 
 
+def _vmid_en_double(vms):
+    """Erreurs des VMID explicites portés par plusieurs VM."""
+    par_vmid = {}
+    for vm in vms:
+        if isinstance(vm, dict) and _entier(vm.get("vmid")):
+            par_vmid.setdefault(vm["vmid"], []).append(str(vm.get("nom")))
+    return [
+        t("VMID {vmid} is used by several VMs: {noms}.").format(
+            vmid=vmid, noms=", ".join(noms)
+        )
+        for vmid, noms in sorted(par_vmid.items())
+        if len(noms) > 1
+    ]
+
+
 def valider(spec, distros=None):
     """Erreurs traduites de `spec`, liste vide si elle est valide.
 
-    `distros` a la forme de `deploy_qemu.DISTROS` (`{distro: (versions, ...)}`) ;
-    à None, distro et version ne sont pas contrôlées.
+    Contrôle la présence et le type de chaque champ que le moteur lit, pour
+    qu'une spec éditée à la main échoue ici et non par un KeyError au
+    rendu. `distros` a la forme de `deploy_qemu.DISTROS`
+    (`{distro: (versions, ...)}`) ; à None, distro et version sont des
+    textes non vides sans être cherchés au catalogue. Le moteur est l'un de
+    ceux que `moteur.moteurs_connus` nomme.
     """
     if not isinstance(spec, dict):
         return [t("The spec must be a JSON object.")]
@@ -191,7 +238,7 @@ def valider(spec, distros=None):
     nom = spec.get("nom")
     if not isinstance(nom, str) or not _RE_PARC.match(nom):
         erreurs.append(t("Invalid fleet name: {nom}").format(nom=nom))
-    if spec.get("moteur") != "tofu":
+    if spec.get("moteur") not in moteur_parc.moteurs_connus():
         erreurs.append(t("Unsupported engine: {val}.").format(val=spec.get("moteur")))
     cible = spec.get("cible")
     if not isinstance(cible, dict) or cible.get("type") != "proxmox":
@@ -205,14 +252,24 @@ def valider(spec, distros=None):
                 erreurs.append(t("A jump host is not supported yet."))
             if hote.get("sudo", "sudo ") not in ("sudo ", ""):
                 erreurs.append(t("The host sudo field must be 'sudo ' or empty."))
+        if not isinstance(cible.get("insecure"), bool):
+            erreurs.append(
+                t("Target field {champ} must be true or false.").format(
+                    champ="insecure"
+                )
+            )
         for champ in _CHAMPS_CIBLE:
             if not isinstance(cible.get(champ, ""), str):
                 erreurs.append(
                     t("Target field {champ} must be a string.").format(champ=champ)
                 )
     compte = spec.get("compte")
-    if not isinstance(compte, dict) or not compte.get("user"):
+    if not isinstance(compte, dict):
+        compte = {}
+    if not _texte_plein(compte.get("user")):
         erreurs.append(t("The account needs a user."))
+    if not _texte_plein(compte.get("ssh_key")):
+        erreurs.append(t("The account needs an SSH public key."))
     vms = spec.get("vms")
     if not isinstance(vms, list) or not vms:
         erreurs.append(t("The spec needs at least one VM."))
@@ -220,6 +277,7 @@ def valider(spec, distros=None):
         vus = set()
         for vm in vms:
             erreurs.extend(_valider_vm(vm, distros, vus))
+        erreurs.extend(_vmid_en_double(vms))
     return erreurs
 
 

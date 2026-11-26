@@ -89,6 +89,11 @@ def enregistrer(nom, classe):
     _REGISTRE[nom] = classe
 
 
+def moteurs_connus():
+    """Noms des moteurs qu'une spec peut demander : livrés ou enregistrés."""
+    return set(_CONNUS) | set(_REGISTRE)
+
+
 def moteur_pour(spec, **kw):
     """Instancie le moteur que `spec["moteur"]` désigne, avec `**kw`.
 
