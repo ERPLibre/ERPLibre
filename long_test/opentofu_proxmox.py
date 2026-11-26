@@ -46,6 +46,7 @@ from descente import (  # noqa: E402
     Famille,
     autre_descente,
     cle_publique,
+    dernier_rapport,
     detruire,
     dire,
     mener,
@@ -305,7 +306,7 @@ class Descente(deep_proxmox.Descente):
                 "plan_1",
                 f"tofu plan du parc {PARC} — attendu : créer vm, cloud-init"
                 f" et image de {VM}, rien d'autre ; tofu show -json gardé"
-                " en 0600 près du rapport",
+                " en 0600 dans le dossier de la course",
             ),
             ("apply", f"tofu apply du plan, puis l'alias ssh {alias}"),
             ("ssh", f"ssh -o BatchMode=yes {alias} true"),
@@ -321,28 +322,40 @@ class Descente(deep_proxmox.Descente):
     def etapes_tofu(self):
         """Les sept étapes tofu sur le Proxmox de l'étage 1.
 
-        Un échec de préparation, de premier plan ou d'apply arrête la
-        suite, notée `saute`. Après un apply, ssh, second plan, destroy et
-        absence passent tous : un ssh muet n'empêche pas de détruire.
+        Un échec de préparation ou de premier plan arrête la suite, notée
+        `saute`. L'apply n'arrête la suite que si `tofu apply` lui-même a
+        échoué (`ctx["applique"]` absent) : dès qu'il a tourné, la VM est
+        dans l'état tofu, et ssh, second plan, destroy et absence passent
+        tous, quoi qu'aient rendu les sorties ou l'après-apply.
         """
         hote = {"target": self.etages[0]["alias"], "sudo": "sudo ", "jump": ""}
         ctx = {}
+
+        def echoue(ok):
+            return not ok
+
+        def jamais(_ok):
+            return False
+
         sequence = (
-            ("preparer_hote", lambda: self._preparer_hote(hote, ctx), True),
-            ("plan_1", lambda: self._plan_1(ctx), True),
-            ("apply", lambda: self._apply(ctx), True),
-            ("ssh", lambda: self._ssh(ctx), False),
-            ("plan_2", lambda: self._plan_2(ctx), False),
-            ("destroy", lambda: self._destroy(ctx), False),
-            ("absence", lambda: self._absence(ctx), False),
+            ("preparer_hote", lambda: self._preparer_hote(hote, ctx), echoue),
+            ("plan_1", lambda: self._plan_1(ctx), echoue),
+            (
+                "apply",
+                lambda: self._apply(ctx),
+                lambda _ok: "applique" not in ctx,
+            ),
+            ("ssh", lambda: self._ssh(ctx), jamais),
+            ("plan_2", lambda: self._plan_2(ctx), jamais),
+            ("destroy", lambda: self._destroy(ctx), jamais),
+            ("absence", lambda: self._absence(ctx), jamais),
         )
         arret = False
-        for nom, action, bloquante in sequence:
+        for nom, action, arret_si in sequence:
             if arret:
                 self._noter(nom, "saute")
                 continue
-            if not self._etape(nom, action) and bloquante:
-                arret = True
+            arret = arret_si(self._etape(nom, action))
 
     def _etape(self, nom, action):
         """Lance `action`, qui rend (ok, détail) ; note statut, durée et
@@ -414,7 +427,7 @@ class Descente(deep_proxmox.Descente):
         if not res.ok:
             return False, res.message
         ctx["changements"] = changements
-        capture = self._capturer_plan(mot, spec)
+        capture = self._capturer_plan(mot, spec, "show_plan.json")
         lignes = "; ".join(moteur.formater_plan(changements))
         vus = tuple(sorted((c.action, c.ressource) for c in changements))
         vms = {c.vm for c in changements if c.ressource != "image"}
@@ -422,41 +435,43 @@ class Descente(deep_proxmox.Descente):
             return False, f"plan inattendu : {lignes}"
         return True, lignes + (f" ; plan JSON : {capture}" if capture else "")
 
-    def _capturer_plan(self, mot, spec):
-        """`tofu show -json` du plan sauvé, écrit en 0600 près du rapport.
+    def dossier_captures(self):
+        """`<rapport sans .json>/` : les captures de la course, en 0700.
 
-        Rend le chemin, ou "" si la capture échoue. Le contenu n'est
-        jamais affiché : un plan porte les valeurs sensibles en clair.
+        Un sous-dossier et non un `.json` de premier niveau : le dossier
+        des rapports est balayé par `dernier_rapport`, et une capture n'y
+        est pas un rapport.
         """
-        chemin = self.chemin_json[: -len(".json")] + "-show_plan.json"
+        return self.chemin_json[: -len(".json")]
+
+    def _capturer_plan(self, mot, spec, nom):
+        """`tofu show -json` du plan sauvé, écrit en 0600 dans
+        `dossier_captures()/nom`.
+
+        La capture passe par le moteur (`_capturer`) : même environnement,
+        même masquage de stderr, et stdout n'est jamais journalisé. Le
+        fichier est créé exclusivement, jamais réécrit. Rend le chemin, ou
+        "" si la capture échoue.
+        """
+        res, sortie = mot._capturer(
+            spec,
+            ["show", "-json", "-no-color", moteur_tofu._PLAN],
+            self._journal_tofu,
+        )
+        if not res.ok:
+            self.dire(f"      ⚠ tofu show -json : {res.message}")
+            return ""
+        dossier = self.dossier_captures()
+        chemin = os.path.join(dossier, nom)
         try:
-            res = subprocess.run(
-                [
-                    mot.binaire(),
-                    "show",
-                    "-json",
-                    "-no-color",
-                    moteur_tofu._PLAN,
-                ],
-                cwd=mot.dossier_travail(spec),
-                env=coffre.environnement(spec["nom"], racine=_racine()),
-                capture_output=True,
-                text=True,
-                timeout=300,
-                stdin=subprocess.DEVNULL,
-            )
-        except (OSError, subprocess.SubprocessError, ValueError) as exc:
-            self.dire(f"      ⚠ tofu show -json : {exc}")
+            os.makedirs(dossier, mode=0o700, exist_ok=True)
+            os.chmod(dossier, 0o700)
+            fd = os.open(chemin, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(sortie)
+        except OSError as exc:
+            self.dire(f"      ⚠ capture non écrite : {exc}")
             return ""
-        if res.returncode:
-            secrets_parc = coffre.lire(spec["nom"], _racine())
-            for ligne in (res.stderr or "").strip().splitlines()[-5:]:
-                self.dire(f"      ⚠ {coffre.masquer(ligne, secrets_parc)}")
-            return ""
-        fd = os.open(chemin, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(res.stdout)
-        os.chmod(chemin, 0o600)
         self.dire(f"      plan JSON (0600) : {chemin}")
         return chemin
 
@@ -466,17 +481,24 @@ class Descente(deep_proxmox.Descente):
         res = mot.appliquer(spec, self._journal_tofu)
         if not res.ok:
             return False, res.message
+        ctx["applique"] = True
         nouvelles = {
             c.vm
             for c in ctx["changements"]
             if c.ressource == "vm" and c.action in ("creer", "remplacer")
         }
-        sorties = mot.sorties(spec)
-        ctx["sorties"] = sorties
-        self._todo()._tofu_apres_apply(spec, sorties, nouvelles)
+        # Après un apply réussi, rien ne rend l'étape fausse : une sortie
+        # manquante ou un après-apply qui casse est un avertissement, que
+        # l'étape ssh constatera.
+        try:
+            sorties = mot.sorties(spec)
+            ctx["sorties"] = sorties
+            self._todo()._tofu_apres_apply(spec, sorties, nouvelles)
+        except Exception as exc:  # noqa: BLE001 - la VM existe, on continue
+            return True, f"⚠ après-apply : {type(exc).__name__}: {exc}"
         sortie = sorties.get(VM)
         if not sortie:
-            return False, f"aucune sortie tofu pour {VM}"
+            return True, f"⚠ aucune sortie tofu pour {VM}"
         return True, f"vmid {sortie['vmid']}, ip {sortie['ip'] or 'dhcp'}"
 
     def _ssh(self, ctx):
@@ -521,7 +543,13 @@ class Descente(deep_proxmox.Descente):
         if not res.ok:
             return False, res.message
         if changements:
-            return False, "; ".join(moteur.formater_plan(changements))
+            capture = self._capturer_plan(
+                ctx["moteur"], ctx["spec"], "show_plan_2.json"
+            )
+            lignes = "; ".join(moteur.formater_plan(changements))
+            return False, lignes + (
+                f" ; plan JSON : {capture}" if capture else ""
+            )
         return True, "aucun changement"
 
     def _destroy(self, ctx):
@@ -553,32 +581,47 @@ FAMILLE = Famille(OUTIL, NOM_BASE, deep_proxmox.detruire_une)
 
 
 def defaire(dry_run=False):
-    """Défait le Proxmox du dernier rapport, puis retire le parc.
+    """Défait le Proxmox du dernier rapport, puis retire le parc et les
+    captures de ce rapport.
 
-    Le parc ne part qu'après un Proxmox défait : sa VM vivait sur le disque
-    du Proxmox, que `virsh undefine --remove-all-storage` a effacé avec
-    elle. Un `tofu destroy` avant la confirmation détruirait sans accord,
-    et après, il ne joindrait plus rien. Un Proxmox resté debout garde son
-    parc, qui le décrit encore.
+    Le parc ne part qu'après un Proxmox défait d'après un rapport : sa VM
+    vivait sur le disque du Proxmox, que `virsh undefine
+    --remove-all-storage` a effacé avec elle. Un `tofu destroy` avant la
+    confirmation détruirait sans accord, et après, il ne joindrait plus
+    rien. Sans rapport à défaire, ou avec un Proxmox resté debout, le parc
+    est gardé : rien ne dit que sa VM a disparu.
+
+    Le rapport est lu par le même `dernier_rapport` que `detruire`, sur les
+    mêmes fichiers : c'est celui qu'il défait.
     """
     journal = os.path.expanduser(
         f"~/.erplibre/longtest/{NOM_BASE}"
         f"-{time.strftime('%Y%m%d-%H%M%S')}.log"
     )
     os.makedirs(os.path.dirname(journal), exist_ok=True)
+    rapport = dernier_rapport(OUTIL, NOM_BASE)
     code = detruire(FAMILLE, journal, dry_run=dry_run)
     dossier = spec_parc.dossier_parc(PARC, _racine())
-    if not dossier.exists():
+    fichier = rapport.get("fichier") or ""
+    captures = fichier[: -len(".json")] if fichier.endswith(".json") else ""
+    a_retirer = [d for d in (str(dossier), captures) if d and os.path.isdir(d)]
+    if not a_retirer:
+        return code
+    if not rapport:
+        dire(f"  parc {PARC} gardé : aucun rapport défait", journal)
         return code
     if dry_run:
-        dire(f"  [à blanc] parc {PARC} retiré : {dossier}", journal)
+        for d in a_retirer:
+            dire(f"  [à blanc] retiré : {d}", journal)
         return code
     if code:
         dire(f"  parc {PARC} gardé : le Proxmox n'est pas défait", journal)
         return code
-    _oublier_parc(journal)
-    shutil.rmtree(dossier)
-    dire(f"  ✓ parc {PARC} retiré : {dossier}", journal)
+    if dossier.exists():
+        _oublier_parc(journal)
+    for d in a_retirer:
+        shutil.rmtree(d)
+        dire(f"  ✓ retiré : {d}", journal)
     return code
 
 

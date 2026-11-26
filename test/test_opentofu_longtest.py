@@ -252,45 +252,54 @@ class LesPrealables(unittest.TestCase):
         self.assertIn("--detruire", manques[0])
 
 
+SECRET_PLAN = "valeur-du-plan-a-ne-jamais-afficher"
+
+
 class _Moteur:
     """Doublure du moteur : deux plans, un apply, un destroy, des sorties."""
 
-    def __init__(self, racine, plans):
+    def __init__(self, racine, plans, sorties=None, apply_ok=True):
         self.racine = racine
+        self.apply_ok = apply_ok
         self.plans = list(plans)
         self.appels = []
-
-    def binaire(self):
-        return "/opt/tofu"
-
-    def dossier_travail(self, spec):
-        dossier = Path(self.racine) / spec["nom"] / ".tofu"
-        dossier.mkdir(parents=True, exist_ok=True)
-        return dossier
+        self.captures = []
+        self._sorties = (
+            {otp.VM: {"vmid": 100, "ip": "10.10.10.150"}}
+            if sorties is None
+            else sorties
+        )
 
     def planifier(self, spec, journal):
         self.appels.append("planifier")
         spec["vms"][0]["vmid"] = 100
         return Resultat(True, "plan"), self.plans.pop(0)
 
+    def _capturer(self, spec, args, journal):
+        self.captures.append(list(args))
+        return Resultat(True), '{"secret": "%s"}' % SECRET_PLAN
+
     def appliquer(self, spec, journal):
         self.appels.append("appliquer")
-        return Resultat(True, "apply")
+        return Resultat(self.apply_ok, "apply")
 
     def detruire(self, spec, journal):
         self.appels.append("detruire")
         return Resultat(True, "destroy")
 
     def sorties(self, spec):
-        return {otp.VM: {"vmid": 100, "ip": "10.10.10.150"}}
+        return self._sorties
 
 
 class _Todo:
-    def __init__(self):
+    def __init__(self, casse=False):
         self.appels = []
+        self.casse = casse
 
     def _tofu_apres_apply(self, spec, sorties, nouvelles):
         self.appels.append(("apres_apply", sorted(nouvelles)))
+        if self.casse:
+            raise OSError("ssh config illisible")
 
     def _tofu_apres_destroy(self, spec):
         self.appels.append("apres_destroy")
@@ -319,12 +328,15 @@ class LesEtapesTofu(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.parcs = Path(self.tmp.name) / "parcs"
         self.chemin = os.path.join(self.tmp.name, "test-tofu-pve-1.json")
+        self.journal = os.path.join(self.tmp.name, "test-tofu-pve-1.log")
+        self.captures = Path(self.chemin[: -len(".json")])
         self.lances = []
+        self.sortie = ""
 
     def _descente(self):
         d = otp.Descente(
             {"niveaux": [], "demandee": 1, "atteignable": 1, "arret": ""},
-            None,
+            self.journal,
             False,
             self.chemin,
         )
@@ -342,14 +354,21 @@ class LesEtapesTofu(unittest.TestCase):
 
     def _run(self, cmd, **kwargs):
         self.lances.append(cmd)
-        if cmd[1:3] == ["show", "-json"]:
-            return subprocess.CompletedProcess(cmd, 0, '{"plan": 1}', "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    def _derouler(self, plans, qm_list="", preparer_ok=True):
+    def _derouler(
+        self,
+        plans,
+        qm_list="",
+        preparer_ok=True,
+        sorties=None,
+        todo=None,
+        apply_ok=True,
+    ):
         d = self._descente()
-        mot = _Moteur(self.parcs, plans)
-        todo = _Todo()
+        mot = _Moteur(self.parcs, plans, sorties, apply_ok)
+        todo = todo or _Todo()
+        ecran = io.StringIO()
 
         def preparer_hote(spec, brut, recreer=False, racine=None):
             return Resultat(preparer_ok, "prêt"), dict(spec)
@@ -375,9 +394,6 @@ class LesEtapesTofu(unittest.TestCase):
                 mock.patch.object(otp.moteur, "moteur_pour", return_value=mot)
             )
             pile.enter_context(
-                mock.patch.object(otp.coffre, "environnement", return_value={})
-            )
-            pile.enter_context(
                 mock.patch.object(
                     otp.resolution,
                     "executer_ssh",
@@ -389,8 +405,9 @@ class LesEtapesTofu(unittest.TestCase):
             )
             pile.enter_context(mock.patch("subprocess.run", self._run))
             pile.enter_context(mock.patch("time.sleep"))
-            pile.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            pile.enter_context(contextlib.redirect_stdout(ecran))
             d.etapes_tofu()
+        self.sortie = ecran.getvalue()
         return d, mot, todo
 
     def test_everything_ok_gives_a_positive_verdict(self):
@@ -412,21 +429,61 @@ class LesEtapesTofu(unittest.TestCase):
         self.assertTrue(d.verdict())
 
     def test_the_plan_json_is_kept_private(self):
-        self._derouler([PLAN_1, []])
-        capture = self.chemin[: -len(".json")] + "-show_plan.json"
-        self.assertEqual(Path(capture).read_text("utf-8"), '{"plan": 1}')
-        self.assertEqual(stat.S_IMODE(os.stat(capture).st_mode), 0o600)
-        show = [c for c in self.lances if c[1:3] == ["show", "-json"]][0]
-        self.assertEqual(show[-1], "plan.bin")
+        _d, mot, _todo = self._derouler([PLAN_1, []])
+        capture = self.captures / "show_plan.json"
+        self.assertIn(SECRET_PLAN, capture.read_text("utf-8"))
+        self.assertEqual(stat.S_IMODE(capture.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(self.captures.stat().st_mode), 0o700)
+        # Par le moteur, sur son plan sauvé ; un seul plan capturé quand le
+        # second est vide.
+        self.assertEqual(
+            mot.captures, [["show", "-json", "-no-color", "plan.bin"]]
+        )
+        self.assertFalse((self.captures / "show_plan_2.json").exists())
+
+    def test_the_plan_content_never_reaches_screen_or_journal(self):
+        modif = [Changement("modifier", otp.VM, "vm", [("ram", 1, 2)])]
+        self._derouler([PLAN_1, modif])
+        self.assertTrue((self.captures / "show_plan_2.json").is_file())
+        self.assertIn("show_plan.json", self.sortie)
+        self.assertNotIn(SECRET_PLAN, self.sortie)
+        journal = Path(self.journal).read_text("utf-8")
+        self.assertIn("show_plan.json", journal)
+        self.assertNotIn(SECRET_PLAN, journal)
+        self.assertNotIn(SECRET_PLAN, Path(self.chemin).read_text("utf-8"))
 
     def test_a_second_plan_with_changes_fails_but_still_destroys(self):
         modif = [Changement("modifier", otp.VM, "vm", [("ram", 1, 2)])]
         d, mot, _todo = self._derouler([PLAN_1, modif])
         self.assertEqual(d.etapes["plan_2"]["statut"], "echec")
         self.assertIn("ram", d.etapes["plan_2"]["detail"])
+        self.assertIn("show_plan_2.json", d.etapes["plan_2"]["detail"])
         self.assertEqual(d.etapes["destroy"]["statut"], "ok")
         self.assertEqual(d.etapes["absence"]["statut"], "ok")
         self.assertFalse(d.verdict())
+
+    def test_missing_outputs_after_apply_still_destroy(self):
+        """L'apply a tourné : la VM est dans l'état tofu. Une sortie
+        manquante ne doit jamais laisser la VM derrière la course."""
+        d, mot, _todo = self._derouler([PLAN_1, []], sorties={})
+        self.assertEqual(d.etapes["apply"]["statut"], "ok")
+        self.assertIn("⚠", d.etapes["apply"]["detail"])
+        self.assertIn("detruire", mot.appels)
+        self.assertEqual(d.etapes["destroy"]["statut"], "ok")
+        self.assertEqual(d.etapes["absence"]["statut"], "ok")
+
+    def test_a_broken_after_apply_still_destroys(self):
+        d, mot, _todo = self._derouler([PLAN_1, []], todo=_Todo(casse=True))
+        self.assertIn("ssh config illisible", d.etapes["apply"]["detail"])
+        self.assertIn("detruire", mot.appels)
+        self.assertEqual(d.etapes["absence"]["statut"], "ok")
+
+    def test_a_failed_apply_stops_the_rest(self):
+        d, mot, _todo = self._derouler([PLAN_1], apply_ok=False)
+        self.assertEqual(d.etapes["apply"]["statut"], "echec")
+        self.assertNotIn("detruire", mot.appels)
+        for nom in ("ssh", "plan_2", "destroy", "absence"):
+            self.assertEqual(d.etapes[nom]["statut"], "saute")
 
     def test_an_unexpected_first_plan_stops_before_apply(self):
         plan = PLAN_1 + [Changement("detruire", "autre", "vm")]
@@ -465,59 +522,67 @@ class LesEtapesTofu(unittest.TestCase):
 
 
 class LeDefaire(unittest.TestCase):
-    def test_dry_run_lists_the_fleet_directory_and_keeps_it(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            parcs = Path(tmp) / "parcs"
-            (parcs / otp.PARC).mkdir(parents=True)
-            sortie = io.StringIO()
-            with contextlib.ExitStack() as pile:
-                pile.enter_context(mock.patch.dict(os.environ, {"HOME": tmp}))
-                pile.enter_context(
-                    mock.patch.object(spec_parc, "RACINE_PARCS", parcs)
-                )
-                detruire = pile.enter_context(
-                    mock.patch.object(otp, "detruire", return_value=0)
-                )
-                pile.enter_context(contextlib.redirect_stdout(sortie))
-                code = otp.principal(["--detruire", "--dry-run"])
-            self.assertEqual(code, 0)
-            self.assertTrue(detruire.call_args.kwargs["dry_run"])
-            self.assertTrue((parcs / otp.PARC).is_dir())
-            self.assertIn(str(parcs / otp.PARC), sortie.getvalue())
+    """Le parc et les captures ne partent qu'après un PVE défait d'après un
+    rapport."""
 
-    def test_fleet_directory_goes_after_the_pve(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            parcs = Path(tmp) / "parcs"
-            (parcs / otp.PARC).mkdir(parents=True)
-            with contextlib.ExitStack() as pile:
-                pile.enter_context(mock.patch.dict(os.environ, {"HOME": tmp}))
-                pile.enter_context(
-                    mock.patch.object(spec_parc, "RACINE_PARCS", parcs)
-                )
-                pile.enter_context(
-                    mock.patch.object(otp, "detruire", return_value=0)
-                )
-                pile.enter_context(contextlib.redirect_stdout(io.StringIO()))
-                code = otp.principal(["--detruire"])
-            self.assertEqual(code, 0)
-            self.assertFalse((parcs / otp.PARC).exists())
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.parcs = Path(self.tmp.name) / "parcs"
+        (self.parcs / otp.PARC).mkdir(parents=True)
+        self.captures = Path(self.tmp.name) / "test-tofu-pve-1"
+        self.captures.mkdir()
+        self.rapport = {"fichier": str(self.captures) + ".json"}
 
-    def test_fleet_directory_stays_when_the_pve_stays(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            parcs = Path(tmp) / "parcs"
-            (parcs / otp.PARC).mkdir(parents=True)
-            with contextlib.ExitStack() as pile:
-                pile.enter_context(mock.patch.dict(os.environ, {"HOME": tmp}))
-                pile.enter_context(
-                    mock.patch.object(spec_parc, "RACINE_PARCS", parcs)
-                )
-                pile.enter_context(
-                    mock.patch.object(otp, "detruire", return_value=1)
-                )
-                pile.enter_context(contextlib.redirect_stdout(io.StringIO()))
-                code = otp.principal(["--detruire"])
-            self.assertEqual(code, 1)
-            self.assertTrue((parcs / otp.PARC).is_dir())
+    def _defaire(self, argv, code_detruire, rapport):
+        sortie = io.StringIO()
+        with contextlib.ExitStack() as pile:
+            pile.enter_context(
+                mock.patch.dict(os.environ, {"HOME": self.tmp.name})
+            )
+            pile.enter_context(
+                mock.patch.object(spec_parc, "RACINE_PARCS", self.parcs)
+            )
+            pile.enter_context(
+                mock.patch.object(otp, "dernier_rapport", return_value=rapport)
+            )
+            detruire = pile.enter_context(
+                mock.patch.object(otp, "detruire", return_value=code_detruire)
+            )
+            pile.enter_context(contextlib.redirect_stdout(sortie))
+            code = otp.principal(argv)
+        return code, detruire, sortie.getvalue()
+
+    def test_dry_run_lists_fleet_and_captures_and_keeps_them(self):
+        code, detruire, sortie = self._defaire(
+            ["--detruire", "--dry-run"], 0, self.rapport
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(detruire.call_args.kwargs["dry_run"])
+        self.assertTrue((self.parcs / otp.PARC).is_dir())
+        self.assertTrue(self.captures.is_dir())
+        self.assertIn(str(self.parcs / otp.PARC), sortie)
+        self.assertIn(str(self.captures), sortie)
+
+    def test_fleet_and_captures_go_after_the_pve(self):
+        code, _d, _s = self._defaire(["--detruire"], 0, self.rapport)
+        self.assertEqual(code, 0)
+        self.assertFalse((self.parcs / otp.PARC).exists())
+        self.assertFalse(self.captures.exists())
+
+    def test_fleet_stays_when_the_pve_stays(self):
+        code, _d, _s = self._defaire(["--detruire"], 1, self.rapport)
+        self.assertEqual(code, 1)
+        self.assertTrue((self.parcs / otp.PARC).is_dir())
+        self.assertTrue(self.captures.is_dir())
+
+    def test_fleet_stays_when_no_report_was_undone(self):
+        """« aucun rapport : rien à défaire » rend 0 sans avoir rien
+        détruit : la VM du parc peut encore vivre quelque part."""
+        code, _d, sortie = self._defaire(["--detruire"], 0, {})
+        self.assertEqual(code, 0)
+        self.assertTrue((self.parcs / otp.PARC).is_dir())
+        self.assertIn("aucun rapport", sortie)
 
 
 if __name__ == "__main__":

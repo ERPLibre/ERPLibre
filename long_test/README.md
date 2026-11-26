@@ -396,8 +396,9 @@ report with its status and duration:
    address at resolution), role `ERPLibreTofu`, user `tofu@pve`, the
    fleet's API token stored in its vault, `snippets` and `import` content;
 3. **plan_1**: the plan creates the VM, its cloud-init and its image, and
-   nothing else. Its `tofu show -json` is saved next to the report as
-   `test-tofu-pve-<timestamp>-show_plan.json`, mode 0600, never printed;
+   nothing else. Its `tofu show -json` is saved in the run's own folder,
+   `test-tofu-pve-<timestamp>/show_plan.json` (folder 0700, file 0600),
+   never printed; a non-empty second plan is saved as `show_plan_2.json`;
 4. **apply**: the saved plan, then the menu's own after-apply, which
    writes the `test-tofu-pve-1+test-tofu-vm-1` ssh alias;
 5. **ssh**: `ssh -o BatchMode=yes <alias> true` through that alias;
@@ -405,8 +406,9 @@ report with its status and duration:
 7. **destroy**: `tofu destroy`, then the alias is removed;
 8. **absence**: `qm list` on the Proxmox no longer shows the VMID.
 
-A failure in steps 2 to 4 skips the rest. After an apply, steps 5 to 8 all
-run: a silent ssh does not prevent destroying. The exit code is 0 only when
+A failure in steps 2 or 3, or a failed `tofu apply`, skips the rest. Once
+`tofu apply` has run, steps 5 to 8 all run, whatever the outputs or the
+after-apply returned: the VM is in the tofu state and must be destroyed. The exit code is 0 only when
 the eight steps are `ok`.
 
 The fleet is named `test-tofu` and lives in the real
@@ -427,8 +429,9 @@ virtualisation, or when the `test-tofu` fleet already exists or another
 long test is running. `--dry-run` checks none of this and runs no sudo.
 
 `--detruire` undoes the Proxmox named by the last report, then removes the
-fleet directory and its ssh alias. The fleet VM lived on the Proxmox disk,
-erased with it; a Proxmox left standing keeps its fleet.
+fleet directory, its ssh alias and that report's capture folder. The fleet
+VM lived on the Proxmox disk, erased with it. Without a report to undo, or
+with a Proxmox left standing, the fleet is kept.
 
 Manual follow-up after a real run: list the Proxmox privileges the run
 actually used, to narrow `PRIVILEGES` in `script/opentofu/jeton_proxmox.py`.

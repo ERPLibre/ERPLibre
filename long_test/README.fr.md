@@ -417,8 +417,10 @@ au rapport avec son statut et sa durée :
    `tofu@pve`, le jeton d'API du parc rangé dans son coffre, les contenus
    `snippets` et `import` ;
 3. **plan_1** : le plan crée la VM, son cloud-init et son image, et rien
-   d'autre. Son `tofu show -json` est gardé près du rapport, en
-   `test-tofu-pve-<horodatage>-show_plan.json`, mode 0600, jamais affiché ;
+   d'autre. Son `tofu show -json` est gardé dans le dossier de la course,
+   `test-tofu-pve-<horodatage>/show_plan.json` (dossier 0700, fichier
+   0600), jamais affiché ; un second plan non vide est gardé en
+   `show_plan_2.json` ;
 4. **apply** : le plan sauvé, puis l'après-apply du menu lui-même, qui écrit
    l'alias ssh `test-tofu-pve-1+test-tofu-vm-1` ;
 5. **ssh** : `ssh -o BatchMode=yes <alias> true` par cet alias ;
@@ -426,8 +428,10 @@ au rapport avec son statut et sa durée :
 7. **destroy** : `tofu destroy`, puis l'alias est retiré ;
 8. **absence** : `qm list` sur le Proxmox ne montre plus le VMID.
 
-Un échec aux étapes 2 à 4 saute la suite. Après un apply, les étapes 5 à 8
-passent toutes : un ssh muet n'empêche pas de détruire. Le code de sortie
+Un échec aux étapes 2 ou 3, ou un `tofu apply` en échec, saute la suite.
+Dès que `tofu apply` a tourné, les étapes 5 à 8 passent toutes, quoi
+qu'aient rendu les sorties ou l'après-apply : la VM est dans l'état tofu et
+doit être détruite. Le code de sortie
 vaut 0 seulement si les huit étapes sont `ok`.
 
 Le parc s'appelle `test-tofu` et vit dans le vrai `private/opentofu/`
@@ -447,8 +451,9 @@ snippets en ssh par lui), `/dev/kvm`, l'imbrication, ou quand le parc
 contrôle rien de cela et ne lance aucun sudo.
 
 `--detruire` défait le Proxmox nommé par le dernier rapport, puis retire le
-dossier du parc et son alias ssh. La VM du parc vivait sur le disque du
-Proxmox, effacé avec lui ; un Proxmox resté debout garde son parc.
+dossier du parc, son alias ssh et le dossier de captures de ce rapport. La
+VM du parc vivait sur le disque du Proxmox, effacé avec lui. Sans rapport à
+défaire, ou avec un Proxmox resté debout, le parc est gardé.
 
 Suite manuelle après une vraie course : relever les privilèges Proxmox
 réellement utilisés, pour resserrer `PRIVILEGES` dans
