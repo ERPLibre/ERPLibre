@@ -103,6 +103,11 @@ class TestGuideMigration(unittest.TestCase):
             patch("click.prompt", side_effect=taper),
             patch("builtins.input", side_effect=taper),
             patch.object(TODO, "_ask_language"),
+            # Un clone neuf n'a aucune version sur disque : pas de question
+            # « mise à jour ou installation » à intercaler.
+            patch.object(
+                TODO, "_versions_installees_presentes", return_value=[]
+            ),
             # Le mot de passe de sudo se tape hors du guide : pas une touche.
             patch.object(TODO, "_ouvrir_ticket_sudo", return_value=True),
             # Sans réponse donnée, la suite sans interaction pose mise.

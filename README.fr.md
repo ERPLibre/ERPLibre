@@ -358,7 +358,7 @@ make
 > 2   Sans interaction : chaque question suivante prend sa réponse par défaut
 > 1   Exécuter
 > 1   Code
-> 7   Mise à jour
+> 5   Mise à jour
 > 2   Mise à jour Odoo - Migration de base de données
 ```
 

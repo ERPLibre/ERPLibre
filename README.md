@@ -348,7 +348,7 @@ make
 > 2   Unattended: the next questions take their default answer
 > 1   Execute
 > 1   Code
-> 7   Update
+> 5   Update
 > 2   Upgrade Odoo - Migration Database
 ```
 
