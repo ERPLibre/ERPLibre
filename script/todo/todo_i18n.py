@@ -14331,6 +14331,10 @@ TRANSLATIONS = {
         "fr": "PostgreSQL ne charge pas l'une de ses bibliothèques : le serveur en marche est plus ancien que son paquet. Le redémarrer, puis refaire la commande.",
         "en": "PostgreSQL cannot load one of its libraries: the running server is older than its package. Restart it, then redo the command.",
     },
+    "PostgreSQL 18 NOT NULL constraint on discuss_channel: removing it, then retrying.": {
+        "fr": "Contrainte NOT NULL de PostgreSQL 18 sur discuss_channel : retrait, puis nouvel essai.",
+        "en": "PostgreSQL 18 NOT NULL constraint on discuss_channel: removing it, then retrying.",
+    },
     "A page listed for search engines that does not answer is": {
         "fr": "Une page listée pour les moteurs de recherche qui ne répond pas est",
         "en": "A page listed for search engines that does not answer is",

@@ -81,3 +81,7 @@ container or another host, is not compared.
 A backup from a newer PostgreSQL than the server, or a server the check cannot query, only gives a warning. A command
 that fails on a library the server does not load says to restart it, and `TODO › Healthcheck` reports the same
 mismatch between running and installed server.
+
+A database moved from PostgreSQL 17 to 18 can fail in the mail module on `discuss_channel_member_channel_id_fkey`: when
+the database carries the constraint `discuss_channel_channel_type_not_null`, the neutralization step applies
+`script/postgresql/migration/fix_postgresql_18_discuss_channel_type_not_null.sql`, and reruns.

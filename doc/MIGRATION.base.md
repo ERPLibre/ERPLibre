@@ -147,6 +147,10 @@ A backup from a newer PostgreSQL than the server, or a server the check cannot q
 that fails on a library the server does not load says to restart it, and `TODO › Healthcheck` reports the same
 mismatch between running and installed server.
 
+A database moved from PostgreSQL 17 to 18 can fail in the mail module on `discuss_channel_member_channel_id_fkey`: when
+the database carries the constraint `discuss_channel_channel_type_not_null`, the neutralization step applies
+`script/postgresql/migration/fix_postgresql_18_discuss_channel_type_not_null.sql`, and reruns.
+
 <!-- [fr] -->
 ## PostgreSQL pendant la migration
 
@@ -163,3 +167,7 @@ s'est arrêtée. Un serveur en TCP, un conteneur ou un autre hôte, n'est pas co
 Une sauvegarde d'un PostgreSQL plus récent que le serveur, ou un serveur que la vérification ne sait pas interroger,
 ne donne qu'un avertissement. Une commande qui échoue sur une bibliothèque que le serveur ne charge pas dit de le
 redémarrer, et `TODO › Bilan de santé` signale le même écart entre serveur en marche et serveur installé.
+
+Une base passée de PostgreSQL 17 à 18 peut échouer dans le module mail sur `discuss_channel_member_channel_id_fkey` :
+quand la base porte la contrainte `discuss_channel_channel_type_not_null`, l'étape de neutralisation applique
+`script/postgresql/migration/fix_postgresql_18_discuss_channel_type_not_null.sql`, puis se relance.
