@@ -31,6 +31,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Ajouté
 <!-- [en] -->
 
+- TODO › Repo › Follow the origins: mirrors on the forge gives each forge repository a read-only Forgejo pull mirror of its public origin, in a `<owner>-mirror` organisation. A systemd timer on the forge host, set up by `script/forgejo/install_forge_sync.sh`, then fast-forwards the working branches from these mirrors and never forces: a diverged branch is left as is and reported. Private origins stay out, so no GitHub token reaches the forge
 - TODO › Repo › Follow the pull requests of a forge shows, for each clone and for ERPLibre, its pull requests on the forge (open, draft, merged, closed) with their comments, review and CI status. It brings the merged work back into the local branches without forcing any of them, then offers to move the freeze of the frozen projects forward; it pushes nothing and deletes no branch
 - `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › ERPLibre Home › Plugins on/off turn deck plugins off, those of the deck program and those of `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` in `streamdeck.conf` (0.5 to 60 seconds, 1 by default) sets how often the session pages refresh; TODO › ERPLibre Home › Session refresh edits it
@@ -246,6 +247,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- TODO › Repo › Suivre les origines : miroirs sur la forge donne à chaque dépôt de la forge un miroir Forgejo en lecture seule de son origine publique, dans une organisation `<propriétaire>-mirror`. Un minuteur systemd sur l'hôte de la forge, posé par `script/forgejo/install_forge_sync.sh`, avance ensuite les branches de travail depuis ces miroirs et ne force jamais : une branche divergente reste telle quelle et se signale. Les origines privées restent à l'écart : aucun jeton GitHub n'atteint la forge
 - TODO › Repo › Suivre les pull requests d'une forge montre, pour chaque clone et pour ERPLibre, ses pull requests sur la forge (ouverte, brouillon, fusionnée, fermée) avec leurs commentaires, leur revue et l'état de leur CI. Il rapatrie le travail fusionné dans les branches locales sans en forcer aucune, puis propose d'avancer le gel des projets gelés ; il ne pousse rien et ne supprime aucune branche
 - `DECK_PLUGINS_OFF` dans `streamdeck.conf` et TODO › ERPLibre Home › Plugins on/off coupent des plugins du deck, ceux du programme du deck et ceux de `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` dans `streamdeck.conf` (0,5 à 60 secondes, 1 par défaut) règle la fréquence de rafraîchissement des pages de session ; TODO › ERPLibre Home › Rafraîchissement le modifie

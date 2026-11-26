@@ -17,6 +17,7 @@ Les VM, ssh et l'API sont remplacés. L'adresse est inventée (192.0.2.0/24,
 réservée à la documentation).
 """
 
+import json
 import os
 import tempfile
 import unittest
@@ -186,6 +187,155 @@ class TestCleHote(unittest.TestCase):
             ):
                 self.assertFalse(fv.enregistrer_cle_hote(IP, connus=connus))
             self.assertFalse(os.path.exists(connus))
+
+
+class TestLeMinuteurDesMiroirs(unittest.TestCase):
+    """L'installation et le pilotage du minuteur des miroirs par SSH :
+    l'ordre des commandes, le compte sans jeton, la configuration par
+    l'entrée standard. ssh et scp sont remplacés."""
+
+    CIBLE = f"erplibre@{IP}"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.journal = os.path.join(self._tmp.name, "j.log")
+        self.lances = []
+        self.codes = []
+
+        def lancer(argv, journal, delai, entree=None):
+            self.lances.append((argv, entree))
+            return self.codes.pop(0) if self.codes else 0
+
+        p = mock.patch.object(fv, "_lancer", side_effect=lancer)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_installer_copie_puis_lance(self):
+        options = ["-o", "BatchMode=yes"]
+        self.assertTrue(
+            fv.installer_synchro(
+                self.CIBLE, self.journal, "forge-admin", options
+            )
+        )
+        argvs = [a for a, _ in self.lances]
+        self.assertEqual([a[0] for a in argvs], ["ssh", "scp", "ssh"])
+        self.assertIn("mkdir -p ~/.erplibre-forge-sync", argvs[0][-1])
+        self.assertEqual(argvs[1][1:3], options)
+        copies = argvs[1][3:-1]
+        self.assertEqual(
+            [os.path.relpath(c, fv.RACINE) for c in copies],
+            list(fv.SYNCHRO_FICHIERS),
+        )
+        self.assertEqual(argvs[1][-1], f"{self.CIBLE}:.erplibre-forge-sync/")
+        commande = argvs[2][-1]
+        self.assertIn("FORGE_SYNC_ACCOUNT=forge-admin", commande)
+        self.assertIn("FORGE_SYNC_CALENDAR=hourly", commande)
+        self.assertIn("install_forge_sync.sh", commande)
+        self.assertNotIn("TOKEN", commande)
+        for argv in argvs:
+            self.assertEqual(argv[1:3], options)
+
+    def test_un_echec_a_chaque_etape_rend_faux(self):
+        for rang in range(3):
+            with self.subTest(rang=rang):
+                self.lances.clear()
+                self.codes = [0] * rang + [1]
+                self.assertFalse(
+                    fv.installer_synchro(
+                        self.CIBLE, self.journal, "forge-admin"
+                    )
+                )
+                self.assertEqual(len(self.lances), rang + 1)
+
+    def test_un_compte_invalide_ne_lance_rien(self):
+        for compte in ("", "-oProxyCommand=x", "a b", "x;rm"):
+            with self.subTest(compte=compte):
+                self.assertFalse(
+                    fv.installer_synchro(self.CIBLE, self.journal, compte)
+                )
+        self.assertEqual(self.lances, [])
+
+    def test_la_configuration_passe_par_l_entree_standard(self):
+        config = {"version": 1, "paires": [{"depot": "Org/r"}]}
+        self.assertTrue(
+            fv.ecrire_config_synchro(self.CIBLE, config, self.journal)
+        )
+        argv, entree = self.lances[0]
+        self.assertEqual(json.loads(entree), config)
+        self.assertNotIn("Org/r", " ".join(argv))
+        self.assertIn("sudo -n", argv[-1])
+        self.assertEqual(argv[1 : 1 + len(fv.OPTIONS_SSH)], fv.OPTIONS_SSH)
+        self.codes = [1]
+        self.assertFalse(
+            fv.ecrire_config_synchro(self.CIBLE, config, self.journal)
+        )
+
+    def test_retirer_des_paires_de_l_hote(self):
+        self.assertTrue(
+            fv.retirer_paires_synchro(
+                self.CIBLE, ["Org/r", "Org/s.t"], self.journal
+            )
+        )
+        commande = self.lances[0][0][-1]
+        self.assertIn(f"test ! -e {fv.SYNCHRO_SCRIPT} ||", commande)
+        self.assertIn("sudo -n", commande)
+        self.assertTrue(commande.endswith(" retirer Org/r Org/s.t"))
+        self.lances.clear()
+        for depots in (["-oProxyCommand=x/y"], ["a/b;rm"], ["a"]):
+            with self.subTest(depots=depots):
+                self.assertFalse(
+                    fv.retirer_paires_synchro(self.CIBLE, depots, self.journal)
+                )
+        self.assertTrue(
+            fv.retirer_paires_synchro(self.CIBLE, [], self.journal)
+        )
+        self.assertEqual(self.lances, [])
+
+    def test_lancer_passe_rend_le_code(self):
+        self.codes = [3]
+        self.assertEqual(fv.lancer_passe(self.CIBLE, self.journal), 3)
+        self.assertIn(
+            "systemctl start erplibre-forge-sync.service",
+            self.lances[0][0][-1],
+        )
+
+    def test_lire_l_etat(self):
+        cas = [
+            (
+                mock.Mock(returncode=0, stdout='{"jeton": true}'),
+                {"jeton": True},
+            ),
+            (mock.Mock(returncode=0, stdout="pas du json"), None),
+            (mock.Mock(returncode=0, stdout="[1]"), None),
+            (mock.Mock(returncode=1, stdout='{"jeton": true}'), None),
+        ]
+        for rendu, attendu in cas:
+            with self.subTest(rendu=rendu.stdout):
+                with mock.patch.object(
+                    fv.subprocess, "run", return_value=rendu
+                ):
+                    self.assertEqual(fv.lire_etat_synchro(self.CIBLE), attendu)
+        with mock.patch.object(
+            fv.subprocess,
+            "run",
+            side_effect=fv.subprocess.TimeoutExpired("ssh", 1),
+        ):
+            self.assertIsNone(fv.lire_etat_synchro(self.CIBLE))
+
+    def test_ssh_garde_ses_options_par_defaut(self):
+        fv.ssh(self.CIBLE, "true", self.journal, 10)
+        fv.ssh(self.CIBLE, "true", self.journal, 10, options=["-x"])
+        self.assertEqual(
+            self.lances[0][0], ["ssh", *fv.OPTIONS_SSH, self.CIBLE, "true"]
+        )
+        self.assertEqual(self.lances[1][0], ["ssh", "-x", self.CIBLE, "true"])
+
+    def test_les_etapes_du_deploiement_ne_changent_pas(self):
+        self.assertEqual(
+            fv.ETAPES,
+            ("vm", "ssh", "cloud-init", "code", "venv", "forgejo", "api"),
+        )
 
 
 if __name__ == "__main__":

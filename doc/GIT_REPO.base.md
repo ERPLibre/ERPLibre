@@ -1095,6 +1095,61 @@ replace the token with a password, and follows no redirect, which would turn a c
 another host than this machine asks for confirmation, No by default. Without a menu, `make forge_prepare URL=<web
 URL>` does the same (`CREATE_REPOS=1`, `DRY_RUN=1`), and refuses plain HTTP unless `--allow-http`.
 
+#### Follow the origins: mirrors on the forge
+
+TODO › Repo › Follow the origins: mirrors on the forge gives each forge repository `<owner>/<repo>` a native Forgejo
+pull mirror `<owner>-mirror/<repo>`: a private organisation per owner, the repository name unchanged. A mirror is
+read-only, it accepts neither push nor pull request, hence a separate namespace; a mirror organisation whose name
+matches a known owner, without regard to case, is left out, as is an owner whose name already ends in `-mirror`. The
+forge refreshes each mirror every interval chosen at creation (`1h` by default, `10m` at least, the Forgejo `[mirror]
+MIN_INTERVAL`). The origin is the manifest remote of the project, the fork on GitHub, not the fork's upstream;
+ERPLibre itself follows on the branches typed, `develop` and `master` by default when they exist under
+`refs/remotes/origin`, never a branch that heads an open pull request on the forge. Only an origin that reads
+anonymously over https is followed: a private origin is reported and left out, and no GitHub token ever enters the
+forge. Names, collisions and the configuration are checked before the first API call; an existing repository is never
+changed, and one that is not a mirror is reported as a failure. A repository that is not the mirror of the manifest
+origin is not followed, and any pair the host already holds for its working repository is removed.
+
+A systemd timer on the forge host (`erplibre-forge-sync.timer`, hourly, `Persistent`) then moves each working branch
+to the tip of its mirror, by fast-forward only. It reads the bare repositories of the forge on disk and pushes from
+the mirror to the working repository through the forge over local HTTP, so hooks run and the base of every pull
+request updates. The push is never forced: git refuses, on the client side, a tip that is not an ancestor of the
+mirror tip. A working repository missing on disk receives nothing, since the forge creates repositories on push.
+
+| State | Meaning |
+|---|---|
+| `a_jour` | the working branch is the mirror tip |
+| `avance` | fast-forwarded to the mirror tip |
+| `creee` | branch created from the mirror (ERPLibre branches only) |
+| `en_avance` | the working branch is ahead of the origin: merged work not published yet |
+| `divergent` | both moved; left as is, with the date it was first seen |
+| `absente`, `absente_miroir` | the branch is missing from the working repository, or from the mirror |
+| `depot_absent` | the working repository is missing from the forge |
+| `refuse`, `erreur` | the forge or git refused the push; the pass fails |
+
+A pull request merged on the forge makes its base `en_avance`; once the origin moves too, it becomes `divergent`.
+Resolve it in a clone: merge or rebase the origin, then push, or publish the change upstream so that the origin
+catches up. The entry also shows the last pass (`s`) or runs one now (`n`).
+
+On the forge host, the configuration lives in `/etc/erplibre-forge-sync/config.json`, the forge URL, the repository
+root and the account in `/etc/erplibre-forge-sync/environment`, and the state of the last pass in
+`/var/lib/erplibre-forge-sync/etat.json`. The token, with the `write:repository` scope, is created on the host by the
+Forgejo admin CLI, stored in `/etc/erplibre-forge-sync/token` (root, 0600), and reaches the service only through
+systemd `LoadCredential=`; it never leaves the host and is never shown. TODO sends the configuration over standard
+input and nothing secret.
+
+```bash
+sudo systemctl start erplibre-forge-sync.service     # one pass now
+journalctl -u erplibre-forge-sync                    # its log
+sudo systemctl disable --now erplibre-forge-sync.timer
+FORGE_SYNC_ACCOUNT=<account> FORGE_SYNC_NEW_TOKEN=1 bash ~/.erplibre-forge-sync/install_forge_sync.sh
+```
+
+The last line replaces the token; an older one stays valid until it is revoked in the web interface (Settings ›
+Applications). This needs a forge installed by `install_forgejo.sh` and `sudo` without a password on its host. The
+installer refuses a `[repository] ROOT` under `/home`, `/root` or `/run/user`: the unit sets `ProtectHome=true`, and
+every repository there would read as `depot_absent`.
+
 #### Install or reconfigure on the commits
 
 <!-- [fr] -->
@@ -1270,6 +1325,63 @@ porterait le masque. Le client ignore `~/.netrc`, qui remplacerait sinon le jeto
 aucune redirection, qui changerait une création en lecture. HTTP en clair vers un autre hôte que cette machine demande
 confirmation, Non par défaut. Sans menu, `make forge_prepare URL=<URL web>` fait de même (`CREATE_REPOS=1`,
 `DRY_RUN=1`), et refuse HTTP en clair sauf avec `--allow-http`.
+
+#### Suivre les origines : miroirs sur la forge
+
+TODO › Repo › Suivre les origines : miroirs sur la forge donne à chaque dépôt `<propriétaire>/<dépôt>` de la forge un
+miroir natif Forgejo `<propriétaire>-mirror/<dépôt>` : une organisation privée par propriétaire, le nom du dépôt
+inchangé. Un miroir est en lecture seule, il n'accepte ni push ni pull request, d'où un espace de noms à part ; une
+organisation de miroirs dont le nom recouvre celui d'un propriétaire connu, sans égard à la casse, est écartée, comme
+un propriétaire dont le nom finit déjà par `-mirror`. La forge rafraîchit chaque miroir à l'intervalle choisi à la
+création (`1h` par défaut, `10m` au moins, le `[mirror] MIN_INTERVAL` de Forgejo). L'origine est le remote du
+manifeste du projet, le fork sur GitHub, et non l'amont de ce fork ; ERPLibre lui-même se suit sur les branches
+saisies, par défaut `develop` et `master` quand elles existent sous `refs/remotes/origin`, jamais une branche qui
+porte une pull request ouverte sur la forge. Seule une origine lisible anonymement en https se suit : une origine
+privée est signalée et écartée, et aucun jeton GitHub n'entre jamais dans la forge. Noms, collisions et configuration
+se vérifient avant le premier appel à l'API ; un dépôt existant n'est jamais modifié, et celui qui n'est pas un miroir
+compte comme un échec. Un dépôt qui n'est pas le miroir de l'origine du manifeste ne se suit pas, et la paire que
+l'hôte porterait déjà pour son dépôt de travail se retire.
+
+Un minuteur systemd sur l'hôte de la forge (`erplibre-forge-sync.timer`, toutes les heures, `Persistent`) avance
+ensuite chaque branche de travail jusqu'à la pointe de son miroir, en fast-forward seulement. Il lit les dépôts nus de
+la forge sur le disque et pousse du miroir vers le dépôt de travail par la forge, en HTTP local : les hooks tournent
+et la base de chaque pull request se met à jour. Le push n'est jamais forcé : git refuse, côté client, une pointe qui
+n'est pas un ancêtre de celle du miroir. Un dépôt de travail absent du disque ne reçoit rien, puisque la forge crée
+les dépôts au push.
+
+| État | Sens |
+|---|---|
+| `a_jour` | la branche de travail est la pointe du miroir |
+| `avance` | avancée en fast-forward jusqu'à la pointe du miroir |
+| `creee` | branche créée depuis le miroir (branches d'ERPLibre seulement) |
+| `en_avance` | la branche de travail est en avance sur l'origine : du travail fusionné pas encore publié |
+| `divergent` | les deux ont bougé ; laissée telle quelle, avec la date où c'est vu la première fois |
+| `absente`, `absente_miroir` | la branche manque au dépôt de travail, ou au miroir |
+| `depot_absent` | le dépôt de travail manque sur la forge |
+| `refuse`, `erreur` | la forge ou git a refusé le push ; la passe échoue |
+
+Une pull request fusionnée sur la forge met sa base `en_avance` ; dès que l'origine bouge aussi, elle devient
+`divergent`. Cela se résout dans un clone : fusionner ou rebaser l'origine, puis pousser, ou publier le changement
+en amont pour que l'origine le rattrape. L'entrée montre aussi la dernière passe (`s`) ou en lance une (`n`).
+
+Sur l'hôte de la forge, la configuration vit dans `/etc/erplibre-forge-sync/config.json`, l'URL de la forge, la
+racine des dépôts et le compte dans `/etc/erplibre-forge-sync/environment`, et l'état de la dernière passe dans
+`/var/lib/erplibre-forge-sync/etat.json`. Le jeton, de portée `write:repository`, se crée sur l'hôte par la CLI
+d'administration de Forgejo, se range dans `/etc/erplibre-forge-sync/token` (root, 0600) et n'atteint le service que
+par `LoadCredential=` de systemd ; il ne quitte jamais l'hôte et ne s'affiche jamais. TODO envoie la configuration par
+l'entrée standard, et rien de secret.
+
+```bash
+sudo systemctl start erplibre-forge-sync.service     # une passe maintenant
+journalctl -u erplibre-forge-sync                    # son journal
+sudo systemctl disable --now erplibre-forge-sync.timer
+FORGE_SYNC_ACCOUNT=<compte> FORGE_SYNC_NEW_TOKEN=1 bash ~/.erplibre-forge-sync/install_forge_sync.sh
+```
+
+La dernière ligne remplace le jeton ; un ancien reste valide tant qu'il n'est pas révoqué dans l'interface web
+(Paramètres › Applications). Il faut une forge posée par `install_forgejo.sh` et `sudo` sans mot de passe sur son
+hôte. L'installateur refuse un `[repository] ROOT` sous `/home`, `/root` ou `/run/user` : l'unité pose
+`ProtectHome=true`, et chaque dépôt rangé là se lirait `depot_absent`.
 
 #### Installer ou reconfigurer sur les commits
 

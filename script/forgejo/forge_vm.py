@@ -19,9 +19,16 @@ L'appelant décide de le ranger ou de le montrer.
 
 Chaque étape finie appelle `etape(nom, ok, detail)`, qui rend `ok` ;
 les commandes lancées et leur sortie vont au `journal`.
+
+Le minuteur des miroirs (`forge_sync`) s'installe à part, sur une forge
+déjà prête, par `installer_synchro` ; `ecrire_config_synchro`,
+`lancer_passe` et `lire_etat_synchro` le pilotent par SSH, `sudo -n` sur
+l'hôte, sans jamais lui envoyer de secret.
 """
 
+import json
 import os
+import re
 import secrets
 import shlex
 import subprocess
@@ -66,6 +73,32 @@ OPTIONS_SSH = [
     "LogLevel=ERROR",
 ]
 ETAPES = ("vm", "ssh", "cloud-init", "code", "venv", "forgejo", "api")
+
+# Un hôte de forge déjà connu (pas une VM créée par cette session) : sa clé
+# d'hôte se vérifie, une clé nouvelle s'accepte et se retient.
+OPTIONS_SSH_CONNU = [
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "LogLevel=ERROR",
+]
+
+# Le minuteur des miroirs (`forge_sync`) : les fichiers copiés depuis CE
+# checkout, le dossier qui les reçoit dans le compte distant, le script
+# installé, et le délai d'une passe (TimeoutStartSec de l'unité, plus une
+# marge).
+SYNCHRO_FICHIERS = (
+    "script/forgejo/forge_sync.py",
+    "script/forgejo/install_forge_sync.sh",
+)
+SYNCHRO_DOSSIER = ".erplibre-forge-sync"
+SYNCHRO_SCRIPT = "/usr/local/lib/erplibre-forge-sync/forge_sync.py"
+DELAI_PASSE = 7200 + 300
+DELAI_SYNCHRO = 600
 
 
 def cle_publique():
@@ -154,12 +187,146 @@ def _lancer(argv, journal, delai, entree=None):
     return fini.returncode
 
 
-def ssh(cible, commande, journal, delai, entree=None):
+def ssh(cible, commande, journal, delai, entree=None, options=None):
     """Lance `commande` dans la VM, sortie au journal. Rend le code, ou
-    None si elle n'a pas abouti dans son délai."""
-    return _lancer(
-        ["ssh", *OPTIONS_SSH, cible, commande], journal, delai, entree
+    None si elle n'a pas abouti dans son délai. `options` remplace
+    `OPTIONS_SSH` (None)."""
+    options = OPTIONS_SSH if options is None else options
+    return _lancer(["ssh", *options, cible, commande], journal, delai, entree)
+
+
+def ssh_sortie(cible, commande, delai, options=None, entree=None):
+    """(code, sortie standard) de `commande` sur `cible`, rien au journal ;
+    code None quand elle n'a pas abouti dans son délai."""
+    options = OPTIONS_SSH if options is None else options
+    try:
+        fini = subprocess.run(
+            ["ssh", *options, cible, commande],
+            input=entree,
+            stdin=None if entree is not None else subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=delai,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, ""
+    return fini.returncode, fini.stdout
+
+
+def installer_synchro(
+    cible, journal, compte, options=None, calendrier="hourly"
+):
+    """Installe ou met à niveau le minuteur des miroirs sur `cible` : les
+    `SYNCHRO_FICHIERS` de CE checkout copiés dans ~/`SYNCHRO_DOSSIER`,
+    puis `install_forge_sync.sh` avec le compte `compte`, qui reçoit le
+    jeton créé sur l'hôte. Rejouer met à niveau le script de l'hôte. Rend
+    vrai quand tout a abouti ; un compte invalide rend faux sans rien
+    lancer."""
+    if not fc.nom_organisation_valide(compte or "") or not re.match(
+        r"^[-A-Za-z0-9 :*/,.~]+$", calendrier or ""
+    ):
+        return False
+    options = OPTIONS_SSH if options is None else options
+    commande = (
+        f"env FORGE_SYNC_ACCOUNT={shlex.quote(compte)}"
+        f" FORGE_SYNC_CALENDAR={shlex.quote(calendrier)}"
+        f" bash ~/{SYNCHRO_DOSSIER}/install_forge_sync.sh"
     )
+    for argv in (
+        ["ssh", *options, cible, f"mkdir -p ~/{SYNCHRO_DOSSIER}"],
+        [
+            "scp",
+            *options,
+            *(os.path.join(RACINE, f) for f in SYNCHRO_FICHIERS),
+            f"{cible}:{SYNCHRO_DOSSIER}/",
+        ],
+        ["ssh", *options, cible, commande],
+    ):
+        if _lancer(argv, journal, DELAI_SYNCHRO) != 0:
+            return False
+    return True
+
+
+def ecrire_config_synchro(cible, config, journal, options=None):
+    """Fusionne `config` (`forge_mirror.config_synchro`) dans celle du
+    minuteur de `cible`, par « sudo -n » : le JSON passe par l'entrée
+    standard, jamais par la ligne de commande. Rend vrai si elle est
+    acceptée."""
+    return (
+        ssh(
+            cible,
+            f"sudo -n /usr/bin/python3 -I {SYNCHRO_SCRIPT} configurer",
+            journal,
+            DELAI_SYNCHRO,
+            json.dumps(config),
+            options,
+        )
+        == 0
+    )
+
+
+_PAIRE = re.compile(r"^[A-Za-z0-9][-.\w]{0,39}/[-.\w]{1,100}$", re.ASCII)
+
+
+def retirer_paires_synchro(cible, depots, journal, options=None):
+    """Retire de la configuration du minuteur de `cible` les paires des
+    dépôts de travail `depots` (« propriétaire/dépôt »), par « sudo -n ».
+    Un hôte sans le script du minuteur n'a aucune paire : la commande
+    réussit sans rien lancer. Rend vrai quand elle aboutit ; un nom qui
+    n'a pas la forme d'un dépôt rend faux sans rien lancer."""
+    depots = list(depots)
+    if not depots or not all(
+        isinstance(d, str) and _PAIRE.match(d) for d in depots
+    ):
+        return not depots
+    noms = " ".join(shlex.quote(d) for d in depots)
+    return (
+        ssh(
+            cible,
+            f"test ! -e {SYNCHRO_SCRIPT} || sudo -n /usr/bin/python3 -I"
+            f" {SYNCHRO_SCRIPT} retirer {noms}",
+            journal,
+            DELAI_SYNCHRO,
+            "",
+            options,
+        )
+        == 0
+    )
+
+
+def lancer_passe(cible, journal, options=None):
+    """Lance une passe du minuteur sur `cible` et l'attend. Rend le code
+    de « systemctl start », ou None hors délai. systemd rend 0 sans rien
+    lancer quand une condition de l'unité manque (pas de configuration ou
+    de jeton) : l'appelant compare le « debut » de l'état avant et
+    après."""
+    return ssh(
+        cible,
+        "sudo -n systemctl start erplibre-forge-sync.service",
+        journal,
+        DELAI_PASSE,
+        "",
+        options,
+    )
+
+
+def lire_etat_synchro(cible, options=None):
+    """L'état du minuteur de `cible` (« forge_sync.py etat », en JSON
+    décodé), ou None : minuteur absent, sudo refusé, délai dépassé ou
+    sortie illisible."""
+    code, sortie = ssh_sortie(
+        cible,
+        f"sudo -n /usr/bin/python3 -I {SYNCHRO_SCRIPT} etat",
+        DELAI_SYNCHRO,
+        options,
+    )
+    if code != 0:
+        return None
+    try:
+        etat = json.loads(sortie)
+    except ValueError:
+        return None
+    return etat if isinstance(etat, dict) else None
 
 
 def attendre_ssh(cible, delai=DELAI_SSH, pause=5):

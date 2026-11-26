@@ -9,8 +9,9 @@ vérifier qu'elle répond, s'assurer que chaque organisation existe (la créer
 privée sinon), créer un dépôt privé quand la forge ne crée pas les dépôts
 au premier push, déposer une clé SSH, lister ou ouvrir des pull requests,
 lire l'état, les revues et le statut combiné du commit de tête d'une
-pull request. Chaque appel « assurer_* » est idempotent : ce qui existe
-déjà est rendu tel quel, jamais recréé ni modifié.
+pull request, et créer des miroirs en lecture seule d'un dépôt d'origine.
+Chaque appel « assurer_* » est idempotent : ce qui existe déjà est rendu
+tel quel, jamais recréé ni modifié.
 
 L'API vit sous « <base>/api/v1 », la base étant l'URL web de la forge
 (« https://hôte[:port] »), qui diffère de l'URL SSH des remotes. Le jeton
@@ -49,6 +50,9 @@ import sys
 import urllib.parse
 
 DELAI_RESEAU = 30
+# Une migration (création d'un miroir) répond quand le clone initial est
+# fini : une grosse histoire dépasse de loin le délai d'un appel ordinaire.
+DELAI_MIGRATION = 3600
 # Taille de page demandée ; le serveur la plafonne à son MAX_RESPONSE_ITEMS,
 # 50 par défaut et réglable : la lecture s'arrête donc sur une page vide.
 PAGE = 50
@@ -283,17 +287,27 @@ class ClientForgejo:
             texte = texte.replace(secret, "***")
         return texte
 
-    def _appel(self, methode, chemin, ok=(200,), attendu=dict, **kw):
+    def _appel(
+        self,
+        methode,
+        chemin,
+        ok=(200,),
+        attendu=dict,
+        delai=DELAI_RESEAU,
+        **kw,
+    ):
         """(statut, corps décodé). Le corps d'un statut 2xx doit être du
-        type `attendu` (dict ou list) ; celui d'un autre statut admis par
-        `ok` (un 404 « absent ») n'est pas lu et vaut None."""
+        type `attendu` (dict ou list ; `object` admet un corps vide ou
+        illisible, rendu None) ; celui d'un autre statut admis par `ok` (un
+        404 « absent ») n'est pas lu et vaut None. `delai` borne l'appel,
+        en secondes."""
         try:
             rep = self.session.request(
                 methode,
                 f"{self.api}{chemin}",
                 headers=self.entetes,
                 auth=self.auth,
-                timeout=DELAI_RESEAU,
+                timeout=delai,
                 allow_redirects=False,
                 **kw,
             )
@@ -516,6 +530,74 @@ class ClientForgejo:
             if depot is None:
                 raise
             return "existant", depot
+
+    # ── Miroirs ──────────────────────────────────────────────────────
+
+    def creer_miroir(
+        self, proprietaire, nom, origine, intervalle="1h", prive=True
+    ):
+        """Le dépôt `proprietaire`/`nom` créé en miroir de `origine` (POST
+        /repos/migrate), que la forge rafraîchit toutes les `intervalle`
+        (durée Go : « 1h », « 30m »). L'appel attend la fin du clone
+        initial, jusqu'à `DELAI_MIGRATION`. Le jeton reste dans l'en-tête :
+        `origine` est une URL https anonyme, sans identifiants. Seul le
+        code se copie : ni wiki, ni tickets, ni pull requests, ni LFS."""
+        corps = {
+            "clone_addr": origine,
+            "repo_owner": proprietaire,
+            "repo_name": nom,
+            "mirror": True,
+            "mirror_interval": intervalle,
+            "private": prive,
+            "service": "git",
+            "wiki": False,
+            "issues": False,
+            "pull_requests": False,
+            "releases": False,
+            "labels": False,
+            "milestones": False,
+            "lfs": False,
+        }
+        return self._appel(
+            "POST",
+            "/repos/migrate",
+            ok=(201,),
+            delai=DELAI_MIGRATION,
+            json=corps,
+        )[1]
+
+    def assurer_miroir(self, proprietaire, nom, origine, intervalle="1h"):
+        """(etat, dépôt), etat valant « existant », « cree » ou
+        « en_cours ». Un dépôt existant est rendu tel quel, jamais modifié,
+        son intervalle compris : l'appelant le qualifie
+        (`forge_mirror.qualifier`). Un 409 (création concurrente) relit
+        l'existant ; une coupure ou un délai dépassé (statut None) aussi,
+        la migration se poursuivant sur le serveur : le dépôt relu est
+        alors « en_cours »."""
+        depot = self.depot(proprietaire, nom)
+        if depot is not None:
+            return "existant", depot
+        try:
+            return "cree", self.creer_miroir(
+                proprietaire, nom, origine, intervalle
+            )
+        except ErreurForgejo as exc:
+            if exc.statut not in (409, None):
+                raise
+            depot = self.depot(proprietaire, nom)
+            if depot is None:
+                raise
+            return ("en_cours" if exc.statut is None else "existant"), depot
+
+    def synchroniser_miroir(self, proprietaire, nom):
+        """Met en file une synchronisation du miroir (POST
+        /repos/{o}/{r}/mirror-sync), qui répond 200 sans corps."""
+        self._appel(
+            "POST",
+            f"/repos/{self._q(proprietaire)}/{self._q(nom)}/mirror-sync",
+            ok=(200,),
+            attendu=object,
+        )
 
     # ── Pull requests ────────────────────────────────────────────────
 

@@ -26892,6 +26892,178 @@ TRANSLATIONS = {
         "fr": "commit gelé absent du clone",
         "en": "freeze commit not in the clone",
     },
+    "🪞 Follow the origins: mirrors on the forge": {
+        "fr": "🪞 Suivre les origines : miroirs sur la forge",
+        "en": "🪞 Follow the origins: mirrors on the forge",
+    },
+    "Follow the origins: mirrors on the forge": {
+        "fr": "Suivre les origines : miroirs sur la forge",
+        "en": "Follow the origins: mirrors on the forge",
+    },
+    "c: create or extend the mirrors; s: state of the last pass; n: run a pass now": {
+        "fr": "c : créer ou étendre les miroirs ; s : état de la dernière passe ; n : lancer une passe maintenant",
+        "en": "c: create or extend the mirrors; s: state of the last pass; n: run a pass now",
+    },
+    "Also follow the ERPLibre repository?": {
+        "fr": "Suivre aussi le dépôt ERPLibre ?",
+        "en": "Also follow the ERPLibre repository?",
+    },
+    "Branches of ERPLibre to follow (comma-separated)": {
+        "fr": "Branches d'ERPLibre à suivre (séparées par des virgules)",
+        "en": "Branches of ERPLibre to follow (comma-separated)",
+    },
+    "Mirror refresh interval (Go duration, 10m at least)": {
+        "fr": "Intervalle de rafraîchissement des miroirs (durée Go, 10m au moins)",
+        "en": "Mirror refresh interval (Go duration, 10m at least)",
+    },
+    "Invalid interval: hours and minutes, 10m at least.": {
+        "fr": "Intervalle invalide : heures et minutes, 10m au moins.",
+        "en": "Invalid interval: hours and minutes, 10m at least.",
+    },
+    "Create the mirrors and install the fast-forward timer on": {
+        "fr": "Créer les miroirs et installer le minuteur d'avance rapide sur",
+        "en": "Create the mirrors and install the fast-forward timer on",
+    },
+    "Cancelled: nothing was created.": {
+        "fr": "Annulé : rien n'a été créé.",
+        "en": "Cancelled: nothing was created.",
+    },
+    "mirror organisation is a user account: left out": {
+        "fr": "l'organisation des miroirs est un compte utilisateur : écartée",
+        "en": "mirror organisation is a user account: left out",
+    },
+    "not a mirror: left as is": {
+        "fr": "pas un miroir : laissé tel quel",
+        "en": "not a mirror: left as is",
+    },
+    "mirror of another origin: not followed": {
+        "fr": "miroir d'une autre origine : pas suivi",
+        "en": "mirror of another origin: not followed",
+    },
+    "The timer could not be installed. Log:": {
+        "fr": "Le minuteur n'a pas pu être installé. Journal :",
+        "en": "The timer could not be installed. Log:",
+    },
+    "The configuration could not be written. Log:": {
+        "fr": "La configuration n'a pas pu être écrite. Journal :",
+        "en": "The configuration could not be written. Log:",
+    },
+    "Run a pass now? Mirrors still being created are reported as absent.": {
+        "fr": "Lancer une passe maintenant ? Les miroirs encore en création sont signalés absents.",
+        "en": "Run a pass now? Mirrors still being created are reported as absent.",
+    },
+    "No state: the timer is not installed, or sudo without a password was refused.": {
+        "fr": "Aucun état : le minuteur n'est pas installé, ou sudo sans mot de passe a été refusé.",
+        "en": "No state: the timer is not installed, or sudo without a password was refused.",
+    },
+    "No pass ran: no configuration or no token on the forge.": {
+        "fr": "Aucune passe lancée : ni configuration ni jeton sur la forge.",
+        "en": "No pass ran: no configuration or no token on the forge.",
+    },
+    "pairs followed": {
+        "fr": "paires suivies",
+        "en": "pairs followed",
+    },
+    "no pass yet": {
+        "fr": "aucune passe encore",
+        "en": "no pass yet",
+    },
+    "Not an SSH access: user@host expected.": {
+        "fr": "Pas un accès SSH : utilisateur@hôte attendu.",
+        "en": "Not an SSH access: user@host expected.",
+    },
+    "No token on the forge host: reinstall the timer.": {
+        "fr": "Aucun jeton sur l'hôte de la forge : réinstaller le minuteur.",
+        "en": "No token on the forge host: reinstall the timer.",
+    },
+    "Invalid configuration:": {
+        "fr": "Configuration invalide :",
+        "en": "Invalid configuration:",
+    },
+    "since": {
+        "fr": "depuis",
+        "en": "since",
+    },
+    "no https origin": {
+        "fr": "aucune origine https",
+        "en": "no https origin",
+    },
+    "invalid repository name": {
+        "fr": "nom de dépôt invalide",
+        "en": "invalid repository name",
+    },
+    "no owner": {
+        "fr": "aucun propriétaire",
+        "en": "no owner",
+    },
+    "name refused by Forgejo": {
+        "fr": "nom refusé par Forgejo",
+        "en": "name refused by Forgejo",
+    },
+    "collides with an owner": {
+        "fr": "entre en collision avec un propriétaire",
+        "en": "collides with an owner",
+    },
+    "no branch": {
+        "fr": "aucune branche",
+        "en": "no branch",
+    },
+    "Checking that each origin can be read anonymously…": {
+        "fr": "Vérification que chaque origine se lit anonymement…",
+        "en": "Checking that each origin can be read anonymously…",
+    },
+    "origin not readable anonymously (private?): left out": {
+        "fr": "origine illisible anonymement (privée ?) : écartée",
+        "en": "origin not readable anonymously (private?): left out",
+    },
+    "No repository to mirror.": {
+        "fr": "Aucun dépôt à mettre en miroir.",
+        "en": "No repository to mirror.",
+    },
+    "mirrors to create or follow": {
+        "fr": "miroirs à créer ou à suivre",
+        "en": "mirrors to create or follow",
+    },
+    "set aside": {
+        "fr": "écartés",
+        "en": "set aside",
+    },
+    "ahead of the origin": {
+        "fr": "en avance sur l'origine",
+        "en": "ahead of the origin",
+    },
+    "absent from the mirror": {
+        "fr": "absente du miroir",
+        "en": "absent from the mirror",
+    },
+    "repository absent": {
+        "fr": "dépôt absent",
+        "en": "repository absent",
+    },
+    "refused": {
+        "fr": "refusé",
+        "en": "refused",
+    },
+    "existing": {
+        "fr": "existant",
+        "en": "existing",
+    },
+    "mirror of another origin": {
+        "fr": "miroir d'une autre origine",
+        "en": "mirror of another origin",
+    },
+    "not a mirror": {
+        "fr": "pas un miroir",
+        "en": "not a mirror",
+    },
+    "owner already ends in -mirror": {
+        "fr": "le propriétaire finit déjà par -mirror",
+        "en": "owner already ends in -mirror",
+    },
+    "heads an open pull request: not followed": {
+        "fr": "tête d'une pull request ouverte : pas suivie",
+        "en": "heads an open pull request: not followed",
+    },
 }
 
 

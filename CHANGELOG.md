@@ -11,6 +11,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Added
 
+- TODO › Repo › Follow the origins: mirrors on the forge gives each forge repository a read-only Forgejo pull mirror of its public origin, in a `<owner>-mirror` organisation. A systemd timer on the forge host, set up by `script/forgejo/install_forge_sync.sh`, then fast-forwards the working branches from these mirrors and never forces: a diverged branch is left as is and reported. Private origins stay out, so no GitHub token reaches the forge
 - TODO › Repo › Follow the pull requests of a forge shows, for each clone and for ERPLibre, its pull requests on the forge (open, draft, merged, closed) with their comments, review and CI status. It brings the merged work back into the local branches without forcing any of them, then offers to move the freeze of the frozen projects forward; it pushes nothing and deletes no branch
 - `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › ERPLibre Home › Plugins on/off turn deck plugins off, those of the deck program and those of `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` in `streamdeck.conf` (0.5 to 60 seconds, 1 by default) sets how often the session pages refresh; TODO › ERPLibre Home › Session refresh edits it

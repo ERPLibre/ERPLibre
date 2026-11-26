@@ -31,7 +31,9 @@ l'en-tête affiche se lit dans le manifeste local que git-repo utilise.
 Le SUIVI des pull requests d'une forge lit celles qui concernent chaque
 clone, rapatrie la branche de base de celles qui sont fusionnées sans jamais
 forcer une branche locale, puis propose d'avancer le gel des projets déjà
-gelés (`forge_pull_requests`).
+gelés (`forge_pull_requests`). Les MIROIRS d'une forge suivent l'origine
+de chaque dépôt, et un minuteur sur l'hôte de la forge en avance les
+branches de travail sans jamais forcer (`forge_mirror`, `forge_sync`).
 
 Module à part plutôt que méthodes de `TODO` : le fichier principal passe les
 cinq mille lignes, et chaque sujet y a désormais le sien.
@@ -51,6 +53,7 @@ sys.path.append(new_path)
 
 from script.git import (  # noqa: E402
     forge_manifest,
+    forge_mirror,
     forge_pull_requests,
     forgejo_client,
     freeze_resolution,
@@ -127,6 +130,31 @@ RAPATRIEMENTS = {
     "operation_en_cours": "an operation is in progress",
     "refus": "refused by git",
     "echec_fetch": "fetch failed",
+}
+
+
+# Les états de `forge_sync` (le minuteur des miroirs) et ceux d'un miroir
+# assuré sur la forge, traduits en clés d'affichage, pour la même raison
+# qu'ETATS.
+ETATS_SYNCHRO = {
+    "a_jour": "up to date",
+    "avance": "fast-forwarded",
+    "creee": "branch created",
+    "en_avance": "ahead of the origin",
+    "divergent": "diverged",
+    "absente": "absent",
+    "absente_miroir": "absent from the mirror",
+    "depot_absent": "repository absent",
+    "refuse": "refused",
+    "erreur": "error",
+}
+LIBELLES_MIROIR = {
+    "cree": "created",
+    "en_cours": "in progress",
+    "existant": "existing",
+    "autre_origine": "mirror of another origin",
+    "pas_miroir": "not a mirror",
+    "erreur": "error",
 }
 
 
@@ -318,6 +346,11 @@ class GitRepoMenuMixin:
                     "📥 Follow the pull requests of a forge"
                 )
             },
+            {
+                "prompt_description": t(
+                    "🪞 Follow the origins: mirrors on the forge"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -367,6 +400,8 @@ class GitRepoMenuMixin:
             self._git_repo_surcouche()
         elif status == "19":
             self._git_repo_suivre_pull_requests()
+        elif status == "20":
+            self._git_repo_miroirs()
         else:
             print(t("Command not found !"))
 
@@ -2062,6 +2097,7 @@ class GitRepoMenuMixin:
         self._git_forge_session[forge["base_ssh"]] = {
             "web": forge["web"],
             "jeton": forge["jeton"],
+            "ip": forge["ip"],
         }
         cle = forgejo_client.cle_forge(forge["web"])
         print(f"   {t('Forge:')} {forge['web']} · {admin}")
@@ -2729,6 +2765,444 @@ class GitRepoMenuMixin:
         if etat and etat[0]:
             print(f"   {t('Apply with: Switch to production.')}")
         return True
+
+    def _git_forge_cible_ssh(self, base):
+        """(cible, options) de l'hôte de la forge de `base`, pour ssh.
+
+        Une forge créée dans cette session (une session qui porte « ip »)
+        donne « <UTILISATEUR>@<ip> » et les options de la VM neuve, sans
+        question. Sinon la cible se demande, par défaut
+        « erplibre@<hôte de la forge> », avec les options d'un hôte connu
+        (`forge_vm.OPTIONS_SSH_CONNU`). Une cible qui ne serait pas
+        « utilisateur@hôte » rend (None, None)."""
+        from script.forgejo import forge_vm
+
+        session = getattr(self, "_git_forge_session", {}).get(base) or {}
+        if session.get("ip"):
+            return (
+                f"{forge_vm.UTILISATEUR}@{session['ip']}",
+                forge_vm.OPTIONS_SSH,
+            )
+        hote = forgejo_client.hote_de(session.get("web") or base) or ""
+        cible = click.prompt(
+            f"💬 {t('SSH access to the forge host')}",
+            default=f"erplibre@{hote}",
+        ).strip()
+        if not re.match(r"^[A-Za-z0-9_][-.\w]*@[-.\w:\[\]]+$", cible):
+            print(f"⚠  {t('Not an SSH access: user@host expected.')}")
+            return None, None
+        return cible, forge_vm.OPTIONS_SSH_CONNU
+
+    def _git_repo_branches_racine(self, racine, exclues=()):
+        """Parmi develop et master, celles qui existent en
+        refs/remotes/<remote>/<branche> dans le checkout de `racine` (un
+        projet de `push_remote.projet_racine`), lu localement, sans réseau,
+        et qui ne sont pas dans `exclues`.
+
+        La branche extraite n'est pas proposée : c'est la tête de la pull
+        request qu'ouvre l'entrée 17, et l'avance du minuteur sur une tête
+        de pull request lance la CI (« synchronize »)."""
+        res = []
+        for b in ("develop", "master"):
+            if b in exclues:
+                continue
+            _out, _err, code = repo_upgrade.git(
+                [
+                    "rev-parse",
+                    "--verify",
+                    "-q",
+                    f"refs/remotes/{racine['remote']}/{b}",
+                ],
+                racine["chemin"],
+            )
+            if code == 0:
+                res.append(b)
+        return res
+
+    def _git_repo_afficher_synchro(self, etat):
+        """Affiche l'état du minuteur lu par `forge_vm.lire_etat_synchro` :
+        les paires suivies, un avertissement sans jeton ou pour une
+        configuration refusée, puis le résumé de la dernière passe."""
+        config = etat.get("config") or {}
+        print(
+            f"   {len(config.get('paires') or [])} {t('pairs followed')}"
+            f" · {etat.get('compte') or '?'}"
+        )
+        if not etat.get("jeton"):
+            print(
+                f"   ⚠  {t('No token on the forge host: reinstall the timer.')}"
+            )
+        for erreur in etat.get("erreurs_config") or []:
+            print(f"   ⚠  {t('Invalid configuration:')} {erreur}")
+        lignes = forge_mirror.resume_etat(
+            etat.get("etat"),
+            libelle=lambda e: (
+                t(ETATS_SYNCHRO[e]) if e in ETATS_SYNCHRO else str(e)
+            ),
+            depuis=t("since"),
+        )
+        if not lignes:
+            print(f"   {t('no pass yet')}")
+        for ligne in lignes:
+            print(f"   {ligne}")
+
+    def _git_repo_passe_synchro(self, cible, options, journal):
+        """Lance une passe du minuteur et en affiche le résultat. Rend 1
+        quand la passe a échoué, 0 sinon. Une passe qui ne laisse pas de
+        nouvel état (une condition de l'unité manque) est signalée."""
+        from script.forgejo import forge_vm
+
+        avant = forge_vm.lire_etat_synchro(cible, options) or {}
+        code = forge_vm.lancer_passe(cible, journal, options)
+        apres = forge_vm.lire_etat_synchro(cible, options)
+        if apres is None:
+            print(
+                f"⚠  {t('No state: the timer is not installed, or sudo without a password was refused.')}"
+            )
+            return 1
+        debut_avant = (avant.get("etat") or {}).get("debut")
+        if (apres.get("etat") or {}).get("debut") == debut_avant:
+            print(
+                f"⚠  {t('No pass ran: no configuration or no token on the forge.')}"
+            )
+        self._git_repo_afficher_synchro(apres)
+        if code != 0:
+            print(f"   {t('Log:')} {journal}")
+        return 1 if code != 0 else 0
+
+    def _git_repo_miroirs(self):
+        """Fait suivre leur origine aux dépôts de la forge d'un remote.
+
+        Chaque dépôt de travail « <propriétaire>/<dépôt> » reçoit un
+        miroir natif « <propriétaire>-mirror/<dépôt> », en lecture seule,
+        que la forge rafraîchit depuis le remote du manifeste
+        (`forge_mirror`). Un minuteur sur l'hôte de la forge
+        (`forge_sync`) avance ensuite les branches de travail jusqu'au
+        miroir, en fast-forward seulement ; une divergence est notée et la
+        branche laissée telle quelle. ERPLibre se suit aussi, sur les
+        branches choisies, quand le remote porte son dépôt.
+
+        Rien n'est créé avant confirmation, et tout est vérifié avant le
+        premier appel à l'API : noms, collisions, configuration. Seule une
+        origine lisible anonymement se suit : aucun jeton GitHub n'entre
+        dans la forge. Une branche d'ERPLibre qui porte une pull request
+        ouverte ne se suit pas. « s » montre l'état de la dernière passe,
+        « n » en lance une. Rend le nombre d'échecs."""
+        from script.forgejo import forge_sync, forge_vm
+
+        print(f"🪞 {t('Follow the origins: mirrors on the forge')}")
+        projets = self._git_repo_projets_absolus()
+        nom = self._git_repo_choisir_remote_forge(projets)
+        if not nom:
+            return 0
+        base = forge_manifest.base_du_remote(projets, nom)
+        if not base:
+            print(
+                f"⚠  {t('The forge URL cannot be deduced from this remote.')}"
+            )
+            return 0
+        dossier = os.path.expanduser("~/.erplibre/forge")
+        os.makedirs(dossier, exist_ok=True)
+        journal = os.path.join(
+            dossier, f"synchro-{forgejo_client.hote_de(base) or 'forge'}.log"
+        )
+        choix = (
+            click.prompt(
+                f"💬 {t('c: create or extend the mirrors; s: state of the last pass; n: run a pass now')}",
+                default="c",
+            )
+            .strip()
+            .lower()
+        )
+        if choix in ("s", "n"):
+            cible, options = self._git_forge_cible_ssh(base)
+            if not cible:
+                return 0
+            if choix == "n":
+                return self._git_repo_passe_synchro(cible, options, journal)
+            etat = forge_vm.lire_etat_synchro(cible, options)
+            if etat is None:
+                print(
+                    f"⚠  {t('No state: the timer is not installed, or sudo without a password was refused.')}"
+                )
+                return 0
+            self._git_repo_afficher_synchro(etat)
+            return 0
+        if choix != "c":
+            print(t("Command not found !"))
+            return 0
+
+        # 1. Le plan : seules l'identité et les pull requests ouvertes
+        # d'ERPLibre se lisent sur la forge, rien ne s'y écrit.
+        portes = self._git_repo_sur_la_forge(projets, nom, base)
+        racine = push_remote.projet_racine(RACINE)
+        a_suivre = list(portes)
+        client = self._git_forge_client(base)
+        if client is None:
+            return 0
+        try:
+            compte = client.identite()
+        except forgejo_client.ErreurForgejo as exc:
+            print(f"❌ Forgejo : {exc}")
+            return 0
+        if racine and repo_upgrade.url_du_remote(
+            RACINE, nom
+        ) == push_remote.url_cible(
+            base, racine["proprietaire"], racine["nom"]
+        ):
+            if click.confirm(
+                f"💬 {t('Also follow the ERPLibre repository?')}",
+                default=True,
+            ):
+                # Une branche qui porte une pull request ouverte ne se suit
+                # pas : chaque avance du minuteur y lancerait la CI.
+                depot_racine = racine["nom"]
+                if depot_racine.endswith(".git"):
+                    depot_racine = depot_racine[: -len(".git")]
+                try:
+                    tetes = {
+                        (pr.get("head") or {}).get("ref")
+                        for pr in client.pull_requests(
+                            racine["proprietaire"], depot_racine, etat="open"
+                        )
+                    }
+                except forgejo_client.ErreurForgejo as exc:
+                    # Un dépôt absent de la forge ne porte aucune pull
+                    # request : rien n'est exclu, sa paire se lira
+                    # « depot_absent » tant qu'il n'est pas poussé.
+                    if exc.statut != 404:
+                        print(f"❌ Forgejo : {exc}")
+                        return 0
+                    tetes = set()
+                saisie = click.prompt(
+                    f"💬 {t('Branches of ERPLibre to follow (comma-separated)')}",
+                    default=",".join(
+                        self._git_repo_branches_racine(racine, tetes)
+                    ),
+                    show_default=True,
+                )
+                branches = []
+                for b in dict.fromkeys(
+                    b.strip() for b in saisie.split(",") if b.strip()
+                ):
+                    if b in tetes:
+                        print(
+                            f"   - ERPLibre {b}: {t('heads an open pull request: not followed')}"
+                        )
+                    else:
+                        branches.append(b)
+                if branches:
+                    racine["affiche"] = "ERPLibre"
+                    racine["origine"] = forge_mirror.url_origine(
+                        repo_upgrade.url_du_remote(RACINE, racine["remote"])
+                    )
+                    racine["branches"] = [
+                        {"travail": b, "miroir": b, "creer": True}
+                        for b in branches
+                    ]
+                    if racine["origine"]:
+                        a_suivre.append(racine)
+                    else:
+                        print(f"   - ERPLibre: {t('no https origin')}")
+        depart = os.getcwd()
+        try:
+            os.chdir(RACINE)
+            remotes = forge_mirror.remotes_d_origine()
+        finally:
+            os.chdir(depart)
+        interdits = (
+            forge_mirror.proprietaires_connus(remotes)
+            | {p["proprietaire"] for p in projets if p.get("proprietaire")}
+            | ({racine["proprietaire"]} if racine else set())
+            | ({compte} if compte else set())
+        )
+        paires, ecartes = forge_mirror.plan_miroirs(
+            a_suivre, remotes, interdits
+        )
+        for p, motif in ecartes:
+            print(f"   - {p.get('affiche') or p.get('nom')}: {t(motif)}")
+        erreurs = forge_sync.valider(forge_mirror.config_synchro(paires))
+        if erreurs:
+            for erreur in erreurs:
+                print(f"   ✗ {erreur}")
+            return 0
+        print(
+            f"   {t('Checking that each origin can be read anonymously…')}",
+            flush=True,
+        )
+        origines = list(dict.fromkeys(p["origine"] for p in paires))
+        lisibles = dict(
+            zip(
+                origines,
+                push_remote._en_parallele(
+                    forge_mirror.origine_publique,
+                    origines,
+                    push_remote.PARALLELE,
+                ),
+            )
+        )
+        for p in paires:
+            if not lisibles[p["origine"]]:
+                print(
+                    f"   - {p['projet'].get('affiche') or p['depot']}:"
+                    f" {t('origin not readable anonymously (private?): left out')}"
+                )
+        paires = [p for p in paires if lisibles[p["origine"]]]
+        if not paires:
+            print(f"⚠  {t('No repository to mirror.')}")
+            return 0
+        exemple = paires[0]
+        print(
+            f"   {len(paires)} {t('mirrors to create or follow')},"
+            f" {len(ecartes)} {t('set aside')}"
+        )
+        print(
+            f"   ▸ {exemple['depot']} ← {exemple['origine']}"
+            f" ({exemple['miroir']})"
+        )
+        intervalle = click.prompt(
+            f"💬 {t('Mirror refresh interval (Go duration, 10m at least)')}",
+            default=forge_mirror.INTERVALLE_DEFAUT,
+        ).strip()
+        if not forge_mirror.intervalle_valide(intervalle):
+            print(
+                f"⚠  {t('Invalid interval: hours and minutes, 10m at least.')}"
+            )
+            return 0
+        cible, options = self._git_forge_cible_ssh(base)
+        if not cible:
+            return 0
+        if not click.confirm(
+            f"💬 {t('Create the mirrors and install the fast-forward timer on')}"
+            f" {cible}? ({len(paires)})",
+            default=False,
+        ):
+            print(f"   {t('Cancelled: nothing was created.')}")
+            return 0
+
+        # 2. Les organisations des miroirs.
+        echecs = 0
+        orgs = {p["miroir"].split("/")[0] for p in paires}
+        natures = forgejo_client.plan_proprietaires(
+            client, forgejo_client.organisations_requises(orgs)
+        )
+        refusees = set()
+        for org, nature in natures.items():
+            if nature in ("utilisateur", "compte"):
+                print(
+                    f"   ⚠  {org}: {t('mirror organisation is a user account: left out')}"
+                )
+                refusees.add(org.lower())
+            elif nature.startswith("erreur"):
+                print(f"   ✗ {org}: {nature}")
+                refusees.add(org.lower())
+                echecs += 1
+        absentes = [o for o, n in natures.items() if n == "absent"]
+        for org, (etat, message) in forgejo_client.assurer_organisations(
+            client, absentes
+        ).items():
+            if etat == "erreur":
+                print(f"   ✗ {org}: {message}")
+                refusees.add(org.lower())
+                echecs += 1
+            else:
+                print(
+                    f"   ✓ {org}:"
+                    f" {t('created') if etat == 'creee' else t('existing')}"
+                )
+        paires = [
+            p
+            for p in paires
+            if p["miroir"].split("/")[0].lower() not in refusees
+        ]
+
+        # 3. Les miroirs, deux à la fois : chaque création clone toute
+        # l'histoire de l'origine.
+        def assurer(p):
+            org, depot = p["miroir"].split("/")
+            try:
+                etat, res = client.assurer_miroir(
+                    org, depot, p["origine"], intervalle
+                )
+            except forgejo_client.ErreurForgejo as exc:
+                etat, res = "erreur", str(exc)
+            print(
+                f"   {'✗' if etat == 'erreur' else '▸'} {p['miroir']}:"
+                f" {t(LIBELLES_MIROIR[etat])}",
+                flush=True,
+            )
+            return etat, res
+
+        # Un dépôt déjà présent là où le miroir est attendu, qui n'est pas
+        # le miroir de l'origine du manifeste, ne se suit pas : le minuteur
+        # pousserait son contenu dans le dépôt de travail. Une paire qu'une
+        # passe précédente a écrite pour ce dépôt se retire de l'hôte.
+        retenues, a_retirer, decompte_etats = [], [], {}
+        for p, (etat, res) in zip(
+            paires, push_remote._en_parallele(assurer, paires, 2)
+        ):
+            if etat == "existant":
+                etat = forge_mirror.qualifier(res, p["origine"])
+                org, depot = p["miroir"].split("/")
+                if etat == "existant":
+                    try:
+                        client.synchroniser_miroir(org, depot)
+                    except forgejo_client.ErreurForgejo as exc:
+                        print(f"   ⚠  {p['miroir']}: {exc}")
+                elif etat == "autre_origine":
+                    print(
+                        f"   ⚠  {p['miroir']}: {t('mirror of another origin: not followed')}"
+                    )
+                elif etat == "pas_miroir":
+                    print(
+                        f"   ✗ {p['miroir']}: {t('not a mirror: left as is')}"
+                    )
+            elif etat == "erreur":
+                print(f"   ✗ {p['miroir']}: {res}")
+            decompte_etats[etat] = decompte_etats.get(etat, 0) + 1
+            if etat in ("erreur", "pas_miroir"):
+                echecs += 1
+            if etat in ("autre_origine", "pas_miroir"):
+                a_retirer.append(p["depot"])
+            elif etat != "erreur":
+                retenues.append(p)
+        print(
+            "   "
+            + ", ".join(
+                f"{n} {t(LIBELLES_MIROIR[e])}"
+                for e, n in sorted(decompte_etats.items())
+            )
+        )
+        if a_retirer and not forge_vm.retirer_paires_synchro(
+            cible, a_retirer, journal, options
+        ):
+            print(
+                f"❌ {t('The configuration could not be written. Log:')} {journal}"
+            )
+            echecs += 1
+        if not retenues:
+            return echecs
+
+        # 4. Le minuteur sur l'hôte, puis sa configuration.
+        if not forge_vm.installer_synchro(cible, journal, compte, options):
+            print(
+                f"❌ {t('The timer could not be installed. Log:')} {journal}"
+            )
+            return echecs + 1
+        if not forge_vm.ecrire_config_synchro(
+            cible, forge_mirror.config_synchro(retenues), journal, options
+        ):
+            print(
+                f"❌ {t('The configuration could not be written. Log:')} {journal}"
+            )
+            return echecs + 1
+        print(f"   ✓ {len(retenues)} {t('pairs followed')} · {cible}")
+        if click.confirm(
+            f"💬 {t('Run a pass now? Mirrors still being created are reported as absent.')}",
+            default=True,
+        ):
+            echecs += self._git_repo_passe_synchro(cible, options, journal)
+        return echecs
 
     def _git_repo_comparer(self):
         """Compare deux gels, puis ouvre l'historique d'un projet sur demande.

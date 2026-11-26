@@ -999,6 +999,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "📬 Open pull requests on a forge": "_git_repo_pull_requests",
         "🧭 Sync from a forge: private manifest overlay": "_git_repo_surcouche",
         "📥 Follow the pull requests of a forge": "_git_repo_suivre_pull_requests",
+        "🪞 Follow the origins: mirrors on the forge": "_git_repo_miroirs",
     }
 
     def test_the_upstream_remotes_come_before_the_dry_run(self):
@@ -1768,7 +1769,11 @@ class TestGitForgeCreerVm(unittest.TestCase):
         self.assertNotIn("mdp-tire-au-hasard", sortie)
         self.assertEqual(
             self.obj._git_forge_session[self.BASE],
-            {"web": self.WEB, "jeton": "jeton-neuf"},
+            {
+                "web": self.WEB,
+                "jeton": "jeton-neuf",
+                "ip": "192.0.2.7",
+            },
         )
 
     def test_without_vault_the_password_is_shown_once(self):
@@ -2419,6 +2424,478 @@ class TestGitRepoSuivrePullRequests(unittest.TestCase):
         self.lancer("")
         self.assertTrue(any("a?[2Jb" in ligne for ligne in self.lignes))
         self.assertFalse(any("\x1b" in ligne for ligne in self.lignes))
+
+
+class TestGitRepoMiroirs(unittest.TestCase):
+    """Les miroirs des origines sur la forge, depuis le menu : le plan
+    vérifié avant tout appel, les organisations et les miroirs, puis le
+    minuteur de l'hôte. L'API, ssh et le minuteur sont remplacés ; les
+    noms sont inventés."""
+
+    BASE = "ssh://git@forge.example.invalid:2222"
+    ORIGINE = "https://github.com/Proprio"
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.forgejo import forge_vm
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.fv = forge_vm
+        self.addCleanup(mock.patch.stopall)
+        self.projets = [
+            {
+                "cle": f"{n}+x/{n}",
+                "chemin": f"/r/x/{n}",
+                "affiche": f"x/{n}",
+                "nom": f"{n}.git",
+                "remote": "Orig",
+                "branche": "X.0",
+                "proprietaire": "Proprio",
+            }
+            for n in ("a", "b")
+        ]
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            pass
+
+        self.Menu = Menu
+        self.obj = Menu()
+        self.obj._git_forge_session = {
+            self.BASE: {"web": "http://192.0.2.7:3000", "ip": "192.0.2.7"}
+        }
+
+        def patcher(cible, nom, **kw):
+            return mock.patch.object(cible, nom, **kw).start()
+
+        patcher(Menu, "_git_repo_projets_absolus", return_value=self.projets)
+        patcher(Menu, "_git_repo_choisir_remote_forge", return_value="forge")
+        patcher(Menu, "_git_repo_sur_la_forge", return_value=self.projets)
+        self.client = mock.Mock()
+        self.client.identite.return_value = "forge-admin"
+        self.client.nature_proprietaire.return_value = "absent"
+        self.client.assurer_organisation.return_value = ("creee", {})
+        self.client.assurer_miroir.side_effect = lambda o, d, origine, i: (
+            "cree",
+            {"name": d},
+        )
+        self.obtenir = patcher(
+            Menu, "_git_forge_client", return_value=self.client
+        )
+        patcher(
+            git_repo_menu.forge_manifest,
+            "base_du_remote",
+            return_value=self.BASE,
+        )
+        self.racine = None
+        patcher(
+            git_repo_menu.push_remote,
+            "projet_racine",
+            side_effect=lambda racine: self.racine and dict(self.racine),
+        )
+        self.remotes = {"Orig": self.ORIGINE}
+        patcher(
+            git_repo_menu.forge_mirror,
+            "remotes_d_origine",
+            side_effect=lambda: dict(self.remotes),
+        )
+        self.publique = patcher(
+            git_repo_menu.forge_mirror, "origine_publique", return_value=True
+        )
+        mock.patch("os.makedirs").start()
+        self.installer = patcher(
+            forge_vm, "installer_synchro", return_value=True
+        )
+        self.ecrire = patcher(
+            forge_vm, "ecrire_config_synchro", return_value=True
+        )
+        self.retirer = patcher(
+            forge_vm, "retirer_paires_synchro", return_value=True
+        )
+        self.passe = patcher(forge_vm, "lancer_passe", return_value=0)
+        self.client.pull_requests.return_value = []
+        self.etat = {
+            "config": {"paires": [{}, {}]},
+            "erreurs_config": [],
+            "jeton": True,
+            "compte": "forge-admin",
+            "forge": "http://127.0.0.1:3000",
+            "etat": {
+                "debut": "2099-01-01T08:00:00Z",
+                "fin": "2099-01-01T08:01:00Z",
+                "resultats": [
+                    {"depot": "Proprio/a", "branche": "X.0", "etat": "a_jour"},
+                    {
+                        "depot": "Proprio/b",
+                        "branche": "X.0",
+                        "etat": "divergent",
+                        "detail": "+1/-2",
+                        "depuis": "2098-12-31T08:00:00Z",
+                    },
+                ],
+            },
+        }
+        self.lire = patcher(
+            forge_vm,
+            "lire_etat_synchro",
+            side_effect=lambda cible, options=None: self.etat,
+        )
+
+    def lancer(self, prompts, confirms):
+        sortie = []
+        with self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=list(prompts)
+        ) as prompt, self.mock.patch.object(
+            self.menu.click, "confirm", side_effect=list(confirms)
+        ), self.mock.patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sortie.append(" ".join(map(str, a))),
+        ):
+            res = self.obj._git_repo_miroirs()
+        self.prompt = prompt
+        return res, "\n".join(sortie)
+
+    def config_ecrite(self):
+        return self.ecrire.call_args[0][1]
+
+    def test_the_nominal_path_writes_the_pairs(self):
+        res, _ = self.lancer(["c", "1h"], [True, False])
+        self.assertEqual(res, 0)
+        self.assertEqual(
+            self.config_ecrite(),
+            {
+                "version": 1,
+                "paires": [
+                    {
+                        "depot": f"Proprio/{n}",
+                        "miroir": f"Proprio-mirror/{n}",
+                        "branches": [
+                            {"travail": "X.0", "miroir": "X.0", "creer": False}
+                        ],
+                    }
+                    for n in ("a", "b")
+                ],
+            },
+        )
+        self.client.assurer_miroir.assert_any_call(
+            "Proprio-mirror", "a", "https://github.com/Proprio/a.git", "1h"
+        )
+        self.client.assurer_organisation.assert_called_once_with(
+            "Proprio-mirror", "private"
+        )
+        self.assertEqual(
+            self.installer.call_args[0][:3],
+            (
+                "erplibre@192.0.2.7",
+                self.installer.call_args[0][1],
+                "forge-admin",
+            ),
+        )
+        self.passe.assert_not_called()
+
+    def test_a_colliding_owner_is_set_aside_before_any_api_call(self):
+        self.remotes["Autre"] = "https://github.com/Proprio-mirror"
+        res, _ = self.lancer(["c"], [])
+        self.assertEqual(res, 0)
+        self.client.nature_proprietaire.assert_not_called()
+        self.client.assurer_miroir.assert_not_called()
+        self.installer.assert_not_called()
+
+    def test_a_private_origin_is_left_out(self):
+        self.publique.side_effect = lambda url, *a: not url.endswith("/b.git")
+        self.lancer(["c", "1h"], [True, False])
+        self.assertEqual(
+            [p["depot"] for p in self.config_ecrite()["paires"]],
+            ["Proprio/a"],
+        )
+
+    def test_declining_creates_nothing(self):
+        res, _ = self.lancer(["c", "1h"], [False])
+        self.assertEqual(res, 0)
+        self.client.nature_proprietaire.assert_not_called()
+        self.client.assurer_miroir.assert_not_called()
+        self.installer.assert_not_called()
+
+    def test_an_invalid_interval_stops(self):
+        res, _ = self.lancer(["c", "5m"], [])
+        self.assertEqual(res, 0)
+        self.client.assurer_miroir.assert_not_called()
+
+    def test_without_client_nothing_happens(self):
+        self.obtenir.return_value = None
+        self.assertEqual(self.lancer(["c"], [])[0], 0)
+        self.installer.assert_not_called()
+
+    def test_a_failed_installer_writes_no_config(self):
+        self.installer.return_value = False
+        res, _ = self.lancer(["c", "1h"], [True])
+        self.assertEqual(res, 1)
+        self.ecrire.assert_not_called()
+
+    def test_a_repository_that_is_not_a_mirror_is_a_failure(self):
+        self.client.assurer_miroir.side_effect = lambda o, d, origine, i: (
+            ("existant", {"mirror": False})
+            if d == "b"
+            else ("cree", {"name": d})
+        )
+        res, _ = self.lancer(["c", "1h"], [True, False])
+        self.assertEqual(res, 1)
+        self.assertEqual(
+            [p["depot"] for p in self.config_ecrite()["paires"]],
+            ["Proprio/a"],
+        )
+
+    def test_a_mirror_of_another_origin_is_not_followed(self):
+        """Le miroir existant suit une autre URL : sa paire n'entre pas
+        dans la configuration, et celle que l'hôte porterait se retire."""
+        self.client.assurer_miroir.side_effect = lambda o, d, origine, i: (
+            (
+                "existant",
+                {
+                    "mirror": True,
+                    "original_url": "https://code.example.invalid/x/b.git",
+                    "empty": False,
+                },
+            )
+            if d == "b"
+            else ("cree", {"name": d})
+        )
+        res, sortie = self.lancer(["c", "1h"], [True, False])
+        self.assertEqual(res, 0)
+        self.assertEqual(
+            [p["depot"] for p in self.config_ecrite()["paires"]],
+            ["Proprio/a"],
+        )
+        self.assertEqual(
+            self.retirer.call_args[0][:2],
+            ("erplibre@192.0.2.7", ["Proprio/b"]),
+        )
+        self.assertIn(
+            self.menu.t("mirror of another origin: not followed"), sortie
+        )
+
+    def test_only_mirrors_of_another_origin_still_clean_the_host(self):
+        self.client.assurer_miroir.side_effect = lambda o, d, origine, i: (
+            "existant",
+            {
+                "mirror": True,
+                "original_url": "https://code.example.invalid/x/z.git",
+                "empty": False,
+            },
+        )
+        res, _ = self.lancer(["c", "1h"], [True])
+        self.assertEqual(res, 0)
+        self.ecrire.assert_not_called()
+        self.installer.assert_not_called()
+        self.assertEqual(
+            self.retirer.call_args[0][1], ["Proprio/a", "Proprio/b"]
+        )
+
+    def test_an_existing_mirror_is_synchronised(self):
+        self.client.assurer_miroir.side_effect = lambda o, d, origine, i: (
+            "existant",
+            {"mirror": True, "original_url": origine, "empty": False},
+        )
+        res, _ = self.lancer(["c", "1h"], [True, False])
+        self.assertEqual(res, 0)
+        self.assertEqual(self.client.synchroniser_miroir.call_count, 2)
+
+    def test_the_erplibre_repository_follows_its_chosen_branches(self):
+        racine = self.menu.RACINE
+        self.racine = {
+            "cle": "E",
+            "chemin": racine,
+            "nom": "E",
+            "remote": "origin",
+            "branche": "dev",
+            "proprietaire": "Proprio",
+        }
+        urls = {
+            "forge": f"{self.BASE}/Proprio/E.git",
+            "origin": "git@github.com:Proprio/E.git",
+        }
+        self.mock.patch.object(
+            self.menu.repo_upgrade,
+            "url_du_remote",
+            side_effect=lambda chemin, nom: urls[nom],
+        ).start()
+        self.mock.patch.object(
+            self.Menu, "_git_repo_branches_racine", return_value=["develop"]
+        ).start()
+        self.lancer(["c", "develop,master", "1h"], [True, True, False])
+        self.assertEqual(
+            self.prompt.call_args_list[1].kwargs["default"], "develop"
+        )
+        paire = self.config_ecrite()["paires"][-1]
+        self.assertEqual(
+            paire,
+            {
+                "depot": "Proprio/E",
+                "miroir": "Proprio-mirror/E",
+                "branches": [
+                    {"travail": "develop", "miroir": "develop", "creer": True},
+                    {"travail": "master", "miroir": "master", "creer": True},
+                ],
+            },
+        )
+        self.client.assurer_miroir.assert_any_call(
+            "Proprio-mirror", "E", "https://github.com/Proprio/E.git", "1h"
+        )
+
+    def test_the_state_prints_the_summary(self):
+        res, sortie = self.lancer(["s"], [])
+        self.assertEqual(res, 0)
+        self.assertIn("Proprio/b X.0:", sortie)
+        self.assertIn("+1/-2", sortie)
+        self.assertIn("2098-12-31T08:00:00Z", sortie)
+        self.assertNotIn("Proprio/a X.0:", sortie)
+        self.passe.assert_not_called()
+
+    def test_a_pass_that_leaves_the_same_state_is_reported(self):
+        res, sortie = self.lancer(["n"], [])
+        self.assertEqual(res, 0)
+        self.passe.assert_called_once()
+        self.assertIn(
+            self.menu.t(
+                "No pass ran: no configuration or no token on the forge."
+            ),
+            sortie,
+        )
+
+    def test_a_failed_pass_counts(self):
+        self.passe.return_value = 1
+        self.assertEqual(self.lancer(["n"], [])[0], 1)
+
+    def test_the_ssh_target_of_a_known_host_is_asked(self):
+        self.assertEqual(
+            self.obj._git_forge_cible_ssh(self.BASE),
+            ("erplibre@192.0.2.7", self.fv.OPTIONS_SSH),
+        )
+        self.obj._git_forge_session = {}
+        with self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=lambda q, default: default
+        ) as prompt, self.mock.patch("builtins.print"):
+            cible, options = self.obj._git_forge_cible_ssh(self.BASE)
+        self.assertEqual(cible, "erplibre@forge.example.invalid")
+        self.assertEqual(options, self.fv.OPTIONS_SSH_CONNU)
+        prompt.assert_called_once()
+        with self.mock.patch.object(
+            self.menu.click, "prompt", return_value="-oProxyCommand=x"
+        ), self.mock.patch("builtins.print"):
+            self.assertEqual(
+                self.obj._git_forge_cible_ssh(self.BASE), (None, None)
+            )
+
+    def test_the_erplibre_branches_are_read_locally(self):
+        """develop et master seulement : la branche extraite, tête de la
+        pull request d'ERPLibre, n'est pas proposée, ni une branche
+        exclue."""
+        presentes = {
+            "refs/remotes/origin/develop",
+            "refs/remotes/origin/master",
+            "refs/remotes/origin/dev",
+        }
+        racine = {"remote": "origin", "branche": "dev", "chemin": "/r"}
+        with self.mock.patch.object(
+            self.menu.repo_upgrade,
+            "git",
+            side_effect=lambda args, cwd: (
+                "",
+                "",
+                0 if args[-1] in presentes else 1,
+            ),
+        ):
+            self.assertEqual(
+                self.obj._git_repo_branches_racine(racine),
+                ["develop", "master"],
+            )
+            self.assertEqual(
+                self.obj._git_repo_branches_racine(racine, {"develop"}),
+                ["master"],
+            )
+
+    def test_a_branch_heading_an_open_pull_request_is_not_followed(self):
+        racine = self.menu.RACINE
+        self.racine = {
+            "cle": "E",
+            "chemin": racine,
+            "nom": "E.git",
+            "remote": "origin",
+            "branche": "dev",
+            "proprietaire": "Proprio",
+        }
+        urls = {
+            "forge": f"{self.BASE}/Proprio/E.git",
+            "origin": "git@github.com:Proprio/E.git",
+        }
+        self.mock.patch.object(
+            self.menu.repo_upgrade,
+            "url_du_remote",
+            side_effect=lambda chemin, nom: urls[nom],
+        ).start()
+        self.mock.patch.object(
+            self.menu.repo_upgrade, "git", return_value=("", "", 0)
+        ).start()
+        self.client.pull_requests.return_value = [
+            {"number": 4, "head": {"ref": "develop"}}
+        ]
+        _res, sortie = self.lancer(
+            ["c", "develop,master", "1h"], [True, True, False]
+        )
+        self.client.pull_requests.assert_called_once_with(
+            "Proprio", "E", etat="open"
+        )
+        self.assertEqual(
+            self.prompt.call_args_list[1].kwargs["default"], "master"
+        )
+        paire = self.config_ecrite()["paires"][-1]
+        self.assertEqual([b["travail"] for b in paire["branches"]], ["master"])
+        self.assertIn(
+            self.menu.t("heads an open pull request: not followed"), sortie
+        )
+
+    def test_erplibre_absent_from_the_forge_has_no_open_pull_request(self):
+        """Le dépôt d'ERPLibre pas encore poussé rend 404 à la lecture
+        des pull requests : rien n'est exclu, et les autres dépôts se
+        suivent quand même."""
+        racine = self.menu.RACINE
+        self.racine = {
+            "cle": "E",
+            "chemin": racine,
+            "nom": "E.git",
+            "remote": "origin",
+            "branche": "dev",
+            "proprietaire": "Proprio",
+        }
+        urls = {
+            "forge": f"{self.BASE}/Proprio/E.git",
+            "origin": "git@github.com:Proprio/E.git",
+        }
+        self.mock.patch.object(
+            self.menu.repo_upgrade,
+            "url_du_remote",
+            side_effect=lambda chemin, nom: urls[nom],
+        ).start()
+        self.mock.patch.object(
+            self.menu.repo_upgrade, "git", return_value=("", "", 0)
+        ).start()
+        self.client.pull_requests.side_effect = (
+            self.menu.forgejo_client.ErreurForgejo("GET : 404", 404)
+        )
+        res, _sortie = self.lancer(
+            ["c", "develop,master", "1h"], [True, True, False]
+        )
+        self.assertEqual(res, 0)
+        self.assertEqual(
+            self.prompt.call_args_list[1].kwargs["default"], "develop,master"
+        )
+        paire = self.config_ecrite()["paires"][-1]
+        self.assertEqual(paire["depot"], "Proprio/E")
+        self.assertEqual(
+            [b["travail"] for b in paire["branches"]], ["develop", "master"]
+        )
 
 
 class TestGitRepoPrepareForge(unittest.TestCase):

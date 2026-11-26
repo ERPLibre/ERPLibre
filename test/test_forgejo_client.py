@@ -48,6 +48,7 @@ class FausseSession:
                 "params": kw.get("params"),
                 "headers": kw.get("headers"),
                 "auth": kw.get("auth"),
+                "timeout": kw.get("timeout"),
             }
         )
         rep = self.table.get((methode, chemin), Reponse(404))
@@ -626,6 +627,121 @@ class TestCreationsConcurrentes(unittest.TestCase):
             c.assurer_pull_request("P", "d", "maj", "X.0", "t"),
             ("existante", pr),
         )
+
+
+class TestMiroirs(unittest.TestCase):
+    """Les miroirs natifs : la migration en miroir, sa reprise quand elle
+    existe ou se poursuit sur le serveur, et la synchronisation."""
+
+    ORIGINE = "https://github.com/Org/r.git"
+
+    def test_creer_miroir_envoie_la_migration(self):
+        c, s = client(
+            {("POST", "/repos/migrate"): Reponse(201, {"name": "r"})},
+            jeton_api="jeton-invente",
+        )
+        self.assertEqual(
+            c.creer_miroir("Org-mirror", "r", self.ORIGINE, "30m"),
+            {"name": "r"},
+        )
+        appel = s.appels[0]
+        corps = appel["json"]
+        for cle, valeur in (
+            ("clone_addr", self.ORIGINE),
+            ("repo_owner", "Org-mirror"),
+            ("repo_name", "r"),
+            ("mirror", True),
+            ("mirror_interval", "30m"),
+            ("private", True),
+            ("service", "git"),
+            ("lfs", False),
+            ("wiki", False),
+            ("issues", False),
+            ("pull_requests", False),
+        ):
+            with self.subTest(cle=cle):
+                self.assertEqual(corps[cle], valeur)
+        self.assertEqual(appel["timeout"], fc.DELAI_MIGRATION)
+        self.assertNotIn("jeton-invente", repr(corps))
+        self.assertIn("jeton-invente", repr(appel["headers"]))
+
+    def test_un_depot_existant_est_rendu_sans_post(self):
+        c, s = client({("GET", "/repos/Org-mirror/r"): Reponse(200, {"a": 1})})
+        self.assertEqual(
+            c.assurer_miroir("Org-mirror", "r", self.ORIGINE),
+            ("existant", {"a": 1}),
+        )
+        self.assertEqual([a["methode"] for a in s.appels], ["GET"])
+
+    def test_409_puis_existant(self):
+        lectures = iter([Reponse(404), Reponse(200, {"a": 1})])
+        c, _ = client(
+            {
+                ("GET", "/repos/Org-mirror/r"): lambda kw: next(lectures),
+                ("POST", "/repos/migrate"): Reponse(409, {}),
+            }
+        )
+        self.assertEqual(
+            c.assurer_miroir("Org-mirror", "r", self.ORIGINE)[0], "existant"
+        )
+
+    def test_une_coupure_puis_le_depot_relu_est_en_cours(self):
+        lectures = iter([Reponse(404), Reponse(200, {"empty": True})])
+
+        def coupure(kw):
+            raise OSError("read timed out")
+
+        c, _ = client(
+            {
+                ("GET", "/repos/Org-mirror/r"): lambda kw: next(lectures),
+                ("POST", "/repos/migrate"): coupure,
+            }
+        )
+        self.assertEqual(
+            c.assurer_miroir("Org-mirror", "r", self.ORIGINE),
+            ("en_cours", {"empty": True}),
+        )
+
+    def test_une_coupure_sans_depot_releve(self):
+        def coupure(kw):
+            raise OSError("read timed out")
+
+        c, _ = client({("POST", "/repos/migrate"): coupure})
+        with self.assertRaises(fc.ErreurForgejo):
+            c.assurer_miroir("Org-mirror", "r", self.ORIGINE)
+
+    def test_un_refus_422_releve(self):
+        c, _ = client(
+            {
+                ("POST", "/repos/migrate"): Reponse(
+                    422, {"message": "Authentication failed"}
+                )
+            }
+        )
+        with self.assertRaises(fc.ErreurForgejo) as ctx:
+            c.assurer_miroir("Org-mirror", "r", self.ORIGINE)
+        self.assertEqual(ctx.exception.statut, 422)
+
+    def test_synchroniser_accepte_un_corps_vide(self):
+        c, s = client(
+            {
+                ("POST", "/repos/Org-mirror/r/mirror-sync"): Reponse(
+                    200, brut=True
+                )
+            }
+        )
+        self.assertIsNone(c.synchroniser_miroir("Org-mirror", "r"))
+        self.assertEqual(s.appels[0]["timeout"], fc.DELAI_RESEAU)
+        c, _ = client(
+            {("POST", "/repos/Org-mirror/r/mirror-sync"): Reponse(400, {})}
+        )
+        with self.assertRaises(fc.ErreurForgejo):
+            c.synchroniser_miroir("Org-mirror", "r")
+
+    def test_les_autres_appels_gardent_le_delai_reseau(self):
+        c, s = client({("GET", "/repos/P/d"): Reponse(200, {})})
+        c.depot("P", "d")
+        self.assertEqual(s.appels[0]["timeout"], fc.DELAI_RESEAU)
 
 
 class TestNoms(unittest.TestCase):
