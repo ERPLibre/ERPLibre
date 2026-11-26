@@ -1,0 +1,673 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Formulaire Textual d'un parc OpenTofu : éditer la spec, planifier,
+appliquer, détruire.
+
+Le formulaire travaille sur une copie profonde de la spec reçue et ne la
+transmet qu'à `enregistrer`, après `spec.valider`. Les appels au moteur
+tournent dans un worker léger (thread) : l'écran reste vivant, et le journal
+du moteur y arrive ligne à ligne par `call_from_thread`. Le moteur reçoit sa
+propre copie ; les champs qu'il résout pendant le plan reviennent dans le
+formulaire et sont sauvés. Le coffre n'est lu que pour dire si le jeton est
+présent : sa valeur n'entre dans aucun widget.
+"""
+
+import copy
+
+from script.opentofu import coffre, outil
+from script.opentofu import spec as spec_parc
+from script.opentofu.moteur import Resultat, est_destructeur, formater_plan
+from script.todo.todo_i18n import t
+
+# Champs texte de la modale d'une VM, dans l'ordre d'affichage ; les deux
+# booléens (`demarrer`, `installer_erplibre`) y sont des cases à cocher.
+CHAMPS_VM = (
+    "nom",
+    "distro",
+    "version",
+    "arch",
+    "vcpus",
+    "ram",
+    "disque",
+    "ip",
+    "passerelle",
+    "dns",
+    "vmid",
+    "branche",
+)
+COLONNES_VM = ("nom", "distro", "version", "vcpus", "ram", "disque", "ip")
+# Champs d'onglet : id de l'Input -> chemin dans la spec.
+CHAMPS_FORMULAIRE = {
+    "c_target": ("cible", "hote", "target"),
+    "c_api_url": ("cible", "api_url"),
+    "c_noeud": ("cible", "noeud"),
+    "c_stockage": ("cible", "stockage"),
+    "c_stockage_snippets": ("cible", "stockage_snippets"),
+    "c_pont": ("cible", "pont"),
+    "o_user": ("compte", "user"),
+    "o_ssh_key": ("compte", "ssh_key"),
+}
+# Actions qu'un appel au moteur en cours désactive.
+_ACTIONS_EXCLUSIVES = ("save", "plan", "apply", "destroy", "quitter")
+
+
+def _entier_ou_texte(texte):
+    """Entier si `texte` n'est fait que de chiffres ASCII, sinon le texte :
+    `spec.valider` refuse ensuite ce texte avec son propre message."""
+    return int(texte) if texte.isascii() and texte.isdigit() else texte
+
+
+def vm_depuis_saisie(base, valeurs):
+    """Copie de `base` mise à jour par `valeurs` ({champ: saisie}).
+
+    `vcpus` et `ram` deviennent des entiers quand la saisie en est un ;
+    `vmid` vide vaut None ; `dns` se découpe aux virgules ; un booléen passe
+    tel quel. `base` n'est pas modifiée.
+    """
+    vm = copy.deepcopy(base)
+    for champ, valeur in valeurs.items():
+        if isinstance(valeur, bool):
+            vm[champ] = valeur
+            continue
+        texte = valeur.strip()
+        if champ in ("vcpus", "ram"):
+            vm[champ] = _entier_ou_texte(texte)
+        elif champ == "vmid":
+            vm[champ] = _entier_ou_texte(texte) if texte else None
+        elif champ == "dns":
+            vm[champ] = [x.strip() for x in texte.split(",") if x.strip()]
+        else:
+            vm[champ] = texte
+    return vm
+
+
+def nouvelle_vm(spec):
+    """VM à ajouter : copie de la dernière, sous le premier nom
+    `<parc>-vm-<n>` libre, sans VMID ni adresse fixe (deux VM ne partagent
+    ni l'un ni l'autre)."""
+    pris = {vm.get("nom") for vm in spec["vms"]}
+    n = 1
+    while f"{spec['nom']}-vm-{n}" in pris:
+        n += 1
+    vm = copy.deepcopy(spec["vms"][-1]) if spec["vms"] else {}
+    vm.update(nom=f"{spec['nom']}-vm-{n}", vmid=None, ip="auto")
+    vm["passerelle"] = ""
+    return vm
+
+
+def etat_jeton(nom, racine):
+    """« présent », « absent » ou « illisible » : jamais la valeur."""
+    try:
+        present = bool(coffre.lire(nom, racine).get("jeton"))
+    except (OSError, ValueError, AttributeError):
+        return t("unreadable file")
+    return t("present") if present else t("absent")
+
+
+def _texte(valeur):
+    """Valeur de spec en texte de saisie : None vide, liste à virgules."""
+    if valeur is None:
+        return ""
+    if isinstance(valeur, list):
+        return ", ".join(str(x) for x in valeur)
+    return str(valeur)
+
+
+def run_opentofu_form(spec, moteur, enregistrer, *, run_app=True):
+    """Formulaire du parc `spec`. Rend la dernière spec sauvée par
+    `enregistrer`, ou None si rien n'a été sauvé. `run_app=False` rend
+    l'application sans la lancer (tests sans terminal)."""
+    from rich.text import Text
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Horizontal, Vertical, VerticalScroll
+    from textual.screen import ModalScreen
+    from textual.widgets import (
+        Button,
+        Checkbox,
+        DataTable,
+        Footer,
+        Header,
+        Input,
+        Label,
+        Log,
+        Static,
+        TabbedContent,
+        TabPane,
+    )
+
+    racine = getattr(moteur, "racine", spec_parc.RACINE_PARCS)
+
+    def ligne(libelle, ident, compact=False):
+        """Libellé et champ de saisie sur une ligne ; `compact` les tient
+        sur une seule rangée d'écran (modale)."""
+        return Horizontal(
+            Label(libelle),
+            Input(id=ident, compact=compact),
+            classes="ligne compacte" if compact else "ligne",
+        )
+
+    css_modale = """
+        {nom} {{ align: center middle; }}
+        {nom} > Vertical {{
+            width: 90%; max-width: 100; height: auto; max-height: 90%;
+            border: thick $accent; background: $surface; padding: 0 1;
+        }}
+        {nom} .boutons {{ height: auto; align-horizontal: right; }}
+    """
+
+    class EcranConfirmer(ModalScreen):
+        """Rend True à la confirmation, None sinon."""
+
+        DEFAULT_CSS = css_modale.format(nom="EcranConfirmer")
+        BINDINGS = [("escape", "annuler", t("Cancel"))]
+
+        def __init__(self, lignes):
+            super().__init__()
+            self._lignes = lignes
+
+        def compose(self) -> ComposeResult:
+            with Vertical():
+                yield Static("\n".join(self._lignes), markup=False)
+                with Horizontal(classes="boutons"):
+                    yield Button(t("Cancel"), id="non")
+                    yield Button(t("Confirm"), variant="primary", id="oui")
+
+        def on_button_pressed(self, event) -> None:
+            self.dismiss(True if event.button.id == "oui" else None)
+
+        def action_annuler(self) -> None:
+            self.dismiss(None)
+
+    class EcranNom(ModalScreen):
+        """Nom du parc à retaper. Rend True s'il correspond, False sinon,
+        None à l'annulation."""
+
+        DEFAULT_CSS = css_modale.format(nom="EcranNom")
+        BINDINGS = [("escape", "annuler", t("Cancel"))]
+
+        def __init__(self, message, nom):
+            super().__init__()
+            self._message = message
+            self._nom = nom
+
+        def compose(self) -> ComposeResult:
+            invite = t("Type the fleet name ({nom}) to confirm: ")
+            with Vertical():
+                yield Static(self._message, markup=False)
+                yield Static(invite.format(nom=self._nom), markup=False)
+                yield Input(id="nom_saisie")
+                with Horizontal(classes="boutons"):
+                    yield Button(t("Cancel"), id="nom_non")
+                    yield Button(t("Confirm"), variant="error", id="nom_ok")
+
+        def _valider(self):
+            saisie = self.query_one("#nom_saisie", Input).value.strip()
+            self.dismiss(saisie == self._nom)
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id == "nom_ok":
+                self._valider()
+            else:
+                self.dismiss(None)
+
+        def on_input_submitted(self, event) -> None:
+            self._valider()
+
+        def action_annuler(self) -> None:
+            self.dismiss(None)
+
+    class EcranVM(ModalScreen):
+        """Une VM du parc. La saisie, placée dans une copie de la spec,
+        passe par `spec.valider` : ses erreurs s'affichent ici et la modale
+        reste ouverte. Rend la VM, ou None à l'annulation."""
+
+        DEFAULT_CSS = (
+            css_modale.format(nom="EcranVM")
+            + """
+            EcranVM VerticalScroll { height: auto; max-height: 24; }
+            #vmf_erreurs { color: $error; height: auto; }
+        """
+        )
+        BINDINGS = [("escape", "annuler", t("Cancel"))]
+
+        def __init__(self, spec, index):
+            super().__init__()
+            self._spec = spec
+            self._index = index
+            if index is None:
+                self._base = nouvelle_vm(spec)
+            else:
+                self._base = copy.deepcopy(spec["vms"][index])
+
+        def compose(self) -> ComposeResult:
+            libelles = {
+                "nom": t("Name"),
+                "distro": t("Distro"),
+                "version": t("Version"),
+                "arch": t("Architecture"),
+                "vcpus": t("vCPU"),
+                "ram": t("RAM (MiB)"),
+                "disque": t("Disk"),
+                "ip": t("IP (auto, dhcp or a.b.c.d/nn)"),
+                "passerelle": t("Gateway"),
+                "dns": t("DNS (comma separated)"),
+                "vmid": t("VMID (empty: chosen on the host)"),
+                "branche": t("ERPLibre branch"),
+            }
+            titre = t("Add a VM") if self._index is None else t("Edit a VM")
+            with Vertical():
+                yield Static(titre)
+                with VerticalScroll():
+                    for champ in CHAMPS_VM:
+                        yield ligne(libelles[champ], f"vmf_{champ}", True)
+                yield Checkbox(
+                    t("Start the VM"),
+                    bool(self._base.get("demarrer", True)),
+                    id="vmf_demarrer",
+                )
+                yield Checkbox(
+                    t("Install ERPLibre"),
+                    bool(self._base.get("installer_erplibre")),
+                    id="vmf_installer_erplibre",
+                )
+                yield Static("", id="vmf_erreurs", markup=False)
+                with Horizontal(classes="boutons"):
+                    yield Button(t("Cancel"), id="vmf_non")
+                    yield Button(t("Confirm"), variant="primary", id="vmf_ok")
+
+        def on_mount(self) -> None:
+            for champ in CHAMPS_VM:
+                self.query_one(f"#vmf_{champ}", Input).value = _texte(
+                    self._base.get(champ)
+                )
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id != "vmf_ok":
+                self.dismiss(None)
+                return
+            valeurs = {
+                c: self.query_one(f"#vmf_{c}", Input).value for c in CHAMPS_VM
+            }
+            for c in ("demarrer", "installer_erplibre"):
+                valeurs[c] = self.query_one(f"#vmf_{c}", Checkbox).value
+            vm = vm_depuis_saisie(self._base, valeurs)
+            candidat = copy.deepcopy(self._spec)
+            if self._index is None:
+                candidat["vms"].append(vm)
+            else:
+                candidat["vms"][self._index] = vm
+            erreurs = spec_parc.valider(candidat)
+            if erreurs:
+                texte = "\n".join(f"• {e}" for e in erreurs)
+                self.query_one("#vmf_erreurs", Static).update(texte)
+                return
+            self.dismiss(vm)
+
+        def action_annuler(self) -> None:
+            self.dismiss(None)
+
+    class FormulaireParc(App):
+        """Les onglets de la spec en haut, le plan et le journal en bas."""
+
+        BINDINGS = [
+            Binding("s", "save", t("Save")),
+            Binding("p", "plan", t("Plan")),
+            Binding("a", "apply", t("Apply")),
+            Binding("d", "destroy", t("Destroy")),
+            Binding("q", "quitter", t("Quit")),
+        ]
+        CSS = """
+            #onglets { height: 1fr; }
+            .ligne { height: auto; }
+            .ligne Label { width: 30; padding-top: 1; }
+            .ligne Input { width: 1fr; }
+            .compacte { height: 1; }
+            .compacte Label { width: 36; padding-top: 0; }
+            .note { color: $text-muted; padding: 1 0; }
+            .boutons { height: auto; }
+            #bas { height: 14; }
+            #plan, #journal { width: 1fr; border: round $accent; }
+        """
+
+        def __init__(self):
+            super().__init__()
+            self.moteur = moteur
+            self.s = copy.deepcopy(spec)
+            # Dernière spec connue sur disque : celle reçue, puis chaque
+            # spec passée à `enregistrer`.
+            self._sauve = copy.deepcopy(spec)
+            self.result = None
+            # Changements du dernier plan de la session, None sans plan
+            # valable : `a` n'applique que ce qui a été montré.
+            self._plan = None
+            self._occupe = False
+            self._quitter_arme = False
+
+        def compose(self) -> ComposeResult:
+            yield Header()
+            with TabbedContent(id="onglets"):
+                with TabPane(t("Target"), id="tab_cible"):
+                    with VerticalScroll():
+                        yield ligne(t("SSH target of the host"), "c_target")
+                        yield Static("", id="c_jump", markup=False)
+                        yield ligne(t("API URL"), "c_api_url")
+                        yield ligne(t("Node"), "c_noeud")
+                        yield ligne(t("Storage"), "c_stockage")
+                        yield ligne(
+                            t("Snippet storage"), "c_stockage_snippets"
+                        )
+                        yield ligne(t("Bridge"), "c_pont")
+                        yield Static(
+                            t(
+                                "An empty field is resolved on the host at the "
+                                "next plan."
+                            ),
+                            classes="note",
+                        )
+                with TabPane(t("VM"), id="tab_vm"):
+                    yield DataTable(id="vms", cursor_type="row")
+                    with Horizontal(classes="boutons"):
+                        yield Button(t("Add"), id="vm_ajouter")
+                        yield Button(t("Edit"), id="vm_editer")
+                        yield Button(
+                            t("Remove"), variant="error", id="vm_retirer"
+                        )
+                with TabPane(t("Options"), id="tab_options"):
+                    yield ligne(t("Account user"), "o_user")
+                    yield ligne(t("SSH public key"), "o_ssh_key")
+                    yield Static(
+                        t("Per-VM options are edited in the VM tab (Edit)."),
+                        classes="note",
+                    )
+                    yield DataTable(id="options", cursor_type="row")
+                with TabPane(t("OpenTofu"), id="tab_tofu"):
+                    yield Static("", id="t_outil", markup=False)
+                    yield Static("", id="t_jeton", markup=False)
+            with Horizontal(id="bas"):
+                yield Log(id="plan")
+                yield Log(id="journal")
+            yield Footer()
+
+        def on_mount(self) -> None:
+            self.title = t("OpenTofu fleet {nom}").format(nom=self.s["nom"])
+            self.query_one("#plan", Log).border_title = t("Plan")
+            self.query_one("#journal", Log).border_title = t("Journal")
+            self.query_one("#vms", DataTable).add_columns(
+                t("Name"),
+                t("Distro"),
+                t("Version"),
+                t("vCPU"),
+                t("RAM (MiB)"),
+                t("Disk"),
+                t("IP"),
+            )
+            self.query_one("#options", DataTable).add_columns(
+                t("Name"),
+                t("Start the VM"),
+                t("Install ERPLibre"),
+                t("ERPLibre branch"),
+            )
+            self._remplir()
+            self._remplir_tofu()
+
+        # Formulaire <-> spec
+
+        def _remplir(self):
+            """Champs, note du rebond et tableaux depuis `self.s`."""
+            for ident, chemin in CHAMPS_FORMULAIRE.items():
+                valeur = self.s
+                for cle in chemin:
+                    valeur = (valeur or {}).get(cle, "")
+                self.query_one(f"#{ident}", Input).value = _texte(valeur)
+            rebond = self.s["cible"]["hote"].get("jump") or "—"
+            self.query_one("#c_jump", Static).update(
+                t("Jump host (refused in v1): {jump}").format(jump=rebond)
+            )
+            self._remplir_tables()
+
+        def _remplir_tables(self):
+            vms = self.query_one("#vms", DataTable)
+            options = self.query_one("#options", DataTable)
+            curseur = vms.cursor_row
+            vms.clear()
+            options.clear()
+            for vm in self.s["vms"]:
+                vms.add_row(*(Text(_texte(vm.get(c))) for c in COLONNES_VM))
+                options.add_row(
+                    Text(_texte(vm.get("nom"))),
+                    "✓" if vm.get("demarrer", True) else "—",
+                    "✓" if vm.get("installer_erplibre") else "—",
+                    Text(_texte(vm.get("branche"))),
+                )
+            if self.s["vms"]:
+                vms.move_cursor(row=min(curseur, len(self.s["vms"]) - 1))
+
+        def _remplir_tofu(self):
+            binaire = getattr(self.moteur, "binaire", None)
+            binaire = binaire() if callable(binaire) else outil.trouver_tofu()
+            if binaire:
+                texte = t("tofu: {chemin}, version {version}").format(
+                    chemin=binaire, version=outil.version_tofu(binaire) or "?"
+                )
+            else:
+                texte = t("tofu is not installed.")
+            self.query_one("#t_outil", Static).update(texte)
+            nom = self.s["nom"]
+            self.query_one("#t_jeton", Static).update(
+                t("API token tofu@pve!{nom}: {etat}").format(
+                    nom=nom, etat=etat_jeton(nom, racine)
+                )
+            )
+
+        def _lire_formulaire(self):
+            """Recopie les champs des onglets dans `self.s`."""
+            for ident, chemin in CHAMPS_FORMULAIRE.items():
+                noeud = self.s
+                for cle in chemin[:-1]:
+                    noeud = noeud.setdefault(cle, {})
+                saisie = self.query_one(f"#{ident}", Input).value.strip()
+                noeud[chemin[-1]] = saisie
+
+        def _journal(self, texte):
+            self.query_one("#journal", Log).write_line(texte)
+
+        # Sauvegarde
+
+        def _enregistrer(self):
+            """Passe une copie de `self.s` à `enregistrer` ; vrai si sauvé."""
+            copie = copy.deepcopy(self.s)
+            try:
+                enregistrer(copie)
+            except (OSError, ValueError) as exc:
+                self._journal(
+                    "✗ " + t("Cannot save the spec: {err}").format(err=exc)
+                )
+                return False
+            self._sauve = copie
+            self.result = copy.deepcopy(copie)
+            self._journal("✓ " + t("Spec saved."))
+            return True
+
+        def _sauver(self, forcer):
+            """Valide le formulaire puis le sauve ; sans `forcer`, seulement
+            s'il diffère de la dernière sauvegarde. Une spec modifiée rend le
+            plan précédent caduc."""
+            self._lire_formulaire()
+            erreurs = spec_parc.valider(self.s)
+            if erreurs:
+                self._journal("✗ " + t("The spec has errors, nothing saved:"))
+                for erreur in erreurs:
+                    self._journal(f"    - {erreur}")
+                return False
+            if self.s == self._sauve and not forcer:
+                return True
+            if self.s != self._sauve:
+                self._plan = None
+            return self._enregistrer()
+
+        # Actions
+
+        def check_action(self, action, parameters):
+            if action in _ACTIONS_EXCLUSIVES and self._occupe:
+                return None
+            return True
+
+        def action_save(self) -> None:
+            if not self._occupe:
+                self._sauver(forcer=True)
+
+        def action_plan(self) -> None:
+            if not self._occupe and self._sauver(forcer=False):
+                self._lancer("planifier")
+
+        def action_apply(self) -> None:
+            if self._occupe:
+                return
+            self._lire_formulaire()
+            if self._plan is None or self.s != self._sauve:
+                self._plan = None
+                self._journal("✗ " + t("Plan first."))
+                return
+            if not self._plan:
+                self._journal(t("Nothing to apply."))
+                return
+
+            def suite(ok):
+                if ok:
+                    self._lancer("appliquer")
+                else:
+                    self._annule(ok)
+
+            if est_destructeur(self._plan):
+                message = t("This plan replaces or destroys VMs.")
+                self.push_screen(EcranNom(message, self.s["nom"]), suite)
+            else:
+                lignes = formater_plan(self._plan) + [t("Apply this plan?")]
+                self.push_screen(EcranConfirmer(lignes), suite)
+
+        def action_destroy(self) -> None:
+            if self._occupe:
+                return
+            message = t("This destroys every VM of fleet {nom}: {vms}").format(
+                nom=self.s["nom"],
+                vms=", ".join(vm["nom"] for vm in self.s["vms"]),
+            )
+
+            def suite(ok):
+                if ok:
+                    self._lancer("detruire")
+                else:
+                    self._annule(ok)
+
+            self.push_screen(EcranNom(message, self.s["nom"]), suite)
+
+        def _annule(self, ok):
+            """False : nom retapé faux ; None : annulation."""
+            if ok is False:
+                self._journal("✗ " + t("The name does not match: cancelled."))
+            else:
+                self._journal(t("Cancelled."))
+
+        def action_quitter(self) -> None:
+            if self._occupe:
+                return
+            self._lire_formulaire()
+            if self.s != self._sauve and not self._quitter_arme:
+                self._quitter_arme = True
+                self._journal(
+                    t("Unsaved changes: press q again to quit without saving.")
+                )
+                return
+            self.exit(self.result)
+
+        # Tableau des VM
+
+        def on_button_pressed(self, event) -> None:
+            ident = event.button.id
+            index = self.query_one("#vms", DataTable).cursor_row
+            if ident == "vm_ajouter":
+                self._ouvrir_vm(None)
+            elif ident == "vm_editer" and 0 <= index < len(self.s["vms"]):
+                self._ouvrir_vm(index)
+            elif ident == "vm_retirer" and 0 <= index < len(self.s["vms"]):
+                if len(self.s["vms"]) <= 1:
+                    self._journal("✗ " + t("A fleet keeps at least one VM."))
+                    return
+                del self.s["vms"][index]
+                self._remplir_tables()
+
+        def _ouvrir_vm(self, index):
+            self._lire_formulaire()
+
+            def suite(vm):
+                if vm is None:
+                    return
+                if index is None:
+                    self.s["vms"].append(vm)
+                else:
+                    self.s["vms"][index] = vm
+                self._remplir_tables()
+
+            self.push_screen(EcranVM(self.s, index), suite)
+
+        # Moteur
+
+        def _occuper(self, occupe):
+            """Pendant un appel au moteur, les onglets et les actions qui
+            touchent la spec sont désactivés."""
+            self._occupe = occupe
+            self.query_one("#onglets").disabled = occupe
+            self.refresh_bindings()
+
+        def _lancer(self, operation):
+            """Lance `planifier`, `appliquer` ou `detruire` dans un thread
+            sur une copie de la spec ; `_fin` reprend la main dans l'écran."""
+            self._occuper(True)
+            travail = copy.deepcopy(self.s)
+
+            def journal(texte):
+                self.call_from_thread(self._journal, texte)
+
+            def tache():
+                changements = None
+                try:
+                    if operation == "planifier":
+                        res, changements = moteur.planifier(travail, journal)
+                    else:
+                        res = getattr(moteur, operation)(travail, journal)
+                # Une exception qui sortirait du thread fermerait l'écran et
+                # son journal : elle devient un échec affiché.
+                except Exception as exc:
+                    res = Resultat(False, str(exc), 1)
+                self.call_from_thread(
+                    self._fin, operation, res, changements, travail
+                )
+
+            self.run_worker(tache, thread=True, group="moteur")
+
+        def _fin(self, operation, res, changements, travail):
+            self._occuper(False)
+            if res.message:
+                self._journal(("✓ " if res.ok else "✗ ") + res.message)
+            if operation != "planifier":
+                self._plan = None
+                return
+            plan = self.query_one("#plan", Log)
+            plan.clear()
+            self._plan = changements if res.ok else None
+            plan.write_lines(
+                formater_plan(changements) if res.ok else [res.message]
+            )
+            # Champs résolus par le moteur (nœud, stockage, pont, VMID...).
+            if travail != self.s:
+                self.s = travail
+                self._remplir()
+                self._enregistrer()
+
+    app = FormulaireParc()
+    if not run_app:
+        return app
+    app.run()
+    return app.result

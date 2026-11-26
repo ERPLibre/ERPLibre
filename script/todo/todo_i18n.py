@@ -26752,6 +26752,142 @@ TRANSLATIONS = {
         "fr": "tofu : {chemin}, version {version}",
         "en": "tofu: {chemin}, version {version}",
     },
+    "present": {
+        "fr": "présent",
+        "en": "present",
+    },
+    "unreadable file": {
+        "fr": "fichier illisible",
+        "en": "unreadable file",
+    },
+    "RAM (MiB)": {
+        "fr": "RAM (Mio)",
+        "en": "RAM (MiB)",
+    },
+    "IP": {
+        "fr": "IP",
+        "en": "IP",
+    },
+    "IP (auto, dhcp or a.b.c.d/nn)": {
+        "fr": "IP (auto, dhcp ou a.b.c.d/nn)",
+        "en": "IP (auto, dhcp or a.b.c.d/nn)",
+    },
+    "DNS (comma separated)": {
+        "fr": "DNS (séparés par des virgules)",
+        "en": "DNS (comma separated)",
+    },
+    "VMID (empty: chosen on the host)": {
+        "fr": "VMID (vide : choisi sur l'hôte)",
+        "en": "VMID (empty: chosen on the host)",
+    },
+    "Add a VM": {
+        "fr": "Ajouter une VM",
+        "en": "Add a VM",
+    },
+    "Edit a VM": {
+        "fr": "Éditer une VM",
+        "en": "Edit a VM",
+    },
+    "Start the VM": {
+        "fr": "Démarrer la VM",
+        "en": "Start the VM",
+    },
+    "Save": {
+        "fr": "Sauver",
+        "en": "Save",
+    },
+    "Plan": {
+        "fr": "Plan",
+        "en": "Plan",
+    },
+    "Destroy": {
+        "fr": "Détruire",
+        "en": "Destroy",
+    },
+    "Add": {
+        "fr": "Ajouter",
+        "en": "Add",
+    },
+    "Edit": {
+        "fr": "Éditer",
+        "en": "Edit",
+    },
+    "Remove": {
+        "fr": "Retirer",
+        "en": "Remove",
+    },
+    "Options": {
+        "fr": "Options",
+        "en": "Options",
+    },
+    "OpenTofu": {
+        "fr": "OpenTofu",
+        "en": "OpenTofu",
+    },
+    "Node": {
+        "fr": "Nœud",
+        "en": "Node",
+    },
+    "API URL": {
+        "fr": "URL de l'API",
+        "en": "API URL",
+    },
+    "Snippet storage": {
+        "fr": "Stockage des snippets",
+        "en": "Snippet storage",
+    },
+    "SSH target of the host": {
+        "fr": "Cible ssh de l'hôte",
+        "en": "SSH target of the host",
+    },
+    "Account user": {
+        "fr": "Compte des VM",
+        "en": "Account user",
+    },
+    "An empty field is resolved on the host at the next plan.": {
+        "fr": "Un champ vide est résolu sur l'hôte au prochain plan.",
+        "en": "An empty field is resolved on the host at the next plan.",
+    },
+    "Per-VM options are edited in the VM tab (Edit).": {
+        "fr": "Les options de chaque VM s'éditent dans l'onglet VM (Éditer).",
+        "en": "Per-VM options are edited in the VM tab (Edit).",
+    },
+    "OpenTofu fleet {nom}": {
+        "fr": "Parc OpenTofu {nom}",
+        "en": "OpenTofu fleet {nom}",
+    },
+    "Jump host (refused in v1): {jump}": {
+        "fr": "Hôte de rebond (refusé en v1) : {jump}",
+        "en": "Jump host (refused in v1): {jump}",
+    },
+    "API token tofu@pve!{nom}: {etat}": {
+        "fr": "Jeton d'API tofu@pve!{nom} : {etat}",
+        "en": "API token tofu@pve!{nom}: {etat}",
+    },
+    "Cannot save the spec: {err}": {
+        "fr": "Impossible de sauver la spec : {err}",
+        "en": "Cannot save the spec: {err}",
+    },
+    "Spec saved.": {
+        "fr": "Spec sauvée.",
+        "en": "Spec saved.",
+    },
+    "The spec has errors, nothing saved:": {
+        "fr": "La spec a des erreurs, rien n'est sauvé :",
+        "en": "The spec has errors, nothing saved:",
+    },
+    "Apply this plan?": {
+        "fr": "Appliquer ce plan ?",
+        "en": "Apply this plan?",
+    },
+    "Unsaved changes: press q again to quit without saving.": {
+        "fr": "Modifications non sauvées : q encore pour quitter sans sauver.",
+        "en": "Unsaved changes: press q again to quit without saving.",
+    },
+    "A fleet keeps at least one VM.": {
+        "fr": "Un parc garde au moins une VM.",
+        "en": "A fleet keeps at least one VM.",
+    },
 }
 
 
