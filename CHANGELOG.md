@@ -11,6 +11,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Added
 
+- `TODO › Execute › Deploy › OpenTofu` deploys a fleet of VMs on a Proxmox VE host from a JSON spec in `private/opentofu/<fleet>/spec.json`: a menu and a Textual form to create, plan, apply and destroy it, behind an engine interface that OpenTofu implements. The spec's empty fields are resolved on the host and written back, the token and the state passphrase live in a 0600 `secrets.json`, and the state and plans are encrypted. See `script/opentofu/README.md`; `long_test/opentofu_proxmox.py` checks it end to end on a disposable Proxmox VE
 - `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › ERPLibre Home › Plugins on/off turn deck plugins off, those of the deck program and those of `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` in `streamdeck.conf` (0.5 to 60 seconds, 1 by default) sets how often the session pages refresh; TODO › ERPLibre Home › Session refresh edits it
 - A cellular gateway on a USB modem, reachable from **Mobile gateway** in Odoo: it relays the SMS

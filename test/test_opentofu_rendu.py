@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Le rendu bpg/proxmox d'une spec résolue."""
+
+import copy
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.argv = ["todo.py"]
+from script.opentofu import rendu_proxmox as rp  # noqa: E402
+
+ATTENDU = Path(__file__).resolve().parent / "fixtures/opentofu/rendu_attendu.json"
+CONF = {"required_version": ">= 1.10", "providers": {"bpg/proxmox": "= 0.123.1"}}
+
+
+def _vm(nom, vmid, ip="192.0.2.10/24"):
+    return {
+        "nom": nom,
+        "vmid": vmid,
+        "distro": "debian",
+        "version": "13",
+        "arch": "amd64",
+        "vcpus": 2,
+        "ram": 4096,
+        "disque": "20G",
+        "ip": ip,
+        "passerelle": "" if ip == "dhcp" else "192.0.2.1",
+        "dns": [] if ip == "dhcp" else ["192.0.2.53"],
+        "demarrer": True,
+    }
+
+
+def _donnees(fichier="debian-13_amd64.qcow2", uefi=False):
+    return {
+        "url": "https://images.example.test/debian-13.qcow2",
+        "fichier": fichier,
+        "sha256": "abc123",
+        "uefi": uefi,
+        "user_data": "#cloud-config\n",
+    }
+
+
+def _spec(*vms):
+    return {
+        "schema": 1,
+        "nom": "parc-a",
+        "moteur": "tofu",
+        "cible": {
+            "type": "proxmox",
+            "api_url": "https://pve.example.test:8006",
+            "insecure": True,
+            "noeud": "pve1",
+            "stockage": "local-lvm",
+            "stockage_snippets": "local",
+            "pont": "vmbr0",
+            "ssh_user": "admin",
+            "ssh_port": 22,
+        },
+        "compte": {"user": "erplibre", "ssh_key": "~/.ssh/id_ed25519.pub"},
+        "vms": list(vms),
+    }
+
+
+def _rendre(vms, donnees):
+    return rp.rendre(_spec(*vms), donnees, copy.deepcopy(CONF))
+
+
+def _simple():
+    return _rendre([_vm("parc-a-vm-1", 201)], {"parc-a-vm-1": _donnees()})
+
+
+def _vm_res(rendu, nom):
+    return rendu["resource"]["proxmox_virtual_environment_vm"][nom]
+
+
+class TestRendu(unittest.TestCase):
+    def test_rendu_conforme_a_l_attendu(self):
+        attendu = json.loads(ATTENDU.read_text(encoding="utf-8"))
+        self.assertEqual(_simple(), attendu)
+
+    def test_aucun_secret(self):
+        texte = json.dumps(_simple())
+        self.assertNotIn("api_token", texte)
+        self.assertNotIn("password", texte)
+
+    def test_image_partagee_une_seule_fois(self):
+        rendu = _rendre(
+            [_vm("a-1", 201), _vm("a-2", 202)],
+            {"a-1": _donnees(), "a-2": _donnees()},
+        )
+        self.assertEqual(len(rendu["resource"]["proxmox_download_file"]), 1)
+        self.assertEqual(len(rendu["resource"]["proxmox_virtual_environment_vm"]), 2)
+
+    def test_uefi_nixos(self):
+        rendu = _rendre(
+            [_vm("n-1", 201)],
+            {"n-1": _donnees("nixos-25_amd64.qcow2", uefi=True)},
+        )
+        vm = _vm_res(rendu, "vm_n_1")
+        self.assertEqual(vm["bios"], "ovmf")
+        self.assertEqual(vm["efi_disk"]["type"], "4m")
+        self.assertNotIn("bios", _vm_res(_simple(), "vm_parc_a_vm_1"))
+
+    def test_dhcp(self):
+        rendu = _rendre([_vm("d-1", 201, ip="dhcp")], {"d-1": _donnees()})
+        init = _vm_res(rendu, "vm_d_1")["initialization"]
+        self.assertEqual(init["ip_config"][0]["ipv4"]["address"], "dhcp")
+        self.assertNotIn("dns", init)
+        self.assertNotIn("gateway", init["ip_config"][0]["ipv4"])
+
+    def test_import_par_api(self):
+        disque = _vm_res(_simple(), "vm_parc_a_vm_1")["disk"][0]
+        self.assertTrue(disque["import_from"].startswith("local:import/"))
+        self.assertTrue(disque["import_from"].endswith(".qcow2"))
+
+    def test_ressource_non_depreciee(self):
+        self.assertNotIn(
+            "proxmox_virtual_environment_download_file", json.dumps(_simple())
+        )
+
+    def test_adresse_ssh_du_noeud_est_celle_de_l_api(self):
+        """Sans bloc `node`, bpg prend la première interface du nœud qui
+        porte une IPv4 : un pont interne sans passerelle l'emporte, et
+        l'écriture du snippet part vers une adresse injoignable."""
+        ssh = _simple()["provider"]["proxmox"]["ssh"]
+        self.assertEqual(
+            ssh["node"], [{"name": "pve1", "address": "pve.example.test", "port": 22}]
+        )
+
+    def test_compte_ssh_est_celui_de_l_hote_pas_de_la_vm(self):
+        spec = _spec(_vm("a-1", 201))
+        spec["cible"].update(ssh_user="ops", ssh_port=2222)
+        ssh = rp.rendre(spec, {"a-1": _donnees()}, CONF)["provider"]["proxmox"]["ssh"]
+        self.assertEqual(ssh["username"], "ops")
+        self.assertEqual(ssh["node"][0]["port"], 2222)
+        self.assertIsInstance(ssh["node"][0]["port"], int)
+
+    def test_snippet_nomme_par_parc_et_vm(self):
+        noms = set()
+        for parc in ("parc-a", "parc-b"):
+            spec = _spec(_vm("web", 201))
+            spec["nom"] = parc
+            rendu = rp.rendre(spec, {"web": _donnees()}, CONF)
+            fichier = rendu["resource"]["proxmox_virtual_environment_file"]["ud_web"]
+            noms.add(fichier["source_raw"]["file_name"])
+        self.assertEqual(noms, {"erplibre-parc-a-web.yml", "erplibre-parc-b-web.yml"})
+
+    def test_adresse_ssh_ipv4_et_ipv6(self):
+        for url, hote in (
+            ("https://192.0.2.7:8006/", "192.0.2.7"),
+            ("https://[2001:db8::7]:8006/", "2001:db8::7"),
+        ):
+            with self.subTest(url=url):
+                spec = _spec(_vm("a-1", 201))
+                spec["cible"]["api_url"] = url
+                rendu = rp.rendre(spec, {"a-1": _donnees()}, CONF)
+                noeud = rendu["provider"]["proxmox"]["ssh"]["node"][0]
+                self.assertEqual(noeud["address"], hote)
+
+    def test_pas_de_registre_hashicorp(self):
+        self.assertNotIn("registry.terraform.io", json.dumps(_simple()))
+
+    def test_somme_absente_sans_sha256(self):
+        d = _donnees()
+        d["sha256"] = ""
+        rendu = _rendre([_vm("s-1", 201)], {"s-1": d})
+        img = next(iter(rendu["resource"]["proxmox_download_file"].values()))
+        self.assertNotIn("checksum", img)
+
+    def test_deux_versions_deux_telechargements(self):
+        rendu = _rendre(
+            [_vm("a-1", 201), _vm("a-2", 202)],
+            {
+                "a-1": _donnees("debian-13_amd64.qcow2"),
+                "a-2": _donnees("debian-12_amd64.qcow2"),
+            },
+        )
+        self.assertEqual(len(rendu["resource"]["proxmox_download_file"]), 2)
+
+    def test_noms_assainis(self):
+        rendu = _rendre(
+            [_vm("test-vm-1", 201)],
+            {"test-vm-1": _donnees("debian-13.amd64.qcow2")},
+        )
+        self.assertIn(
+            "vm_test_vm_1", rendu["resource"]["proxmox_virtual_environment_vm"]
+        )
+        self.assertIn(
+            "img_debian_13_amd64_qcow2",
+            rendu["resource"]["proxmox_download_file"],
+        )
+
+    def test_depends_on_image_et_snippet(self):
+        vm = _vm_res(_simple(), "vm_parc_a_vm_1")
+        self.assertEqual(
+            vm["depends_on"],
+            [
+                "proxmox_download_file.img_debian_13_amd64_qcow2",
+                "proxmox_virtual_environment_file.ud_parc_a_vm_1",
+            ],
+        )
+
+    def test_meme_fichier_sources_differentes(self):
+        autre = _donnees()
+        autre["sha256"] = "def456"
+        with self.assertRaises(ValueError):
+            _rendre(
+                [_vm("a-1", 201), _vm("a-2", 202)],
+                {"a-1": _donnees(), "a-2": autre},
+            )
+
+
+SCHEMA = Path(__file__).resolve().parent / "fixtures/opentofu/bpg_0.123.1_schema.json"
+_LIBRES = ("depends_on", "lifecycle")
+
+
+def _ecarts(valeur, bloc, chemin):
+    """Écarts d'un objet de ressource ou de bloc avec son schéma bpg."""
+    ecarts = []
+    attributs = bloc.get("attributes", {})
+    blocs = bloc.get("block_types", {})
+    for cle, sous in valeur.items():
+        ici = f"{chemin}.{cle}"
+        if cle in _LIBRES:
+            continue
+        if cle in blocs:
+            for i, objet in enumerate(sous if isinstance(sous, list) else [sous]):
+                ecarts += _ecarts(objet, blocs[cle]["block"], f"{ici}[{i}]")
+        elif cle in attributs:
+            type_ = attributs[cle]["type"]
+            if type_[0] == "list" and isinstance(type_[1], list):
+                if type_[1][0] == "object":
+                    attendues = set(type_[1][1])
+                    for i, objet in enumerate(sous):
+                        if set(objet) != attendues:
+                            ecarts.append(f"{ici}[{i}] keys {sorted(objet)}")
+        else:
+            ecarts.append(f"{ici} unknown")
+    return ecarts
+
+
+class TestSchemaBpg(unittest.TestCase):
+    """Le rendu respecte le schéma réel du fournisseur bpg.
+
+    `bpg_0.123.1_schema.json` est extrait de `tofu providers schema -json` ;
+    il se rafraîchit quand `conf/opentofu.json` change la version de bpg.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+
+    def _verifier(self, rendu):
+        schemas = self.schema["resource_schemas"]
+        ecarts = _ecarts(
+            rendu["provider"]["proxmox"],
+            self.schema["provider"]["block"],
+            "provider",
+        )
+        for type_, ressources in rendu["resource"].items():
+            for nom, ressource in ressources.items():
+                ecarts += _ecarts(ressource, schemas[type_]["block"], f"{type_}.{nom}")
+        self.assertEqual(ecarts, [])
+
+    def test_vm_dhcp(self):
+        self._verifier(_rendre([_vm("d-1", 201, ip="dhcp")], {"d-1": _donnees()}))
+
+    def test_vm_ip_fixe(self):
+        self._verifier(_simple())
+
+    def test_vm_uefi(self):
+        self._verifier(
+            _rendre(
+                [_vm("n-1", 201)],
+                {"n-1": _donnees("nixos-25_amd64.qcow2", uefi=True)},
+            )
+        )
+
+    def test_le_verificateur_voit_une_cle_manquante(self):
+        rendu = _simple()
+        vm = _vm_res(rendu, "vm_parc_a_vm_1")
+        del vm["network_device"][0]["mtu"]
+        vm["inconnue"] = 1
+        schemas = self.schema["resource_schemas"]
+        ecarts = _ecarts(vm, schemas["proxmox_virtual_environment_vm"]["block"], "vm")
+        self.assertEqual(len(ecarts), 2)
+
+
+PLUGINS = Path.home() / ".cache/erplibre/opentofu/plugins"
+
+
+@unittest.skipUnless(
+    shutil.which("tofu") and PLUGINS.is_dir(),
+    "tofu or its offline plugin cache is missing",
+)
+class TestTofuValidate(unittest.TestCase):
+    """`tofu validate` accepte le rendu ; sans réseau, via `-plugin-dir`."""
+
+    def test_validate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "main.tf.json").write_text(
+                json.dumps(_simple()), encoding="utf-8"
+            )
+            for argv in (
+                ["init", "-backend=false", "-input=false", f"-plugin-dir={PLUGINS}"],
+                ["validate"],
+            ):
+                r = subprocess.run(
+                    ["tofu", *argv],
+                    cwd=tmp,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

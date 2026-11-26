@@ -26217,6 +26217,737 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
+    # OpenTofu
+    "OpenTofu on a disposable Proxmox: plan only (dry-run)": {
+        "fr": "OpenTofu sur un Proxmox jetable : le plan seulement (à blanc)",
+        "en": "OpenTofu on a disposable Proxmox: plan only (dry-run)",
+    },
+    "OpenTofu on a disposable Proxmox: run it": {
+        "fr": "OpenTofu sur un Proxmox jetable : le lancer",
+        "en": "OpenTofu on a disposable Proxmox: run it",
+    },
+    "Token {parc} was created but could not be stored; run again with token recreation.": {
+        "fr": "Le jeton {parc} est créé mais n'a pas pu être stocké ; relancer en recréant le jeton.",
+        "en": "Token {parc} was created but could not be stored; run again with token recreation.",
+    },
+    "Token creation output has no secret value.": {
+        "fr": "La sortie de création du jeton ne contient pas de secret.",
+        "en": "Token creation output has no secret value.",
+    },
+    "Unreadable JSON from: {cmd}": {
+        "fr": "JSON illisible pour : {cmd}",
+        "en": "Unreadable JSON from: {cmd}",
+    },
+    "Host command failed (exit {code}): {cmd}": {
+        "fr": "Commande d'hôte en échec (code {code}) : {cmd}",
+        "en": "Host command failed (exit {code}): {cmd}",
+    },
+    "Host already prepared.": {
+        "fr": "Hôte déjà préparé.",
+        "en": "Host already prepared.",
+    },
+    "Token {parc} exists on the host but its secret is not stored here; Proxmox shows it only at creation. Recreate the token.": {
+        "fr": "Le jeton {parc} existe sur l'hôte mais son secret n'est pas stocké ici ; Proxmox ne le montre qu'à la création. Recréer le jeton.",
+        "en": "Token {parc} exists on the host but its secret is not stored here; Proxmox shows it only at creation. Recreate the token.",
+    },
+    "Host prepared.": {
+        "fr": "Hôte préparé.",
+        "en": "Host prepared.",
+    },
+    "+ create {vm} ({ressource})": {
+        "fr": "+ créer {vm} ({ressource})",
+        "en": "+ create {vm} ({ressource})",
+    },
+    "~ modify {vm} ({ressource})": {
+        "fr": "~ modifier {vm} ({ressource})",
+        "en": "~ modify {vm} ({ressource})",
+    },
+    "± replace {vm} ({ressource})": {
+        "fr": "± remplacer {vm} ({ressource})",
+        "en": "± replace {vm} ({ressource})",
+    },
+    "- destroy {vm} ({ressource})": {
+        "fr": "- détruire {vm} ({ressource})",
+        "en": "- destroy {vm} ({ressource})",
+    },
+    "    {champ} : {avant} → {apres}": {
+        "fr": "    {champ} : {avant} → {apres}",
+        "en": "    {champ} : {avant} → {apres}",
+    },
+    "Cannot run ssh -G {cible}: {err}": {
+        "fr": "Impossible d'exécuter ssh -G {cible} : {err}",
+        "en": "Cannot run ssh -G {cible}: {err}",
+    },
+    "ssh -G {cible} gave no host address.": {
+        "fr": "ssh -G {cible} n'a donné aucune adresse d'hôte.",
+        "en": "ssh -G {cible} gave no host address.",
+    },
+    "Reading the host failed (exit {code}): {cmd}": {
+        "fr": "Lecture de l'hôte en échec (code {code}) : {cmd}",
+        "en": "Reading the host failed (exit {code}): {cmd}",
+    },
+    "No active storage accepts disk images on the host.": {
+        "fr": "Aucun stockage actif de l'hôte n'accepte d'images disque.",
+        "en": "No active storage accepts disk images on the host.",
+    },
+    "No storage accepts snippets: run Prepare the host (Préparer l'hôte) first.": {
+        "fr": "Aucun stockage n'accepte les snippets : lancer d'abord « Préparer l'hôte ».",
+        "en": "No storage accepts snippets: run Prepare the host (Préparer l'hôte) first.",
+    },
+    "The host has no network bridge.": {
+        "fr": "L'hôte n'a aucun pont réseau.",
+        "en": "The host has no network bridge.",
+    },
+    "SSH public key unreadable: {err}": {
+        "fr": "Clé publique SSH illisible : {err}",
+        "en": "SSH public key unreadable: {err}",
+    },
+    "SSH public key is empty: {chemin}": {
+        "fr": "Clé publique SSH vide : {chemin}",
+        "en": "SSH public key is empty: {chemin}",
+    },
+    "Image URL of {distro} {version} is not resolved: {url}": {
+        "fr": "L'URL de l'image {distro} {version} n'est pas résolue : {url}",
+        "en": "Image URL of {distro} {version} is not resolved: {url}",
+    },
+    "No changes.": {
+        "fr": "Aucun changement.",
+        "en": "No changes.",
+    },
+    "Unknown engine: {nom}.": {
+        "fr": "Moteur inconnu : {nom}.",
+        "en": "Unknown engine: {nom}.",
+    },
+    "A VM entry must be an object.": {
+        "fr": "Une entrée de VM doit être un objet.",
+        "en": "A VM entry must be an object.",
+    },
+    "A jump host is not supported yet.": {
+        "fr": "Un hôte de rebond n'est pas encore pris en charge.",
+        "en": "A jump host is not supported yet.",
+    },
+    "Cannot read {chemin}: {err}": {
+        "fr": "Lecture impossible de {chemin} : {err}",
+        "en": "Cannot read {chemin}: {err}",
+    },
+    "Image {fichier} has two different sources.": {
+        "fr": "L'image {fichier} a deux sources différentes.",
+        "en": "Image {fichier} has two different sources.",
+    },
+    "Missing key {cle} in {chemin}": {
+        "fr": "Clé {cle} absente de {chemin}",
+        "en": "Missing key {cle} in {chemin}",
+    },
+    "State passphrase must have at least {n} characters.": {
+        "fr": "La phrase de l'état doit avoir au moins {n} caractères.",
+        "en": "State passphrase must have at least {n} characters.",
+    },
+    "Duplicate VM name: {nom}": {
+        "fr": "Nom de VM en double : {nom}",
+        "en": "Duplicate VM name: {nom}",
+    },
+    "Invalid VM name: {nom}": {
+        "fr": "Nom de VM invalide : {nom}",
+        "en": "Invalid VM name: {nom}",
+    },
+    "Invalid fleet name: {nom}": {
+        "fr": "Nom de parc invalide : {nom}",
+        "en": "Invalid fleet name: {nom}",
+    },
+    "Target field {champ} must be a string.": {
+        "fr": "Le champ de cible {champ} doit être une chaîne.",
+        "en": "Target field {champ} must be a string.",
+    },
+    "The account needs a user.": {
+        "fr": "Le compte exige un utilisateur.",
+        "en": "The account needs a user.",
+    },
+    "The host sudo field must be 'sudo ' or empty.": {
+        "fr": "Le champ sudo de l'hôte doit valoir 'sudo ' ou rester vide.",
+        "en": "The host sudo field must be 'sudo ' or empty.",
+    },
+    "The spec must be a JSON object.": {
+        "fr": "La spec doit être un objet JSON.",
+        "en": "The spec must be a JSON object.",
+    },
+    "The spec needs at least one VM.": {
+        "fr": "La spec exige au moins une VM.",
+        "en": "The spec needs at least one VM.",
+    },
+    "The target host needs a ssh target.": {
+        "fr": "L'hôte cible exige une cible ssh.",
+        "en": "The target host needs a ssh target.",
+    },
+    "The target must be of type proxmox.": {
+        "fr": "La cible doit être de type proxmox.",
+        "en": "The target must be of type proxmox.",
+    },
+    "Unsupported engine: {val}.": {
+        "fr": "Moteur non pris en charge : {val}.",
+        "en": "Unsupported engine: {val}.",
+    },
+    "Unsupported spec schema: {val}.": {
+        "fr": "Schéma de spec non pris en charge : {val}.",
+        "en": "Unsupported spec schema: {val}.",
+    },
+    "VM {nom}: a fixed ip needs a gateway.": {
+        "fr": "VM {nom} : une adresse fixe exige une passerelle.",
+        "en": "VM {nom}: a fixed ip needs a gateway.",
+    },
+    "VM {nom}: disk must look like 20G, got {val}.": {
+        "fr": "VM {nom} : le disque doit ressembler à 20G, reçu {val}.",
+        "en": "VM {nom}: disk must look like 20G, got {val}.",
+    },
+    "VM {nom}: dns must be a list.": {
+        "fr": "VM {nom} : dns doit être une liste.",
+        "en": "VM {nom}: dns must be a list.",
+    },
+    "VM {nom}: ip must be auto, dhcp or a.b.c.d/nn, got {val}.": {
+        "fr": "VM {nom} : ip doit valoir auto, dhcp ou a.b.c.d/nn, reçu {val}.",
+        "en": "VM {nom}: ip must be auto, dhcp or a.b.c.d/nn, got {val}.",
+    },
+    "VM {nom}: ram must be an integer >= {min} (MiB).": {
+        "fr": "VM {nom} : ram doit être un entier >= {min} (Mio).",
+        "en": "VM {nom}: ram must be an integer >= {min} (MiB).",
+    },
+    "VM {nom}: unknown distro {val}.": {
+        "fr": "VM {nom} : distribution inconnue {val}.",
+        "en": "VM {nom}: unknown distro {val}.",
+    },
+    "VM {nom}: unknown version {val} for {distro}.": {
+        "fr": "VM {nom} : version inconnue {val} pour {distro}.",
+        "en": "VM {nom}: unknown version {val} for {distro}.",
+    },
+    "VM {nom}: vcpus must be an integer >= 1.": {
+        "fr": "VM {nom} : vcpus doit être un entier >= 1.",
+        "en": "VM {nom}: vcpus must be an integer >= 1.",
+    },
+    "VM {nom}: vmid must be empty or an integer >= 100.": {
+        "fr": "VM {nom} : vmid doit être vide ou un entier >= 100.",
+        "en": "VM {nom}: vmid must be empty or an integer >= 100.",
+    },
+    "(known after apply)": {
+        "fr": "(après apply)",
+        "en": "(known after apply)",
+    },
+    "(sensitive)": {
+        "fr": "(sensible)",
+        "en": "(sensitive)",
+    },
+    "Plan first.": {
+        "fr": "Planifier d'abord.",
+        "en": "Plan first.",
+    },
+    "OpenTofu (tofu) is not installed: install it from the OpenTofu menu.": {
+        "fr": (
+            "OpenTofu (tofu) n'est pas installé : l'installer depuis le "
+            "menu OpenTofu."
+        ),
+        "en": (
+            "OpenTofu (tofu) is not installed: install it from the "
+            "OpenTofu menu."
+        ),
+    },
+    "Unsupported architecture for tofu: {arch}": {
+        "fr": "Architecture non prise en charge pour tofu : {arch}",
+        "en": "Unsupported architecture for tofu: {arch}",
+    },
+    "tofu download failed: {err}": {
+        "fr": "Le téléchargement de tofu a échoué : {err}",
+        "en": "tofu download failed: {err}",
+    },
+    "GPG signature of {nom} is not valid for the pinned key.": {
+        "fr": "La signature GPG de {nom} n'est pas valide pour la clé épinglée.",
+        "en": "GPG signature of {nom} is not valid for the pinned key.",
+    },
+    "Checksum of {nom} is missing or does not match.": {
+        "fr": "La somme de {nom} est absente ou ne correspond pas.",
+        "en": "Checksum of {nom} is missing or does not match.",
+    },
+    "Archive does not hold a usable tofu: {err}": {
+        "fr": "L'archive ne contient pas de tofu utilisable : {err}",
+        "en": "Archive does not hold a usable tofu: {err}",
+    },
+    "Installed tofu reports {trouvee}, expected {attendue}.": {
+        "fr": "Le tofu installé annonce {trouvee}, attendu {attendue}.",
+        "en": "Installed tofu reports {trouvee}, expected {attendue}.",
+    },
+    "tofu {version} installed in {dest}.": {
+        "fr": "tofu {version} installé dans {dest}.",
+        "en": "tofu {version} installed in {dest}.",
+    },
+    "Cannot install tofu: {err}": {
+        "fr": "Impossible d'installer tofu : {err}",
+        "en": "Cannot install tofu: {err}",
+    },
+    "Cannot run tofu: {err}": {
+        "fr": "Impossible de lancer tofu : {err}",
+        "en": "Cannot run tofu: {err}",
+    },
+    "tofu {commande} failed (exit {code}).": {
+        "fr": "tofu {commande} a échoué (code {code}).",
+        "en": "tofu {commande} failed (exit {code}).",
+    },
+    "Interrupted: tofu stopped; plan again to see where the fleet stands.": {
+        "fr": (
+            "Interrompu : tofu s'est arrêté ; planifier de nouveau pour "
+            "voir où en est le parc."
+        ),
+        "en": (
+            "Interrupted: tofu stopped; plan again to see where the fleet "
+            "stands."
+        ),
+    },
+    "The tofu state is locked. If no other tofu is running, release it "
+    "from {dossier} with: tofu force-unlock {id}": {
+        "fr": (
+            "L'état tofu est verrouillé. Si aucun autre tofu ne tourne, "
+            "le libérer depuis {dossier} avec : tofu force-unlock {id}"
+        ),
+        "en": (
+            "The tofu state is locked. If no other tofu is running, "
+            "release it from {dossier} with: tofu force-unlock {id}"
+        ),
+    },
+    "Unreadable tofu output: {err}": {
+        "fr": "Sortie de tofu illisible : {err}",
+        "en": "Unreadable tofu output: {err}",
+    },
+    "Plan ready: {n} change(s).": {
+        "fr": "Plan prêt : {n} changement(s).",
+        "en": "Plan ready: {n} change(s).",
+    },
+    "Apply done.": {
+        "fr": "Application terminée.",
+        "en": "Apply done.",
+    },
+    "Destroy done.": {
+        "fr": "Destruction terminée.",
+        "en": "Destroy done.",
+    },
+    "Nothing to destroy: this fleet has no tofu state.": {
+        "fr": "Rien à détruire : ce parc n'a pas d'état tofu.",
+        "en": "Nothing to destroy: this fleet has no tofu state.",
+    },
+    "OpenTofu - Deploy a fleet from a spec": {
+        "fr": "🏗 OpenTofu - Déployer un parc depuis une spec",
+        "en": "🏗 OpenTofu - Deploy a fleet from a spec",
+    },
+    "Deploy a fleet with OpenTofu!": {
+        "fr": "Déployer un parc avec OpenTofu !",
+        "en": "Deploy a fleet with OpenTofu!",
+    },
+    "Fleets": {
+        "fr": "Parcs",
+        "en": "Fleets",
+    },
+    "Operations": {
+        "fr": "Opérations",
+        "en": "Operations",
+    },
+    "Tool": {
+        "fr": "Outil",
+        "en": "Tool",
+    },
+    "Create a fleet": {
+        "fr": "🆕 Créer un parc",
+        "en": "🆕 Create a fleet",
+    },
+    "Edit a fleet (form)": {
+        "fr": "✏ Modifier un parc (formulaire)",
+        "en": "✏ Edit a fleet (form)",
+    },
+    "List the fleets": {
+        "fr": "📋 Lister les parcs",
+        "en": "📋 List the fleets",
+    },
+    "Plan (preview the changes)": {
+        "fr": "🔍 Planifier (aperçu des changements)",
+        "en": "🔍 Plan (preview the changes)",
+    },
+    "Apply the plan (create or update the VMs)": {
+        "fr": "🚀 Appliquer le plan (créer ou modifier les VM)",
+        "en": "🚀 Apply the plan (create or update the VMs)",
+    },
+    "Destroy the fleet VMs": {
+        "fr": "🗑 Détruire les VM du parc",
+        "en": "🗑 Destroy the fleet VMs",
+    },
+    "Show the tofu state": {
+        "fr": "📄 Afficher l'état tofu",
+        "en": "📄 Show the tofu state",
+    },
+    "Show the VM addresses": {
+        "fr": "🌐 Afficher les adresses des VM",
+        "en": "🌐 Show the VM addresses",
+    },
+    "Prepare the host (role, user, API token)": {
+        "fr": "🔑 Préparer l'hôte (rôle, utilisateur, jeton d'API)",
+        "en": "🔑 Prepare the host (role, user, API token)",
+    },
+    "Check or install tofu": {
+        "fr": "🧰 Vérifier ou installer tofu",
+        "en": "🧰 Check or install tofu",
+    },
+    "No fleet yet: create one first.": {
+        "fr": "Aucun parc : en créer un d'abord.",
+        "en": "No fleet yet: create one first.",
+    },
+    "Which fleet?": {
+        "fr": "Quel parc ?",
+        "en": "Which fleet?",
+    },
+    "Invalid spec for fleet {nom}:": {
+        "fr": "Spec invalide pour le parc {nom} :",
+        "en": "Invalid spec for fleet {nom}:",
+    },
+    "invalid spec": {
+        "fr": "spec invalide",
+        "en": "invalid spec",
+    },
+    "Type the fleet name ({nom}) to confirm: ": {
+        "fr": "Retaper le nom du parc ({nom}) pour confirmer : ",
+        "en": "Type the fleet name ({nom}) to confirm: ",
+    },
+    "The name does not match: cancelled.": {
+        "fr": "Le nom ne correspond pas : annulé.",
+        "en": "The name does not match: cancelled.",
+    },
+    "Fleet name (lowercase letters, digits, dash): ": {
+        "fr": "Nom du parc (minuscules, chiffres, tiret) : ",
+        "en": "Fleet name (lowercase letters, digits, dash): ",
+    },
+    "Fleet {nom} already exists.": {
+        "fr": "Le parc {nom} existe déjà.",
+        "en": "Fleet {nom} already exists.",
+    },
+    "SSH target of the Proxmox host [{defaut}]: ": {
+        "fr": "Cible SSH de l'hôte Proxmox [{defaut}] : ",
+        "en": "SSH target of the Proxmox host [{defaut}]: ",
+    },
+    "SSH target of the Proxmox host (user@host or ssh alias): ": {
+        "fr": "Cible SSH de l'hôte Proxmox (compte@hôte ou alias ssh) : ",
+        "en": "SSH target of the Proxmox host (user@host or ssh alias): ",
+    },
+    "Fleet {nom} saved in {chemin}.": {
+        "fr": "Parc {nom} enregistré dans {chemin}.",
+        "en": "Fleet {nom} saved in {chemin}.",
+    },
+    "Open the fleet form now? [y/N] ": {
+        "fr": "Ouvrir le formulaire du parc maintenant ? [o/N] ",
+        "en": "Open the fleet form now? [y/N] ",
+    },
+    "The fleet form (TUI) is not available yet.": {
+        "fr": "Le formulaire du parc (TUI) n'est pas encore disponible.",
+        "en": "The fleet form (TUI) is not available yet.",
+    },
+    "Fleets in {racine}:": {
+        "fr": "Parcs dans {racine} :",
+        "en": "Fleets in {racine}:",
+    },
+    "{n} VM(s) on {cible}": {
+        "fr": "{n} VM sur {cible}",
+        "en": "{n} VM(s) on {cible}",
+    },
+    "Nothing to apply.": {
+        "fr": "Rien à appliquer.",
+        "en": "Nothing to apply.",
+    },
+    "This plan replaces or destroys VMs.": {
+        "fr": "Ce plan remplace ou détruit des VM.",
+        "en": "This plan replaces or destroys VMs.",
+    },
+    "Apply this plan? [y/N] ": {
+        "fr": "Appliquer ce plan ? [o/N] ",
+        "en": "Apply this plan? [y/N] ",
+    },
+    "This destroys every VM of fleet {nom}: {vms}": {
+        "fr": "Ceci détruit toutes les VM du parc {nom} : {vms}",
+        "en": "This destroys every VM of fleet {nom}: {vms}",
+    },
+    "Empty state: nothing applied yet.": {
+        "fr": "État vide : rien n'a encore été appliqué.",
+        "en": "Empty state: nothing applied yet.",
+    },
+    "No outputs: apply the fleet first.": {
+        "fr": "Aucune sortie : appliquer le parc d'abord.",
+        "en": "No outputs: apply the fleet first.",
+    },
+    "DHCP (address known by the host)": {
+        "fr": "DHCP (adresse connue de l'hôte)",
+        "en": "DHCP (address known by the host)",
+    },
+    "{vm}: no tofu output, skipped.": {
+        "fr": "{vm} : aucune sortie tofu, sautée.",
+        "en": "{vm}: no tofu output, skipped.",
+    },
+    "{vm}: no address yet; see Show the VM addresses later.": {
+        "fr": (
+            "{vm} : pas encore d'adresse ; voir Afficher les adresses des VM "
+            "plus tard."
+        ),
+        "en": "{vm}: no address yet; see Show the VM addresses later.",
+    },
+    "{vm}: does not answer ssh yet.": {
+        "fr": "{vm} : ne répond pas encore en ssh.",
+        "en": "{vm}: does not answer ssh yet.",
+    },
+    "Preparing {cible}: role {role}, user {user}, token {jeton}.": {
+        "fr": (
+            "Préparation de {cible} : rôle {role}, utilisateur {user}, jeton "
+            "{jeton}."
+        ),
+        "en": "Preparing {cible}: role {role}, user {user}, token {jeton}.",
+    },
+    "Recreate the fleet API token (the current one stops working)? [y/N] ": {
+        "fr": (
+            "Recréer le jeton d'API du parc (l'actuel cesse de fonctionner) ? "
+            "[o/N] "
+        ),
+        "en": (
+            "Recreate the fleet API token (the current one stops working)? "
+            "[y/N] "
+        ),
+    },
+    "tofu is not installed.": {
+        "fr": "tofu n'est pas installé.",
+        "en": "tofu is not installed.",
+    },
+    "tofu {version} satisfies {plancher}.": {
+        "fr": "tofu {version} satisfait {plancher}.",
+        "en": "tofu {version} satisfies {plancher}.",
+    },
+    "tofu {version} does not satisfy {plancher}.": {
+        "fr": "tofu {version} ne satisfait pas {plancher}.",
+        "en": "tofu {version} does not satisfy {plancher}.",
+    },
+    "Distribution package:": {
+        "fr": "Paquet de la distribution :",
+        "en": "Distribution package:",
+    },
+    "Run it now? [y/N] ": {
+        "fr": "La lancer maintenant ? [o/N] ",
+        "en": "Run it now? [y/N] ",
+    },
+    "The package install failed (exit {code}).": {
+        "fr": "L'installation du paquet a échoué (code {code}).",
+        "en": "The package install failed (exit {code}).",
+    },
+    "Install tofu {version} from the signed upstream archive into "
+    "~/.local/bin? [y/N] ": {
+        "fr": (
+            "Installer tofu {version} depuis l'archive signée de l'éditeur "
+            "dans ~/.local/bin ? [o/N] "
+        ),
+        "en": (
+            "Install tofu {version} from the signed upstream archive into "
+            "~/.local/bin? [y/N] "
+        ),
+    },
+    "{vm}: no VMID known, skipped.": {
+        "fr": "{vm} : aucun VMID connu, sautée.",
+        "en": "{vm}: no VMID known, skipped.",
+    },
+    "tofu: {chemin}, version {version}": {
+        "fr": "tofu : {chemin}, version {version}",
+        "en": "tofu: {chemin}, version {version}",
+    },
+    "present": {
+        "fr": "présent",
+        "en": "present",
+    },
+    "unreadable file": {
+        "fr": "fichier illisible",
+        "en": "unreadable file",
+    },
+    "RAM (MiB)": {
+        "fr": "RAM (Mio)",
+        "en": "RAM (MiB)",
+    },
+    "IP": {
+        "fr": "IP",
+        "en": "IP",
+    },
+    "IP (auto, dhcp or a.b.c.d/nn)": {
+        "fr": "IP (auto, dhcp ou a.b.c.d/nn)",
+        "en": "IP (auto, dhcp or a.b.c.d/nn)",
+    },
+    "DNS (comma separated)": {
+        "fr": "DNS (séparés par des virgules)",
+        "en": "DNS (comma separated)",
+    },
+    "VMID (empty: chosen on the host)": {
+        "fr": "VMID (vide : choisi sur l'hôte)",
+        "en": "VMID (empty: chosen on the host)",
+    },
+    "Add a VM": {
+        "fr": "Ajouter une VM",
+        "en": "Add a VM",
+    },
+    "Edit a VM": {
+        "fr": "Éditer une VM",
+        "en": "Edit a VM",
+    },
+    "Start the VM": {
+        "fr": "Démarrer la VM",
+        "en": "Start the VM",
+    },
+    "Save": {
+        "fr": "Sauver",
+        "en": "Save",
+    },
+    "Plan": {
+        "fr": "Plan",
+        "en": "Plan",
+    },
+    "Destroy": {
+        "fr": "Détruire",
+        "en": "Destroy",
+    },
+    "Add": {
+        "fr": "Ajouter",
+        "en": "Add",
+    },
+    "Edit": {
+        "fr": "Éditer",
+        "en": "Edit",
+    },
+    "Remove": {
+        "fr": "Retirer",
+        "en": "Remove",
+    },
+    "Options": {
+        "fr": "Options",
+        "en": "Options",
+    },
+    "OpenTofu": {
+        "fr": "OpenTofu",
+        "en": "OpenTofu",
+    },
+    "Node": {
+        "fr": "Nœud",
+        "en": "Node",
+    },
+    "API URL": {
+        "fr": "URL de l'API",
+        "en": "API URL",
+    },
+    "Snippet storage": {
+        "fr": "Stockage des snippets",
+        "en": "Snippet storage",
+    },
+    "SSH target of the host": {
+        "fr": "Cible ssh de l'hôte",
+        "en": "SSH target of the host",
+    },
+    "Account user": {
+        "fr": "Compte des VM",
+        "en": "Account user",
+    },
+    "An empty field is resolved on the host at the next plan.": {
+        "fr": "Un champ vide est résolu sur l'hôte au prochain plan.",
+        "en": "An empty field is resolved on the host at the next plan.",
+    },
+    "Per-VM options are edited in the VM tab (Edit).": {
+        "fr": "Les options de chaque VM s'éditent dans l'onglet VM (Éditer).",
+        "en": "Per-VM options are edited in the VM tab (Edit).",
+    },
+    "OpenTofu fleet {nom}": {
+        "fr": "Parc OpenTofu {nom}",
+        "en": "OpenTofu fleet {nom}",
+    },
+    "Jump host (refused in v1): {jump}": {
+        "fr": "Hôte de rebond (refusé en v1) : {jump}",
+        "en": "Jump host (refused in v1): {jump}",
+    },
+    "API token tofu@pve!{nom}: {etat}": {
+        "fr": "Jeton d'API tofu@pve!{nom} : {etat}",
+        "en": "API token tofu@pve!{nom}: {etat}",
+    },
+    "Cannot save the spec: {err}": {
+        "fr": "Impossible de sauver la spec : {err}",
+        "en": "Cannot save the spec: {err}",
+    },
+    "Spec saved.": {
+        "fr": "Spec sauvée.",
+        "en": "Spec saved.",
+    },
+    "The spec has errors, nothing saved:": {
+        "fr": "La spec a des erreurs, rien n'est sauvé :",
+        "en": "The spec has errors, nothing saved:",
+    },
+    "Apply this plan?": {
+        "fr": "Appliquer ce plan ?",
+        "en": "Apply this plan?",
+    },
+    "Unsaved changes: press q again to quit without saving.": {
+        "fr": "Modifications non sauvées : q encore pour quitter sans sauver.",
+        "en": "Unsaved changes: press q again to quit without saving.",
+    },
+    "A fleet keeps at least one VM.": {
+        "fr": "Un parc garde au moins une VM.",
+        "en": "A fleet keeps at least one VM.",
+    },
+    "VM {nom}: {champ} must be a text.": {
+        "fr": "VM {nom} : {champ} doit être un texte.",
+        "en": "VM {nom}: {champ} must be a text.",
+    },
+    "VM {nom}: {champ} must be true or false.": {
+        "fr": "VM {nom} : {champ} doit valoir true ou false.",
+        "en": "VM {nom}: {champ} must be true or false.",
+    },
+    "VM {nom}: {champ} must be a non-empty text.": {
+        "fr": "VM {nom} : {champ} doit être un texte non vide.",
+        "en": "VM {nom}: {champ} must be a non-empty text.",
+    },
+    "VMID {vmid} is used by several VMs: {noms}.": {
+        "fr": "Le VMID {vmid} sert à plusieurs VM : {noms}.",
+        "en": "VMID {vmid} is used by several VMs: {noms}.",
+    },
+    "Target field {champ} must be true or false.": {
+        "fr": "Le champ de cible {champ} doit valoir true ou false.",
+        "en": "Target field {champ} must be true or false.",
+    },
+    "The account needs an SSH public key.": {
+        "fr": "Le compte a besoin d'une clé publique SSH.",
+        "en": "The account needs an SSH public key.",
+    },
+    "Invalid spec: {err}": {
+        "fr": "Spec invalide : {err}",
+        "en": "Invalid spec: {err}",
+    },
+    "SSH does not get through (exit {code}).": {
+        "fr": "SSH ne passe pas (code {code}).",
+        "en": "SSH does not get through (exit {code}).",
+    },
+    "No root, and sudo asks for a password: connect as root@ or allow NOPASSWD sudo.": {
+        "fr": "Pas root, et sudo demande un mot de passe : se connecter en root@ ou permettre sudo NOPASSWD.",
+        "en": "No root, and sudo asks for a password: connect as root@ or allow NOPASSWD sudo.",
+    },
+    "The host gave an empty hostname.": {
+        "fr": "L'hôte a rendu un nom d'hôte vide.",
+        "en": "The host gave an empty hostname.",
+    },
+    "Target field {champ} must be empty or a port number.": {
+        "fr": "Le champ de cible {champ} doit être vide ou un numéro de port.",
+        "en": "Target field {champ} must be empty or a port number.",
+    },
+    "Cannot read the version of {chemin}.": {
+        "fr": "Version de {chemin} illisible.",
+        "en": "Cannot read the version of {chemin}.",
+    },
+    "Fleet {nom} has a tofu state but no state passphrase: a new one cannot read it. See the lost secrets.json remedy in script/opentofu/README.md.": {
+        "fr": "Le parc {nom} a un état tofu mais pas de phrase d'état : une phrase neuve ne le lirait pas. Voir le remède du secrets.json perdu dans script/opentofu/README.fr.md.",
+        "en": "Fleet {nom} has a tofu state but no state passphrase: a new one cannot read it. See the lost secrets.json remedy in script/opentofu/README.md.",
+    },
+    "Engine {nom}: version {version}": {
+        "fr": "Moteur {nom} : version {version}",
+        "en": "Engine {nom}: version {version}",
+    },
+    "Engine {nom} cannot start: {err}": {
+        "fr": "Le moteur {nom} ne démarre pas : {err}",
+        "en": "Engine {nom} cannot start: {err}",
+    },
 }
 
 

@@ -1,0 +1,282 @@
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Résolution d'une spec sur l'hôte Proxmox, et données éphémères par VM.
+
+`resoudre` remplit, depuis l'hôte vivant, les seuls champs que la spec laisse
+vides ; un champ renseigné n'est jamais relu ni écrasé, donc une deuxième
+résolution ne change rien. `donnees_vm` calcule ce qui ne se sauve pas (URL
+d'image, user-data) et que le moteur consomme au rendu.
+
+Toute lecture distante qui échoue lève `ResolutionImpossible` : un code de
+retour non nul distingue une lecture impossible d'une lecture qui ne rend rien, et
+conclure le second du premier ferait inventer un état à l'hôte.
+"""
+
+import copy
+import importlib.util
+import os
+import subprocess
+from pathlib import Path
+from typing import Callable
+
+from script.proxmox import proxmox_deploy as pve
+from script.todo.todo_i18n import t
+
+Executer = Callable[[str], tuple]
+
+_DEPLOY_QEMU = Path(__file__).resolve().parent.parent / "qemu" / "deploy_qemu.py"
+_VMID_MIN = 100
+_cache_qemu = None
+
+
+class ResolutionImpossible(Exception):
+    """Lecture de l'hôte ou donnée de VM impossible ; message traduit."""
+
+
+def ssh_hote(target, port=""):
+    """`{"adresse", "user", "port"}` de `ssh -G [-p port] <target>`.
+
+    L'adresse réelle de l'alias, le compte et le port que ssh emploie pour
+    joindre l'hôte : bpg ouvre sa propre connexion SSH vers le nœud pour
+    écrire les snippets, et doit utiliser ce même compte et ce même port.
+    `port` est le champ `hote.port` de la spec, vide pour celui de l'alias.
+    """
+    argv = ["ssh", "-G"] + (["-p", str(port)] if port else []) + [target]
+    try:
+        res = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ResolutionImpossible(
+            t("Cannot run ssh -G {cible}: {err}").format(cible=target, err=exc)
+        )
+    valeurs = {}
+    if res.returncode == 0:
+        for ligne in res.stdout.splitlines():
+            cle, _, valeur = ligne.partition(" ")
+            valeurs.setdefault(cle, valeur.strip())
+    port_lu = valeurs.get("port", "")
+    if not valeurs.get("hostname") or not port_lu.isdigit():
+        raise ResolutionImpossible(
+            t("ssh -G {cible} gave no host address.").format(cible=target)
+        )
+    return {
+        "adresse": valeurs["hostname"],
+        "user": valeurs.get("user", ""),
+        "port": int(port_lu),
+    }
+
+
+def elevation(executer_brut):
+    """`(sudo, raison)` : préfixe d'élévation de l'hôte, ou None et pourquoi.
+
+    `sudo` vaut "" pour root, "sudo " pour un sudo qui ne demande pas de
+    mot de passe, None sinon ; `raison` (traduite) distingue alors un hôte
+    que ssh ne joint pas d'un compte sans root ni sudo NOPASSWD. Un sudo qui
+    demande un mot de passe bloquerait sur une invite que personne ne voit.
+    `executer_brut` lance une commande sans élévation.
+    """
+    code, sortie = executer_brut("id -u")
+    if code != 0:
+        return None, t("SSH does not get through (exit {code}).").format(code=code)
+    if sortie.strip() == "0":
+        return "", ""
+    if executer_brut("sudo -n true")[0] == 0:
+        return "sudo ", ""
+    return None, t(
+        "No root, and sudo asks for a password: connect as root@ or allow "
+        "NOPASSWD sudo."
+    )
+
+
+def executer_ssh(hote, timeout=120):
+    """Exécuteur de commandes distantes pour `hote`, élevées par son sudo.
+
+    L'élévation est faite ici, une seule fois : l'hôte passé à `pve.run` a un
+    `sudo` vide, sans quoi la commande serait enrobée deux fois.
+    """
+    sudo = hote.get("sudo", "")
+    brut = {
+        "target": hote.get("target", ""),
+        "jump": hote.get("jump", ""),
+        "port": hote.get("port", ""),
+        "sudo": "",
+    }
+
+    def executer(cmd):
+        return pve.run(brut, pve.wrap_privilege(cmd, sudo), timeout)
+
+    return executer
+
+
+def charger_deploy_qemu():
+    """Le module `deploy_qemu`, chargé une fois par fichier puis mémorisé."""
+    global _cache_qemu
+    if _cache_qemu is None:
+        spec = importlib.util.spec_from_file_location("deploy_qemu", _DEPLOY_QEMU)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _cache_qemu = mod
+    return _cache_qemu
+
+
+def _lire(executer, cmd):
+    """Sortie de `cmd`, ou `ResolutionImpossible` nommant la commande."""
+    code, sortie = executer(cmd)
+    if code != 0:
+        raise ResolutionImpossible(
+            t("Reading the host failed (exit {code}): {cmd}").format(code=code, cmd=cmd)
+        )
+    return sortie
+
+
+def _stockage(executer, contenu, voulu=""):
+    return pve.pick_storage(
+        pve.parse_storages(_lire(executer, f"pvesm status --content {contenu}")),
+        voulu,
+    )
+
+
+def _vmid_libre(pris):
+    vmid = _VMID_MIN
+    while vmid in pris:
+        vmid += 1
+    return vmid
+
+
+def resoudre(spec, executer, lire_ssh):
+    """(spec_neuve, change) : la spec avec ses champs vides remplis.
+
+    N'écrit que les champs vides, ne mute pas `spec`, ne lit l'hôte que pour
+    ce qui manque. `lire_ssh()` rend le dict de `ssh_hote` ; il n'est appelé
+    que si `api_url`, `ssh_user` ou `ssh_port` est vide. `ip` "auto" devient
+    "dhcp" sur un pont qui donne sur le LAN, sinon une adresse fixe dérivée
+    du VMID avec sa passerelle et les résolveurs de l'hôte.
+    """
+    neuve = copy.deepcopy(spec)
+    cible = neuve["cible"]
+    if not all(cible.get(c) for c in ("api_url", "ssh_user", "ssh_port")):
+        ssh = lire_ssh()
+        if not cible.get("api_url"):
+            cible["api_url"] = f"https://{ssh['adresse']}:8006/"
+        if not cible.get("ssh_user"):
+            cible["ssh_user"] = ssh["user"]
+        if not cible.get("ssh_port"):
+            cible["ssh_port"] = ssh["port"]
+    if not cible.get("noeud"):
+        cible["noeud"] = _lire(executer, "hostname").strip()
+        if not cible["noeud"]:
+            raise ResolutionImpossible(t("The host gave an empty hostname."))
+    if not cible.get("stockage"):
+        cible["stockage"] = _stockage(executer, "images")
+        if not cible["stockage"]:
+            raise ResolutionImpossible(
+                t("No active storage accepts disk images on the host.")
+            )
+    if not cible.get("stockage_snippets"):
+        cible["stockage_snippets"] = _stockage(executer, "snippets")
+        if not cible["stockage_snippets"]:
+            raise ResolutionImpossible(
+                t(
+                    "No storage accepts snippets: run Prepare the host "
+                    "(Préparer l'hôte) first."
+                )
+            )
+    if not cible.get("pont"):
+        ponts = pve.parse_bridges(_lire(executer, "ip -o link show type bridge"))
+        cible["pont"] = pve.pick_bridge(ponts)
+        if not cible["pont"]:
+            raise ResolutionImpossible(t("The host has no network bridge."))
+    vms = neuve["vms"]
+    if any(vm.get("vmid") is None for vm in vms):
+        pris = {v["vmid"] for v in pve.parse_qm_list(_lire(executer, "qm list"))}
+        pris |= {vm["vmid"] for vm in vms if vm.get("vmid") is not None}
+        for vm in vms:
+            if vm.get("vmid") is None:
+                vm["vmid"] = _vmid_libre(pris)
+                pris.add(vm["vmid"])
+    if any(vm.get("ip") == "auto" for vm in vms):
+        infos = pve.parse_bridge_config(_lire(executer, "cat /etc/network/interfaces"))
+        serveurs = pve.parse_nameservers(_lire(executer, pve.RESOLV_CMD))
+        for vm in vms:
+            if vm.get("ip") != "auto":
+                continue
+            ipconfig = pve.ipconfig_for(infos.get(cible["pont"], {}), vm["vmid"])
+            if ipconfig == "ip=dhcp":
+                vm["ip"] = "dhcp"
+                continue
+            adresse_ip, _, passerelle = ipconfig[len("ip=") :].partition(",gw=")
+            vm["ip"] = adresse_ip
+            vm["passerelle"] = passerelle
+            vm["dns"] = list(serveurs)
+    return neuve, neuve != spec
+
+
+def ip_derivee(vm):
+    """Vrai si l'adresse fixe de `vm` est celle que `resoudre` dérive de son
+    VMID sur le réseau de sa passerelle (`pve.ipconfig_for`).
+
+    Une telle adresse suit le VMID et n'est pas un choix de l'opérateur : un
+    VMID qui change la rend caduque. Faux pour `auto`, `dhcp`, une VM sans
+    VMID ou une adresse que la dérivation ne donne pas.
+    """
+    ip, passerelle, vmid = vm.get("ip"), vm.get("passerelle"), vm.get("vmid")
+    if not isinstance(ip, str) or "/" not in ip or not passerelle:
+        return False
+    if not isinstance(vmid, int) or isinstance(vmid, bool):
+        return False
+    masque = ip.split("/", 1)[1]
+    pont = {"address": f"{passerelle}/{masque}"}
+    return pve.ipconfig_for(pont, vmid) == f"ip={ip},gw={passerelle}"
+
+
+def _cle_publique(chemin):
+    try:
+        with open(os.path.expanduser(chemin), encoding="utf-8") as fh:
+            cle = fh.read().strip()
+    except OSError as exc:
+        raise ResolutionImpossible(
+            t("SSH public key unreadable: {err}").format(err=exc)
+        )
+    if not cle:
+        raise ResolutionImpossible(
+            t("SSH public key is empty: {chemin}").format(chemin=chemin)
+        )
+    return cle
+
+
+def donnees_vm(spec, vm, mod_qemu):
+    """Données éphémères d'une VM : image source et user-data cloud-init.
+
+    Jamais sauvées dans la spec. `fichier` garde le nom du catalogue avec
+    l'extension `.qcow2`, la seule que le contenu `import` de PVE accepte
+    pour une image disque.
+    """
+    distro, version, arch = vm["distro"], vm["version"], vm["arch"]
+    code = mod_qemu.DISTROS[distro][0][version][0]
+    url = mod_qemu.image_url(distro, code, arch, version)
+    if "<" in url:
+        raise ResolutionImpossible(
+            t("Image URL of {distro} {version} is not resolved: {url}").format(
+                distro=distro, version=version, url=url
+            )
+        )
+    fichier = mod_qemu.default_image_name(distro, code, arch, version)
+    if fichier.endswith(".img"):
+        fichier = fichier[: -len(".img")] + ".qcow2"
+    cle = _cle_publique(spec["compte"]["ssh_key"])
+    args = mod_qemu.build_parser().parse_args(
+        [
+            "--distro",
+            distro,
+            "--hostname",
+            vm["nom"],
+            "--user",
+            spec["compte"]["user"],
+        ]
+    )
+    return {
+        "url": url,
+        "fichier": fichier,
+        "sha256": mod_qemu.pinned_sha256(distro),
+        "uefi": mod_qemu.requiert_uefi(distro),
+        "user_data": mod_qemu.build_cloud_config(args, None, [cle]),
+    }

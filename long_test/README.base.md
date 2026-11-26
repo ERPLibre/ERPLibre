@@ -388,6 +388,60 @@ when the host already carries what it would remove or what would skew the
 verdict: an installed auto-reattach, a non-empty mapping, a real deck, the
 `dummy_hcd` UDC held by another gadget, a running deck service.
 
+## opentofu_proxmox.py — does an OpenTofu fleet hold end to end?
+
+The success criterion of the OpenTofu menu, on a Proxmox VE that exists only
+for the run. Level 1 of `deep_proxmox` mounts it — local QEMU VM,
+`install_proxmox.sh`, reboot onto the `-pve` kernel, services, storage —
+under the name `test-tofu-pve-1`. Then eight steps, each written to the
+report with its status and duration:
+
+1. **monter_pve**: level 1 is up and checked;
+2. **preparer_hote**: an internal bridge (no DHCP, so the VM gets a fixed
+   address at resolution), role `ERPLibreTofu`, user `tofu@pve`, the
+   fleet's API token stored in its vault, `snippets` and `import` content;
+3. **plan_1**: the plan creates the VM, its cloud-init and its image, and
+   nothing else. Its `tofu show -json` is saved in the run's own folder,
+   `test-tofu-pve-<timestamp>/show_plan.json` (folder 0700, file 0600),
+   never printed; a non-empty second plan is saved as `show_plan_2.json`;
+4. **apply**: the saved plan, then the menu's own after-apply, which
+   writes the `test-tofu-pve-1+test-tofu-vm-1` ssh alias;
+5. **ssh**: `ssh -o BatchMode=yes <alias> true` through that alias;
+6. **plan_2**: a second plan announces **no** change;
+7. **destroy**: `tofu destroy`, then the alias is removed;
+8. **absence**: `qm list` on the Proxmox no longer shows the VMID.
+
+A failure in steps 2 or 3, or a failed `tofu apply`, skips the rest. Once
+`tofu apply` has run, steps 5 to 8 all run, whatever the outputs or the
+after-apply returned: the VM is in the tofu state and must be destroyed. The exit code is 0 only when
+the eight steps are `ok`.
+
+The fleet is named `test-tofu` and lives in the real
+`private/opentofu/` (git-ignored): the OpenTofu menu can open it after the
+run.
+
+```
+./long_test/opentofu_proxmox.py --dry-run     # the plan, nothing created
+./long_test/opentofu_proxmox.py               # the run, asks for sudo
+./long_test/opentofu_proxmox.py --detruire    # the Proxmox, then the fleet
+```
+
+Before creating anything, the run refuses — exit code 1, one line per
+missing item with its remedy — without `tofu` at the floor of
+`conf/opentofu.json`, a public ssh key, an ssh agent holding a key (the bpg
+provider writes snippets over ssh through it), `/dev/kvm`, nested
+virtualisation, or when the `test-tofu` fleet already exists or another
+long test is running. `--dry-run` checks none of this and runs no sudo.
+
+`--detruire` undoes the Proxmox named by the last report, then removes the
+fleet directory, its ssh alias and that report's capture folder. The fleet
+VM lived on the Proxmox disk, erased with it. Without a report to undo, or
+with a Proxmox left standing, the fleet is kept.
+
+Manual follow-up after a real run: list the Proxmox privileges the run
+actually used, to narrow `PRIVILEGES` in `script/opentofu/jeton_proxmox.py`.
+Nothing records them automatically.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
@@ -818,6 +872,62 @@ refuse de partir quand l'hôte porte déjà ce qu'elle retirerait ou ce qui
 fausserait le verdict : un rattachement automatique posé, une
 correspondance non vide, un deck réel, l'UDC de `dummy_hcd` pris par un
 autre gadget, un service deck qui tourne.
+
+## opentofu_proxmox.py — un parc OpenTofu tient-il de bout en bout ?
+
+Le critère de réussite du menu OpenTofu, sur un Proxmox VE qui n'existe que
+le temps de la course. L'étage 1 de `deep_proxmox` le monte — VM QEMU
+locale, `install_proxmox.sh`, redémarrage sur le noyau `-pve`, services,
+stockage — sous le nom `test-tofu-pve-1`. Puis huit étapes, chacune écrite
+au rapport avec son statut et sa durée :
+
+1. **monter_pve** : l'étage 1 est debout et contrôlé ;
+2. **preparer_hote** : un pont interne (sans DHCP, donc une adresse fixe
+   pour la VM à la résolution), le rôle `ERPLibreTofu`, l'utilisateur
+   `tofu@pve`, le jeton d'API du parc rangé dans son coffre, les contenus
+   `snippets` et `import` ;
+3. **plan_1** : le plan crée la VM, son cloud-init et son image, et rien
+   d'autre. Son `tofu show -json` est gardé dans le dossier de la course,
+   `test-tofu-pve-<horodatage>/show_plan.json` (dossier 0700, fichier
+   0600), jamais affiché ; un second plan non vide est gardé en
+   `show_plan_2.json` ;
+4. **apply** : le plan sauvé, puis l'après-apply du menu lui-même, qui écrit
+   l'alias ssh `test-tofu-pve-1+test-tofu-vm-1` ;
+5. **ssh** : `ssh -o BatchMode=yes <alias> true` par cet alias ;
+6. **plan_2** : un second plan n'annonce **aucun** changement ;
+7. **destroy** : `tofu destroy`, puis l'alias est retiré ;
+8. **absence** : `qm list` sur le Proxmox ne montre plus le VMID.
+
+Un échec aux étapes 2 ou 3, ou un `tofu apply` en échec, saute la suite.
+Dès que `tofu apply` a tourné, les étapes 5 à 8 passent toutes, quoi
+qu'aient rendu les sorties ou l'après-apply : la VM est dans l'état tofu et
+doit être détruite. Le code de sortie
+vaut 0 seulement si les huit étapes sont `ok`.
+
+Le parc s'appelle `test-tofu` et vit dans le vrai `private/opentofu/`
+(ignoré par git) : le menu OpenTofu peut l'ouvrir après la course.
+
+```
+./long_test/opentofu_proxmox.py --dry-run     # le plan, rien de créé
+./long_test/opentofu_proxmox.py               # la course, sudo demandé
+./long_test/opentofu_proxmox.py --detruire    # le Proxmox, puis le parc
+```
+
+Avant toute création, la course refuse — code 1, une ligne par manque avec
+son remède — sans `tofu` au plancher de `conf/opentofu.json`, une clé
+publique ssh, un agent ssh qui porte une clé (le fournisseur bpg écrit les
+snippets en ssh par lui), `/dev/kvm`, l'imbrication, ou quand le parc
+`test-tofu` existe déjà ou qu'un autre test long tourne. `--dry-run` ne
+contrôle rien de cela et ne lance aucun sudo.
+
+`--detruire` défait le Proxmox nommé par le dernier rapport, puis retire le
+dossier du parc, son alias ssh et le dossier de captures de ce rapport. La
+VM du parc vivait sur le disque du Proxmox, effacé avec lui. Sans rapport à
+défaire, ou avec un Proxmox resté debout, le parc est gardé.
+
+Suite manuelle après une vraie course : relever les privilèges Proxmox
+réellement utilisés, pour resserrer `PRIVILEGES` dans
+`script/opentofu/jeton_proxmox.py`. Rien ne les relève automatiquement.
 
 ## Partir d'un hôte qu'on possède déjà
 

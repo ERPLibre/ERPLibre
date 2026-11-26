@@ -1068,9 +1068,11 @@ class TestLeMenu(unittest.TestCase):
         src = open("script/todo/todo.py", encoding="utf-8").read()
         i_qemu = src.index('"QEMU/KVM - Deploy an Ubuntu VM (libvirt)"')
         i_pve = src.index('"Proxmox VE - Deploy a VM on a remote host"')
+        i_tofu = src.index('"OpenTofu - Deploy a fleet from a spec"')
         i_ntfy = src.index('"Deploy - Install NTFY notification server"')
         self.assertLess(i_qemu, i_pve)
-        self.assertLess(i_pve, i_ntfy)
+        self.assertLess(i_pve, i_tofu)
+        self.assertLess(i_tofu, i_ntfy)
 
     def test_the_dispatch_follows_the_list(self):
         src = open("script/todo/todo.py", encoding="utf-8").read()
@@ -1079,7 +1081,11 @@ class TestLeMenu(unittest.TestCase):
             src,
         )
         self.assertIn(
-            'elif status == "8":\n                self._deploy_ntfy_server()',
+            'elif status == "8":\n                self.prompt_execute_opentofu()',
+            src,
+        )
+        self.assertIn(
+            'elif status == "9":\n                self._deploy_ntfy_server()',
             src,
         )
 

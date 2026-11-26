@@ -31,6 +31,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Ajouté
 <!-- [en] -->
 
+- `TODO › Execute › Deploy › OpenTofu` deploys a fleet of VMs on a Proxmox VE host from a JSON spec in `private/opentofu/<fleet>/spec.json`: a menu and a Textual form to create, plan, apply and destroy it, behind an engine interface that OpenTofu implements. The spec's empty fields are resolved on the host and written back, the token and the state passphrase live in a 0600 `secrets.json`, and the state and plans are encrypted. See `script/opentofu/README.md`; `long_test/opentofu_proxmox.py` checks it end to end on a disposable Proxmox VE
 - `DECK_PLUGINS_OFF` in `streamdeck.conf` and TODO › ERPLibre Home › Plugins on/off turn deck plugins off, those of the deck program and those of `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` in `streamdeck.conf` (0.5 to 60 seconds, 1 by default) sets how often the session pages refresh; TODO › ERPLibre Home › Session refresh edits it
 - A cellular gateway on a USB modem, reachable from **Mobile gateway** in Odoo: it relays the SMS
@@ -245,6 +246,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- `TODO › Exécution › Déploiement › OpenTofu` déploie un parc de VM sur un hôte Proxmox VE depuis une spec JSON dans `private/opentofu/<parc>/spec.json` : un menu et un formulaire Textual pour la créer, la planifier, l'appliquer et la détruire, derrière une interface de moteur qu'OpenTofu implémente. Les champs vides de la spec sont résolus sur l'hôte puis réécrits, le jeton et la phrase d'état vivent dans un `secrets.json` en 0600, et l'état comme les plans sont chiffrés. Voir `script/opentofu/README.fr.md` ; `long_test/opentofu_proxmox.py` le vérifie de bout en bout sur un Proxmox VE jetable
 - `DECK_PLUGINS_OFF` dans `streamdeck.conf` et TODO › ERPLibre Home › Plugins on/off coupent des plugins du deck, ceux du programme du deck et ceux de `$XDG_CONFIG_HOME/erplibre-home/deck-plugins/`
 - `DECK_SESSION_REFRESH_SEC` dans `streamdeck.conf` (0,5 à 60 secondes, 1 par défaut) règle la fréquence de rafraîchissement des pages de session ; TODO › ERPLibre Home › Rafraîchissement le modifie
 - Une passerelle cellulaire sur un modem USB, accessible depuis **Passerelle mobile** dans Odoo :
