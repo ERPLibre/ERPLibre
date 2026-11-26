@@ -26218,6 +26218,34 @@ TRANSLATIONS = {
         "en": "USB passthrough, emulated deck: run it",
     },
     # OpenTofu
+    "root@ or sudo NOPASSWD required": {
+        "fr": "root@ ou sudo NOPASSWD requis",
+        "en": "root@ or sudo NOPASSWD required",
+    },
+    "Token creation output has no secret value.": {
+        "fr": "La sortie de création du jeton ne contient pas de secret.",
+        "en": "Token creation output has no secret value.",
+    },
+    "Unreadable JSON from: {cmd}": {
+        "fr": "JSON illisible pour : {cmd}",
+        "en": "Unreadable JSON from: {cmd}",
+    },
+    "Host command failed (exit {code}): {cmd}": {
+        "fr": "Commande d'hôte en échec (code {code}) : {cmd}",
+        "en": "Host command failed (exit {code}): {cmd}",
+    },
+    "Host already prepared.": {
+        "fr": "Hôte déjà préparé.",
+        "en": "Host already prepared.",
+    },
+    "Token {parc} exists on the host but its secret is not stored here; Proxmox shows it only at creation. Recreate the token.": {
+        "fr": "Le jeton {parc} existe sur l'hôte mais son secret n'est pas stocké ici ; Proxmox ne le montre qu'à la création. Recréer le jeton.",
+        "en": "Token {parc} exists on the host but its secret is not stored here; Proxmox shows it only at creation. Recreate the token.",
+    },
+    "Host prepared.": {
+        "fr": "Hôte préparé.",
+        "en": "Host prepared.",
+    },
     "+ create {vm} ({ressource})": {
         "fr": "+ créer {vm} ({ressource})",
         "en": "+ create {vm} ({ressource})",
