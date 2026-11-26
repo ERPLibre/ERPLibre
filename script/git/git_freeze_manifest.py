@@ -561,6 +561,19 @@ def plan_freeze(definitions, inspect=inspect_clone, workers=8, ecrits=None):
     return par_fichier, refus, sales
 
 
+# Une surcouche de forge (script/git/forge_manifest.py) redirige des
+# remotes vers une forge qui ne porte que les dépôts qu'on y a poussés, pas
+# les amonts des forks : la base amont se calcule sans elle.
+FORGE_OVERLAY = re.compile(r"(?:^|/)git_manifest_forge_[^/]+\.xml$")
+
+
+def sans_surcouches(sources):
+    """`sources` sans les surcouches de forge."""
+    return [
+        s for s in sources if not FORGE_OVERLAY.search(s.replace(os.sep, "/"))
+    ]
+
+
 def read_remotes(sources):
     """{nom: fetch} des `<remote>` de tous les fichiers.
 
@@ -963,7 +976,10 @@ def main(argv=None):
     bases, constats = {}, None
     if config.upstream:
         bases, constats = plan_upstream(
-            definitions, par_fichier, read_remotes(lus), revisions=revisions
+            definitions,
+            par_fichier,
+            read_remotes(sans_surcouches(lus)),
+            revisions=revisions,
         )
     changes = write_sources(
         par_fichier,
