@@ -176,6 +176,7 @@ from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.git_fork_menu import GitForkMenuMixin
+from script.todo.git_worktree_menu import GitWorktreeMenuMixin
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.install_update_menu import InstallUpdateMenuMixin
 from script.todo.kdbx_manager import KdbxManager
@@ -288,6 +289,7 @@ class TODO(
     ContainerMenuMixin,
     GitRepoMenuMixin,
     GitForkMenuMixin,
+    GitWorktreeMenuMixin,
     InstallUpdateMenuMixin,
     ModuleMenuMixin,
     SealMenuMixin,
@@ -4262,6 +4264,33 @@ class TODO(
                     "🧹 Clean the merged branches of a repository"
                 ),
                 "method": "_git_nettoyer_branches",
+            },
+            {"section": t("Worktrees")},
+            {
+                "prompt_description": t(
+                    "🗂  List the worktrees with their path"
+                ),
+                "method": "_git_worktree_lister",
+            },
+            {
+                "prompt_description": t("➕ Create a worktree on a branch"),
+                "method": "_git_worktree_creer",
+            },
+            {
+                "prompt_description": t("🗑  Delete a worktree"),
+                "method": "_git_worktree_supprimer",
+            },
+            {
+                "prompt_description": t(
+                    "🧽 Forget the worktrees whose directory is gone"
+                ),
+                "method": "_git_worktree_nettoyer",
+            },
+            {
+                "prompt_description": t(
+                    "📍 Find the worktree that holds a branch"
+                ),
+                "method": "_git_worktree_branche",
             },
             {"section": t("Pull requests")},
             {
