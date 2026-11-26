@@ -203,7 +203,7 @@ from script.todo.system_menu import SystemMenuMixin
 from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
-from script.todo.version_manager import get_odoo_version
+from script.todo.version_manager import get_odoo_version, odoo_tree_layout
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -1074,11 +1074,15 @@ class TODO(
         """Les versions de `installed_versions` (« odoo18.0 ») dont les
         sources sont encore sur disque. La liste installée n'est qu'un
         fichier : une version retirée à la main y reste, et la proposer à
-        la mise à jour ne mènerait à rien."""
+        la mise à jour ne mènerait à rien. Le lanceur cherché suit
+        `odoo_tree_layout` : openerp-server jusqu'à 9.0, odoo-bin
+        ensuite."""
         return [
             version
             for version in installed_versions
-            if os.path.isfile(os.path.join(version, "odoo", "odoo-bin"))
+            if os.path.isfile(
+                odoo_tree_layout(os.path.join(version, "odoo"))[0]
+            )
         ]
 
     def _choisir_maj_ou_installation(self, presentes):

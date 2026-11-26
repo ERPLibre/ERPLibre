@@ -227,6 +227,20 @@ class TestMiseAJourOuInstallation(Banc):
                 ["odoo18.0"],
             )
 
+    def test_odoo_8_and_9_count_through_openerp_server(self):
+        with tempfile.TemporaryDirectory() as racine:
+            for dossier in ("odoo9.0/odoo/openerp", "odoo8.0/odoo/openerp"):
+                os.makedirs(os.path.join(racine, dossier))
+            Path(racine, "odoo9.0/odoo/openerp-server").touch()
+            # Un odoo-bin n'a pas de sens dans un arbre openerp.
+            Path(racine, "odoo8.0/odoo/odoo-bin").touch()
+            avant = os.getcwd()
+            os.chdir(racine)
+            self.addCleanup(os.chdir, avant)
+            self.assertEqual(
+                PRESENTES_REELLE(["odoo8.0", "odoo9.0"]), ["odoo9.0"]
+            )
+
 
 class TestOrdreDesQuestions(Banc):
     def test_the_choice_comes_before_the_system_question(self):
