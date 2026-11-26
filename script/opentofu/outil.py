@@ -32,6 +32,7 @@ _BASE = "https://github.com/opentofu/opentofu/releases/download/v{version}/"
 _ARCHS = {"x86_64": "amd64", "aarch64": "arm64"}
 _RE_PLANCHER = re.compile(r"^\s*>=\s*(\d+(?:\.\d+){0,2})\s*$")
 _RE_VERSION = re.compile(r"^(\d+(?:\.\d+){0,2})(-.+)?$")
+_STATUTS_REFUSES = {"EXPKEYSIG", "REVKEYSIG", "EXPSIG", "BADSIG"}
 _RE_FPR = re.compile(r"^fpr:(?:[^:]*:){8}([0-9A-Fa-f]+):", re.MULTILINE)
 
 
@@ -163,15 +164,19 @@ def verifier_signature(sommes, signature, cle, empreinte, gpg="gpg"):
         )
         if verif.returncode != 0:
             return False
+        valide = False
         for ligne in verif.stdout.splitlines():
             champs = ligne.split()
-            if (
-                champs[:2] == ["[GNUPG:]", "VALIDSIG"]
-                and len(champs) > 2
-                and _normaliser(champs[2]) == voulue
-            ):
-                return True
-        return False
+            if champs[:1] != ["[GNUPG:]"] or len(champs) < 2:
+                continue
+            if champs[1] in _STATUTS_REFUSES:
+                return False
+            if champs[1] == "VALIDSIG" and len(champs) > 2:
+                candidats = {_normaliser(champs[2])}
+                if len(champs) >= 11:
+                    candidats.add(_normaliser(champs[-1]))
+                valide = valide or voulue in candidats
+        return valide
     except (OSError, subprocess.SubprocessError):
         return False
     finally:
@@ -258,20 +263,24 @@ def installer_zip(conf, dest=None, telecharger=None, gpg="gpg"):
                 1,
             )
         extrait = Path(temp) / "tofu"
-        os.chmod(extrait, 0o755)
         dest.mkdir(parents=True, exist_ok=True)
         cible = dest / "tofu"
-        shutil.move(str(extrait), str(cible))
-        trouvee = version_tofu(str(cible))
-        if trouvee != version:
-            cible.unlink(missing_ok=True)
-            return Resultat(
-                False,
-                t(
-                    "Installed tofu reports {trouvee}, expected {attendue}."
-                ).format(trouvee=trouvee or "?", attendue=version),
-                1,
-            )
+        stage = dest / ".tofu.new"
+        try:
+            shutil.copyfile(extrait, stage)
+            os.chmod(stage, 0o755)
+            trouvee = version_tofu(str(stage))
+            if trouvee != version:
+                return Resultat(
+                    False,
+                    t(
+                        "Installed tofu reports {trouvee}, expected {attendue}."
+                    ).format(trouvee=trouvee or "?", attendue=version),
+                    1,
+                )
+            os.replace(stage, cible)
+        finally:
+            stage.unlink(missing_ok=True)
         return Resultat(
             True,
             t("tofu {version} installed in {dest}.").format(

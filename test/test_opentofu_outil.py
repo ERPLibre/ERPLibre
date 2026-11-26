@@ -115,12 +115,13 @@ class _Base(unittest.TestCase):
         }
         self.pris = []
 
-    def gpg(self, valide=True, cle=EMPREINTE):
-        verify = (
-            f'echo "[GNUPG:] VALIDSIG {EMPREINTE} 2026-01-01 1 0 4 0 1 10 00 "'
-            if valide
-            else "true"
-        )
+    def gpg(self, valide=True, cle=EMPREINTE, verify=None):
+        if verify is None:
+            verify = (
+                f'echo "[GNUPG:] VALIDSIG {EMPREINTE} 2026-01-01 1 0 4 0 1 10 "'
+                if valide
+                else "true"
+            )
         chemin = self.tmp / "faux_gpg"
         chemin.write_text(FAUX_GPG.format(cle=cle, verify=verify))
         chemin.chmod(0o755)
@@ -235,6 +236,95 @@ class TestInstaller(_Base):
         )
         apres = set(os.listdir(tempfile.gettempdir()))
         self.assertEqual(apres - avant, set())
+
+
+class TestDurcissement(_Base):
+    def installer(self, **kw):
+        return outil.installer_zip(
+            self.conf,
+            dest=self.dest,
+            telecharger=kw.pop("telecharger", None) or self.telecharger(),
+            gpg=kw.pop("gpg", None) or self.gpg(),
+        )
+
+    def ancien(self):
+        self.dest.mkdir()
+        (self.dest / "tofu").write_bytes(b"ancien")
+        return self.dest / "tofu"
+
+    def test_version_differente_garde_l_ancien(self):
+        ancien = self.ancien()
+        self.conf["version"] = "1.0.0"
+        noms = outil.noms_assets("1.0.0", outil.arch_tofu() or "amd64")
+        sommes = f"{self.somme}  {noms['zip']}\n".encode()
+        res = self.installer(telecharger=self.telecharger(sommes=sommes))
+        self.assertFalse(res.ok)
+        self.assertEqual(ancien.read_bytes(), b"ancien")
+        self.assertEqual(os.listdir(self.dest), ["tofu"])
+
+    def test_copie_en_echec_garde_l_ancien(self):
+        ancien = self.ancien()
+        with mock.patch.object(
+            outil.shutil, "copyfile", side_effect=OSError("plein")
+        ):
+            res = self.installer()
+        self.assertFalse(res.ok)
+        self.assertEqual(ancien.read_bytes(), b"ancien")
+        self.assertEqual(os.listdir(self.dest), ["tofu"])
+
+    def test_remplace_l_ancien_quand_tout_est_bon(self):
+        ancien = self.ancien()
+        self.assertTrue(self.installer().ok)
+        self.assertNotEqual(ancien.read_bytes(), b"ancien")
+        self.assertEqual(os.listdir(self.dest), ["tofu"])
+
+    def valid(self, ligne):
+        return self.gpg(verify=f"echo '{ligne}'")
+
+    def test_empreinte_primaire_en_dernier_champ(self):
+        autre = "F" * 40
+        champs = f"[GNUPG:] VALIDSIG {autre} d 1 0 4 0 1 10 00 {EMPREINTE}"
+        self.assertTrue(self.installer(gpg=self.valid(champs)).ok)
+
+    def test_empreinte_signataire_en_deuxieme_champ(self):
+        autre = "F" * 40
+        champs = f"[GNUPG:] VALIDSIG {EMPREINTE} d 1 0 4 0 1 10 00 {autre}"
+        self.assertTrue(self.installer(gpg=self.valid(champs)).ok)
+
+    def test_autre_cle_refusee(self):
+        autre = "F" * 40
+        champs = f"[GNUPG:] VALIDSIG {autre} d 1 0 4 0 1 10 00 {autre}"
+        self.assertFalse(self.installer(gpg=self.valid(champs)).ok)
+
+    def test_statuts_refuses_malgre_validsig(self):
+        for statut in ("EXPKEYSIG", "REVKEYSIG", "EXPSIG", "BADSIG"):
+            verify = (
+                f"echo '[GNUPG:] {statut} AB name'; "
+                f"echo '[GNUPG:] VALIDSIG {EMPREINTE} d 1 0 4 0 1 10 00 x'"
+            )
+            with self.subTest(statut=statut):
+                res = self.installer(gpg=self.gpg(verify=verify))
+                self.assertFalse(res.ok)
+                self.assertFalse((self.dest / "tofu").exists())
+
+    def zip_avec(self, nom):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr(nom, FAUX_TOFU.format(version=VERSION))
+        contenu = buf.getvalue()
+        somme = hashlib.sha256(contenu).hexdigest()
+        sommes = f"{somme}  {self.noms['zip']}\n".encode()
+        return self.telecharger(zip_=contenu, sommes=sommes)
+
+    def test_tofu_seulement_en_sous_dossier(self):
+        res = self.installer(telecharger=self.zip_avec("sous/tofu"))
+        self.assertFalse(res.ok)
+        self.assertFalse(self.dest.exists() and os.listdir(self.dest))
+
+    def test_aucun_membre_tofu(self):
+        res = self.installer(telecharger=self.zip_avec("LICENSE"))
+        self.assertFalse(res.ok)
+        self.assertFalse(self.dest.exists() and os.listdir(self.dest))
 
 
 class TestTrouver(unittest.TestCase):
