@@ -982,7 +982,7 @@ class TODO(
 
         if selection == ["0"]:
             return
-        if odoo_version_input == "s":
+        if selection == ["s"]:
             self._erplibre_home_choose_install()
             return
 

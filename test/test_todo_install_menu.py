@@ -180,7 +180,7 @@ class TestMiseAJourOuInstallation(Banc):
     def test_installation_goes_on_with_the_version_menu(self):
         questions, commandes, maj = self.jouer_installe(["2", "0"])
         self.assertEqual(len(questions), 2)
-        self.assertIn(todo_module.t("Choose a version:"), questions[1])
+        self.assertIn(todo_module.t("Choose one or more versions:"), questions[1])
         maj.assert_not_called()
 
     def test_zero_quits_without_anything(self):
@@ -807,7 +807,7 @@ class TestInstallCli(unittest.TestCase):
         )
         self.assertEqual(code, 0)
         self.assertEqual(len(questions), 5)
-        version = todo_module.t("Choose a version:")
+        version = todo_module.t("Choose one or more versions:")
         self.assertFalse(any(version in q for q in questions))
 
 

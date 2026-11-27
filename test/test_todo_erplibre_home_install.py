@@ -188,9 +188,9 @@ class TestInstallationLocale(unittest.TestCase):
         def repondre(question=""):
             # Un « s » refusé repose la question : « 0 » y met fin.
             questions.append(question)
-            if "Choose a version:" not in question:
+            if "Choose one or more versions:" not in question:
                 return "n"
-            deja = sum("Choose a version:" in q for q in questions)
+            deja = sum("Choose one or more versions:" in q for q in questions)
             return "s" if deja == 1 else "0"
 
         absent = mock.Mock(returncode=1)
@@ -213,7 +213,7 @@ class TestInstallationLocale(unittest.TestCase):
         ):
             todo.prompt_install()
         entree.assert_called_once_with()
-        choix = [q for q in questions if "Choose a version:" in q]
+        choix = [q for q in questions if "Choose one or more versions:" in q]
         self.assertEqual(len(choix), 1)
         self.assertIn(
             "s: ERPLibre Home with the GNOME extension and the Stream Deck",
