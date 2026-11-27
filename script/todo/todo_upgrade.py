@@ -37,6 +37,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.database import pg_connexion, pg_state
 from script.execute import execute
 from script.git.git_tool import GitTool
 from script.git.manifest_freeze import manifest_branch
@@ -174,6 +175,20 @@ class MigrationRewind(Exception):
 # nom, et le second écraserait le premier sans rien dire.
 SUFFIXE_MAX = len("_neutralize_upgrade_18")
 NOM_BASE_MAX = 63 - SUFFIXE_MAX
+
+# Le correctif d'une base Odoo 17 ou plus passée de PostgreSQL 17 à 18, et
+# ce qui le réclame dans la sortie de la mise à jour du module mail.
+FIX_PG18_DISCUSS_CHANNEL = os.path.join(
+    "script",
+    "postgresql",
+    "migration",
+    "fix_postgresql_18_discuss_channel_type_not_null.sql",
+)
+CONTRAINTE_PG18 = "discuss_channel_channel_type_not_null"
+SIGNATURES_PG18_DISCUSS_CHANNEL = (
+    'relation "discuss_channel" does not exist',
+    "discuss_channel_member_channel_id_fkey",
+)
 
 
 def database_name_from_file(chemin, defaut="test", limite=NOM_BASE_MAX):
@@ -1519,6 +1534,9 @@ class TodoUpgrade:
                 f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{next_version * 10}-{(next_version + 1) * 10}.html"
             )
 
+        if not self.verifier_postgresql(end_version):
+            return
+
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         msg = "0 - Inspect zip"
         self.print_step(msg)
@@ -1750,19 +1768,16 @@ class TodoUpgrade:
 
         print(f"✅ -> {t('Neutralize the database')}")
         if do_neutralize:
+            # Une base passée de PostgreSQL 17 à 18 peut échouer ici sur le
+            # module mail : la neutralisation la répare et se relance seule
+            # (reparer_not_null_postgresql_18).
             status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
                 single_source_odoo=True,
+                on_error=lambda sortie: self.reparer_not_null_postgresql_18(
+                    database_name, sortie
+                ),
             )
-
-            # TODO exécuter next line si status != 0 et log contient
-            # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
-            # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
-            # source ./.venv.odoo18.0_python3.12.10/bin/activate && cat script/postgresql/migration/fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py | ./odoo18.0/odoo/odoo-bin shell -d riplop_stage_prod_17_nov_2025
-            # psycopg2.errors.ForeignKeyViolation: insert or update on table "discuss_channel_member" violates foreign key constraint "discuss_channel_member_channel_id_fkey"
-            # DÉTAIL : Key (channel_id)=(20) is not present in table "discuss_channel".
-            # ./script/database/migrate/process_backup_file.py --path_backup_zip image_db/db.zip --path_output_zip image_db/dbFIX.zip --word_to_delete discuss_channel_channel_type_not_null
-            # Puis faire un retry de la commande, sinon rien
 
             # Only record the step when it actually succeeded. The previous
             # unconditional assignment made the test below dead code: a failed
@@ -2567,9 +2582,12 @@ class TodoUpgrade:
                         f" -d {database_name_upgrade}"
                     )
                 if file_path_fix_migration:
-                    status, cmd_executed = self.todo_upgrade_execute(
+                    # La sortie est lue : un serveur qui ne charge pas
+                    # plpgsql.so y est reconnu et signalé avant l'invite.
+                    status, cmd_executed, _sortie = self.todo_upgrade_execute(
                         cmd_fix_migration,
                         single_source_odoo=True,
+                        get_output=True,
                     )
 
                     # A fix that did not run must not be recorded as applied,
@@ -4239,6 +4257,76 @@ class TodoUpgrade:
         )
         return erplibre_version
 
+    def reparer_not_null_postgresql_18(self, database_name, sortie):
+        """Répare la base `database_name` quand `sortie`, celle d'une
+        commande en échec, porte la signature du NOT NULL de
+        discuss_channel que PostgreSQL 18 enregistre comme contrainte
+        nommée (voir FIX_PG18_DISCUSS_CHANNEL) et que la base porte bien
+        cette contrainte. Rend True quand le correctif l'a retirée : la
+        commande peut être relancée."""
+        if not any(
+            signature in ligne
+            for ligne in sortie or ()
+            for signature in SIGNATURES_PG18_DISCUSS_CHANNEL
+        ):
+            return False
+        # Le correctif est idempotent et passe même sans rien changer :
+        # relancer n'a de sens que si la contrainte est là.
+        _status, _cmd, presente = self.todo_upgrade_execute(
+            f'psql -X -w -At -d {database_name} -c "SELECT count(*)'
+            f" FROM pg_constraint WHERE conname = '{CONTRAINTE_PG18}'\"",
+            get_output=True,
+            quiet=True,
+            wait_at_error=False,
+        )
+        if "1" not in [ligne.strip() for ligne in presente or ()]:
+            return False
+        print(
+            f"🔧 {t('PostgreSQL 18 NOT NULL constraint on discuss_channel: removing it, then retrying.')}"
+        )
+        status, _cmd = self.todo_upgrade_execute(
+            f"psql -v ON_ERROR_STOP=1 -d {database_name}"
+            f" -f ./{FIX_PG18_DISCUSS_CHANNEL}",
+            wait_at_error=False,
+        )
+        return not status
+
+    def verifier_postgresql(self, cible):
+        """Vérifie le serveur que la migration va utiliser (pg_state) :
+        rend False et dit pourquoi quand un saut vers Odoo `cible`
+        échouerait sans que la base y soit pour rien. Appelée à chaque
+        début et à chaque reprise, puisqu'une mise à jour du paquet peut
+        tomber entre deux. Le serveur du système se redémarre par sudo :
+        la commande est donnée, pas lancée."""
+        # La connexion d'Odoo, celle de config.conf, et non celle
+        # qu'auraient les valeurs par défaut de libpq.
+        defauts = pg_state.verifier(
+            pg_connexion.environnement(),
+            version_dump=pg_state.version_du_dump(self.file_path),
+            cible=cible,
+        )
+        etiquettes = {
+            pg_state.DECALAGE: (t("running version"), t("installed version")),
+            pg_state.DUMP_PLUS_RECENT: (
+                t("backup version"),
+                t("server version"),
+            ),
+            pg_state.TROP_ANCIEN_ODOO_20: (t("server version"),),
+        }
+        for gravite, cle, valeurs in defauts:
+            marque = "❌" if gravite == pg_state.ARRET else "⚠️"
+            detail = ", ".join(
+                f"{nom} {valeur}"
+                for nom, valeur in zip(etiquettes.get(cle, ()), valeurs)
+            )
+            print(f"{marque} {t(cle)}" + (f" ({detail})" if detail else ""))
+            if cle == pg_state.DECALAGE:
+                print(f"   $ {pg_state.COMMANDE_REDEMARRER}")
+        if any(gravite == pg_state.ARRET for gravite, _, _ in defauts):
+            print(f"ℹ {t('Rerun the migration once fixed: it resumes here.')}")
+            return False
+        return True
+
     def todo_upgrade_execute(
         self,
         cmd,
@@ -4249,11 +4337,23 @@ class TodoUpgrade:
         output_is_json=False,
         wait_at_error=True,
         attempt=1,
+        on_error=None,
     ):
+        """Lance `cmd` et, quand elle échoue, propose de la refaire.
+
+        `on_error`, s'il est donné, reçoit les lignes de sortie d'un échec
+        avant toute invite : il dit ce qu'il a reconnu et rend True quand
+        il a réparé, et la commande est alors relancée d'office, dans la
+        limite de MAX_ERROR_RETRY. La sortie est donc lue dès qu'il y a un
+        `on_error`, même sans `get_output`. Quand la sortie est lue et
+        montre un serveur
+        PostgreSQL qui ne charge pas ses bibliothèques, le message nomme le
+        remède avant l'invite : redémarrer le serveur, pas toucher la
+        base."""
         if output_is_json and not get_output:
             get_output = True
         output = None
-        if get_output:
+        if get_output or on_error:
             status, cmd_executed, output = self.execute.exec_command_live(
                 cmd,
                 source_erplibre=False,
@@ -4274,6 +4374,34 @@ class TodoUpgrade:
         self.lst_command_executed.append(cmd_executed)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
+        if (
+            (status is None or status)
+            and output is not None
+            and pg_state.bibliotheque_en_cause(output)
+        ):
+            print(
+                f"🛑 {t('PostgreSQL cannot load one of its libraries: the running server is older than its package. Restart it, then redo the command.')}"
+            )
+            print(f"   $ {pg_state.COMMANDE_REDEMARRER}")
+        if (
+            (status is None or status)
+            and on_error
+            and output is not None
+            and attempt < self.MAX_ERROR_RETRY
+            and on_error(output)
+        ):
+            self.record_event("command", cmd, status if status else 1)
+            return self.todo_upgrade_execute(
+                cmd,
+                single_source_odoo=single_source_odoo,
+                new_env=new_env,
+                quiet=quiet,
+                get_output=get_output,
+                output_is_json=output_is_json,
+                wait_at_error=wait_at_error,
+                attempt=attempt + 1,
+                on_error=on_error,
+            )
         # None means « the command never reported a status » -> treat it as a
         # failure, never as a success (defence in depth: exec_command_live now
         # always sets one, but a silent None must not skip this prompt).
@@ -4315,6 +4443,7 @@ class TodoUpgrade:
                         output_is_json=output_is_json,
                         wait_at_error=wait_at_error,
                         attempt=attempt + 1,
+                        on_error=on_error,
                     )
 
         if get_output:

@@ -105,12 +105,13 @@ class TestTheEntryPointUsesIt(unittest.TestCase):
         )
 
     def test_the_order_matches_what_db_restore_checks(self):
-        # `db_restore.py` lit ./config.conf puis /etc/odoo/odoo.conf pour
-        # décider s'il faut un mot de passe maître. Si Odoo en lisait un
-        # autre, cette vérification ne vérifierait rien.
+        # `pg_connexion.py` choisit ./config.conf puis /etc/odoo/odoo.conf
+        # pour db_restore, qui y décide s'il faut un mot de passe maître,
+        # et pour psql. Si Odoo en lisait un autre, cette vérification ne
+        # vérifierait rien.
         lib = self.source(os.path.join("script", "lib_odoo_rc.sh"))
         restore = self.source(
-            os.path.join("script", "database", "db_restore.py")
+            os.path.join("script", "database", "pg_connexion.py")
         )
         for candidat in ("config.conf", "/etc/odoo/odoo.conf"):
             self.assertIn(candidat, lib, candidat)

@@ -34,7 +34,6 @@ propriétaire, elle renverrait un ensemble vide, et l'analyse concluerait
 « aucune colonne website, donc aucune vue COW » sans le moindre avertissement.
 """
 
-import configparser
 import json
 import os
 import re
@@ -46,6 +45,8 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.database import pg_connexion  # noqa: E402
+
 try:
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
@@ -55,10 +56,6 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 
 REPO_ROOT = new_path
-
-# Une valeur littérale « False » dans config.conf veut dire « non défini » :
-# c'est ainsi qu'Odoo écrit l'absence de valeur dans son fichier de config.
-CONFIG_UNSET = ("false", "none", "")
 
 # Un nom de base voyage jusqu'à une commande shell (`odoo_bin.sh shell -d …`,
 # lancée avec shell=True par execute.py). On le valide au lieu de compter sur
@@ -117,68 +114,25 @@ def valid_database_name(name):
 
 
 def read_config(config_path=None):
-    """Lire config.conf, en repliant sur /etc/odoo/odoo.conf comme run.sh.
-
-    Renvoie un dict des options, vide si aucun fichier n'est trouvé — l'absence
-    de config n'est pas une erreur : sur une installation native, psql se
-    connecte très bien par le socket unix sans aucun paramètre.
-    """
-    lst_candidate = (
-        [config_path]
-        if config_path
-        else [
-            os.path.join(REPO_ROOT, "config.conf"),
-            "/etc/odoo/odoo.conf",
-        ]
+    """Les options de config.conf en dict, vide si aucun fichier n'est
+    trouvé : `config_path`, sinon le fichier qu'Odoo lirait depuis la
+    racine du dépôt (pg_connexion.chemin_config)."""
+    return pg_connexion.options(
+        config_path or pg_connexion.chemin_config(REPO_ROOT)
     )
-    for path in lst_candidate:
-        if path and os.path.isfile(path):
-            parser = configparser.RawConfigParser()
-            try:
-                parser.read(path)
-            except configparser.Error:
-                continue
-            if parser.has_section("options"):
-                return dict(parser.items("options"))
-    return {}
 
 
 def pg_env(config_path=None, timeout=120, overrides=None):
-    """Variables d'environnement pour psql : connexion + lecture seule.
-
-    Les paramètres viennent de config.conf, pas d'une hypothèse « socket unix
-    et rôle = utilisateur système » : le dépôt lui-même livre
-    ``db_user = erplibre`` et un docker-compose.yml avec un mot de passe.
-
-    ``PGOPTIONS`` est ce qui rend l'analyse incapable d'écrire, et borne la
-    durée d'une requête — un scan qui part en vrille ne bloque pas un menu.
-    """
-    config = read_config(config_path)
-    my_env = os.environ.copy()
-
-    dct_map = {
-        "db_host": "PGHOST",
-        "db_port": "PGPORT",
-        "db_user": "PGUSER",
-        "db_password": "PGPASSWORD",
-        "db_sslmode": "PGSSLMODE",
-    }
-    for key, var in dct_map.items():
-        value = str(config.get(key, "")).strip()
-        if value.lower() not in CONFIG_UNSET:
-            my_env[var] = value
-    for var, value in (overrides or {}).items():
-        if value:
-            my_env[var] = str(value)
-
-    my_env["PGOPTIONS"] = (
-        f"-c default_transaction_read_only=on -c statement_timeout={timeout}s"
+    """Variables d'environnement pour psql : la connexion d'Odoo, en
+    lecture seule, chaque requête bornée à `timeout` secondes ;
+    `overrides` l'emporte sur la configuration. Voir
+    pg_connexion.environnement."""
+    return pg_connexion.environnement(
+        config_path or None,
+        racine=REPO_ROOT,
+        delai_requete=timeout,
+        surcharges=overrides,
     )
-    # Un ~/.psqlrc avec \timing ou \pset ajoute des lignes à la sortie et casse
-    # le parsing. -X l'ignore, mais PSQLRC vide protège aussi les appels qui
-    # oublieraient -X.
-    my_env["PSQLRC"] = ""
-    return my_env
 
 
 def run_psql(database, sql, timeout=120, config_path=None, overrides=None):

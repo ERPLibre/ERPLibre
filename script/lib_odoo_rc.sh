@@ -18,8 +18,9 @@
 # Poser ODOO_RC ne retire donc rien à personne : un « -c » explicite
 # l'emporte toujours, et un ODOO_RC déjà posé n'est pas écrasé.
 #
-# L'ordre des candidats est celui de db_restore.py, pour que la
-# vérification qu'il fait porte sur le fichier qu'Odoo lira vraiment.
+# L'ordre des candidats est celui de script/database/pg_connexion.py, pour
+# que la vérification de db_restore.py et les requêtes psql portent sur le
+# fichier qu'Odoo lira vraiment.
 
 odoo_rc_resolve() {
     if [[ -n "${ODOO_RC:-}" ]]; then

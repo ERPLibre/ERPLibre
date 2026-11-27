@@ -27,6 +27,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
+from script.database import pg_connexion  # noqa: E402
 from script.execute.execute import redact_secrets
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
@@ -194,79 +195,21 @@ def get_list_db_cache(arg_base):
     return lst_db, lst_db_cache
 
 
-def chemin_config():
-    """Le fichier de configuration qu'« odoo_bin.sh » fait lire à Odoo.
-
-    Même ordre que « odoo_rc_resolve » (« script/lib_odoo_rc.sh ») : un
-    « ODOO_RC » posé l'emporte, puis « ./config.conf », puis
-    « /etc/odoo/odoo.conf ». None quand aucun n'existe.
-    """
-    if os.environ.get("ODOO_RC"):
-        candidats = [os.environ["ODOO_RC"]]
-    else:
-        candidats = ["./config.conf", "/etc/odoo/odoo.conf"]
-    for candidat in candidats:
-        if os.path.isfile(candidat):
-            return candidat
-    return None
-
+# La configuration d'Odoo et la connexion qui en découle vivent dans
+# pg_connexion, que lib_analyse partage ; ces noms restent ceux du module.
+chemin_config = pg_connexion.chemin_config
 
 # Délais de « interroger », en secondes : la connexion, puis la requête.
 # Le sous-processus a les deux, plus une marge, avant d'être abandonné.
-PSQL_DELAI_CONNEXION = 10
-PSQL_DELAI = 60
+PSQL_DELAI_CONNEXION = pg_connexion.DELAI_CONNEXION
+PSQL_DELAI = pg_connexion.DELAI_REQUETE
 
 
 def environnement_pg(database):
-    """L'environnement qui connecte « psql » à `database` comme Odoo.
-
-    Reprend « exec_pg_environ » d'Odoo : « db_host », « db_port »,
-    « db_user » et « db_password » de la configuration deviennent
-    PGHOST, PGPORT, PGUSER et PGPASSWORD quand ils portent une valeur —
-    Odoo écrit « False » pour une option laissée vide. Sans eux, « psql »
-    prend les valeurs par défaut de libpq : un autre serveur, ou un autre
-    rôle, que celui où Odoo vient de restaurer.
-
-    « db_sslmode » devient PGSSLMODE : la connexion d'Odoo le suit, et un
-    serveur qui exige « verify-full » serait sinon joint sans contrôle de
-    son certificat.
-
-    La base passe par PGDATABASE et non par « -d » : libpq lit un « -d »
-    qui contient « = » comme une chaîne de connexion entière, alors que
-    PGDATABASE reste un nom.
-
-    Les requêtes d'ici ne font que lire : PGOPTIONS ouvre chaque
-    transaction en lecture seule et borne sa durée à PSQL_DELAI secondes,
-    PGCONNECT_TIMEOUT borne la connexion. Un hôte injoignable rend la main
-    au lieu d'attendre le délai TCP du système.
+    """L'environnement qui connecte « psql » à `database` comme Odoo, en
+    lecture seule et borné dans le temps : voir pg_connexion.environnement.
     """
-    env = dict(os.environ)
-    chemin = chemin_config()
-    if chemin:
-        lecteur = configparser.RawConfigParser()
-        try:
-            lecteur.read(chemin)
-        except configparser.Error:
-            lecteur = None
-        for option, variable in (
-            ("db_host", "PGHOST"),
-            ("db_port", "PGPORT"),
-            ("db_user", "PGUSER"),
-            ("db_password", "PGPASSWORD"),
-            ("db_sslmode", "PGSSLMODE"),
-        ):
-            valeur = ""
-            if lecteur is not None:
-                valeur = lecteur.get("options", option, fallback="").strip()
-            if valeur and valeur != "False":
-                env[variable] = valeur
-    env["PGDATABASE"] = database
-    env["PGCONNECT_TIMEOUT"] = str(PSQL_DELAI_CONNEXION)
-    env["PGOPTIONS"] = (
-        "-c default_transaction_read_only=on"
-        f" -c statement_timeout={PSQL_DELAI}s"
-    )
-    return env
+    return pg_connexion.environnement(base=database)
 
 
 def interroger(database, sql, **variables):
