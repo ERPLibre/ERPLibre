@@ -9,10 +9,15 @@ vérifie ici est ce que l'écran MONTRE et dans quel ORDRE, pas son rendu.
 """
 
 import ast
+import importlib.util
+import io
 import os
 import unittest
+from contextlib import redirect_stdout
+from unittest import mock
 
-from script.todo import git_repo_tui
+from script.git import repo_upgrade
+from script.todo import git_repo_tui, todo_i18n
 
 
 def constat(chemin, verdict, **extra):
@@ -136,6 +141,64 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(
             [x["verdict"] for x in app.visibles],
             ["en_conflit", "a_rebaser"],
+        )
+
+
+@unittest.skipUnless(
+    importlib.util.find_spec("textual"), "Textual absent de ce venv"
+)
+class TestEnTete(unittest.IsolatedAsyncioTestCase):
+    """L'en-tête nomme le verdict par son titre traduit.
+
+    Un identifiant interne passé à t() n'est pas une clé du catalogue :
+    « a_rebaser » s'afficherait brut, en français, dans les deux langues.
+    """
+
+    def setUp(self):
+        self.langue = todo_i18n._current_lang
+
+    def tearDown(self):
+        todo_i18n._current_lang = self.langue
+
+    async def en_tete(self, langue):
+        todo_i18n._current_lang = langue
+        data = {"version": "X", "forks": [constat("a/un", "a_rebaser")]}
+        app = git_repo_tui.run_git_repo_tui(data, run_app=False)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            return str(app.query_one("#head").render())
+
+    async def test_le_verdict_est_traduit_dans_les_deux_langues(self):
+        for langue in ("en", "fr"):
+            with self.subTest(langue=langue):
+                texte = await self.en_tete(langue)
+                self.assertNotIn("a_rebaser", texte)
+                self.assertIn(repo_upgrade.titre_verdict("a_rebaser"), texte)
+
+
+class TestRepliSansTextual(unittest.TestCase):
+    """Sans Textual, et l'installation refusée, l'écran rend la main au
+    rapport texte : le diagnostic reste lisible."""
+
+    def test_le_rapport_texte_prend_le_relais(self):
+        from script.todo import git_repo_menu, textual_setup
+
+        menu = mock.Mock(spec=["_git_repo_a_sec"])
+        menu._git_repo_a_sec.return_value = 3
+        with mock.patch.object(
+            textual_setup, "ensure", return_value=False
+        ), mock.patch.object(
+            repo_upgrade,
+            "passe_diagnostic",
+            side_effect=AssertionError("aucune passe sans écran"),
+        ), redirect_stdout(
+            io.StringIO()
+        ) as sortie:
+            rendu = git_repo_menu.GitRepoMenuMixin._git_repo_ecran(menu)
+        self.assertEqual(rendu, 3)
+        menu._git_repo_a_sec.assert_called_once_with()
+        self.assertIn(
+            todo_i18n.t("Falling back to the text report."), sortie.getvalue()
         )
 
 

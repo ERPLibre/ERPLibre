@@ -119,6 +119,9 @@ class TestAgreger(unittest.TestCase):
         res = repo_stats.agreger(lignes)
         self.assertEqual(res["modules_doc"], ["doc_seul"])
         self.assertEqual(res["modules_code"], ["avec_code"])
+        self.assertEqual(
+            res["seaux"], {"i18n": 2, "doc": 1, "code": 1, "autre": 0}
+        )
 
     def test_un_seul_fichier_de_code_suffit(self):
         """Un module sort de « documentation seulement » dès le premier
@@ -627,6 +630,27 @@ class TestCumulerEtRendu(unittest.TestCase):
         texte = repo_upgrade.render_diagnostic(self.lot(), "X", colour=False)
         self.assertIn("d2", texte)
         self.assertIn("dépôt superficiel", texte)
+
+    def test_le_rendu_nomme_un_fork_a_jour(self):
+        """Un fork à jour figure au rapport sous son titre : le taire le
+        confondrait avec un fork que la passe a oublié."""
+        lot = self.lot() + [
+            {
+                "chemin": "odoo/addons/d3",
+                "verdict": "a_jour",
+                "nos": 0,
+                "amont_avance": 0,
+                "conflits": [],
+                "motif": None,
+                "modules_repris": [],
+                "modules_amont_doc": [],
+                "modules_amont_code": [],
+                "stats_amont": {"langages": {}},
+            }
+        ]
+        texte = repo_upgrade.render_diagnostic(lot, "X", colour=False)
+        self.assertIn(f"{repo_upgrade.titre_verdict('a_jour')} (1)", texte)
+        self.assertIn("d3", texte)
 
     def test_le_rendu_dit_ce_qui_a_ete_ecrit(self):
         lot = self.lot()
