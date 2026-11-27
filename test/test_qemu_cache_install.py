@@ -142,21 +142,41 @@ class TestUniteSystemd(unittest.TestCase):
         cls.unite_iptables = cls._generer(nft=False)
 
     @classmethod
+    def _path_sans_nft(cls):
+        """Le PATH courant, chaque répertoire qui porte un nft remplacé par
+        un miroir : des liens vers tout ce qu'il contient, sauf nft.
+
+        Retirer le répertoire entier ne convient pas : sur une distribution
+        où /usr/sbin est fusionné dans /usr/bin, nft vit à côté de sed et
+        de bash, qui partiraient avec lui."""
+        chemins = []
+        for i, d in enumerate(os.environ.get("PATH", "").split(os.pathsep)):
+            if not d or not os.path.exists(os.path.join(d, "nft")):
+                if d:
+                    chemins.append(d)
+                continue
+            # Construit au premier appel, repris aux suivants.
+            miroir = Path(cls.tmp) / f"path-sans-nft-{i}"
+            if not miroir.exists():
+                miroir.mkdir()
+                for nom in os.listdir(d):
+                    if nom != "nft":
+                        (miroir / nom).symlink_to(os.path.join(d, nom))
+            chemins.append(str(miroir))
+        return chemins
+
+    @classmethod
     def _generer(cls, nft):
         """L'unité qu'écrit ecrire_unite, nft présent ou non.
 
         L'installateur choisit nft quand « command -v nft » le trouve, et il
         tourne en root, dont le PATH porte /usr/sbin. Le test, lui, tourne
         sous un compte dont le PATH peut ne pas l'avoir : le choix se fixe
-        donc ici, par un faux nft en tête du PATH, ou par un PATH dont les
-        répertoires qui portent un nft sont retirés."""
+        donc ici, par un faux nft en tête du PATH, ou par un PATH où nft
+        n'existe pas."""
         nom = "nft" if nft else "iptables"
         unit = Path(cls.tmp) / f"erplibre-go-qemu-cache-{nom}.service"
-        chemins = [
-            d
-            for d in os.environ.get("PATH", "").split(os.pathsep)
-            if d and not os.path.exists(os.path.join(d, "nft"))
-        ]
+        chemins = cls._path_sans_nft()
         if nft:
             faux = Path(cls.tmp) / "bin-nft"
             faux.mkdir()
