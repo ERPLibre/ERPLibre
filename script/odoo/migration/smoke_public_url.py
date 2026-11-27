@@ -33,7 +33,6 @@ Exit codes: 0 every URL answered, 1 some failed, 2 the tool failed.
 import argparse
 import os
 import re
-import signal
 import socket
 import subprocess
 import sys
@@ -45,6 +44,8 @@ import urllib.request
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 )
+
+from script import lib_processus  # noqa: E402
 
 try:
     from script.todo.todo_i18n import t
@@ -81,10 +82,9 @@ RE_LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
 RE_CONTEXT = re.compile(r"\[view_id: (\d+),.*?parent_id: (\d+)\]")
 
 # « Template: website.submenu ». Une QWebException de RENDU ne porte pas le
-# bloc [view_id …] : elle nomme le gabarit. Mesuré au palier 17 — une copie
-# figée appelait `submenu.clean_url()`, méthode renommée `_clean_url()` dans
-# la version, et 34 URL sur 37 rendaient 500 sans que rien ne désigne la vue
-# fautive.
+# bloc [view_id …] : elle nomme le gabarit. Une copie figée qui appelle une
+# méthode que la version a renommée fait rendre 500 à presque toutes les URL,
+# et seul ce nom de gabarit désigne alors la vue fautive.
 RE_TEMPLATE = re.compile(r"^Template:\s*([\w.]+)\s*$", re.M)
 
 # Un port à part : la migration tourne souvent à côté d'une instance vivante,
@@ -134,9 +134,11 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
 
     Pas un tube : Python bufferise par blocs quand sa sortie n'est pas un
     terminal, et un fil de lecture court alors après des lignes qui n'ont
-    pas encore été écrites. Mesuré — 24 lignes vues sur 198, et la trace qui
-    nomme la vue fautive faisait partie des absentes. Un fichier se relit
-    entièrement, quand on veut.
+    pas encore été écrites, et la trace qui nomme une vue fautive peut être
+    de celles qui manquent. Un fichier se relit entièrement, quand on veut.
+
+    Rend le groupe de processus du serveur (lib_processus), que
+    `stop_server` arrête en entier.
     """
     # Garder l'exécution PRÉCÉDENTE. Le journal était ouvert en « w » :
     # relancer le test effaçait la trace de l'échec qu'on venait de voir,
@@ -148,7 +150,11 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
         except OSError:
             pass
     handle = open(log_path, "w", encoding="utf-8") if log_path else None
-    server = subprocess.Popen(
+    # Un groupe de processus : « ./run.sh » est un script bash qui ne
+    # transmet rien à son enfant. Arrêter le seul script laisserait odoo-bin
+    # vivant, tenant le port, et l'essai suivant interrogerait sans le
+    # savoir ce serveur-là au lieu du sien.
+    server = lib_processus.lancer(
         [
             "./run.sh",
             "-c",
@@ -159,21 +165,14 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
             str(port),
             "--log-level=warn",
             # Deux lignes par requête, et elles portent le CHEMIN. Sans
-            # elles une trace du journal ne peut être rattachée à rien :
-            # on l'attribuait à la dernière requête, qui n'était pas la
-            # sienne. Mesuré — /my accusé d'une panne appartenant à une
-            # application testée après lui.
+            # elles une trace du journal ne se rattache à aucune requête, et
+            # irait à la dernière, qui n'est pas forcément la sienne.
             "--log-handler=werkzeug:INFO",
         ],
         stdout=handle or subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
         text=True,
-        # Son propre groupe de processus : « ./run.sh » est un script bash
-        # qui ne transmet rien à son enfant. Un terminate() sur lui tuait le
-        # script et laissait odoo-bin vivant, tenant le port. L'essai suivant
-        # démarrait alors un serveur qui ne pouvait pas se lier, et
-        # interrogeait sans le savoir CELUI D'AVANT — mesuré, deux fois.
-        start_new_session=True,
+        grace=GRACE,
     )
     server.erplibre_log = handle
     return server
@@ -277,10 +276,9 @@ def attach_missing_parents(lst_failure, lst_log):
     known = {pid for _u, _s, lst, _f in lst_failure for pid in lst}
     extra = []
     for line in lst_log:
-        # LES DEUX : le parent ET l'enfant. Mesuré sur /contactus — le
-        # parent était identique à sa vue module, et c'est l'ENFANT qui
-        # portait l'arch périmée. Ne proposer que le parent envoyait
-        # réinitialiser une copie qui allait déjà bien.
+        # LES DEUX : le parent ET l'enfant. Le parent peut être identique à
+        # sa vue module quand c'est l'ENFANT qui porte l'arch périmée : ne
+        # proposer que le parent enverrait réinitialiser une copie saine.
         for view_id, parent_id in RE_CONTEXT.findall(line):
             for candidate in (parent_id, view_id):
                 if candidate not in known and candidate not in extra:
@@ -584,9 +582,9 @@ def internal_phase(
     etat = smoke_internal_ui.user_state(database, login, run_psql=run_psql)
     if etat == "absent":
         # `required` dit que la migration a NEUTRALISÉ cette base : le
-        # compte devrait donc y être. Mesuré — il survit jusqu'au palier
-        # 15 puis disparaît, et la passe s'arrêtait sans bruit exactement
-        # là où une migration fait le plus de dégâts.
+        # compte devrait donc y être. Un palier de migration peut le faire
+        # disparaître, et s'arrêter sans bruit cacherait justement l'étape
+        # qui a fait des dégâts.
         if required:
             return {
                 "skipped": t(
@@ -643,10 +641,9 @@ def run(
     """Démarrer, interroger, arrêter, LIRE, éventuellement corriger, revérifier.
 
     L'ordre porte tout le correctif : un serveur qui écrit dans un fichier
-    bufferise et ne vide qu'en s'arrêtant. Lire avant l'arrêt donnait
-    vingt-quatre lignes de démarrage et zéro trace — donc « aucune vue en
-    cause » sur des pages qui en nommaient une. Mesuré deux fois avant d'être
-    compris.
+    bufferise et ne vide qu'en s'arrêtant. Lu avant l'arrêt, le journal ne
+    porte que les lignes de démarrage et aucune trace — donc « aucune vue en
+    cause » sur des pages qui en nomment une.
     """
     import tempfile
 
@@ -799,26 +796,16 @@ def recheck_after_reset(
     return lst_again, internal_report
 
 
+# Secondes laissées au serveur après SIGTERM, avant SIGKILL : odoo-bin
+# ferme ses connexions et vide son journal, que l'appelant relit ensuite.
+GRACE = 30
+
+
 def stop_server(server):
-    """Arrêter tout le GROUPE : sinon odoo-bin survit à son script."""
-    try:
-        group = os.getpgid(server.pid)
-    except OSError:
-        group = None
-    if group is not None:
-        try:
-            os.killpg(group, signal.SIGTERM)
-        except OSError:
-            pass
-    try:
-        server.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        if group is not None:
-            try:
-                os.killpg(group, signal.SIGKILL)
-            except OSError:
-                pass
-        server.kill()
+    """Arrêter tout le GROUPE de `server`, rendu par `start_server` : sinon
+    odoo-bin survit à son script. Un serveur déjà sorti est seulement
+    récolté."""
+    server.tuer()
     handle = getattr(server, "erplibre_log", None)
     if handle:
         handle.close()

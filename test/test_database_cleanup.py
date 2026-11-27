@@ -20,6 +20,7 @@ l'arrêt de la boucle sans lancer Odoo sur une vraie base.
 
 import os
 import sys
+import time
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -425,9 +426,28 @@ class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
             def poll(self):
                 return 0
 
-        original = cleanup.subprocess.Popen
-        cleanup.subprocess.Popen = lambda *a, **kw: FauxProcessus(lignes)
-        self.addCleanup(setattr, cleanup.subprocess, "Popen", original)
+        class FauxGroupe:
+            """Le groupe de lib_processus autour du faux processus."""
+
+            code = 0
+
+            def __init__(self, processus):
+                self.processus = processus
+
+            def attendre(self, timeout=None):
+                return 0
+
+            def vivant(self):
+                return False
+
+            def tuer(self, grace=None):
+                return 0
+
+        original = cleanup.lib_processus.lancer
+        cleanup.lib_processus.lancer = lambda *a, **kw: FauxGroupe(
+            FauxProcessus(lignes)
+        )
+        self.addCleanup(setattr, cleanup.lib_processus, "lancer", original)
         report = cleanup.run_shell(
             "db",
             "./config.conf",
@@ -474,17 +494,51 @@ class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
         source = inspect.getsource(cleanup.run_shell)
         self.assertIn("threading.Timer", source)
 
-    def test_stopping_kills_the_whole_group(self):
-        # « ./odoo_bin.sh » est un script bash : un terminate() sur lui tue
-        # le script et laisse odoo-bin vivant, sur la base, avec ses
-        # verrous. La leçon a déjà été payée en serveurs orphelins.
-        import inspect
+    def test_the_timeout_stops_the_whole_group(self):
+        """« ./odoo_bin.sh » est un script bash : arrêter son seul
+        processus laisserait odoo-bin vivant sur la base, avec ses verrous.
+        Un vrai groupe ici, dont l'enfant vit bien plus longtemps que le
+        délai : il doit être mort dès le retour, et le retour suivre le
+        délai de près."""
+        import shutil
+        import tempfile
 
-        source = inspect.getsource(cleanup.kill_group)
-        self.assertIn("killpg", source)
+        from script import lib_processus
+
+        dossier = tempfile.mkdtemp(prefix="test_cleanup_groupe_")
+        self.addCleanup(shutil.rmtree, dossier, True)
+        temoin = os.path.join(dossier, "enfant.pid")
+        reel = lib_processus.lancer
+
+        def lancer(_cmd, **popen):
+            return reel(
+                [
+                    "sh",
+                    "-c",
+                    f"sleep 300 & echo $! > {temoin}; cat >/dev/null; wait",
+                ],
+                **popen,
+            )
+
+        original = cleanup.lib_processus.lancer
+        cleanup.lib_processus.lancer = lancer
+        self.addCleanup(setattr, cleanup.lib_processus, "lancer", original)
+        debut = time.monotonic()
+        with self.assertRaises(RuntimeError) as ctx:
+            cleanup.run_shell("db", "./config.conf", "script", timeout=1)
+        # SIGTERM suffit à sh et à sleep : bien en deçà de GRACE.
+        self.assertLess(time.monotonic() - debut, 1 + cleanup.GRACE / 2)
         self.assertIn(
-            "start_new_session", inspect.getsource(cleanup.run_shell)
+            cleanup.t("The cleanup was still running after"),
+            str(ctx.exception),
         )
+        enfant = int(open(temoin).read())
+        try:
+            with open(f"/proc/{enfant}/stat", "rb") as fh:
+                etat = fh.read().rsplit(b")", 1)[1].split()[0]
+        except OSError:
+            etat = b"absent"
+        self.assertIn(etat, (b"Z", b"absent"), "odoo-bin survit au délai")
 
     def test_a_timeout_is_reported_as_such(self):
         # Sans cela, un arrêt à l'expiration se lisait « le nettoyage n'a

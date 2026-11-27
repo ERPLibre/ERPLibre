@@ -127,7 +127,6 @@ import os
 import pwd
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tarfile
@@ -142,6 +141,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
+from script import lib_processus  # noqa: E402
 from script.git import (  # noqa: E402
     command_echo,
     git_freeze_manifest,
@@ -334,40 +334,49 @@ def borne(delai, echeance):
     return max(1, min(delai, int(echeance - time.monotonic())))
 
 
+# Secondes laissées après SIGTERM, au délai expiré ou au Ctrl+C, avant
+# SIGKILL : git retire alors ses verrous (index.lock, shallow.lock) au lieu
+# de les laisser au prochain passage.
+GRACE = 5
+
+
 def lancer(argv, delai, cwd, env, en_direct=False):
     """(code, sortie) d'une commande longue, lancée dans son propre groupe
-    de processus.
+    de processus (lib_processus).
 
-    Le délai expiré tue le groupe entier : les processus git qu'un
-    « repo sync » ou un « poetry install » lancent ne lui survivent pas.
-    `en_direct` laisse la sortie au terminal (la sortie rendue est alors
-    vide). Une commande qui ne démarre pas rend le code 1 et son motif ;
-    un délai expiré, le code 124.
+    Le délai expiré arrête le groupe entier, SIGTERM puis SIGKILL après
+    GRACE secondes : les processus git qu'un « repo sync » ou un « poetry
+    install » lancent ne lui survivent pas. Un Ctrl+C l'arrête de même
+    avant de remonter, la session propre de la commande ne recevant pas
+    celui du terminal. `en_direct` laisse la sortie au terminal (la sortie
+    rendue est alors vide). Une commande qui ne démarre pas rend le code 1
+    et son motif ; un délai expiré, le code 124.
     """
     sortie = None if en_direct else subprocess.PIPE
     command_echo.show(argv, cwd)
     try:
-        proc = subprocess.Popen(
+        groupe = lib_processus.lancer(
             argv,
+            grace=GRACE,
             cwd=cwd,
             env=env,
-            stdin=subprocess.DEVNULL,
             stdout=sortie,
             stderr=subprocess.STDOUT if sortie else None,
             text=True,
             errors="replace",
-            start_new_session=True,
         )
     except OSError as exc:
         return 1, str(exc)
     try:
-        out, _err = proc.communicate(timeout=delai)
+        out, _err = groupe.communiquer(timeout=delai)
     except subprocess.TimeoutExpired:
-        with contextlib.suppress(OSError):
-            os.killpg(proc.pid, signal.SIGKILL)
-        out, _err = proc.communicate()
+        groupe.tuer()
+        out, _err = groupe.communiquer()
         return 124, joindre(out or "", f"timeout after {delai}s")
-    return proc.returncode, out or ""
+    except BaseException:
+        groupe.tuer()
+        raise
+    return groupe.code, out or ""
 
 
 def nom_sauvegarde(branche, horodatage):

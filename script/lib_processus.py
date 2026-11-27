@@ -106,6 +106,23 @@ class Groupe:
                 return False
             return True
 
+    def vivant(self):
+        """Vrai tant que le chef tourne. Ne récolte rien et ne bloque
+        jamais, même pendant la grâce d'un `tuer` concurrent : récolte et
+        balayage restent à `attendre` et `tuer`. Un chef sorti dont des
+        descendants tournent encore n'est plus « vivant », sans que son
+        groupe soit vide : `code` vaut None tant qu'il n'est pas récolté."""
+        with self._verrou:
+            if self._recolte:
+                return False
+            try:
+                sorti = os.waitid(
+                    os.P_PID, self.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
+                )
+            except ChildProcessError:
+                return False
+        return sorti is None
+
     def attendre(self, timeout=None):
         """Le code de sortie du chef, une fois récolté et le groupe balayé.
 

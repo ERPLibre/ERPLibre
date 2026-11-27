@@ -548,5 +548,32 @@ class TestDetache(Base):
                 self.assertEqual(lp.retrouver(texte, "x"), 0)
 
 
+class TestVivant(Base):
+    def test_vivant_suit_le_groupe_sans_bloquer(self):
+        g = lp.lancer(["sleep", "30"])
+        debut = time.monotonic()
+        self.assertTrue(g.vivant())
+        self.assertLess(time.monotonic() - debut, 1)
+        g.tuer()
+        self.assertFalse(g.vivant())
+        self.assertIsNotNone(g.code)
+
+    def test_un_chef_sorti_seul_n_est_plus_vivant_ni_recolte(self):
+        """vivant() ne récolte pas : le code reste None jusqu'à attendre(),
+        qui balaie alors l'enfant laissé par le chef."""
+        cmd, f = self.parent_et_enfant("seul", "exit 3")
+        g = lp.lancer(cmd)
+        enfant = self.lire_pid(f)
+        for _ in range(200):
+            if not g.vivant():
+                break
+            time.sleep(0.02)
+        self.assertFalse(g.vivant())
+        self.assertIsNone(g.code)
+        self.assertTrue(vivant(enfant))
+        self.assertEqual(g.attendre(), 3)
+        self.assertEqual(tous_morts([enfant]), [])
+
+
 if __name__ == "__main__":
     unittest.main()

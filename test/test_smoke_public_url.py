@@ -17,6 +17,7 @@ requête réelle. D'où le serveur démarré, interrogé, arrêté.
 
 import os
 import sys
+import time
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -328,19 +329,50 @@ class TestTheServerIsKilledForReal(unittest.TestCase):
     """« ./run.sh » est un script bash : il ne transmet pas les signaux."""
 
     def test_it_starts_its_own_process_group(self):
-        # Sans cela, terminate() tue l'enveloppe et laisse odoo-bin vivant.
-        # Mesuré : six serveurs orphelins, un par essai, et les essais
-        # suivants interrogeaient sans le savoir celui d'avant.
-        import inspect
+        """Sans groupe propre, arrêter l'enveloppe laisse odoo-bin vivant,
+        et l'essai suivant interroge ce serveur-là au lieu du sien."""
+        lances = []
+        original = smoke.lib_processus.lancer
 
-        source = inspect.getsource(smoke.start_server)
-        self.assertIn("start_new_session=True", source)
+        def lancer(cmd, **popen):
+            lances.append((cmd, popen))
+            return original(["true"], **popen)
+
+        smoke.lib_processus.lancer = lancer
+        self.addCleanup(setattr, smoke.lib_processus, "lancer", original)
+        server = smoke.start_server("db", 18999)
+        smoke.stop_server(server)
+        self.assertEqual(lances[0][0][0], "./run.sh")
+        self.assertEqual(lances[0][1]["grace"], smoke.GRACE)
 
     def test_it_kills_the_group_not_just_the_wrapper(self):
-        import inspect
+        """Un vrai groupe : l'enveloppe et son enfant meurent ensemble."""
+        import shutil
+        import tempfile
 
-        source = inspect.getsource(smoke.stop_server)
-        self.assertIn("killpg", source)
+        dossier = tempfile.mkdtemp(prefix="test_smoke_groupe_")
+        self.addCleanup(shutil.rmtree, dossier, True)
+        temoin = os.path.join(dossier, "enfant.pid")
+        server = smoke.lib_processus.lancer(
+            ["sh", "-c", f"sleep 30 & echo $! > {temoin}; wait"], grace=5
+        )
+        for _ in range(200):
+            if os.path.exists(temoin) and open(temoin).read().strip():
+                break
+            time.sleep(0.02)
+        enfant = int(open(temoin).read())
+        smoke.stop_server(server)
+        self.assertFalse(server.vivant())
+        for _ in range(100):
+            try:
+                with open(f"/proc/{enfant}/stat") as fh:
+                    if fh.read().rsplit(")", 1)[1].split()[0] == "Z":
+                        break
+            except OSError:
+                break
+            time.sleep(0.05)
+        else:
+            self.fail("odoo-bin survivrait à son script")
 
     def test_a_taken_port_is_refused_not_tested(self):
         # Un serveur resté d'un essai précédent répond « prêt » : on

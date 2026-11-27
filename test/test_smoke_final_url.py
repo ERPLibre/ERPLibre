@@ -293,7 +293,7 @@ class TestTheLogSurvives(unittest.TestCase):
         ) as handle:
             src = handle.read()
         debut = src.index("def start_server")
-        fin = src.index("subprocess.Popen", debut)
+        fin = src.index("lib_processus.lancer", debut)
         self.assertIn("os.replace(log_path, log_path", src[debut:fin])
 
 

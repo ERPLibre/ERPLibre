@@ -1744,6 +1744,70 @@ class TestLancer(unittest.TestCase):
         else:
             self.fail("le processus enfant survit au délai")
 
+    def test_le_delai_envoie_sigterm_avant_sigkill(self):
+        """git retire ses verrous (index.lock) sur SIGTERM : tué d'emblée par
+        SIGKILL, il les laisserait au passage suivant."""
+        dossier = tempfile.mkdtemp(prefix="test_repo_pull_grace_")
+        self.addCleanup(shutil.rmtree, dossier, True)
+        verrou = os.path.join(dossier, "index.lock")
+        code, _sortie = repo_pull.lancer(
+            [
+                "sh",
+                "-c",
+                f"touch {verrou}; trap 'rm -f {verrou}; exit 143' TERM;"
+                " while :; do sleep 0.05; done",
+            ],
+            1,
+            dossier,
+            dict(os.environ),
+        )
+        self.assertEqual(code, 124)
+        self.assertFalse(os.path.exists(verrou), "SIGKILL sans SIGTERM")
+
+    def test_un_ctrl_c_arrete_la_commande(self):
+        """La commande a sa propre session et ne reçoit pas le Ctrl+C du
+        terminal : lancer() l'arrête avant de laisser remonter
+        l'interruption, sans quoi un « repo sync » continuerait seul."""
+        import signal
+        import threading
+
+        ancien = signal.signal(signal.SIGINT, signal.default_int_handler)
+        self.addCleanup(signal.signal, signal.SIGINT, ancien)
+        dossier = tempfile.mkdtemp(prefix="test_repo_pull_ctrl_c_")
+        self.addCleanup(shutil.rmtree, dossier, True)
+        temoin = os.path.join(dossier, "enfant.pid")
+        principal = threading.get_ident()
+
+        def interrompre():
+            for _ in range(200):
+                if os.path.exists(temoin) and open(temoin).read().strip():
+                    break
+                repo_pull.time.sleep(0.02)
+            signal.pthread_kill(principal, signal.SIGINT)
+
+        threading.Thread(target=interrompre, daemon=True).start()
+        debut = repo_pull.time.monotonic()
+        with self.assertRaises(KeyboardInterrupt):
+            repo_pull.lancer(
+                ["sh", "-c", f"sleep 30 & echo $! > {temoin}; wait"],
+                60,
+                dossier,
+                dict(os.environ),
+            )
+        self.assertLess(repo_pull.time.monotonic() - debut, 15)
+        enfant = int(open(temoin).read())
+        for _essai in range(100):
+            try:
+                with open(f"/proc/{enfant}/stat") as fh:
+                    etat = fh.read().split(")")[-1].split()[0]
+            except (FileNotFoundError, ProcessLookupError):
+                break
+            if etat == "Z":
+                break
+            repo_pull.time.sleep(0.05)
+        else:
+            self.fail("la commande survit au Ctrl+C")
+
     def test_commande_absente(self):
         code, sortie = repo_pull.lancer(
             ["/nulle/part/commande"], 5, os.getcwd(), dict(os.environ)

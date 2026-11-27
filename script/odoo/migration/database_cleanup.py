@@ -30,7 +30,6 @@ Exit codes: 0 nothing left, 1 leftovers remain, 2 the tool failed.
 import argparse
 import json
 import os
-import signal
 import subprocess
 import sys
 import threading
@@ -39,6 +38,8 @@ import time
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 )
+
+from script import lib_processus  # noqa: E402
 
 try:
     from script.todo.todo_i18n import t
@@ -339,46 +340,29 @@ def install_module(database, module="database_cleanup", timeout=1800):
     return done.returncode, done.stdout + done.stderr
 
 
-def kill_group(process):
-    """Tuer le GROUPE : « ./odoo_bin.sh » est un script bash.
-
-    Un terminate() sur lui tue le script et laisse odoo-bin vivant, sur la
-    base, avec ses verrous. La leçon a déjà été payée une fois par six
-    serveurs orphelins.
-    """
-    try:
-        group = os.getpgid(process.pid)
-    except OSError:
-        group = None
-    for signal_number in (signal.SIGTERM, signal.SIGKILL):
-        if group is None:
-            break
-        try:
-            os.killpg(group, signal_number)
-        except OSError:
-            break
-        try:
-            process.wait(timeout=20)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+# Secondes laissées à odoo-bin après SIGTERM, avant SIGKILL : de quoi
+# annuler sa transaction et rendre ses verrous sur la base.
+GRACE = 20
 
 
 def run_shell(database, config_path, script, timeout=3600, echo=None):
     """Pousser le script dans « odoo-bin shell » et rendre son rapport.
 
     On LIT au fil de l'eau plutôt que de tout capturer : ce nettoyage dure
-    des minutes — dix-sept, mesurées, sur une base de 5984 modules — et la
-    version précédente n'affichait rien avant la fin. Un travail qui avance
-    et un blocage se ressemblent alors trait pour trait, et c'est ainsi
-    qu'on interrompt une réparation à moitié faite.
+    des minutes sur une grosse base, et sans rien afficher avant la fin, un
+    travail qui avance et un blocage se ressemblent trait pour trait —
+    c'est ainsi qu'on interrompt une réparation à moitié faite.
 
     Les journaux d'Odoo se mêlent à la sortie, d'où les sentinelles : on ne
     lit comme rapport que ce qui est entre elles. Leur absence est une
     erreur franche, pas un rapport vide qu'on prendrait pour « rien à
     faire ».
     """
-    process = subprocess.Popen(
+    # Un groupe de processus (lib_processus) : « ./odoo_bin.sh » est un
+    # script bash, et arrêter son seul processus laisserait odoo-bin vivant
+    # sur la base, avec ses verrous. Le délai, l'interruption ou une erreur
+    # arrêtent le groupe entier.
+    groupe = lib_processus.lancer(
         [
             "./odoo_bin.sh",
             "shell",
@@ -388,12 +372,13 @@ def run_shell(database, config_path, script, timeout=3600, echo=None):
             database,
             "--log-level=warn",
         ],
+        grace=GRACE,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        start_new_session=True,
     )
+    process = groupe.processus
     # Le délai ne peut pas vivre dans la boucle de lecture : celle-ci BLOQUE
     # tant qu'aucune ligne n'arrive, et c'est exactement le cas qu'il faut
     # couvrir. Un minuteur à part, donc.
@@ -401,7 +386,7 @@ def run_shell(database, config_path, script, timeout=3600, echo=None):
 
     def couper():
         expire["fired"] = True
-        kill_group(process)
+        groupe.tuer()
 
     minuteur = threading.Timer(timeout, couper)
     minuteur.daemon = True
@@ -414,11 +399,14 @@ def run_shell(database, config_path, script, timeout=3600, echo=None):
             lst_line.append(line)
             if echo and line.startswith(STEP):
                 echo(line[len(STEP) :].strip())
-        process.wait()
+        groupe.attendre()
     finally:
         minuteur.cancel()
-        if process.poll() is None:
-            kill_group(process)
+        # Pas encore récolté : sorti sur une erreur ou un Ctrl+C, ou encore
+        # en vie. Le groupe entier part, odoo-bin compris s'il survit à son
+        # script ; un second Ctrl+C pendant la grâce le tue aussitôt.
+        if groupe.code is None:
+            groupe.tuer()
     output = "".join(lst_line)
     if expire["fired"]:
         raise RuntimeError(
