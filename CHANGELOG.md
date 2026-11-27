@@ -534,6 +534,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The code-generator scenarios check the generated modules one git pathspec each: a comma-separated list matched nothing, so the check always passed. `hello_world.sh` fails when its module is missing
 - The `script/database` tools no longer configure logging at import, which silenced the INFO messages of any program or test that imported them
 - The unit suite passes in full where `/usr/sbin` is merged into `/usr/bin`: `test_qemu_cache_install` hides only `nft` from its PATH instead of the whole directory, `sed` and `bash` with it. Under the launcher, the `ssh` stub answers `ssh -V`, which git-repo runs on every `repo sync`, and still refuses any connection, so `test_install_erplibre_home` no longer fails there only
+- The SMS demonstration finds its agent and its local server by a fingerprint in their PID file, the process number and its start time: a number reused by another program is no longer taken for them, nor sent SIGTERM with its whole process group. Stopping sends SIGTERM, then SIGKILL to what remains; a process that survives, or belongs to another account, keeps its PID file, and the local reset stops instead of dropping the database of a server still running
+- `repo_pull` stops its `repo sync` or `poetry install` on Ctrl+C instead of leaving it running, and on timeout sends SIGTERM before SIGKILL, so git can remove its `index.lock`. The database cleanup and the smoke test of a migrated database stop their Odoo server's whole process group, with no risk of signalling a process number already reused
 
 ## Removed
 

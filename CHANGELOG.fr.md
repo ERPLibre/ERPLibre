@@ -540,6 +540,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les scénarios du générateur de code contrôlent les modules générés un pathspec git chacun : une liste séparée par des virgules ne correspondait à rien, et le contrôle passait toujours. `hello_world.sh` échoue si son module manque
 - Les outils de `script/database` ne configurent plus la journalisation à l'import, ce qui faisait taire les messages INFO de tout programme ou test qui les importait
 - La suite unitaire passe en entier quand `/usr/sbin` est fusionné dans `/usr/bin` : `test_qemu_cache_install` ne cache plus que `nft` de son PATH au lieu du répertoire entier, `sed` et `bash` avec. Sous le lanceur, la doublure `ssh` répond à `ssh -V`, que git-repo lance à chaque `repo sync`, et refuse toujours toute connexion : `test_install_erplibre_home` n'échoue plus là seulement
+- La démonstration SMS retrouve son agent et son serveur local par une empreinte dans leur fichier PID, le numéro du processus et son instant de démarrage : un numéro réattribué à un autre programme n'est plus pris pour eux, ni ne reçoit SIGTERM avec tout son groupe de processus. L'arrêt envoie SIGTERM, puis SIGKILL à ce qui reste ; un processus qui survit, ou d'un autre compte, garde son fichier PID, et la remise à zéro locale s'arrête au lieu de supprimer la base d'un serveur encore en marche
+- `repo_pull` arrête son `repo sync` ou son `poetry install` sur Ctrl+C au lieu de le laisser tourner, et au délai envoie SIGTERM avant SIGKILL, ce qui laisse à git le temps de retirer son `index.lock`. Le nettoyage de base et le test smoke d'une base migrée arrêtent tout le groupe de processus de leur serveur Odoo, sans risque de signaler un numéro de processus déjà réattribué
 
 ## Retiré
 

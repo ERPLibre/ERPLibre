@@ -921,6 +921,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The code-generator scenarios check the generated modules one git pathspec each: a comma-separated list matched nothing, so the check always passed. `hello_world.sh` fails when its module is missing
 - The `script/database` tools no longer configure logging at import, which silenced the INFO messages of any program or test that imported them
 - The unit suite passes in full where `/usr/sbin` is merged into `/usr/bin`: `test_qemu_cache_install` hides only `nft` from its PATH instead of the whole directory, `sed` and `bash` with it. Under the launcher, the `ssh` stub answers `ssh -V`, which git-repo runs on every `repo sync`, and still refuses any connection, so `test_install_erplibre_home` no longer fails there only
+- The SMS demonstration finds its agent and its local server by a fingerprint in their PID file, the process number and its start time: a number reused by another program is no longer taken for them, nor sent SIGTERM with its whole process group. Stopping sends SIGTERM, then SIGKILL to what remains; a process that survives, or belongs to another account, keeps its PID file, and the local reset stops instead of dropping the database of a server still running
+- `repo_pull` stops its `repo sync` or `poetry install` on Ctrl+C instead of leaving it running, and on timeout sends SIGTERM before SIGKILL, so git can remove its `index.lock`. The database cleanup and the smoke test of a migrated database stop their Odoo server's whole process group, with no risk of signalling a process number already reused
 
 <!-- [fr] -->
 
@@ -1094,6 +1096,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les scénarios du générateur de code contrôlent les modules générés un pathspec git chacun : une liste séparée par des virgules ne correspondait à rien, et le contrôle passait toujours. `hello_world.sh` échoue si son module manque
 - Les outils de `script/database` ne configurent plus la journalisation à l'import, ce qui faisait taire les messages INFO de tout programme ou test qui les importait
 - La suite unitaire passe en entier quand `/usr/sbin` est fusionné dans `/usr/bin` : `test_qemu_cache_install` ne cache plus que `nft` de son PATH au lieu du répertoire entier, `sed` et `bash` avec. Sous le lanceur, la doublure `ssh` répond à `ssh -V`, que git-repo lance à chaque `repo sync`, et refuse toujours toute connexion : `test_install_erplibre_home` n'échoue plus là seulement
+- La démonstration SMS retrouve son agent et son serveur local par une empreinte dans leur fichier PID, le numéro du processus et son instant de démarrage : un numéro réattribué à un autre programme n'est plus pris pour eux, ni ne reçoit SIGTERM avec tout son groupe de processus. L'arrêt envoie SIGTERM, puis SIGKILL à ce qui reste ; un processus qui survit, ou d'un autre compte, garde son fichier PID, et la remise à zéro locale s'arrête au lieu de supprimer la base d'un serveur encore en marche
+- `repo_pull` arrête son `repo sync` ou son `poetry install` sur Ctrl+C au lieu de le laisser tourner, et au délai envoie SIGTERM avant SIGKILL, ce qui laisse à git le temps de retirer son `index.lock`. Le nettoyage de base et le test smoke d'une base migrée arrêtent tout le groupe de processus de leur serveur Odoo, sans risque de signaler un numéro de processus déjà réattribué
 
 <!-- [en] -->
 ## Removed
