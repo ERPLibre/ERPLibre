@@ -79,6 +79,10 @@ time: both share the PostgreSQL server.
 ./script/test/run_odoo_scenarios.sh --purge           # drop leftover scenario databases
 ```
 
+TODO › Execute › Test › [5] ERPLibre studio runs the code generator scenarios
+from a menu: all of them, one chosen from the list, the failures of the last
+run, with coverage, or the purge of leftover databases.
+
 Code coverage has two sets, each with its interpreter and configuration:
 `erplibre` (script/, long_test/, docker/, measured by the unit tests,
 `conf/coverage.erplibre.toml`) and `odoo` (the code generator, measured by

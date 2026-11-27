@@ -83,6 +83,10 @@ PostgreSQL.
 ./script/test/run_odoo_scenarios.sh --purge           # supprimer les bases de scénarios restées
 ```
 
+TODO › Exécution › Test › [5] ERPLibre studio lance les scénarios du
+générateur de code depuis un menu : tous, un seul choisi dans la liste, les
+échecs du dernier passage, avec couverture, ou la purge des bases restées.
+
 La couverture de code a deux jeux, chacun avec son interpréteur et sa
 configuration : `erplibre` (script/, long_test/, docker/, mesurés par les
 tests unitaires, `conf/coverage.erplibre.toml`) et `odoo` (le générateur

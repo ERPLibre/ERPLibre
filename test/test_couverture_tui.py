@@ -525,7 +525,7 @@ class TestLeMenuCouverture(MenuSansEffet, unittest.TestCase):
         actions = (
             "_coverage_tui",
             "_coverage_run_unit",
-            "_coverage_run_odoo",
+            "_studio_run_coverage",
             "_coverage_html",
             "_coverage_erase",
         )
@@ -563,36 +563,6 @@ class TestLeMenuCouverture(MenuSansEffet, unittest.TestCase):
             self.assertEqual(self.todo._coverage_run_unit(), 1)
         lancer.assert_called_once_with(
             ["./script/test/run_unit_test.sh", "--tui", "--coverage"],
-            check=False,
-            jusqu_au_bout=True,
-        )
-
-    def test_odoo_run_needs_its_launcher(self):
-        sortie = io.StringIO()
-        with (
-            self.lancer() as lancer,
-            mock.patch.object(
-                todo_module.TODO,
-                "_COVERAGE_ODOO",
-                ["./script/test/lanceur_invente_absent.sh", "--coverage"],
-            ),
-            contextlib.redirect_stdout(sortie),
-        ):
-            self.assertIsNone(self.todo._coverage_run_odoo())
-        lancer.assert_not_called()
-        self.assertIn("lanceur_invente_absent.sh", sortie.getvalue())
-
-    def test_odoo_run_with_its_launcher(self):
-        with (
-            self.lancer() as lancer,
-            mock.patch.object(
-                todo_module.os.path, "exists", return_value=True
-            ),
-            contextlib.redirect_stdout(io.StringIO()),
-        ):
-            self.assertEqual(self.todo._coverage_run_odoo(), 0)
-        lancer.assert_called_once_with(
-            ["./script/test/run_odoo_scenarios.sh", "--coverage"],
             check=False,
             jusqu_au_bout=True,
         )

@@ -198,6 +198,7 @@ from script.todo.ssh_key_menu import SshKeyMenuMixin
 from script.todo import erplibre_home_status
 from script.todo.streamdeck_menu import RACINE as ERPLIBRE_HOME_RACINE
 from script.todo.streamdeck_menu import StreamDeckMenuMixin
+from script.todo.studio_menu import StudioMenuMixin
 from script.todo.system_menu import SystemMenuMixin
 from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
@@ -282,6 +283,7 @@ class TODO(
     QemuUsbMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
+    StudioMenuMixin,
     TransformMenuMixin,
     VpnMenuMixin,
     PythonMenuMixin,
@@ -1402,6 +1404,7 @@ class TODO(
         "prompt_execute_streamdeck_games": "Games",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
+        "prompt_execute_studio": "ERPLibre studio",
         "prompt_configuration": "Configuration",
     }
 
@@ -7331,6 +7334,9 @@ class TODO(
             # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
             # de vraies machines et durent des heures.
             {"prompt_description": t("Long tests - real VMs, hours")},
+            # Les scénarios du générateur de code : de vraies bases Odoo,
+            # quelques minutes, hors de la suite unitaire.
+            {"prompt_description": t("ERPLibre studio - code generator")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -7347,6 +7353,8 @@ class TODO(
                 self.execute_unit_tests()
             elif status == "4":
                 self.prompt_execute_longtest()
+            elif status == "5":
+                self.prompt_execute_studio()
             else:
                 print(t("Command not found !"))
 
@@ -7464,7 +7472,6 @@ class TODO(
     # les rapports et l'historique de chaque jeu, que
     # script/test/couverture_tui.py montre.
     _COVERAGE_UNIT = ["./script/test/run_unit_test.sh", "--tui", "--coverage"]
-    _COVERAGE_ODOO = ["./script/test/run_odoo_scenarios.sh", "--coverage"]
 
     def prompt_execute_coverage(self):
         """Le suivi de la couverture : l'écran, les passages mesurés des
@@ -7472,7 +7479,8 @@ class TODO(
         choices = [
             {"prompt_description": t("Open the coverage screen")},
             {"prompt_description": t("Run the unit tests with coverage")},
-            {"prompt_description": t("Run the Odoo scenarios with coverage")},
+            # La même commande que Test › ERPLibre studio › avec couverture.
+            {"prompt_description": t("Run ERPLibre studio with coverage")},
             {"prompt_description": t("Open the HTML coverage report")},
             {"prompt_description": t("Erase the coverage data of a set")},
         ]
@@ -7488,7 +7496,7 @@ class TODO(
             elif status == "2":
                 self._coverage_run_unit()
             elif status == "3":
-                self._coverage_run_odoo()
+                self._studio_run_coverage()
             elif status == "4":
                 self._coverage_html()
             elif status == "5":
@@ -7524,23 +7532,6 @@ class TODO(
             print(f"\n❌ {t('Some unit tests failed, exit code')}: {rc}")
         return rc
 
-    def _coverage_run_odoo(self):
-        """Les scénarios Odoo mesurés. Rend le code de retour, ou None
-        quand le lanceur des scénarios manque au checkout."""
-        lanceur = self._COVERAGE_ODOO[0]
-        if not os.path.exists(lanceur):
-            print(f"❌ {t('Odoo scenario launcher missing:')} {lanceur}")
-            return None
-        print(f"\n--- {t('Running Odoo scenarios with coverage')} ---")
-        rc = todo_journal.lancer_au_terminal(
-            list(self._COVERAGE_ODOO), check=False, jusqu_au_bout=True
-        ).returncode
-        if rc == 0:
-            print(f"\n✅ {t('All Odoo scenarios passed')}")
-        else:
-            print(f"\n❌ {t('Some Odoo scenarios failed, exit code')}: {rc}")
-        return rc
-
     def _coverage_choose_set(self):
         """Le jeu de couverture choisi, « erplibre » ou « odoo », ou None
         sur 0."""
@@ -7548,7 +7539,7 @@ class TODO(
             f"[1] erplibre - {t('ERPLibre code, measured by the unit tests')}"
         )
         print(
-            f"[2] odoo - {t('Odoo modules, measured by the Odoo scenarios')}"
+            f"[2] odoo - {t('Odoo modules, measured by ERPLibre studio')}"
         )
         print(retour(t("Back")))
         choix = click.prompt(t("Coverage set"), default="1")

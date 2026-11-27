@@ -2147,7 +2147,7 @@ class TestCoverageMenuNumbering(MenuCoherence, unittest.TestCase):
     EXPECTED = {
         "Open the coverage screen": "_coverage_tui",
         "Run the unit tests with coverage": "_coverage_run_unit",
-        "Run the Odoo scenarios with coverage": "_coverage_run_odoo",
+        "Run ERPLibre studio with coverage": "_studio_run_coverage",
         "Open the HTML coverage report": "_coverage_html",
         "Erase the coverage data of a set": "_coverage_erase",
     }
