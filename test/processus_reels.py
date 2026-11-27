@@ -15,13 +15,14 @@ ATTENTE = 5
 
 
 def vivant(pid):
-    """Vrai si `pid` tourne encore ; un zombie compte pour mort."""
+    """Vrai si `pid` tourne encore ; un zombie compte pour mort. Lu en
+    octets : le nom du programme n'est pas forcément de l'UTF-8."""
     try:
-        with open(f"/proc/{pid}/stat", encoding="utf-8") as fh:
-            etat = fh.read().rsplit(")", 1)[1].split()[0]
+        with open(f"/proc/{pid}/stat", "rb") as fh:
+            etat = fh.read().rsplit(b")", 1)[1].split()[0]
     except (FileNotFoundError, ProcessLookupError, IndexError):
         return False
-    return etat != "Z"
+    return etat != b"Z"
 
 
 def tous_morts(pids, delai=3):

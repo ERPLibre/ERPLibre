@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import os
 import shlex
-import signal
 import subprocess
 import time
 from pathlib import Path
 
+from script import lib_processus
 from script.todo.modem import passerelle as agent_mod
 from script.todo.sms import spec as spec_mod
 from script.todo.sms.spec import DemoSpec, ensure_secret
@@ -85,6 +85,25 @@ def modem_pret():
     return agent_mod.ModemManagerSMS().pret()
 
 
+# Le module que `exec` donne pour commande au processus de l'agent.
+MODULE_AGENT = "script.todo.modem.passerelle"
+
+
+def _marqueurs_agent(spec: DemoSpec) -> tuple:
+    """Reconnaissent un fichier PID d'avant les empreintes : le module de
+    l'agent, et l'appareil de CE matériel dans son environnement. Le module
+    seul est le même pour les deux démonstrations."""
+    return (MODULE_AGENT, f"{agent_mod.VARIABLE_APPAREIL}={spec.device_id}")
+
+
+def _lire_pid(chemin: Path) -> str:
+    """Le texte du fichier PID, "" s'il manque ou est illisible."""
+    try:
+        return chemin.read_text()
+    except (OSError, ValueError):
+        return ""
+
+
 def agent_pid(spec: DemoSpec) -> int:
     """Le PID de l'agent, ou 0 s'il ne tourne plus.
 
@@ -92,15 +111,12 @@ def agent_pid(spec: DemoSpec) -> int:
     processus, et s'y fier ferait croire a une passerelle vivante devant un
     serveur que plus personne n'interroge.
     """
-    try:
-        pid = int(pid_agent(spec).read_text().strip())
-    except (OSError, ValueError):
-        return 0
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return 0
-    return pid
+    # Un numéro de processus se réattribue : le fichier porte l'empreinte
+    # du processus lancé, et un programme étranger qui hérite du numéro
+    # n'est pas pris pour l'agent.
+    return lib_processus.retrouver(
+        _lire_pid(pid_agent(spec)), _marqueurs_agent(spec)
+    )
 
 
 def start_agent(state):
@@ -134,7 +150,11 @@ def start_agent(state):
             ),
             start_new_session=True,
         )
-    pid_agent(state.spec).write_text(str(processus.pid))
+    # Sans empreinte, l'agent est déjà sorti : la boucle qui suit le dit,
+    # et aucun numéro seul n'est écrit, qu'un autre programme hériterait.
+    marque = lib_processus.empreinte(processus.pid)
+    if marque:
+        pid_agent(state.spec).write_text(marque)
 
     # Une configuration refusee fait rendre la main tout de suite : on laisse
     # ce delai passer pour distinguer « parti » de « mort a la premiere
@@ -150,25 +170,18 @@ def start_agent(state):
 
 
 def stop_agent(spec: DemoSpec):
-    pid = agent_pid(spec)
-    if not pid:
-        return False, t("sms_agent_stopped")
-    try:
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
-    except OSError:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
-    for _ in range(20):
-        if not agent_pid(spec):
-            break
-        time.sleep(0.5)
+    # Le groupe entier quand l'agent le mène, et rien si l'empreinte ne
+    # désigne plus l'agent : le numéro peut appartenir à un autre programme.
+    arret = lib_processus.arreter_detache(
+        _lire_pid(pid_agent(spec)), _marqueurs_agent(spec)
+    )
+    if arret is False:
+        return False, f"{t('sms_stop_still_running')} {pid_agent(spec)}"
     try:
         pid_agent(spec).unlink()
     except OSError:
         pass
-    return True, t("sms_agent_stopped")
+    return arret is True, t("sms_agent_stopped")
 
 
 def _derniere_ligne(spec: DemoSpec) -> str:

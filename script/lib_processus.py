@@ -276,13 +276,19 @@ def membres(pgid):
     for nom in noms:
         if not nom.isdigit():
             continue
+        # En octets : le nom du programme n'est pas forcément de l'UTF-8, et
+        # un membre illisible écourterait la grâce de son groupe.
         try:
-            with open(f"/proc/{nom}/stat", encoding="utf-8") as fh:
-                champs = fh.read().rsplit(")", 1)[1].split()
-        except (OSError, IndexError, UnicodeDecodeError):
+            with open(f"/proc/{nom}/stat", "rb") as fh:
+                champs = fh.read().rsplit(b")", 1)[1].split()
+        except (OSError, IndexError):
             continue
         # champs[0] : l'état ; champs[2] : le groupe de processus.
-        if len(champs) > 2 and champs[2] == str(pgid) and champs[0] != "Z":
+        if (
+            len(champs) > 2
+            and champs[2] == str(pgid).encode()
+            and champs[0] != b"Z"
+        ):
             trouves.append(int(nom))
     return trouves
 
@@ -378,3 +384,170 @@ class Lot:
     def __exit__(self, *exc):
         self.arreter()
         return False
+
+
+# ----------------------------------------------------------------------
+# Processus détachés
+# ----------------------------------------------------------------------
+#
+# Un service lancé pour survivre au programme qui l'a lancé n'a plus de
+# Groupe : on le retrouve par un fichier. Un numéro de processus seul n'y
+# suffit pas, il se réattribue — après un redémarrage, ou simplement avec
+# le temps — et viserait alors un programme étranger, son groupe entier
+# compris. L'empreinte joint au numéro l'instant de démarrage du processus,
+# que le noyau ne réattribue pas avec lui.
+
+
+def _demarrage(pid):
+    """L'instant de démarrage de `pid` (22e champ de /proc/<pid>/stat, en
+    tops d'horloge depuis le démarrage de la machine), ou None s'il
+    n'existe pas ou n'est plus qu'un zombie : sorti, il ne tourne plus.
+
+    Lu en octets : le nom du programme, recopié dans stat, n'est pas
+    forcément de l'UTF-8."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as fh:
+            stat = fh.read()
+    except OSError:
+        return None
+    # Le nom du programme, entre parenthèses, peut contenir des blancs et
+    # des parenthèses : les champs se comptent après la dernière.
+    champs = stat.rsplit(b")", 1)[-1].split()
+    if len(champs) <= 19 or champs[0] == b"Z":
+        return None
+    return champs[19].decode("ascii")
+
+
+def _elements(pid):
+    """Les arguments de `pid` et ses variables d'environnement, chacun
+    entier (« --http-port=8069 », « NOM=valeur »), ou None si sa ligne de
+    commande est illisible. Un environnement illisible — processus d'un
+    autre compte — ne compte pour rien."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            brut = fh.read()
+    except OSError:
+        return None
+    with (
+        contextlib.suppress(OSError),
+        open(f"/proc/{pid}/environ", "rb") as fh,
+    ):
+        brut += b"\0" + fh.read()
+    return {x.decode(errors="surrogateescape") for x in brut.split(b"\0") if x}
+
+
+def empreinte(pid):
+    """« pid:démarrage » d'un processus vivant, à écrire dans un fichier
+    PID ; None s'il n'existe pas ou est déjà sorti."""
+    debut = _demarrage(pid)
+    return None if debut is None else f"{pid}:{debut}"
+
+
+def retrouver(texte, marqueurs=()):
+    """Le pid que désigne l'empreinte `texte` s'il désigne encore le MÊME
+    processus, sinon 0. Un texte illisible rend 0.
+
+    Un fichier d'avant les empreintes ne porte qu'un numéro : il n'est
+    reconnu que si chacun des `marqueurs` est un argument ou une variable
+    d'environnement ENTIERS du processus, et jamais sans marqueur. Comparer
+    des éléments entiers, et non des sous-chaînes, évite qu'un marqueur en
+    reconnaisse un autre qui le contient."""
+    texte = (texte or "").strip()
+    numero, _, debut = texte.partition(":")
+    # Un numéro de processus tient en quelques chiffres ; au-delà de 4300,
+    # int() lèverait ValueError.
+    if not (numero.isascii() and numero.isdigit()) or len(numero) > 10:
+        return 0
+    pid = int(numero)
+    if debut:
+        return pid if _demarrage(pid) == debut else 0
+    if isinstance(marqueurs, str):
+        marqueurs = (marqueurs,)
+    if not marqueurs:
+        return 0
+    elements = _elements(pid)
+    if elements is None or not all(m in elements for m in marqueurs):
+        return 0
+    return pid
+
+
+def signaler_detache(texte, sig, marqueurs=()):
+    """Envoie `sig` au processus de l'empreinte `texte`, et à son groupe
+    quand il en est le chef — ce que fait start_new_session. Rend
+    l'empreinte complète du processus signalé, pour `attendre_fin` ; None
+    si `texte` ne désigne plus ce processus, et rien n'est alors signalé.
+    Lève PermissionError pour un processus d'un autre compte : il tourne
+    toujours, et le confondre avec un processus disparu ferait oublier son
+    fichier PID.
+
+    L'identité est relue juste avant le signal ; le numéro ne peut être
+    réattribué entre les deux que si le processus meurt dans l'intervalle."""
+    pid = retrouver(texte, marqueurs)
+    cible = empreinte(pid) if pid else None
+    if not cible:
+        return None
+    try:
+        if os.getpgid(pid) == pid:
+            os.killpg(pid, sig)
+        else:
+            os.kill(pid, sig)
+    except ProcessLookupError:
+        return None
+    return cible
+
+
+def attendre_fin(cible, delai, groupe=False):
+    """Vrai dès que le processus de l'empreinte complète `cible` ne tourne
+    plus — avec `groupe`, ni aucun membre du groupe qu'il mène —, faux
+    sinon après `delai` secondes. Suivre l'empreinte, et non la ligne de
+    commande, tient jusqu'au bout : un processus qui sort vide sa ligne de
+    commande avant de devenir zombie."""
+    pid = int(cible.partition(":")[0])
+
+    def fini():
+        if retrouver(cible):
+            return False
+        return not (groupe and membres(pid))
+
+    fin = time.monotonic() + delai
+    pause = 0.02
+    while not fini():
+        if time.monotonic() >= fin:
+            return False
+        time.sleep(pause)
+        pause = min(pause * 2, 0.25)
+    return True
+
+
+def arreter_detache(texte, marqueurs=(), grace=10.0, recolte=5.0):
+    """Arrête le processus détaché de l'empreinte `texte`, et son groupe
+    quand il le mène : SIGTERM, puis SIGKILL après `grace` secondes à ce
+    qui tourne encore, chef ou membres restés après lui.
+
+    Rend None si `texte` ne désigne plus ce processus — rien n'est alors
+    signalé —, True une fois que plus rien ne tourne, False sinon : un
+    processus d'un autre compte, qu'on ne peut signaler, ou qui tourne
+    encore `recolte` secondes après SIGKILL (sommeil non interruptible).
+    Sur False, son fichier PID doit rester, pour qu'un arrêt le retrouve."""
+    pid = retrouver(texte, marqueurs)
+    if not pid:
+        return None
+    try:
+        mene = os.getpgid(pid) == pid
+        cible = signaler_detache(texte, signal.SIGTERM, marqueurs)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        return False
+    if not cible:
+        return None
+    if attendre_fin(cible, grace, groupe=mene):
+        return True
+    # Un numéro de groupe n'est pas réattribué tant qu'un membre existe :
+    # killpg vise encore le bon groupe, même après la sortie de son chef.
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        if mene and membres(pid):
+            os.killpg(pid, signal.SIGKILL)
+        elif retrouver(cible):
+            os.kill(pid, signal.SIGKILL)
+    return attendre_fin(cible, recolte, groupe=mene)

@@ -2052,5 +2052,216 @@ class TestMateriel(SmsDemoBase):
         self.assertNotIn("application mobile", annonce.lower())
 
 
+class TestFichierPidReattribue(SmsDemoBase):
+    """Un fichier PID survit à son processus, et le numéro qu'il porte se
+    réattribue. Un programme étranger qui en hérite n'est ni pris pour
+    l'agent ou le serveur, ni signalé à leur place."""
+
+    def detache(self, *args, env=None):
+        """Un vrai processus dans sa propre session, récolté dès sa sortie
+        comme init le fait d'un service dont le menu est fermé."""
+        import signal
+        import subprocess
+        import threading
+
+        p = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)", *args],
+            start_new_session=True,
+            env=env,
+        )
+        threading.Thread(target=p.wait, daemon=True).start()
+
+        def tuer():
+            try:
+                os.kill(p.pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+        self.addCleanup(tuer)
+        return p.pid
+
+    def agent_de(self, agent, spec):
+        """Un processus qui a tout d'un agent de `spec` : son module, et
+        l'appareil de ce matériel dans son environnement."""
+        env = dict(
+            os.environ,
+            **{agent.agent_mod.VARIABLE_APPAREIL: spec.device_id},
+        )
+        return self.detache(agent.MODULE_AGENT, env=env)
+
+    @staticmethod
+    def tourne(pid):
+        try:
+            with open(f"/proc/{pid}/stat", "rb") as fh:
+                return fh.read().rsplit(b")", 1)[1].split()[0] != b"Z"
+        except OSError:
+            return False
+
+    @staticmethod
+    def ecrire(chemin, texte):
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(texte, bytes):
+            chemin.write_bytes(texte)
+        else:
+            chemin.write_text(texte)
+
+    def modules(self):
+        from script.todo.sms import agent, local
+
+        return agent, local
+
+    def test_un_etranger_n_est_pas_le_serveur_et_survit_a_l_arret(self):
+        _, local = self.modules()
+        spec = self.spec_mod.spec_par_defaut("mobile")
+        etranger = self.detache()
+        self.ecrire(local.pid_serveur(spec), str(etranger))
+        self.assertEqual(local.server_pid(spec), 0)
+        ok, _ = local.stop_server(spec)
+        self.assertFalse(ok)
+        self.assertTrue(self.tourne(etranger), "un étranger a été signalé")
+        self.assertFalse(local.pid_serveur(spec).exists())
+
+    def test_un_etranger_n_est_pas_l_agent_et_survit_a_l_arret(self):
+        """Un numéro seul, d'un fichier d'avant les empreintes : le
+        processus qui porte ce numéro n'a ni le module de l'agent ni son
+        appareil, il n'est donc pas l'agent."""
+        agent, _ = self.modules()
+        spec = self.spec_mod.spec_par_defaut("modem")
+        etranger = self.detache()
+        self.ecrire(agent.pid_agent(spec), str(etranger))
+        self.assertEqual(agent.agent_pid(spec), 0)
+        ok, _ = agent.stop_agent(spec)
+        self.assertFalse(ok)
+        self.assertTrue(self.tourne(etranger), "un étranger a été signalé")
+
+    def test_l_agent_de_l_autre_materiel_n_est_pas_le_sien(self):
+        """Les deux démonstrations lancent le même module : seul l'appareil,
+        dans l'environnement, distingue l'agent de « modem » de celui de
+        « mobile »."""
+        agent, _ = self.modules()
+        modem = self.spec_mod.spec_par_defaut("modem")
+        mobile = self.spec_mod.spec_par_defaut("mobile")
+        celui_du_modem = self.agent_de(agent, modem)
+        self.ecrire(agent.pid_agent(mobile), str(celui_du_modem))
+        self.assertEqual(agent.agent_pid(mobile), 0)
+        self.assertFalse(agent.stop_agent(mobile)[0])
+        self.assertTrue(self.tourne(celui_du_modem))
+
+    def test_un_numero_reattribue_a_une_autre_empreinte(self):
+        _, local = self.modules()
+        spec = self.spec_mod.spec_par_defaut("mobile")
+        marque = self.detache(f"--http-port={spec.odoo_port}")
+        self.ecrire(local.pid_serveur(spec), f"{marque}:1")
+        self.assertEqual(local.server_pid(spec), 0)
+        self.assertFalse(local.stop_server(spec)[0])
+        self.assertTrue(self.tourne(marque))
+
+    def test_un_fichier_pid_corrompu_ne_fait_pas_tomber(self):
+        agent, local = self.modules()
+        spec = self.spec_mod.spec_par_defaut("modem")
+        for contenu in (b"\xff\xfe\x00", "²", "١٢٣:4"):
+            with self.subTest(contenu=contenu):
+                self.ecrire(local.pid_serveur(spec), contenu)
+                self.ecrire(agent.pid_agent(spec), contenu)
+                self.assertEqual(local.server_pid(spec), 0)
+                self.assertEqual(agent.agent_pid(spec), 0)
+                self.assertFalse(local.stop_server(spec)[0])
+                self.assertFalse(agent.stop_agent(spec)[0])
+
+    def test_le_serveur_de_son_empreinte_est_retrouve_et_arrete(self):
+        from script import lib_processus
+
+        _, local = self.modules()
+        spec = self.spec_mod.spec_par_defaut("mobile")
+        serveur = self.detache(f"--http-port={spec.odoo_port}")
+        self.ecrire(local.pid_serveur(spec), lib_processus.empreinte(serveur))
+        self.assertEqual(local.server_pid(spec), serveur)
+        ok, _ = local.stop_server(spec)
+        self.assertTrue(ok)
+        self.assertFalse(self.tourne(serveur))
+        self.assertFalse(local.pid_serveur(spec).exists())
+
+    def test_l_agent_d_un_ancien_fichier_est_reconnu_et_arrete(self):
+        """Un fichier écrit avant les empreintes ne porte qu'un numéro :
+        l'agent de CE matériel, qui tourne encore, reste arrêtable, et
+        l'arrêt n'est rendu qu'une fois l'agent mort."""
+        agent, _ = self.modules()
+        spec = self.spec_mod.spec_par_defaut("modem")
+        vrai = self.agent_de(agent, spec)
+        self.ecrire(agent.pid_agent(spec), str(vrai))
+        self.assertEqual(agent.agent_pid(spec), vrai)
+        self.assertTrue(agent.stop_agent(spec)[0])
+        self.assertFalse(self.tourne(vrai))
+
+    def test_un_agent_deja_sorti_ne_laisse_pas_de_numero_seul(self):
+        """Sorti avant la prise d'empreinte, l'agent n'a plus d'empreinte :
+        aucun numéro seul n'est écrit, qu'un autre programme hériterait."""
+        import subprocess
+        from unittest.mock import patch
+
+        agent, _ = self.modules()
+        mort = subprocess.Popen(["true"])
+        mort.wait()
+        state = mock.Mock()
+        state.spec = self.spec_mod.spec_par_defaut("modem")
+        state.vm_ip = ""
+        with (
+            patch.object(agent, "agent_pid", return_value=0),
+            patch.object(agent, "venv_python", return_value=Path("python3")),
+            patch.object(agent.subprocess, "Popen", return_value=mort),
+            patch.object(agent, "DEMARRAGE", 1),
+        ):
+            ok, _ = agent.start_agent(state)
+        self.assertFalse(ok)
+        self.assertFalse(agent.pid_agent(state.spec).exists())
+
+    def test_un_serveur_qui_survit_garde_son_fichier_pid(self):
+        """Un serveur qu'on ne peut arrêter — d'un autre compte, ou en
+        sommeil non interruptible — garde son fichier PID : sans lui, plus
+        rien ne le retrouverait."""
+        from unittest.mock import patch
+
+        from script import lib_processus
+
+        _, local = self.modules()
+        spec = self.spec_mod.spec_par_defaut("mobile")
+        serveur = self.detache(f"--http-port={spec.odoo_port}")
+        self.ecrire(local.pid_serveur(spec), lib_processus.empreinte(serveur))
+        with patch.object(
+            local.lib_processus, "arreter_detache", return_value=False
+        ):
+            ok, detail = local.stop_server(spec)
+        self.assertFalse(ok)
+        self.assertIn(str(local.pid_serveur(spec)), detail)
+        self.assertTrue(local.pid_serveur(spec).exists())
+
+    def test_la_remise_a_zero_s_arrete_si_le_serveur_survit(self):
+        """Supprimer la base et oublier le secret d'un serveur qui tourne
+        encore laisserait un Odoo que plus rien n'arrête par le menu."""
+        from unittest.mock import patch
+
+        from script.todo.sms import menu
+
+        state = self.spec_mod.load("mobile")
+        dit = []
+        with (
+            patch("builtins.input", return_value="o"),
+            patch(
+                "builtins.print",
+                lambda *a, **k: dit.append(" ".join(map(str, a))),
+            ),
+            patch.object(
+                menu.local_backend, "stop_server", return_value=(False, "x")
+            ),
+            patch.object(menu.local_backend, "server_pid", return_value=4242),
+            patch("subprocess.run") as lance,
+            patch.object(menu.spec_mod, "forget_secret") as oublie,
+        ):
+            menu._reset(None, state)
+        lance.assert_not_called()
+        oublie.assert_not_called()
+        self.assertIn(menu.t("sms_reset_aborted"), " ".join(dit))
+
+
 if __name__ == "__main__":
     unittest.main()

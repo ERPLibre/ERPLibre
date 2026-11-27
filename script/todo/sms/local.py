@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import os
 import shlex
-import signal
 import subprocess
 import time
 from pathlib import Path
 
+from script import lib_processus
 from script.todo.sms import gateway as gw
 from script.todo.sms import spec as spec_mod
 from script.todo.sms.spec import DemoSpec, ensure_secret
@@ -358,6 +358,21 @@ def _parse(sortie: str) -> dict:
 # ----------------------------------------------------------------------
 
 
+def _marqueur_serveur(spec: DemoSpec) -> str:
+    """Reconnaît un fichier PID d'avant les empreintes : le port, argument
+    entier de la commande que `exec` donne au serveur lancé ; chaque
+    matériel a le sien."""
+    return f"--http-port={spec.odoo_port}"
+
+
+def _lire_pid(chemin: Path) -> str:
+    """Le texte du fichier PID, "" s'il manque ou est illisible."""
+    try:
+        return chemin.read_text()
+    except (OSError, ValueError):
+        return ""
+
+
 def server_pid(spec: DemoSpec) -> int:
     """Le PID du serveur de démonstration, ou 0 s'il ne tourne pas.
 
@@ -365,15 +380,12 @@ def server_pid(spec: DemoSpec) -> int:
     mort de son processus, et se fier au fichier seul ferait croire à un
     serveur en vie devant un téléphone qui n'atteint rien.
     """
-    try:
-        pid = int(pid_serveur(spec).read_text().strip())
-    except (OSError, ValueError):
-        return 0
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return 0
-    return pid
+    # Un numéro de processus se réattribue : le fichier porte l'empreinte
+    # du serveur lancé, et un programme étranger qui hérite du numéro
+    # n'est pas pris pour lui.
+    return lib_processus.retrouver(
+        _lire_pid(pid_serveur(spec)), _marqueur_serveur(spec)
+    )
 
 
 def start_server(spec: DemoSpec):
@@ -415,10 +427,9 @@ def start_server(spec: DemoSpec):
     with open(journal_serveur(spec), "ab") as journal:
         # PAS de commande `setsid` ici : `start_new_session=True` demande deja
         # a Python d'appeler setsid() dans l'enfant. Cumuler les deux fait que
-        # le `setsid` externe se dedouble puis sort aussitot — on retenait
-        # alors le PID d'un processus deja mort, et on croyait le serveur
-        # tombe alors qu'il tournait. Resultat vecu : un Odoo orphelin sur le
-        # port, que plus rien ne savait arreter.
+        # le `setsid` externe se dedouble puis sort aussitot : le PID retenu
+        # serait celui d'un processus deja mort, et le serveur, orphelin sur
+        # son port, ne pourrait plus etre arrete par ce module.
         #
         # Le `exec` de la commande fait que bash est REMPLACE par Odoo : le
         # PID rendu par Popen reste donc valable pour la duree du serveur.
@@ -430,7 +441,12 @@ def start_server(spec: DemoSpec):
             env=_env_with_secret(spec),
             start_new_session=True,
         )
-    pid_serveur(spec).write_text(str(processus.pid))
+    # Sans empreinte, le serveur est déjà sorti : la boucle qui suit le
+    # dit, et aucun numéro seul n'est écrit, qu'un autre programme
+    # hériterait.
+    marque = lib_processus.empreinte(processus.pid)
+    if marque:
+        pid_serveur(spec).write_text(marque)
 
     # Attendre que le port réponde. Sans cette attente, l'étape suivante
     # dirait « prêt » alors qu'Odoo charge encore ses modules, et le
@@ -449,27 +465,20 @@ def start_server(spec: DemoSpec):
 
 
 def stop_server(spec: DemoSpec):
-    pid = server_pid(spec)
-    if not pid:
-        return False, t("sms_local_server_stopped")
-    try:
-        # Le groupe entier : `setsid` en a créé un, et tuer le seul chef
-        # laisserait les ouvriers d'Odoo tenir le port.
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
-    except OSError:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
-    for _ in range(20):
-        if not server_pid(spec):
-            break
-        time.sleep(0.5)
+    # Le groupe entier : la session ouverte au lancement en fait un, et tuer
+    # le seul chef laisserait les ouvriers d'Odoo tenir le port. Rien si
+    # l'empreinte ne désigne plus le serveur : le numéro peut appartenir à
+    # un autre programme.
+    arret = lib_processus.arreter_detache(
+        _lire_pid(pid_serveur(spec)), _marqueur_serveur(spec)
+    )
+    if arret is False:
+        return False, f"{t('sms_stop_still_running')} {pid_serveur(spec)}"
     try:
         pid_serveur(spec).unlink()
     except OSError:
         pass
-    return True, t("sms_local_server_stopped")
+    return arret is True, t("sms_local_server_stopped")
 
 
 def _port_ouvert(port: int) -> bool:

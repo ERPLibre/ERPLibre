@@ -831,6 +831,12 @@ def _reset(todo, state) -> None:
     if state.spec.mode == "local":
         _, detail = local_backend.stop_server(state.spec)
         print(f"  {detail}")
+        # Un serveur qui survit à l'arrêt tient encore sa base : la
+        # supprimer et oublier le secret laisseraient un Odoo sans base ni
+        # secret, que plus rien n'arrête par le menu.
+        if local_backend.server_pid(state.spec):
+            print(f"  ❌ {t('sms_reset_aborted')}")
+            return
         subprocess.run(
             ["dropdb", "--if-exists", state.spec.db_name],
             capture_output=True,

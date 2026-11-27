@@ -17582,6 +17582,18 @@ TRANSLATIONS = {
         "fr": "Agent passerelle arrete.",
         "en": "Gateway agent stopped.",
     },
+    "sms_stop_still_running": {
+        "fr": "Toujours en marche (processus d'un autre compte, ou malgre"
+        " SIGTERM puis SIGKILL), fichier PID garde :",
+        "en": "Still running (another account's process, or despite SIGTERM"
+        " then SIGKILL), PID file kept:",
+    },
+    "sms_reset_aborted": {
+        "fr": "Remise a zero annulee : le serveur tourne encore, sa base et"
+        " son secret sont gardes.",
+        "en": "Reset cancelled: the server is still running, its database and"
+        " secret are kept.",
+    },
     "sms_agent_died": {
         "fr": "L'agent s'est arrete aussitot ; voir le journal.",
         "en": "The agent stopped immediately; see the log.",
