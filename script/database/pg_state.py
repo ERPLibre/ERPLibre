@@ -18,7 +18,7 @@ pour rien :
 
 `verifier` rend la liste de ces défauts ; les autres fonctions en sont les
 pièces, chacune testable sans serveur. Le serveur est joint par psql, avec
-l'environnement donné : celui d'Odoo, que db_restore.environnement_pg tire
+l'environnement donné : celui d'Odoo, que pg_connexion.environnement tire
 de config.conf.
 
 Seul ce qui fera certainement échouer un saut arrête la migration : un
