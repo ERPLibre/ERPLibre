@@ -38,11 +38,39 @@ el_swap_ensure
 # meson s'arrête sur « Unknown compiler(s) », et scikit-learn tombe avec lui,
 # puisqu'il bâtit son propre scipy pour se compiler. openblas.pc, que le
 # paquet ne livre pas, est écrit plus bas.
-${DNF} \
-  rust cargo \
-  libjpeg-turbo-devel zlib-devel geos-devel proj proj-devel \
-  krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
-  GeographicLib-devel pkgconf-pkg-config cmake gcc-gfortran openblas-devel
+#
+# « --skip-unavailable » ne tolère qu'un NOM inconnu. Un téléchargement raté
+# — miroir en défaut, somme refusée — annule la transaction entière, car dnf
+# est atomique : un seul paquet en échec privait des dix-sept autres, sans que
+# rien ne s'arrête, et pillow tombait bien plus loin faute de jpeglib.h. Le
+# lot est donc rejoué paquet par paquet, et ceux qui manquent sont NOMMÉS.
+S390X_DNF_PKGS=(rust cargo
+  libjpeg-turbo-devel zlib-devel geos-devel proj proj-devel
+  krb5-devel tbb-devel ninja-build clang-devel llvm-devel
+  GeographicLib-devel pkgconf-pkg-config cmake gcc-gfortran openblas-devel)
+if ! ${DNF} "${S390X_DNF_PKGS[@]}"; then
+  echo "Lot dnf s390x en echec : reprise paquet par paquet..."
+  DNF_FAILED=""
+  for one in "${S390X_DNF_PKGS[@]}"; do
+    # rpm tranche : un paquet déjà présent ne compte pas comme un échec.
+    rpm -q --whatprovides "${one}" > /dev/null 2>&1 && continue
+    ${DNF} "${one}" || DNF_FAILED="${DNF_FAILED} ${one}"
+  done
+  if [[ -n "${DNF_FAILED}" ]]; then
+    echo "Paquets s390x non installables :${DNF_FAILED}"
+    # Seuls les en-têtes que le venv d'outillage compile sont bloquants ;
+    # les autres servent des dépendances d'Odoo, dont l'échec se nomme au
+    # build.
+    for essential in libjpeg-turbo-devel zlib-devel pkgconf-pkg-config cmake; do
+      case " ${DNF_FAILED} " in
+        *" ${essential} "*)
+          echo "dnf s390x : '${essential}' est indispensable, arret."
+          exit 1
+          ;;
+      esac
+    done
+  fi
+fi
 
 # Le Python des versions supportées, quand la distribution le livre :
 # el_python_exec (lib_python_provider.sh) prend alors l'interpréteur du
