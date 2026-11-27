@@ -526,6 +526,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Une image cloud QEMU en cache dont la somme SHA-256 publiée a changé n'est remplacée qu'une fois le nouveau téléchargement conforme : l'ancienne reste lisible par une conversion en cours et reste en place si le téléchargement est refusé, un écart sur des octets fraîchement téléchargés arrête tout au lieu de reprendre, et un dossier de cache ou un `.part` que l'utilisateur ne peut écrire passe par `sudo` au lieu d'échouer comme une panne réseau
 - Le bilan de santé de TODO ne propose un premier gel à un dépôt sans `freeze-revision` que dans un checkout gelé : en mode branches, où chaque dépôt suit sa branche, les fragments communs à toutes les versions, toujours gelés, ne font plus lister presque tous les autres dépôts, et accepter n'écrit plus de gels dans les manifestes de la version active. Les autres résolutions du gel, comme remettre sur son gel un dépôt en retard, restent proposées en mode branches
 - Ctrl+C pendant l'exploration SSH du menu d'accès QEMU tue aussitôt les sondes en cours et le ssh de leur ProxyJump, au lieu d'attendre jusqu'à leur délai de 90 s
+- La suite unitaire passe en entier quand `/usr/sbin` est fusionné dans `/usr/bin` : `test_qemu_cache_install` ne cache plus que `nft` de son PATH au lieu du répertoire entier, `sed` et `bash` avec. Sous le lanceur, la doublure `ssh` répond à `ssh -V`, que git-repo lance à chaque `repo sync`, et refuse toujours toute connexion : `test_install_erplibre_home` n'échoue plus là seulement
 
 ## Retiré
 
