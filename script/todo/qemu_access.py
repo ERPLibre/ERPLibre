@@ -8,62 +8,17 @@ import json
 import os
 import shlex
 import shutil
-import signal
 import socket
 import subprocess
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 from script.todo import qemu_usb, todo_install
 from script.todo.deploy_form_lib import VM_USER_DEFAULT
 from script.todo.qemu_privilege import sudo_prefix
+from script import lib_processus
 from script.todo.todo_couleur import retour
 from script.todo.todo_i18n import t
-
-
-class _SondesEnCours:
-    """Les sondes ssh d'un niveau, chacune chef de son groupe de processus.
-
-    Une sonde tourne dans sa propre session, hors du groupe du terminal :
-    Ctrl+C ne l'atteint pas. `arreter` tue le groupe entier de chaque sonde
-    en cours (le ssh et celui de son ProxyJump), et `lancer` refuse ensuite
-    toute nouvelle sonde. Le verrou couvre la création du processus : une
-    sonde qui démarre pendant l'arrêt est soit tuée, soit jamais lancée."""
-
-    def __init__(self):
-        self._verrou = threading.Lock()
-        self._actives = set()
-        self._arretees = False
-
-    def lancer(self, cmd, **kwargs):
-        """Le Popen de `cmd` dans une nouvelle session, ou None après
-        `arreter`."""
-        with self._verrou:
-            if self._arretees:
-                return None
-            proc = subprocess.Popen(cmd, start_new_session=True, **kwargs)
-            self._actives.add(proc)
-            return proc
-
-    def terminee(self, proc):
-        with self._verrou:
-            self._actives.discard(proc)
-
-    def arreter(self):
-        with self._verrou:
-            self._arretees = True
-            for proc in self._actives:
-                tuer_groupe(proc)
-
-
-def tuer_groupe(proc):
-    """SIGKILL au groupe dont `proc` est le chef (start_new_session), tant
-    qu'il n'est pas récolté : après, son numéro peut être réattribué."""
-    if proc.poll() is not None:
-        return
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(proc.pid, signal.SIGKILL)
 
 
 class QemuAccessMixin:
@@ -1109,8 +1064,8 @@ class QemuAccessMixin:
         machine avec QEMU mais sans VM mérite quand même sa connexion
         virt-manager, une machine sans QEMU n'en veut aucune.
 
-        `sondes` (_SondesEnCours) recense le processus pour qu'un arrêt du
-        niveau le tue ; une sonde refusée après l'arrêt rend « net »."""
+        `sondes` (lib_processus.Lot) recense la sonde pour qu'un arrêt du
+        niveau la tue ; une sonde refusée après l'arrêt rend « net »."""
         cmd = [
             "ssh",
             "-o",
@@ -1133,10 +1088,11 @@ class QemuAccessMixin:
             # sinon les touches tapées pour une question du fil principal.
             # Contrepartie : Ctrl+C n'atteint plus ces ssh. Le fil qui
             # l'attend tue donc lui-même le groupe de la sonde, ProxyJump
-            # compris, comme `_SondesEnCours.arreter` pour un niveau.
-            proc = (sondes or _SondesEnCours()).lancer(
+            # compris, comme `Lot.arreter` pour un niveau. lib_processus
+            # fixe la session et stdin=/dev/null.
+            lancer = lib_processus.lancer if sondes is None else sondes.lancer
+            groupe = lancer(
                 cmd,
-                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -1144,24 +1100,21 @@ class QemuAccessMixin:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             return "net", str(exc)
-        if proc is None:
+        if groupe is None:
             return "net", t("interrupted")
         try:
-            stdout, stderr = proc.communicate(timeout=90)
+            # communiquer rend la main à la fin du ssh, même quand le ssh du
+            # ProxyJump tient encore le tube : le groupe est balayé.
+            stdout, stderr = groupe.communiquer(timeout=90)
         except subprocess.TimeoutExpired:
-            tuer_groupe(proc)
-            proc.communicate()
+            groupe.tuer()
             return "net", t("timed out")
         except BaseException:
-            tuer_groupe(proc)
-            proc.communicate()
+            groupe.tuer()
             raise
-        finally:
-            if sondes is not None:
-                sondes.terminee(proc)
-        if proc.returncode != 0:
+        if groupe.code != 0:
             detail = (stderr or "").strip().splitlines()
-            message = detail[-1] if detail else f"exit {proc.returncode}"
+            message = detail[-1] if detail else f"exit {groupe.code}"
             return self._ssh_error_kind(stderr), message
         libvirt = "no"
         found = []
@@ -1192,16 +1145,17 @@ class QemuAccessMixin:
         Fermé avant la fin — Ctrl+C, exception de l'appelant — il tue les
         sondes en cours et n'en lance plus : la sortie du `with`, qui attend
         les fils, ne dure plus le ConnectTimeout d'un hôte muet."""
-        sondes = _SondesEnCours()
 
         def sonder(alias):
             return self._qemu_ssh_probe_remote(alias, sondes)
 
-        with ThreadPoolExecutor(max_workers=self._QEMU_SSH_PARALLEL) as pool:
-            try:
-                yield from zip(aliases, pool.map(sonder, aliases))
-            finally:
-                sondes.arreter()
+        # Le Lot se ferme AVANT que le pool attende ses fils : sinon la
+        # sortie du `with` attendrait la fin naturelle de chaque sonde.
+        with (
+            ThreadPoolExecutor(max_workers=self._QEMU_SSH_PARALLEL) as pool,
+            lib_processus.Lot() as sondes,
+        ):
+            yield from zip(aliases, pool.map(sonder, aliases))
 
     def _qemu_ssh_walk(self, roots, max_depth):
         """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.

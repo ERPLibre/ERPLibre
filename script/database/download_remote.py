@@ -20,7 +20,6 @@ BACKUP_FORMAT = "zip"  # 'zip' or 'dump'
 OUTPUT_FILE_NAME = f"{DATABASE_NAME}_backup.{BACKUP_FORMAT}"
 
 # --- Logger Setup ---
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # TODO not working with remote, only localhost
@@ -102,6 +101,9 @@ def download_odoo_db():
 
 # --- Script execution ---
 if __name__ == "__main__":
+    # La journalisation se règle ici et non à l'import : un module qui
+    # l'importe garde la sienne.
+    logging.basicConfig(level=logging.INFO)
     # Add a simple check to ensure the user has configured the variables
     if (
         ODOO_URL == "http://localhost:8069"

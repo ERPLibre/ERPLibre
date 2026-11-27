@@ -36,6 +36,7 @@ from script.todo.deploy_form_lib import (
     VM_LOGIN_FILE,
     VM_USER_DEFAULT,
 )
+from script.test.journal_odoo import IGNORE_AVERTISSEMENT, IGNORE_ERREUR
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 
@@ -1166,45 +1167,30 @@ def active_run():
     return run if run["total"] and run["active"] else None
 
 
-# Listes d'ignore reprises de script/test/run_parallel_test.py (erreurs/
-# avertissements connus et bénins) : on réutilise la MÊME logique de détection
-# que la suite de tests ERPLibre pour analyser les logs d'installation.
+# Listes d'ignore de script/test/journal_odoo.py (erreurs/avertissements
+# connus et bénins) : la MÊME logique de détection que les scénarios du
+# générateur, appliquée aux logs d'installation.
 _LST_IGNORE_WARNING = (
     # ssh annonce l'ajout d'une clé d'hôte à chaque PREMIÈRE connexion à une
     # VM neuve. Ce n'est pas un avertissement d'installation : compté, il
     # allumait la colonne ⚠ sur TOUTE installation, dès sa première ligne.
     "Warning: Permanently added",
-    "have the same label:",
-    "odoo.addons.code_generator.extractor_module_file: Ignore next error about"
-    " ALTER TABLE DROP CONSTRAINT.",
+    *IGNORE_AVERTISSEMENT,
 )
-_LST_IGNORE_ERROR = (
-    "fetchmail_notify_error_to_sender",
-    'odoo.sql_db: bad query: ALTER TABLE "db_backup" DROP CONSTRAINT'
-    ' "db_backup_db_backup_name_unique"',
-    'ERROR: constraint "db_backup_db_backup_name_unique" of relation'
-    ' "db_backup" does not exist',
-    'odoo.sql_db: bad query: ALTER TABLE "db_backup" DROP CONSTRAINT'
-    ' "db_backup_db_backup_days_to_keep_positive"',
-    'ERROR: constraint "db_backup_db_backup_days_to_keep_positive" of relation'
-    ' "db_backup" does not exist',
-    "odoo.addons.code_generator.extractor_module_file: Ignore next error about"
-    " ALTER TABLE DROP CONSTRAINT.",
-)
+_LST_IGNORE_ERROR = IGNORE_ERREUR
 
 
 # Signaux d'échec qui ne contiennent NI « error » NI « warning ». Sans eux, le
-# scan par sous-chaîne rate des installations franchement ratées : le journal de
-# la VM erplibre-ubuntu-2604-gnome, dont la compilation de l'APK a été tuée par
-# le noyau, ne portait AUCUNE ligne « error » — mesuré, 0 sur 8765 lignes —
-# pendant que « ⚠ ÉCHEC : APK debug (gradle) », « FAILURE: Build failed » et
-# « daemon disappeared unexpectedly » y étaient. Le détail des erreurs annonçait
-# donc « aucune erreur détectée » sur une installation en échec.
+# scan par sous-chaîne rate des installations franchement ratées : une
+# compilation tuée par le noyau peut ne laisser aucune ligne « error »,
+# seulement « ⚠ ÉCHEC : <étape> », « FAILURE: Build failed » ou « daemon
+# disappeared unexpectedly », et le détail des erreurs annoncerait « aucune
+# erreur détectée » sur une installation en échec.
 #
-# Chaque motif est là parce qu'il est apparu dans un vrai journal, pas par
-# précaution : Gradle dit « FAILURE », Python « Traceback », git « fatal: », apt
-# « Unable to locate package », le noyau « Killed » ou « Cannot allocate
-# memory », et nos propres étapes « ⚠ ÉCHEC ».
+# Chaque motif est celui d'un outil réel, pas une précaution : Gradle dit
+# « FAILURE », Python « Traceback », git « fatal: », apt « Unable to locate
+# package », le noyau « Killed » ou « Cannot allocate memory », et nos propres
+# étapes « ⚠ ÉCHEC ».
 _LST_HARD_MARKERS = (
     "⚠ échec",
     "failed:",
@@ -1212,10 +1198,10 @@ _LST_HARD_MARKERS = (
     "traceback (most recent call last)",
     "fatal:",
     "command not found",
-    # PAS « no such file or directory » : sur le journal de référence, 5 de ses
-    # 7 occurrences étaient des sondes bénignes (« cat: .odoo-version »), et le
-    # bruit dilue un résumé dont l'intérêt est justement d'être court. Un
-    # fichier vraiment manquant fait échouer une ÉTAPE, elle-même captée.
+    # PAS « no such file or directory » : la plupart de ses occurrences sont
+    # des sondes bénignes (« cat: .odoo-version »), et le bruit dilue un
+    # résumé dont l'intérêt est justement d'être court. Un fichier vraiment
+    # manquant fait échouer une ÉTAPE, elle-même captée.
     "permission denied",
     "unable to locate package",
     "disappeared unexpectedly",

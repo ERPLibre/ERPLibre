@@ -17,7 +17,8 @@
 # prouve rien. Ce script les annonce donc avant de commencer.
 #
 #   ./script/test/run_unit_test.sh [--tui] [--changed[=REF]] [--failed]
-#       [--watch] [--repeat=N] [--slowest=N] [--junit=FICHIER] [fichiers...]
+#       [--watch] [--repeat=N] [--slowest=N] [--junit=FICHIER] [--coverage]
+#       [-k MOTIF] [--ordre-aleatoire[=GRAINE]] [fichiers...]
 #   UNIT_JOBS=1 ./script/test/run_unit_test.sh      # en série
 #   UNIT_TIMEOUT=600 UNIT_SIGNAL=30 ...             # délai, rappel (s)
 #   export ERPLIBRE_REQUIREMENT_URL=https://… ERPLIBRE_REQUIREMENT_DB=… \
@@ -33,7 +34,7 @@
 # l'envoi met fin à --watch, en 130.
 #
 # Une option à valeur s'écrit avec « = » : tout argument sans « -- » est
-# pris pour un fichier de tests.
+# pris pour un fichier de tests, sauf la valeur qui suit « -k ».
 #
 # --tui ouvre un tableau des fichiers — en attente, en cours, finis, avec
 # leur durée — et le journal de celui qu'on sélectionne. L'exécution
@@ -89,12 +90,27 @@ fi
 
 OPTIONS=()
 FILES=()
-for arg in "$@"; do
-    case "${arg}" in
-        --*) OPTIONS+=("${arg}") ;;
-        *) FILES+=("${arg}") ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        # -k prend sa valeur dans l'argument suivant : ce n'est pas un
+        # fichier.
+        -k)
+            OPTIONS+=("-k" "${2:-}")
+            shift
+            ;;
+        --*) OPTIONS+=("$1") ;;
+        *) FILES+=("$1") ;;
     esac
+    shift
 done
+if [[ " ${OPTIONS[*]} " == *" --coverage "* ]] &&
+    ! "${PY}" -c 'import coverage, sys
+sys.exit(0 if coverage.version_info >= (7, 10) else 1)' 2>/dev/null; then
+    # patch = subprocess, qui mesure les sous-processus, demande 7.10.
+    echo -e "${Red}✗ --coverage : coverage 7.10 ou plus manque dans .venv.erplibre.${Color_Off}"
+    echo "  ${PY} -m pip install -r requirement/erplibre_require-ments.txt"
+    exit 1
+fi
 if [[ ${#FILES[@]} -eq 0 ]]; then
     # Aucun fichier : tout le répertoire.
     mapfile -t FILES < <(ls test/test_*.py 2>/dev/null)

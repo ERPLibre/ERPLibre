@@ -614,7 +614,7 @@ def rendre_menus():
         todo.prompt_execute()
         execution = invite.call_args[0][0]
     debut = execution.index("── %s ──" % todo_i18n.t("🏠 ERPLibre Home"))
-    fin = execution.index("\n", execution.index("[23] ", debut))
+    fin = execution.index("\n", execution.index("[24] ", debut))
     return sous_menu, execution[debut:fin]
 
 

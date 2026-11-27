@@ -7,7 +7,6 @@ import logging
 import subprocess
 import sys
 
-logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)
 
 
@@ -90,4 +89,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # La journalisation se règle ici et non à l'import : un module qui
+    # l'importe garde la sienne.
+    logging.basicConfig(level=logging.DEBUG)
     sys.exit(main())

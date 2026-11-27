@@ -12,8 +12,6 @@ import time
 import uuid
 from collections import defaultdict
 
-logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
-
 _logger = logging.getLogger(__name__)
 
 PYTHON_BIN = ".venv.erplibre/bin/python3"
@@ -374,8 +372,7 @@ def main():
             else f"{image_name_to_generate}_{pkg_name}"
         )
         cmd = (
-            f"./odoo_bin.sh db dump {bd_temp_name}"
-            f" --image {module_image_name}"
+            f"./odoo_bin.sh db dump {bd_temp_name} --image {module_image_name}"
         )
         run_cmd(cmd)
         # Step 5, loop to 1 with same bd name for next package
@@ -420,4 +417,7 @@ def run_cmd(cmd, quiet=False, sys_exit=True):
 
 
 if __name__ == "__main__":
+    # La journalisation se règle ici et non à l'import : un module qui
+    # l'importe garde la sienne.
+    logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
     main()

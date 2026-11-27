@@ -363,7 +363,28 @@ def lancer_journalise(cmd, libelle=None, **kwargs):
     return code
 
 
-def lancer_au_terminal(cmd, **kwargs):
+def attendre_jusqu_au_bout(cmd, check=False, **kwargs):
+    """subprocess.run, sauf que Ctrl+C n'interrompt pas l'ATTENTE.
+
+    Le Ctrl+C du terminal atteint aussi l'enfant, qui le traite lui-même :
+    un lanceur de tests arrête ses groupes, attend leur grâce et démonte
+    ce qu'il a créé. subprocess.run, lui, tuerait l'enfant par SIGKILL un
+    quart de seconde plus tard. Ignorer SIGINT dans le parent ne convient
+    pas : l'enfant hériterait de l'ignorance et ne le verrait plus."""
+    processus = subprocess.Popen(cmd, **kwargs)
+    while True:
+        try:
+            code = processus.wait()
+            break
+        except KeyboardInterrupt:
+            continue
+    fini = subprocess.CompletedProcess(processus.args, code)
+    if check:
+        fini.check_returncode()
+    return fini
+
+
+def lancer_au_terminal(cmd, jusqu_au_bout=False, **kwargs):
     """subprocess.run qui laisse le terminal au programme ; rend son résultat.
 
     Pour une commande qui a besoin du terminal — une invite, un mot de passe,
@@ -371,6 +392,9 @@ def lancer_au_terminal(cmd, **kwargs):
     peut donc pas faire passer par un tube. Sa sortie reste à l'écran,
     hors du journal ; la commande et son code de retour y vont. Mêmes
     arguments et mêmes exceptions que subprocess.run.
+
+    `jusqu_au_bout` : pour un programme qui traite Ctrl+C lui-même et doit
+    finir son nettoyage (voir attendre_jusqu_au_bout).
     """
     texte = cmd if isinstance(cmd, str) else " ".join(map(str, cmd))
     heure = f"{datetime.datetime.now():%H:%M:%S}"
@@ -379,7 +403,10 @@ def lancer_au_terminal(cmd, **kwargs):
         f"  ({t('output on the terminal')})\n"
     )
     try:
-        fini = subprocess.run(cmd, **kwargs)
+        if jusqu_au_bout:
+            fini = attendre_jusqu_au_bout(cmd, **kwargs)
+        else:
+            fini = subprocess.run(cmd, **kwargs)
     except subprocess.CalledProcessError as err:
         execute._journaliser(f"[code {err.returncode}]\n")
         raise

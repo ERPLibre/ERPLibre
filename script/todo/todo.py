@@ -198,6 +198,7 @@ from script.todo.ssh_key_menu import SshKeyMenuMixin
 from script.todo import erplibre_home_status
 from script.todo.streamdeck_menu import RACINE as ERPLIBRE_HOME_RACINE
 from script.todo.streamdeck_menu import StreamDeckMenuMixin
+from script.todo.studio_menu import StudioMenuMixin
 from script.todo.system_menu import SystemMenuMixin
 from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
@@ -282,6 +283,7 @@ class TODO(
     QemuUsbMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
+    StudioMenuMixin,
     TransformMenuMixin,
     VpnMenuMixin,
     PythonMenuMixin,
@@ -430,31 +432,32 @@ class TODO(
 [8] {t("Analyse module - Odoo modules of the checkout")}
 [9] {t("Python - Poetry and Python tools")}
 [10] {t("Git repository - Repositories and git tools")}
+[11] {t("Coverage - Track the code covered by tests")}
 
 ── {t("Data")} ──
-[11] {t("Database - Database tools")}
-[12] {t("Analyse - Odoo database analysis")}
-[13] {t("Transform data - Transform your data")}
+[12] {t("Database - Database tools")}
+[13] {t("Analyse - Odoo database analysis")}
+[14] {t("Transform data - Transform your data")}
 
 ── {t("Sources & documentation")} ──
-[14] {t("Shell - Shell tools")}
-[15] {t("Doc - Documentation search")}
+[15] {t("Shell - Shell tools")}
+[16] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[16] {t("GPT code - AI assistant tools")}
-[17] {t("Automation - Demonstration of developed features")}
+[17] {t("GPT code - AI assistant tools")}
+[18] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[18] {t("Deploy - Deploy ERPLibre locally")}
-[19] {t("Network - Network tools")}
-[20] {t("Security - Dependency audit and key generation")}
-[21] {t("Docker / Podman - Container engines")}
+[19] {t("Deploy - Deploy ERPLibre locally")}
+[20] {t("Network - Network tools")}
+[21] {t("Security - Dependency audit and key generation")}
+[22] {t("Docker / Podman - Container engines")}
 
 ── {t("System")} ──
-[22] {t("System - Diagnostic and disk space")}
+[23] {t("System - Diagnostic and disk space")}
 
 ── {t("🏠 ERPLibre Home")} ──
-[23] {t("ERPLibre Home - GNOME extension and Stream Deck")}
+[24] {t("ERPLibre Home - GNOME extension and Stream Deck")}
 {retour(t("Back"))}
 """
         while True:
@@ -503,54 +506,58 @@ class TODO(
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_database()
+                status = self.prompt_execute_coverage()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_analyse()
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_transform()
+                status = self.prompt_execute_analyse()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_shell()
+                status = self.prompt_execute_transform()
                 if status is not False:
                     return
             elif status == "15":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_shell()
                 if status is not False:
                     return
             elif status == "16":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "17":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "18":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "19":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "20":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "21":
-                status = self.prompt_execute_container()
+                status = self.prompt_execute_security()
                 if status is not False:
                     return
             elif status == "22":
-                status = self.prompt_execute_system()
+                status = self.prompt_execute_container()
                 if status is not False:
                     return
             elif status == "23":
+                status = self.prompt_execute_system()
+                if status is not False:
+                    return
+            elif status == "24":
                 status = self.prompt_execute_streamdeck()
                 if status is not False:
                     return
@@ -1350,6 +1357,7 @@ class TODO(
         "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git repository",
+        "prompt_execute_coverage": "Coverage",
         "prompt_execute_shell": "Shell",
         "prompt_execute_git_repo": "Repo",
         "prompt_execute_git_local_server": "Git local server",
@@ -1396,6 +1404,7 @@ class TODO(
         "prompt_execute_streamdeck_games": "Games",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
+        "prompt_execute_studio": "ERPLibre studio",
         "prompt_configuration": "Configuration",
     }
 
@@ -7325,6 +7334,9 @@ class TODO(
             # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
             # de vraies machines et durent des heures.
             {"prompt_description": t("Long tests - real VMs, hours")},
+            # Les scénarios du générateur de code : de vraies bases Odoo,
+            # quelques minutes, hors de la suite unitaire.
+            {"prompt_description": t("ERPLibre studio - code generator")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -7341,6 +7353,8 @@ class TODO(
                 self.execute_unit_tests()
             elif status == "4":
                 self.prompt_execute_longtest()
+            elif status == "5":
+                self.prompt_execute_studio()
             else:
                 print(t("Command not found !"))
 
@@ -7445,7 +7459,7 @@ class TODO(
         print(f"\n--- {t('Running unit tests')} ---")
         cmd = ["./script/test/run_unit_test.sh", "--tui"]
         status_code = todo_journal.lancer_au_terminal(
-            cmd, check=False
+            cmd, check=False, jusqu_au_bout=True
         ).returncode
         if status_code == 0:
             print(f"\n✅ {t('All unit tests passed')}")
@@ -7453,6 +7467,128 @@ class TODO(
             print(
                 f"\n❌ {t('Some unit tests failed, exit code')}: {status_code}"
             )
+
+    # Couverture de code : script/test/couverture.py tient les données,
+    # les rapports et l'historique de chaque jeu, que
+    # script/test/couverture_tui.py montre.
+    _COVERAGE_UNIT = ["./script/test/run_unit_test.sh", "--tui", "--coverage"]
+
+    def prompt_execute_coverage(self):
+        """Le suivi de la couverture : l'écran, les passages mesurés des
+        deux jeux, le rapport HTML et l'effacement des données d'un jeu."""
+        choices = [
+            {"prompt_description": t("Open the coverage screen")},
+            {"prompt_description": t("Run the unit tests with coverage")},
+            # La même commande que Test › ERPLibre studio › avec couverture.
+            {"prompt_description": t("Run ERPLibre studio with coverage")},
+            {"prompt_description": t("Open the HTML coverage report")},
+            {"prompt_description": t("Erase the coverage data of a set")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._coverage_tui()
+            elif status == "2":
+                self._coverage_run_unit()
+            elif status == "3":
+                self._studio_run_coverage()
+            elif status == "4":
+                self._coverage_html()
+            elif status == "5":
+                self._coverage_erase()
+            else:
+                print(t("Command not found !"))
+
+    def _coverage_tui(self):
+        """Ouvre l'écran de couverture dans son propre processus, au
+        terminal. Rend son code de retour, ou None sans Textual."""
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return None
+        # jusqu_au_bout : l'écran peut lancer un passage, qui reçoit lui
+        # aussi le Ctrl+C du terminal et doit pouvoir démonter.
+        return todo_journal.lancer_au_terminal(
+            [sys.executable, "script/test/couverture_tui.py"],
+            check=False,
+            jusqu_au_bout=True,
+        ).returncode
+
+    def _coverage_run_unit(self):
+        """Toute la suite unitaire mesurée, avec le tableau du lanceur ;
+        le bilan donne le total et l'écart. Rend le code de retour."""
+        print(f"\n--- {t('Running unit tests with coverage')} ---")
+        rc = todo_journal.lancer_au_terminal(
+            list(self._COVERAGE_UNIT), check=False, jusqu_au_bout=True
+        ).returncode
+        if rc == 0:
+            print(f"\n✅ {t('All unit tests passed')}")
+        else:
+            print(f"\n❌ {t('Some unit tests failed, exit code')}: {rc}")
+        return rc
+
+    def _coverage_choose_set(self):
+        """Le jeu de couverture choisi, « erplibre » ou « odoo », ou None
+        sur 0."""
+        print(
+            f"[1] erplibre - {t('ERPLibre code, measured by the unit tests')}"
+        )
+        print(
+            f"[2] odoo - {t('Odoo modules, measured by ERPLibre studio')}"
+        )
+        print(retour(t("Back")))
+        choix = click.prompt(t("Coverage set"), default="1")
+        return {"1": "erplibre", "2": "odoo"}.get(str(choix).strip())
+
+    def _coverage_html(self):
+        """Produit le rapport HTML d'un jeu et l'ouvre dans le navigateur.
+        Rend le chemin de son index, ou None."""
+        from script.test import couverture, couverture_tui
+
+        nom = self._coverage_choose_set()
+        if nom is None:
+            return None
+        if couverture.lire_json(nom) is None:
+            print(f"❌ {t('No coverage data yet for this set.')}")
+            return None
+        try:
+            chemin = couverture.produire_html(nom)
+        except (RuntimeError, OSError) as err:
+            print(f"❌ {err}")
+            return None
+        if couverture_tui.ouvrir(chemin):
+            print(chemin)
+        else:
+            print(
+                f"{t('No program to open it; the report is here:')} {chemin}"
+            )
+        return chemin
+
+    def _coverage_erase(self):
+        """Efface, après confirmation (non par défaut), les données de
+        mesure d'un jeu ; son coverage.json, son HTML et son historique
+        restent. Rend le nom du jeu effacé, ou None."""
+        from script.test import couverture
+
+        nom = self._coverage_choose_set()
+        if nom is None:
+            return None
+        if not click.confirm(
+            t(
+                "Erase the measurement data of this set? The report and the"
+                " history are kept."
+            ),
+            default=False,
+        ):
+            return None
+        couverture.effacer(nom)
+        print(f"✅ {t('Coverage data erased')} : {couverture.donnees(nom)}")
+        return nom
 
     def execute_pip_audit(self):
         versions, installed_versions, odoo_installed_version = (

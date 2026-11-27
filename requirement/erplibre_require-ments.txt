@@ -19,11 +19,14 @@ pykeepass
 cryptography
 keyring
 click
-aioshutil
 openai
 humanize
 requests
 urwid
+# Couverture du code ERPLibre par ses tests (run_unit_test.py --coverage).
+# 7.10 au moins : « patch = subprocess » mesure les sous-processus Python
+# que les tests lancent, sans sitecustomize.
+coverage>=7.10,<8
 # Borne recopiée de script/todo/textual_setup.py (TEXTUAL_SPEC) : les écrans TUI
 # sont écrits pour Textual 8, qui casse son API entre majeures. Modifier les deux.
 textual>=8,<9

@@ -1,0 +1,68 @@
+# Couverture du code ERPLibre (script/, long_test/, docker/) par la suite
+# unitaire : `run_unit_test.py --coverage` passe ce fichier à chaque
+# processus par --rcfile, et à ses sous-processus Python par
+# COVERAGE_PROCESS_CONFIG (patch = subprocess).
+#
+# Aucune configuration à la racine du dépôt (.coveragerc, [tool.coverage]
+# dans pyproject.toml) : le « coverage run -p » des scénarios Odoo tourne
+# depuis la racine et la lirait à tort. Les modules Odoo ont la leur,
+# conf/coverage.odoo.cfg.
+
+[tool.coverage.run]
+branch = true
+# Un fichier de données par processus, que `coverage combine` fusionne.
+parallel = true
+# Un fichier tué au délai reçoit SIGTERM avant SIGKILL (grâce du
+# lanceur) : coverage écrit alors ses données au lieu de les perdre.
+sigterm = true
+# Les sous-processus Python lancés par un test sont mesurés, comme un
+# script relancé par os.execv (todo.py se relance dans son venv) et un
+# processus qui sort par os._exit.
+patch = ["subprocess", "execv", "_exit"]
+source = ["script", "long_test", "docker"]
+omit = [
+    "test/**",
+    # Le seul endroit qui porte des données de client : jamais dans un
+    # rapport HTML.
+    "private/**",
+    # Dépôts tiers synchronisés par Google Repo, ou programmes qui ont leur
+    # propre suite.
+    "script/OCA_*/**",
+    "script/stream_deck/deck/**",
+    "script/gnome-extension/**",
+    "**/node_modules/**",
+    # L'enveloppe du lanceur, qui exécute les tests sans en faire partie.
+    "script/test/unit_file.py",
+    ".venv*/**",
+    ".claude/**",
+]
+# Des chemins relatifs à la racine : l'historique se compare d'un clone à
+# l'autre.
+relative_files = true
+# « No data was collected » : un test qui n'exécute que du shell, ou un
+# sous-processus Python hors de `source`. Écrit sur stderr, il polluerait le
+# journal du test sans rien en dire.
+disable_warnings = ["no-data-collected", "module-not-measured"]
+
+[tool.coverage.report]
+# Plusieurs répertoires de script/ n'ont pas de __init__.py : sans cette
+# option, leurs fichiers jamais importés sortent du dénominateur, et le
+# pourcentage est surestimé.
+# Elle doit valoir AU MOMENT DE L'EXÉCUTION : c'est là que chaque processus
+# relève les fichiers jamais exécutés.
+include_namespace_packages = true
+skip_empty = true
+# Le rapport relève à nouveau les fichiers jamais exécutés de `source` : sans
+# les mêmes exclusions, les dépôts tiers y entreraient à 0 %.
+omit = [
+    "test/**",
+    "private/**",
+    "script/OCA_*/**",
+    "script/stream_deck/deck/**",
+    "script/gnome-extension/**",
+    "**/node_modules/**",
+    "script/test/unit_file.py",
+    ".venv*/**",
+    ".claude/**",
+]
+precision = 2

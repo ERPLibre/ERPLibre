@@ -209,9 +209,12 @@ system or runs for hours goes in `long_test/` instead, and undoes itself with
 
 `./test.sh` is `./run.sh` with `ODOO_MODE_TEST=true --workers 0`, which adds
 `--test-enable --no-http --stop-after-init`. For coverage, bracket that with
-`./.venv.erplibre/bin/coverage erase` before and a combine/report after, and
-set `ODOO_MODE_COVERAGE=true` — coverage is switched on through the
-environment, never a CLI flag. `make open_test_coverage` opens the report.
+`./.venv.erplibre/bin/coverage erase` before and `coverage combine -a`,
+`report` and `html` after, and set `ODOO_MODE_COVERAGE=true` — coverage is
+switched on through the environment, never a CLI flag. `make
+open_test_coverage` then opens `htmlcov/`; after `make
+test_full_fast_coverage`, `make open_test_coverage JEU=odoo` opens the
+scenarios' report.
 
 To run ONE test file inside a module, install the module first, then pass
 `--test-file=`.

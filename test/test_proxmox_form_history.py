@@ -36,7 +36,11 @@ sys.argv = ["todo.py"]
 sys.path.insert(0, "test")
 
 from async_case import AsyncCase  # noqa: E402
-from proxmox_form_context import contexte, setUpModule  # noqa: E402,F401
+from proxmox_form_context import (  # noqa: E402,F401
+    contexte,
+    setUpModule,
+    tearDownModule,
+)
 
 from script.todo.deploy_form_history import SETTLE_DELAY  # noqa: E402
 from script.todo.deploy_form_lib import entry_key  # noqa: E402

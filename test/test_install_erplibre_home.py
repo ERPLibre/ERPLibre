@@ -4429,7 +4429,7 @@ class TestCiblesDeLExtension(unittest.TestCase):
             " erplibre_home_install_extension)",
             prevu["sans"],
         )
-        self.assertIn("run_parallel_test.py", prevu["sans"])
+        self.assertIn("run_odoo_scenarios.sh", prevu["sans"])
 
     @SANS_EXTENSION
     @unittest.skipUnless(shutil.which("msgfmt"), "msgfmt absent")

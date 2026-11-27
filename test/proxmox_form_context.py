@@ -10,8 +10,15 @@ Sans préfixe `test_`, le lanceur unitaire ne le prend pas pour un fichier
 de tests.
 """
 
+import contextlib
 import unittest
 from unittest import mock
+
+
+# Les remplacements posés par setUpModule, défaits par tearDownModule.
+# addModuleCleanup ne convient pas : pytest ne l'exécute jamais, et le
+# remplacement fuirait dans les modules suivants du même processus.
+_PILE = contextlib.ExitStack()
 
 
 def setUpModule():
@@ -26,9 +33,13 @@ def setUpModule():
     """
     from script.todo.todo import TODO
 
-    patch = mock.patch.object(TODO, "_pve_attendre_ssh", lambda *a, **k: True)
-    patch.start()
-    unittest.addModuleCleanup(patch.stop)
+    _PILE.enter_context(
+        mock.patch.object(TODO, "_pve_attendre_ssh", lambda *a, **k: True)
+    )
+
+
+def tearDownModule():
+    _PILE.close()
 
 
 def contexte():

@@ -14,6 +14,7 @@ Les règles sont VÉRIFIÉES au caractère près et jamais appliquées : la mach
 qui exécute les tests garde son pare-feu intact.
 """
 
+import contextlib
 import os
 import re
 import subprocess
@@ -1463,6 +1464,11 @@ class TestLeGuetAttendLesJournauxQuiNExistentPasEncore(unittest.TestCase):
         self.assertEqual(proc.wait(timeout=5), 0)
 
 
+#: Ce que setUpModule pose, défait par tearDownModule dans l'ordre inverse.
+#: Pas d'addModuleCleanup : pytest ne l'exécute jamais.
+_PILE = contextlib.ExitStack()
+
+
 def setUpModule():
     """Les sessions d'installation, et le verrou des déploiements hors ligne
     qui vit parmi elles, vont dans un répertoire temporaire : aucun test ne
@@ -1472,18 +1478,25 @@ def setUpModule():
 
     import script.todo.qemu_install_monitor as mon
 
-    sessions = tempfile.TemporaryDirectory()
-    unittest.addModuleCleanup(sessions.cleanup)
-    patch = mock.patch.object(mon, "session_dir", lambda: Path(sessions.name))
-    patch.start()
-    unittest.addModuleCleanup(patch.stop)
-    # Les commandes rendues ne dépendent pas de l'hôte de test : sans ce
-    # remplacement, un hôte sans dnsmasq rendrait « false » pour la pose.
-    dns = mock.patch.object(
-        cache_offline, "dnsmasq", lambda: "/usr/sbin/dnsmasq"
-    )
-    dns.start()
-    unittest.addModuleCleanup(dns.stop)
+    global _PILE
+    with contextlib.ExitStack() as pile:
+        sessions = pile.enter_context(tempfile.TemporaryDirectory())
+        pile.enter_context(
+            mock.patch.object(mon, "session_dir", lambda: Path(sessions))
+        )
+        # Les commandes rendues ne dépendent pas de l'hôte de test : sans
+        # ce remplacement, un hôte sans dnsmasq rendrait « false » pour la
+        # pose.
+        pile.enter_context(
+            mock.patch.object(
+                cache_offline, "dnsmasq", lambda: "/usr/sbin/dnsmasq"
+            )
+        )
+        _PILE = pile.pop_all()
+
+
+def tearDownModule():
+    _PILE.close()
 
 
 def _chemin_du_verrou():

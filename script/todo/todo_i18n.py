@@ -2629,6 +2629,71 @@ TRANSLATIONS = {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
+    # Coverage section : Exécution › Développement › Couverture
+    "Coverage - Track the code covered by tests": {
+        "fr": "🎯 Couverture - Suivi du code couvert par les tests",
+        "en": "🎯 Coverage - Track the code covered by tests",
+    },
+    "Open the coverage screen": {
+        "fr": "📊 Ouvrir l'écran de couverture",
+        "en": "📊 Open the coverage screen",
+    },
+    "Run the unit tests with coverage": {
+        "fr": "⚗  Lancer les tests unitaires avec couverture",
+        "en": "⚗  Run the unit tests with coverage",
+    },
+    "Run ERPLibre studio with coverage": {
+        "fr": "🏗  Lancer ERPLibre studio avec couverture",
+        "en": "🏗  Run ERPLibre studio with coverage",
+    },
+    "Open the HTML coverage report": {
+        "fr": "🌐 Ouvrir le rapport HTML de couverture",
+        "en": "🌐 Open the HTML coverage report",
+    },
+    "Erase the coverage data of a set": {
+        "fr": "🗑  Effacer les données de couverture d'un jeu",
+        "en": "🗑  Erase the coverage data of a set",
+    },
+    "ERPLibre code, measured by the unit tests": {
+        "fr": "code ERPLibre, mesuré par les tests unitaires",
+        "en": "ERPLibre code, measured by the unit tests",
+    },
+    "Odoo modules, measured by ERPLibre studio": {
+        "fr": "modules Odoo, mesurés par ERPLibre studio",
+        "en": "Odoo modules, measured by ERPLibre studio",
+    },
+    "Coverage set": {
+        "fr": "Jeu de couverture",
+        "en": "Coverage set",
+    },
+    "Running unit tests with coverage": {
+        "fr": "Exécution des tests unitaires avec couverture",
+        "en": "Running unit tests with coverage",
+    },
+    "Odoo scenario launcher missing:": {
+        "fr": "Lanceur des scénarios Odoo absent :",
+        "en": "Odoo scenario launcher missing:",
+    },
+    "No coverage data yet for this set.": {
+        "fr": "Aucune mesure de couverture pour ce jeu : lancez d'abord un"
+        " passage.",
+        "en": "No coverage data yet for this set: run it first.",
+    },
+    "No program to open it; the report is here:": {
+        "fr": "Aucun programme pour l'ouvrir ; le rapport est ici :",
+        "en": "No program to open it; the report is here:",
+    },
+    "Erase the measurement data of this set? The report and the history"
+    " are kept.": {
+        "fr": "Effacer les données de mesure de ce jeu ? Le rapport et"
+        " l'historique restent.",
+        "en": "Erase the measurement data of this set? The report and the"
+        " history are kept.",
+    },
+    "Coverage data erased": {
+        "fr": "Données de couverture effacées",
+        "en": "Coverage data erased",
+    },
     # Test section
     "Test - Test an Odoo module": {
         "fr": "🧪 Test - Tester un module Odoo",
@@ -9890,6 +9955,55 @@ TRANSLATIONS = {
     "Long tests - real VMs, hours": {
         "fr": "⏳ Tests longs - vraies VM, des heures",
         "en": "⏳ Long tests - real VMs, hours",
+    },
+    # ERPLibre studio : les scénarios du générateur de code
+    "ERPLibre studio - code generator": {
+        "fr": "🏗  ERPLibre studio - générateur de code, de vraies bases Odoo",
+        "en": "🏗  ERPLibre studio - code generator, real Odoo databases",
+    },
+    "ERPLibre studio: code generator scenarios.": {
+        "fr": "ERPLibre studio : les scénarios du générateur de code.",
+        "en": "ERPLibre studio: code generator scenarios.",
+    },
+    "All scenarios": {
+        "fr": "Tous les scénarios",
+        "en": "All scenarios",
+    },
+    "One scenario": {
+        "fr": "Un scénario",
+        "en": "One scenario",
+    },
+    "Failed scenarios of the last run": {
+        "fr": "Les scénarios en échec au dernier passage",
+        "en": "Failed scenarios of the last run",
+    },
+    "All scenarios, with Odoo module coverage": {
+        "fr": "Tous les scénarios, avec la couverture des modules Odoo",
+        "en": "All scenarios, with Odoo module coverage",
+    },
+    "Drop databases left by an interrupted run": {
+        "fr": "Supprimer les bases laissées par un passage interrompu",
+        "en": "Drop databases left by an interrupted run",
+    },
+    "Scenarios unreadable:": {
+        "fr": "Scénarios illisibles :",
+        "en": "Scenarios unreadable:",
+    },
+    "Scenario number (empty to cancel): ": {
+        "fr": "Numéro du scénario (vide pour annuler) : ",
+        "en": "Scenario number (empty to cancel): ",
+    },
+    "Scenarios done": {
+        "fr": "Scénarios réussis",
+        "en": "Scenarios done",
+    },
+    "Scenarios failed, exit code": {
+        "fr": "Des scénarios ont échoué, code de sortie",
+        "en": "Scenarios failed, exit code",
+    },
+    "HTML report:": {
+        "fr": "Rapport HTML :",
+        "en": "HTML report:",
     },
     "Long tests: real VMs, hours. Not the unit suite.": {
         "fr": "Tests longs : de vraies VM, des heures. Pas la suite unitaire.",

@@ -41,9 +41,28 @@ test_unit_changed:
 test_unit_failed:
 	./script/test/run_unit_test.sh --failed
 
+# La suite unitaire sous couverture (jeu « erplibre » de
+# script/test/couverture.py) : données, JSON et historique sous
+# ~/.cache/erplibre/couverture/erplibre/.
+.PHONY: test_unit_coverage
+test_unit_coverage:
+	./script/test/run_unit_test.sh --coverage
+
+# Ouvre un rapport HTML de couverture dans le navigateur.
+#   make open_test_coverage JEU=erplibre   suite unitaire (test_unit_coverage)
+#   make open_test_coverage JEU=odoo       scénarios (test_full_fast_coverage)
+# Avec JEU, script/test/couverture.py produit le rapport à partir des
+# données du jeu : sans données, la cible échoue et rien ne s'ouvre. Le
+# chemin du rapport s'affiche toujours, et un navigateur absent ne fait pas
+# échouer la cible, comme sans JEU. Sans JEU : htmlcov/, qu'écrivent les
+# cibles test_addons_code_generator*.
 .PHONY: open_test_coverage
 open_test_coverage:
+ifdef JEU
+	index="$$(./.venv.erplibre/bin/python ./script/test/couverture.py html --jeu $(JEU))" || exit 1; echo "$$index"; $(BROWSER) "$$index" || true
+else
 	-$(BROWSER) htmlcov/index.html
+endif
 
 .PHONY: test
 test:
@@ -67,40 +86,44 @@ test_full:
 # erplibre_home_extension_present reads too.
 ERPLIBRE_HOME_EXT_CLONED := $(wildcard script/gnome-extension/erplibre_home/metadata.json)
 
+# Scénarios du générateur de code : un processus et une session par
+# scénario, phases tirées de « sequence », bases du passage supprimées et
+# dépôts du générateur contrôlés à la fin (script/test/run_odoo_scenarios.py).
+# La base « test » est RECRÉÉE d'abord : elle amorce le cache que les
+# scénarios clonent. Le journal va dans ${LOG_FILE}.
 .PHONY: test_full_fast
 test_full_fast: $(if $(ERPLIBRE_HOME_EXT_CLONED),test_gnome_extension,test_gnome_extension_skipped)
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
-	#./script/test/run_parallel_test.py --keep_cache
-	./script/test/run_parallel_test.py
-	# TODO This test is broken in parallel
-	#./script/make.sh test_code_generator_hello_world
+	./script/test/run_odoo_scenarios.sh
 
+# Bacs à sable et bases gardés, chemins imprimés.
 .PHONY: test_full_fast_debug
 test_full_fast_debug:
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
-	./script/test/run_parallel_test.py --keep_cache
-	# TODO This test is broken in parallel
-	#./script/make.sh test_code_generator_hello_world
+	./script/test/run_odoo_scenarios.sh --keep_cache
 
+# Couverture du générateur (jeu « odoo » de script/test/couverture.py,
+# conf/coverage.odoo.cfg), mesurée par le coverage du venv Odoo.
 .PHONY: test_full_fast_coverage
 test_full_fast_coverage:
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
-	./.venv.erplibre/bin/coverage erase
-	./script/test/run_parallel_test.py --coverage
-	# TODO This test is broken in parallel
-	#./script/make.sh test_coverage_code_generator_hello_world
-	./.venv.erplibre/bin/coverage combine -a
-	./.venv.erplibre/bin/coverage report -m --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
-	./.venv.erplibre/bin/coverage html --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
-	./.venv.erplibre/bin/coverage json --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
-	# run: make open_test_coverage
+	./script/test/run_odoo_scenarios.sh --coverage
+	./.venv.erplibre/bin/python ./script/test/couverture.py texte --jeu odoo
+	./.venv.erplibre/bin/python ./script/test/couverture.py html --jeu odoo
 
+# Un seul scénario, par son nom exact dans config_testcase.odoo<V>.json :
+#   make test_odoo_scenario S=code_generator_data_test
+# La base « test » n'est pas recréée : db_restore restaure l'image quand le
+# cache manque.
+.PHONY: test_odoo_scenario
+test_odoo_scenario:
+	./script/test/run_odoo_scenarios.sh --scenario=$(S)
 
 .PHONY: test_cg_demo
 test_cg_demo:
