@@ -192,6 +192,17 @@ class TestEtatDuNom(unittest.TestCase):
         etat, _n = lib.vm_status("x", [], orphelin=lambda _n: True)
         self.assertEqual(etat, "orphan")
 
+    def test_the_orphan_note_offers_deletion(self):
+        # Le terminal propose l'effacement après le formulaire : la note ne
+        # promet plus un échec.
+        etat, note = lib.vm_status("x", [], orphelin=lambda _n: True)
+        self.assertEqual(
+            (etat, note),
+            ("orphan", lib.t("orphan disk - deletion offered at launch")),
+        )
+        self.assertNotIn("FAIL", note)
+        self.assertNotIn("ÉCHOUERA", note)
+
     def test_plan_rows_carries_the_probe(self):
         vms = [{"name": "x", "vcpus": 2, "ram": 2048, "disk": "32G"}]
         rows = lib.plan_rows(vms, [], 0, orphelin=lambda _n: True)

@@ -238,8 +238,18 @@ class LeDiagnostic(unittest.TestCase):
             "virt-xml",
             "===== 3D =====",
             "===== 3D par VM =====",
+            "===== derniers déploiements ratés =====",
+            "===== journal libvirt =====",
+            "===== AppArmor refusé (noyau) =====",
+            "===== firmware UEFI =====",
+            "===== libvirt qemu.conf =====",
         ):
             self.assertIn(attendu, contenu)
+        # La cause d'un déploiement raté ouvre le rapport, avant l'hôte.
+        self.assertLess(
+            contenu.index("===== derniers déploiements ratés ====="),
+            contenu.index("===== uname ====="),
+        )
 
     # Programmes qui ne peuvent que LIRE. « command -v » cherche un outil
     # sans le lancer : la présence du mot « virt-install » dans une sonde ne
@@ -260,8 +270,17 @@ class LeDiagnostic(unittest.TestCase):
         "ps",
         "sort",
         "echo",
+        "journalctl",
+        "tail",
     }
-    VIRSH_LECTURE = {"version", "list", "net-list", "dumpxml", "dominfo"}
+    VIRSH_LECTURE = {
+        "version",
+        "list",
+        "net-list",
+        "dumpxml",
+        "dominfo",
+        "domcapabilities",
+    }
 
     def test_every_probe_is_read_only(self):
         """Un rapport qui modifie l'hôte n'est plus un rapport."""

@@ -57,12 +57,14 @@ import hashlib
 import hmac
 import http.client
 import ipaddress
+import json
 import os
 import pwd
 import re
 import secrets
 import shlex
 import shutil
+import signal
 import socket
 import ssl
 import stat as stat_mod
@@ -1143,6 +1145,270 @@ def detach_from_terminal(cmd: list[str]) -> tuple[list[str], int | None]:
     return [cmd[0], *extra, *cmd[1:]], subprocess.DEVNULL
 
 
+# Un processus arrêté par le noyau (état T de /proc/<pid>/stat) ne reprend
+# que sur SIGCONT : l'attendre, c'est attendre sans fin. Le délai de grâce
+# couvre la reprise d'un Ctrl+Z (« fg » relance tout le groupe, mais sudo
+# relaie la reprise à son pseudo-terminal un instant plus tard).
+STOPPED_GRACE_S = 30.0
+STOPPED_POLL_S = 2.0
+PROC_ROOT = Path("/proc")
+
+
+def parse_proc_stat(text: str) -> tuple[int, str, str, int] | None:
+    """(pid, comm, état, ppid) lus dans le texte de /proc/<pid>/stat.
+
+    comm peut contenir espaces et parenthèses : la coupe se fait sur la
+    DERNIÈRE « ) ». Rend None si le texte est malformé.
+    """
+    head, sep, tail = text.rpartition(")")
+    pid_s, sep2, comm = head.partition(" (")
+    fields = tail.split()
+    if not sep or not sep2 or len(fields) < 2:
+        return None
+    try:
+        return int(pid_s), comm, fields[0], int(fields[1])
+    except ValueError:
+        return None
+
+
+def proc_watch_supported(proc_root: Path = PROC_ROOT) -> bool:
+    """Vrai sous Linux avec un /proc lisible ; ailleurs, rien n'est surveillé."""
+    return sys.platform.startswith("linux") and proc_root.is_dir()
+
+
+def stopped_descendants(
+    root_pid: int, proc_root: Path = PROC_ROOT
+) -> list[tuple[int, str]]:
+    """[(pid, comm)] des processus à l'état « T » parmi root_pid et ses
+    descendants, du plus profond au moins profond.
+
+    Le plus profond, souvent le vrai fautif, vient d'abord. « t » (tracé par
+    un débogueur) n'en est pas. Une entrée qui disparaît ou se refuse
+    pendant la lecture est ignorée ; un /proc illisible rend []. Seuls les
+    processus joignables depuis root_pid par leur ppid comptent, et un
+    ensemble des pid vus empêche de boucler sur un pid réutilisé.
+    """
+    try:
+        entrees = list(proc_root.iterdir())
+    except OSError:
+        return []
+    enfants: dict[int, list[int]] = {}
+    infos: dict[int, tuple[str, str]] = {}
+    for d in entrees:
+        if not d.name.isdigit():
+            continue
+        try:
+            lu = parse_proc_stat((d / "stat").read_text(errors="replace"))
+        except OSError:
+            continue
+        if lu is None:
+            continue
+        pid, comm, etat, ppid = lu
+        infos[pid] = (comm, etat)
+        enfants.setdefault(ppid, []).append(pid)
+    trouves: list[tuple[int, int, str]] = []
+    vus = {root_pid}
+    niveau = [root_pid]
+    profondeur = 0
+    while niveau:
+        suivant = []
+        for pid in niveau:
+            info = infos.get(pid)
+            if info and info[1] == "T":
+                trouves.append((profondeur, pid, info[0]))
+            for enfant in enfants.get(pid, ()):
+                if enfant not in vus:
+                    vus.add(enfant)
+                    suivant.append(enfant)
+        niveau = suivant
+        profondeur += 1
+    trouves.sort(key=lambda t: -t[0])
+    return [(pid, comm) for _p, pid, comm in trouves]
+
+
+def _proc_cmdline(pid: int, proc_root: Path) -> str:
+    """Ligne de commande de `pid` (/proc/<pid>/cmdline, séparée par NUL).
+
+    Rend "" si elle est illisible.
+    """
+    try:
+        brut = (proc_root / str(pid) / "cmdline").read_bytes()
+    except OSError:
+        return ""
+    return " ".join(p.decode(errors="replace") for p in brut.split(b"\0") if p)
+
+
+def _proc_foreign(pid: int, proc_root: Path) -> bool:
+    """Vrai si `pid` appartient à un autre utilisateur : le signaler exige sudo."""
+    try:
+        return (proc_root / str(pid)).stat().st_uid != os.getuid()
+    except OSError:
+        return False
+
+
+def _in_background() -> bool:
+    """Vrai si ce programme n'a pas le premier plan de son terminal.
+
+    Faux sans terminal.
+    """
+    try:
+        return os.getpgrp() != os.tcgetpgrp(sys.stdin.fileno())
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def stopped_message(
+    pid: int,
+    comm: str,
+    cmdline: str,
+    *,
+    waited: float,
+    foreign: bool,
+    background: bool,
+    label: str,
+) -> str:
+    """Le message, une seule fois par arrêt : qui, pourquoi, comment
+    reprendre ou abandonner. `foreign` préfixe les kill de « sudo »,
+    `background` ajoute le conseil « fg »."""
+    s = "sudo " if foreign else ""
+    lignes = [
+        "",
+        f"  ⚠ Processus arrêté par le noyau depuis {int(waited)} s :"
+        f" pid {pid} ({comm})",
+        f"    {cmdline or comm}",
+        "    Cause probable : il a voulu lire le terminal ou en changer les"
+        " réglages",
+        "    sans en avoir le premier plan (SIGTTIN/SIGTTOU). Il ne reprendra"
+        " pas seul,",
+        "    et une reprise sans rendre le terminal le suspend aussitôt de"
+        " nouveau.",
+    ]
+    if background:
+        lignes.append(
+            "    Ce programme tourne en arrière-plan : « fg » dans son shell"
+            " le ramène au premier plan."
+        )
+    lignes += [
+        f"    Reprendre : {s}kill -CONT {pid}",
+        f"    Abandonner : Ctrl+C ici, ou {s}kill {pid}",
+        f"    Commande lancée : {label}",
+    ]
+    return "\n".join(lignes)
+
+
+class StoppedChildWatch:
+    """Surveille les descendants d'un processus et signale, une fois par
+    arrêt, celui qui reste à l'état T plus de `grace` secondes.
+
+    Le délai compte depuis le premier relevé qui voit l'arrêt, sur une
+    horloge monotone. Un processus qui quitte l'état T ouvre un nouvel
+    épisode : l'arrêt suivant a son propre délai et son propre message.
+    Rien n'est jamais envoyé au processus : la surveillance ne fait que dire.
+    """
+
+    def __init__(
+        self,
+        root_pid: int,
+        label: str,
+        *,
+        grace: float = STOPPED_GRACE_S,
+        proc_root: Path = PROC_ROOT,
+        now=time.monotonic,
+        out=None,
+    ) -> None:
+        self.root_pid = root_pid
+        self.label = label
+        self.grace = grace
+        self.proc_root = proc_root
+        self.now = now
+        # out(message) ; par défaut, affiché aussitôt, même dans un tube.
+        self.out = out or (lambda msg: print(msg, flush=True))
+        self._first: dict[int, float] = {}
+        self._reported: set[int] = set()
+
+    def check(self) -> list[int]:
+        """Une lecture de /proc ; rend les pid annoncés par CET appel."""
+        if not proc_watch_supported(self.proc_root):
+            return []
+        stopped = dict(stopped_descendants(self.root_pid, self.proc_root))
+        t = self.now()
+        for pid in list(self._first):
+            if pid not in stopped:
+                del self._first[pid]
+                self._reported.discard(pid)
+        nouveaux = []
+        for pid, comm in stopped.items():
+            first = self._first.setdefault(pid, t)
+            if pid in self._reported or t - first < self.grace:
+                continue
+            self._reported.add(pid)
+            nouveaux.append(pid)
+            self.out(
+                stopped_message(
+                    pid,
+                    comm,
+                    _proc_cmdline(pid, self.proc_root),
+                    waited=t - first,
+                    foreign=_proc_foreign(pid, self.proc_root),
+                    background=_in_background(),
+                    label=self.label,
+                )
+            )
+        return nouveaux
+
+
+def run_watched(
+    cmd: list[str],
+    *,
+    stdin=None,
+    capture: bool = False,
+    label: str = "",
+    poll: float | None = None,
+    grace: float | None = None,
+    proc_root: Path | None = None,
+    now=time.monotonic,
+    out=None,
+) -> tuple[int, str]:
+    """Lance `cmd` et attend sa fin en surveillant ses descendants arrêtés.
+
+    Rend (code, sortie) ; sortie vaut "" sans `capture`. Avec `capture`,
+    stdout et stderr sont réunis dans un tube vidé à chaque tour d'attente :
+    communicate() relancé après TimeoutExpired ne perd rien, et une sortie
+    volumineuse ne bloque pas l'enfant. Une interruption (Ctrl+C compris)
+    tue l'enfant puis remonte, comme subprocess.run. Les valeurs par défaut
+    sont lues à l'appel, depuis les constantes STOPPED_* et PROC_ROOT.
+    """
+    poll = STOPPED_POLL_S if poll is None else poll
+    grace = STOPPED_GRACE_S if grace is None else grace
+    proc_root = PROC_ROOT if proc_root is None else proc_root
+    with subprocess.Popen(
+        cmd,
+        stdin=stdin,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
+        text=True,
+    ) as proc:
+        watch = StoppedChildWatch(
+            proc.pid,
+            label or " ".join(cmd),
+            grace=grace,
+            proc_root=proc_root,
+            now=now,
+            out=out,
+        )
+        try:
+            while True:
+                try:
+                    sortie, _ = proc.communicate(timeout=poll)
+                    break
+                except subprocess.TimeoutExpired:
+                    watch.check()
+        except:  # noqa: E722 — KeyboardInterrupt compris, comme subprocess.run
+            proc.kill()
+            raise
+    return proc.returncode, sortie or ""
+
+
 # --------------------------------------------------------------------------- #
 class Runner:
     """Exécute (ou affiche, en dry-run) les commandes, avec sudo au besoin."""
@@ -1181,7 +1447,9 @@ class Runner:
 
         Sans `capture`, un échec termine le programme : c'est le comportement
         voulu partout où il n'y a rien à rattraper. Avec, l'appelant décide —
-        seul l'appel qui SAIT réessayer autrement doit le demander.
+        seul l'appel qui SAIT réessayer autrement doit le demander. Un
+        descendant arrêté par le noyau est signalé, jamais relancé : voir
+        run_watched().
         """
         cmd, stdin = detach_from_terminal(cmd)
         if privileged and self.use_sudo:
@@ -1192,27 +1460,18 @@ class Runner:
             print(f"  [dry-run] {printable}")
             return (0, "") if capture else None
         print(f"  $ {printable}")
+        code, sortie = run_watched(
+            cmd, stdin=stdin, capture=capture, label=printable
+        )
         if capture:
             # La sortie est réaffichée telle quelle : le journal garde tout,
             # et l'appelant peut lire ce que l'outil a dit.
-            res = subprocess.run(
-                cmd,
-                stdin=stdin,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            if res.stdout:
-                print(res.stdout, end="")
-            return res.returncode, res.stdout or ""
-        try:
-            subprocess.run(cmd, stdin=stdin, check=check)
-        except subprocess.CalledProcessError as exc:
+            if sortie:
+                print(sortie, end="")
+            return code, sortie
+        if check and code != 0:
             # Sortie propre plutôt qu'une trace Python illisible.
-            sys.exit(
-                f"\nÉchec de la commande (code {exc.returncode}) :\n"
-                f"  {printable}"
-            )
+            sys.exit(f"\nÉchec de la commande (code {code}) :\n  {printable}")
 
 
 def need_tool(name: str) -> None:
@@ -3175,6 +3434,255 @@ UEFI_BOOT = (
     "uefi,firmware.feature0.name=secure-boot,"
     "firmware.feature0.enabled=no,loader.type=pflash"
 )
+
+# Dossiers des descripteurs de firmware QEMU, du plus prioritaire au moins
+# prioritaire : le démon système de libvirt lit sysconfdir puis datadir. Le
+# dossier XDG de l'utilisateur ne sert qu'à qemu:///session, et le
+# déploiement passe par qemu:///system.
+FIRMWARE_DIRS: tuple[str, ...] = (
+    "/etc/qemu/firmware",
+    "/usr/share/qemu/firmware",
+)
+
+# Jeton d'architecture du script → architecture telle que l'écrivent QEMU et
+# les descripteurs de firmware (« targets[].architecture »).
+QEMU_ARCH = {"amd64": "x86_64", "arm64": "aarch64", "s390x": "s390x"}
+
+# Sonde de firmware : un domaine jetable, sans disque ni réseau, démarré
+# avant tout téléchargement pour prouver que libvirt accepte les réglages
+# d'amorçage du déploiement. Le préfixe permet au nettoyage du menu QEMU de
+# retrouver un domaine de sonde resté défini quand le processus est tué avant
+# son « finally ».
+SONDE_PREFIXE = "erplibre-fwprobe-"
+SONDE_MEMOIRE = 512  # Mio
+# Plafond, en secondes, de CHAQUE appel virt-install/virsh de la sonde, posé
+# par « timeout » de coreutils.
+SONDE_DELAI = 60
+# libvirt garde le journal QEMU d'un domaine après « undefine » ; le nvram
+# créé par le démarrage UEFI suit le nom du domaine.
+SONDE_JOURNAL = "/var/log/libvirt/qemu/{nom}.log"
+SONDE_NVRAM = "/var/lib/libvirt/qemu/nvram/{nom}_VARS.fd"
+
+# Marque ajoutée à la sortie d'un appel de sonde tué par « timeout » (code
+# 124, ou 137 après SIGKILL) ; sonde_cause() la reconnaît.
+SONDE_DEPASSEE = "(délai dépassé)"
+
+
+def _descripteur_vide(fichier: str, chemin: str) -> dict:
+    """Un descripteur aux champs neutres : chaque entrée porte toutes les
+    clés, si bien qu'un lecteur n'a jamais à tester leur présence."""
+    return {
+        "fichier": fichier,
+        "chemin": chemin,
+        "device": "",
+        "mode": "",
+        "executable": "",
+        "interfaces": [],
+        "archs": [],
+        "machines": [],
+        "features": [],
+        "masque": False,
+        "erreur": "",
+    }
+
+
+def descripteurs_firmware(
+    dossiers: tuple[str, ...] = FIRMWARE_DIRS,
+) -> list[dict]:
+    """Les descripteurs de firmware QEMU, fusionnés comme libvirt les fusionne.
+
+    Un même nom de fichier dans un dossier plus prioritaire cache celui des
+    dossiers suivants. Un fichier de taille nulle masque le descripteur : il
+    reste dans la liste avec masque=True, pour que le rapport puisse le dire,
+    mais il ne compte plus. Le résultat est trié par nom de fichier, ordre
+    dans lequel libvirt essaie les descripteurs.
+
+    Clés : fichier, chemin, device (« flash », « memory », « kernel » ou
+    « »), mode (mapping.mode, « split » par défaut pour un flash),
+    executable (le fichier de code chargé), interfaces, archs, machines,
+    features, masque, erreur (« » ou le message d'un fichier illisible).
+    Ne lève jamais : un dossier absent est sauté, un fichier illisible ou
+    un JSON invalide — imbriqué au-delà de la limite de récursion compris —
+    devient une entrée dont « erreur » est remplie.
+    """
+    retenus: dict[str, str] = {}
+    for dossier in dossiers:
+        try:
+            noms = os.listdir(dossier)
+        except OSError:
+            continue
+        for nom in noms:
+            if nom.endswith(".json"):
+                retenus.setdefault(nom, os.path.join(dossier, nom))
+    descs = []
+    for fichier in sorted(retenus):
+        chemin = retenus[fichier]
+        d = _descripteur_vide(fichier, chemin)
+        descs.append(d)
+        try:
+            if os.path.getsize(chemin) == 0:
+                d["masque"] = True
+                continue
+            with open(chemin, encoding="utf-8") as fh:
+                brut = json.load(fh)
+            if not isinstance(brut, dict):
+                raise ValueError("objet JSON attendu")
+            mapping = brut.get("mapping") or {}
+            device = str(mapping.get("device") or "")
+            if device == "flash":
+                code = (mapping.get("executable") or {}).get("filename")
+            else:
+                code = mapping.get("filename")
+            cibles = [
+                c for c in brut.get("targets") or [] if isinstance(c, dict)
+            ]
+            d.update(
+                device=device,
+                mode=str(
+                    mapping.get("mode")
+                    or ("split" if device == "flash" else "")
+                ),
+                executable=str(code or ""),
+                interfaces=[str(i) for i in brut.get("interface-types") or []],
+                archs=[str(c.get("architecture", "")) for c in cibles],
+                machines=[
+                    str(m) for c in cibles for m in c.get("machines") or []
+                ],
+                features=[str(f) for f in brut.get("features") or []],
+            )
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            RecursionError,
+        ) as exc:
+            d["erreur"] = str(exc) or type(exc).__name__
+    return descs
+
+
+def firmware_probable(
+    descs: list[dict], arch: str, pflash_only: bool = False
+) -> dict | None:
+    """Le descripteur que libvirt retiendrait pour un amorçage UEFI sans
+    Secure Boot, ou None.
+
+    `arch` s'écrit comme QEMU l'écrit (x86_64, aarch64). Le premier
+    descripteur, dans l'ordre reçu, qui est lisible, non masqué, d'interface
+    « uefi », de cette architecture et sans « secure-boot » — le déploiement
+    désactive Secure Boot, voir UEFI_BOOT. `pflash_only` ajoute la condition
+    de « loader.type=pflash » : un firmware en flash.
+
+    C'est une approximation : libvirt compare aussi les motifs de type de
+    machine, les exigences SMM et les fonctions d'informatique
+    confidentielle, ce que ce choix ne fait pas.
+    """
+    for d in descs:
+        if d.get("erreur") or d.get("masque"):
+            continue
+        if "uefi" not in d.get("interfaces", ()):
+            continue
+        if arch not in d.get("archs", ()):
+            continue
+        if "secure-boot" in d.get("features", ()):
+            continue
+        if pflash_only and d.get("device") != "flash":
+            continue
+        return d
+    return None
+
+
+def ordre_firmware_lignes(descs: list[dict], arch: str) -> list[str]:
+    """L'ordre des descripteurs de `arch` (jeton du script : amd64, arm64…),
+    une ligne par descripteur, prête à afficher.
+
+    Les descripteurs masqués sont écartés : libvirt ne les voit plus. Un
+    descripteur qui n'est pas en flash et se trie AVANT le premier en flash
+    porte une marque en fin de ligne : c'est lui que la sélection
+    automatique peut retenir à la place du firmware ordinaire. Sans
+    descripteur pour `arch`, une seule ligne le dit, en nommant les
+    dossiers lus.
+    """
+    cible = QEMU_ARCH.get(arch, arch)
+    retenus = [
+        d for d in descs if cible in d.get("archs", ()) and not d.get("masque")
+    ]
+    if not retenus:
+        return [
+            f"  (aucun descripteur de firmware pour {arch} dans"
+            f" {', '.join(FIRMWARE_DIRS)})"
+        ]
+    lignes = []
+    flash_vu = False
+    for rang, d in enumerate(retenus, 1):
+        device = d.get("device") or "?"
+        ligne = (
+            f"  {rang:>2}. {d.get('fichier', '')}  [{device}]"
+            f"  {', '.join(d.get('features', ()))}"
+        )
+        if device == "flash":
+            flash_vu = True
+        elif not flash_vu:
+            ligne += "  ← chargé en mémoire, passe avant le firmware en flash"
+        lignes.append(ligne)
+    return lignes
+
+
+def emulation(arch: str) -> tuple[bool, bool]:
+    """(émulée, kvm_manquant) pour une VM de l'architecture `arch`.
+
+    Deux causes d'émulation, à ne pas confondre : une architecture étrangère
+    (voulue, on la choisit), et une absence de KVM (subie, et invisible). La
+    seconde ne se déduit PAS de l'architecture — dans une VM sans
+    virtualisation imbriquée, libvirt retombe en TCG sans rien dire.
+    `kvm_manquant` ne vaut que pour l'architecture native : c'est lui qui
+    appelle un avertissement. Sans effet de bord.
+    """
+    native = arch == host_arch()
+    kvm_manquant = native and not kvm_available()
+    return (not native or kvm_manquant), kvm_manquant
+
+
+def amorcage_args(arch: str, bios: bool, emulated: bool) -> list[str]:
+    """Les arguments virt-install d'architecture, de machine et d'amorçage.
+
+    Partagés par virt_install() et la sonde de firmware, pour que la sonde
+    prouve exactement ce que la VM recevra. L'ordre est celui de la ligne de
+    commande : la tranche que le repli EGL recopie en dépend.
+    """
+    if arch == "s390x":
+        # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
+        # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
+        args = ["--arch", "s390x", "--machine", "s390-ccw-virtio"]
+    elif arch == "arm64":
+        # arm64/aarch64 : machine « virt » + UEFI (firmware AAVMF). Les images
+        # cloud arm64 n'ont pas de BIOS -> UEFI obligatoire. Secure Boot
+        # DÉSACTIVÉ (comme x86) : sinon libvirt sélectionne l'AAVMF « secure »
+        # à clés Microsoft enrôlées et la VM RESTE FIGÉE au firmware (aucun
+        # boot, aucune IP). secure-boot=no -> AAVMF non-SB, boot OK.
+        args = [
+            "--arch",
+            "aarch64",
+            "--machine",
+            "virt",
+            "--boot",
+            UEFI_BOOT,
+        ]
+    elif not bios:
+        # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
+        # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
+        # boucle « Booting... » en SeaBIOS. --bios force l'ancien BIOS, que
+        # certaines distributions exigent — voir FIRMWARE_IMPOSE.
+        # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
+        # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
+        args = ["--boot", UEFI_BOOT]
+    else:
+        args = []
+    if emulated:
+        # Architecture différente de l'hôte, ou KVM absent -> émulation
+        # logicielle TCG. LENT.
+        args += ["--virt-type", "qemu"]
+    return args
 
 
 def amorcage_bios(distro: str, demande: bool) -> bool:
@@ -5787,6 +6295,262 @@ def create_blank_disk(
     )
 
 
+# --------------------------------------------------------------------------- #
+# Annulation d'un déploiement raté
+# --------------------------------------------------------------------------- #
+def chemin_present(path: Path, use_sudo: bool) -> bool | None:
+    """True/False quand l'existence de `path` est établie, None sinon.
+
+    os.lstat et non Path.exists() : ce dernier rend False sur PermissionError,
+    et un fichier rangé dans un répertoire illisible passerait pour absent —
+    donc pour créé par ce lancement, donc bon à retirer. lstat et non stat :
+    un lien symbolique brisé est une entrée qui existe ; stat le dirait
+    absent, et le rm de l'annulation retirerait le lien d'avant en laissant
+    sa cible, écrite à travers lui. Sur un refus, avec sudo, « sudo -n test
+    -e P -o -L P » tranche de même sans jamais demander de mot de passe ; un
+    sudo qui parle (mot de passe requis) ou qui échoue autrement laisse
+    l'existence inconnue.
+    """
+    try:
+        os.lstat(path)
+        return True
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except PermissionError:
+        if not use_sudo:
+            return None
+    try:
+        res = subprocess.run(
+            ["sudo", "-n", "test", "-e", str(path), "-o", "-L", str(path)],
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if res.returncode == 0:
+        return True
+    if res.returncode == 1 and not res.stderr.strip():
+        return False
+    return None
+
+
+def domaine_present(name: str, use_sudo: bool) -> bool | None:
+    """True si un domaine `name` existe (persistant ou transitoire).
+
+    False seulement quand virsh dit expressément qu'il n'existe pas ; None
+    quand on ne peut pas l'établir (libvirt injoignable, sudo qui réclame un
+    mot de passe). virsh_out ne convient pas : il rend '' pour « absent »
+    comme pour « injoignable », ce qui ne peut pas fonder une suppression.
+    « sudo -n » et non « sudo » : la vérification ne bloque jamais sur une
+    invite de mot de passe invisible. Quand « sudo -n » ne tranche pas (pas
+    de jeton sudo en cache, cas courant d'un lancement sans root), virsh est
+    relancé sans sudo : un membre du groupe libvirt lit qemu:///system sans
+    privilège. stdin fermé : ni sudo ni l'agent polkit de virsh ne posent de
+    question.
+    """
+    virsh = ["virsh", "-c", LIBVIRT_URI, "domstate", name]
+    essais = [["sudo", "-n", *virsh], virsh] if use_sudo else [virsh]
+    for cmd in essais:
+        try:
+            res = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=c_locale_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if res.returncode == 0:
+            return True
+        if re.search(
+            r"failed to get domain|domain not found",
+            (res.stdout or "") + (res.stderr or ""),
+            re.IGNORECASE,
+        ):
+            return False
+    return None
+
+
+class _SortieTolerante:
+    """Enveloppe de sys.stdout dont l'écriture n'échoue jamais.
+
+    Après un SIGHUP, le terminal n'existe souvent plus : écrire sur stdout
+    lève OSError (EIO, EPIPE). Pendant l'annulation, un message perdu ne
+    coûte rien, alors qu'une écriture qui lève empêcherait le rm et
+    remplacerait l'exception d'origine. Couvre aussi les « $ cmd » que
+    Runner.run affiche avant de lancer.
+    """
+
+    def __init__(self, flux) -> None:
+        self._flux = flux
+
+    def write(self, texte: str) -> int:
+        try:
+            return self._flux.write(texte)
+        except (OSError, ValueError):
+            return len(texte)
+
+    def flush(self) -> None:
+        try:
+            self._flux.flush()
+        except (OSError, ValueError):
+            pass
+
+    def __getattr__(self, nom):
+        return getattr(self._flux, nom)
+
+
+class Defaire:
+    """Défait ce que CE lancement a créé s'il s'arrête avant le domaine.
+
+    Gestionnaire de contexte : `noter(path)` retient un chemin juste avant
+    son écriture, à condition qu'il soit absent à cet instant. Si le bloc
+    sort sur une exception (SystemExit non nul, KeyboardInterrupt, erreur
+    système, SIGTERM/SIGHUP changés en SystemExit), les chemins retenus sont
+    retirés — seulement si virsh affirme qu'aucun domaine de ce nom
+    n'existe. Un chemin présent avant le lancement (--force), un état de
+    domaine illisible ou un domaine existant gardent tout. L'exception
+    d'origine est toujours relevée telle quelle : le code de sortie et le
+    message d'échec restent ceux de l'étape fautive.
+    """
+
+    def __init__(self, name: str, runner: Runner) -> None:
+        self.name = name
+        self.runner = runner
+        # Dans l'ordre de création.
+        self.crees: list[Path] = []
+        self._signaux: dict = {}
+
+    def noter(self, path: Path) -> bool:
+        """Retient `path` s'il est ABSENT maintenant ; rend True s'il l'est.
+
+        En dry-run, rien n'est écrit, donc rien n'est retenu. Une existence
+        inconnue n'est pas retenue : dans le doute, le fichier reste.
+        """
+        if self.runner.dry_run:
+            return False
+        if chemin_present(path, self.runner.use_sudo) is False:
+            self.crees.append(path)
+            return True
+        return False
+
+    def __enter__(self) -> "Defaire":
+        self._signaux = self._poser_signaux()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        """Annule sur échec, puis rend les signaux ; ne masque jamais `exc`.
+
+        Pendant l'annulation, SIGHUP et SIGTERM sont ignorés : fermer un
+        terminal en envoie souvent deux (noyau, puis shell), et le second
+        tuerait le processus avant le rm. Les gestionnaires d'avant ne
+        reviennent qu'à la fin, dans le finally.
+        """
+        try:
+            if exc_type is None:
+                return False
+            if issubclass(exc_type, SystemExit) and exc.code in (0, None):
+                return False
+            self._ignorer_signaux()
+            stdout = sys.stdout
+            if stdout is not None:
+                sys.stdout = _SortieTolerante(stdout)
+            try:
+                self._annuler()
+            except BaseException:
+                # Un second Ctrl+C, un rm qui sort : l'erreur d'origine prime.
+                print("  ↩ Annulation interrompue : fichiers conservés.")
+            finally:
+                sys.stdout = stdout
+            return False
+        finally:
+            self._rendre_signaux()
+
+    @staticmethod
+    def _poser_signaux() -> dict:
+        """Fait de SIGHUP et SIGTERM un SystemExit(128 + signal).
+
+        Le premier signal lève, les suivants sont sans effet ; __exit__ les
+        ignore ensuite pendant l'annulation. Un signal déjà ignoré le reste
+        (« nohup »). Hors du fil principal, signal.signal lève ValueError :
+        rien n'est posé. Même geste que TODO._qemu_signaux_de_sortie, recopié
+        parce que ce script reste autonome.
+        """
+        if threading.current_thread() is not threading.main_thread():
+            return {}
+        deja: list[int] = []
+
+        def sortir(signum, _frame):
+            if deja:
+                return
+            deja.append(signum)
+            raise SystemExit(128 + signum)
+
+        anciens = {}
+        for nom in ("SIGHUP", "SIGTERM"):
+            num = getattr(signal, nom, None)
+            if num is None or signal.getsignal(num) == signal.SIG_IGN:
+                continue
+            try:
+                anciens[num] = signal.signal(num, sortir)
+            except (ValueError, OSError):
+                continue
+        return anciens
+
+    def _ignorer_signaux(self) -> None:
+        """Passe à SIG_IGN les signaux que __enter__ a pris en charge."""
+        for num in self._signaux:
+            try:
+                signal.signal(num, signal.SIG_IGN)
+            except (ValueError, OSError):
+                pass
+
+    def _rendre_signaux(self) -> None:
+        """Remet les gestionnaires d'avant ; None redevient SIG_DFL."""
+        for num, ancien in self._signaux.items():
+            try:
+                signal.signal(
+                    num, signal.SIG_DFL if ancien is None else ancien
+                )
+            except (ValueError, OSError):
+                pass
+        self._signaux = {}
+
+    def _annuler(self) -> None:
+        """Retire les chemins retenus si aucun domaine ne les utilise.
+
+        Trois ou quatre lignes au plus : l'appelant n'affiche souvent que la
+        fin d'un échec, et le message de l'étape fautive doit y rester.
+        check=False : un rm qui échoue ne doit pas remplacer l'erreur
+        d'origine par la sienne.
+        """
+        if not self.crees:
+            return
+        etat = domaine_present(self.name, self.runner.use_sudo)
+        if etat is True:
+            print(
+                f"  ↩ Le domaine « {self.name} » existe : rien n'est retiré"
+                f" (virsh undefine {self.name} pour repartir)."
+            )
+            return
+        if etat is None:
+            print(
+                "  ↩ État du domaine illisible : conservés "
+                + " ".join(str(p) for p in self.crees)
+            )
+            return
+        print("  ↩ Déploiement raté : retrait de ce que ce lancement a créé")
+        for p in self.crees:
+            print(f"    - {p}")
+        self.runner.run(
+            ["rm", "-f", "--", *map(str, self.crees)],
+            privileged=True,
+            check=False,
+        )
+
+
 def network_name(network_arg: str) -> str | None:
     """Extrait NAME de « network=NAME,... » ; None si c'est un bridge, etc."""
     for part in network_arg.split(","):
@@ -6192,6 +6956,232 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         )
 
 
+def virtinst_env() -> list[str]:
+    """Le préfixe « env … » qui donne à virt-install un cache écrivable.
+
+    virtinst écrit un journal de debug dans ~/.cache/virt-manager ; sous
+    sudo, HOME/cache peut être inaccessible -> l'écriture échoue et Python
+    déverse un « Logging error » (le pavé « Fetched capabilities … »). On
+    force un cache/HOME ÉCRIVABLE via « env VAR=… » (traverse sudo) pour
+    que le journal s'écrive silencieusement.
+    Chemin propre à l'UID : un répertoire partagé finit créé par root lors
+    d'un premier passage sous sudo, puis devient illisible pour l'utilisateur
+    (« Error setting up logfile: No write access to … /virt-manager »).
+    """
+    cache_dir = f"/var/tmp/erplibre-virtinst-{os.getuid()}"
+    try:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+    except OSError:
+        pass
+    return [
+        "env",
+        f"XDG_CACHE_HOME={cache_dir}",
+        f"HOME={cache_dir}",
+    ]
+
+
+def sonde_nom() -> str:
+    """Un nom de domaine de sonde, tiré au hasard : deux déploiements
+    parallèles ne se disputent jamais le même."""
+    return SONDE_PREFIXE + secrets.token_hex(4)
+
+
+def sonde_borne(cmd: list[str], delai: int = SONDE_DELAI) -> list[str]:
+    """`cmd` borné dans le temps par « timeout » de coreutils, s'il existe.
+
+    Le « timeout » se place DANS la commande, donc derrière le sudo que
+    Runner ajoute : virsh reçoit lui-même SIGTERM, puis SIGKILL 5 s plus
+    tard. Un délai côté Python tuerait sudo et laisserait virsh orphelin.
+    Sans « timeout » dans le PATH, la commande part sans borne.
+    """
+    if shutil.which("timeout"):
+        return ["timeout", "--kill-after=5", str(delai), *cmd]
+    return list(cmd)
+
+
+def sonde_xml_cmd(nom: str, osinfo: str, amorcage: list[str]) -> list[str]:
+    """La commande « virt-install --print-xml » du domaine de sonde.
+
+    Ni disque, ni réseau, ni affichage : la sonde ne prouve que le firmware
+    et son profil AppArmor. `osinfo` est celui de la VM, car il fixe le type
+    de machine (q35 ou i440fx), donc les descripteurs qui conviennent ;
+    `amorcage` est celui d'amorcage_args(), recopié tel quel en fin de ligne.
+    """
+    return [
+        "virt-install",
+        "--connect",
+        LIBVIRT_URI,
+        "--name",
+        nom,
+        "--memory",
+        str(SONDE_MEMOIRE),
+        "--vcpus",
+        "1",
+        "--import",
+        "--disk",
+        "none",
+        "--osinfo",
+        osinfo,
+        "--network",
+        "none",
+        "--graphics",
+        "none",
+        "--print-xml",
+        *amorcage,
+    ]
+
+
+def xml_du_domaine(sortie: str) -> str:
+    """Le XML « <domain …>…</domain> » contenu dans `sortie`, ou ''.
+
+    Runner, en capture, mêle stderr à stdout : un avertissement de
+    virt-install peut entourer le XML, et virsh refuserait le tout.
+    """
+    debut = sortie.find("<domain")
+    fin = sortie.rfind("</domain>")
+    if debut < 0 or fin < debut:
+        return ""
+    return sortie[debut : fin + len("</domain>")]
+
+
+def sonde_cause(sortie: str) -> str:
+    """La cause d'un échec de sonde, lue dans la sortie de libvirt.
+
+    « apparmor » quand virt-aa-helper ou AppArmor est en cause,
+    « firmware » quand le firmware, son chargeur ou son nvram l'est,
+    « delai » quand la sonde a marqué un dépassement de délai, '' sinon.
+    """
+    bas = sortie.lower()
+    if any(
+        m in bas
+        for m in ("virt-aa-helper", "apparmor", "skipped restricted file")
+    ):
+        return "apparmor"
+    if any(m in bas for m in ("firmware", "nvram", "loader")):
+        return "firmware"
+    if SONDE_DEPASSEE in sortie:
+        return "delai"
+    return ""
+
+
+def sonde_firmware(
+    osinfo: str, amorcage: list[str], runner: Runner
+) -> tuple[bool, str]:
+    """Démarre un domaine jetable avec `amorcage`, puis le retire.
+
+    Rend (True, '') quand libvirt le met en marche, (False, sortie) sinon,
+    `sortie` étant ce que l'outil fautif a répondu. Trois étapes :
+    « virt-install --print-xml », « virsh define », « virsh start », puis
+    « virsh domstate » sous locale C, qui doit répondre running ou paused.
+
+    Le retrait — destroy, « undefine --nvram », rm du journal QEMU et du
+    nvram — n'a lieu que si « define » a réussi : un domaine homonyme
+    préexistant n'est jamais touché. Il tourne dans un « finally », donc
+    après un échec comme après Ctrl+C. En dry-run, seule la première
+    commande est affichée, et rien n'est retiré.
+    """
+    nom = sonde_nom()
+    virsh = ["virsh", "--connect", LIBVIRT_URI]
+    defini = False
+
+    def lancer(cmd: list[str], delai: int = SONDE_DELAI, check: bool = True):
+        return runner.run(
+            sonde_borne(cmd, delai), privileged=True, check=check, capture=True
+        )
+
+    def depasse(code: int) -> str:
+        return f"\n{SONDE_DEPASSEE}" if code in (124, 137) else ""
+
+    try:
+        code, out = lancer(
+            virtinst_env() + sonde_xml_cmd(nom, osinfo, amorcage)
+        )
+        if runner.dry_run:
+            return True, ""
+        xml = xml_du_domaine(out)
+        if code != 0 or not xml:
+            return False, out + depasse(code)
+        with fichier_xml_temporaire(xml, prefixe=SONDE_PREFIXE) as chemin:
+            code, out = lancer(virsh + ["define", chemin])
+        if code != 0:
+            return False, out + depasse(code)
+        defini = True
+        code, out = lancer(virsh + ["start", nom])
+        if code != 0:
+            return False, out + depasse(code)
+        # virsh traduit l'état : « running » n'est lisible que sous locale C.
+        code, etat = lancer(
+            ["env", "LC_ALL=C", "LANG=C"] + virsh + ["domstate", nom]
+        )
+        if code != 0 or etat.strip() not in ("running", "paused"):
+            return False, etat + depasse(code)
+        return True, ""
+    finally:
+        if defini:
+            lancer(virsh + ["destroy", nom], 20, check=False)
+            lancer(virsh + ["undefine", nom, "--nvram"], 20, check=False)
+            runner.run(
+                [
+                    "rm",
+                    "-f",
+                    SONDE_JOURNAL.format(nom=nom),
+                    SONDE_NVRAM.format(nom=nom),
+                ],
+                privileged=True,
+                check=False,
+                capture=True,
+            )
+
+
+def preflight_firmware(
+    args: argparse.Namespace, osinfo: str, runner: Runner
+) -> None:
+    """Prouve, avant tout téléchargement, que libvirt démarre un domaine avec
+    les réglages d'amorçage de cette VM ; sinon termine le programme.
+
+    Sautée sans « --boot » (s390x, --bios) : libvirt ne choisit alors aucun
+    firmware UEFI, il n'y a rien à prouver. Sautée aussi avec
+    --no-preflight. L'échec affiche la cause lue dans la sortie de libvirt
+    et, pour une cause de firmware ou d'AppArmor, l'ordre des descripteurs
+    que libvirt parcourt. La sortie de libvirt elle-même est déjà à l'écran :
+    Runner la réaffiche.
+    """
+    if getattr(args, "no_preflight", False):
+        print("  Préflight firmware : désactivé (--no-preflight).")
+        return
+    emulated, _ = emulation(args.arch)
+    amorcage = amorcage_args(args.arch, args.bios, emulated)
+    if "--boot" not in amorcage:
+        return
+    print("\n== 0/5 Préflight firmware (démarrage d'un domaine jetable) ==")
+    ok, sortie = sonde_firmware(osinfo, amorcage, runner)
+    if ok:
+        print("  libvirt démarre un domaine avec ces réglages d'amorçage.")
+        return
+    cause = sonde_cause(sortie)
+    lignes = [
+        "",
+        "  ⚠ ÉCHEC : préflight firmware — libvirt ne démarre pas un domaine"
+        " avec",
+        f"    --boot {UEFI_BOOT}",
+        "    Aucune image téléchargée, aucun disque créé.",
+    ]
+    if cause in ("apparmor", "firmware"):
+        lignes += [
+            "",
+            "  Ordre des descripteurs de firmware (libvirt retient le premier"
+            " qui convient) :",
+            *ordre_firmware_lignes(descripteurs_firmware(), args.arch),
+            "",
+            "  Un descripteur de même nom, VIDE, dans /etc/qemu/firmware/ le"
+            " masque.",
+        ]
+    elif cause == "delai":
+        lignes.append(f"    La sonde n'a pas répondu en {SONDE_DELAI} s.")
+    lignes += ["", "  Passer outre : --no-preflight"]
+    sys.exit("\n".join(lignes))
+
+
 def virt_install(
     args: argparse.Namespace,
     disk: Path,
@@ -6200,14 +7190,8 @@ def virt_install(
     runner: Runner,
     installer: tuple[Path, Path] | None = None,
 ) -> None:
-    # Émulée (TCG, pas de KVM) si l'arch demandée diffère de celle de l'hôte.
-    # Deux causes d'émulation, à ne pas confondre : une architecture étrangère
-    # (voulue, on la choisit), et une absence de KVM (subie, et invisible). La
-    # seconde ne se déduit PAS de l'architecture — dans une VM sans
-    # virtualisation imbriquée, libvirt retombe en TCG sans rien dire.
-    emulated = args.arch != host_arch()
-    if not emulated and not kvm_available():
-        emulated = True
+    emulated, kvm_manquant = emulation(args.arch)
+    if kvm_manquant:
         print(
             "⚠  KVM indisponible (/dev/kvm) : cette VM sera ÉMULÉE, donc TRÈS"
             " lente."
@@ -6363,36 +7347,7 @@ def virt_install(
         for ligne in lignes:
             print(ligne)
         cmd += hostdev
-    if args.arch == "s390x":
-        # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
-        # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
-        cmd += ["--arch", "s390x", "--machine", "s390-ccw-virtio"]
-    elif args.arch == "arm64":
-        # arm64/aarch64 : machine « virt » + UEFI (firmware AAVMF). Les images
-        # cloud arm64 n'ont pas de BIOS -> UEFI obligatoire. Secure Boot
-        # DÉSACTIVÉ (comme x86) : sinon libvirt sélectionne l'AAVMF « secure »
-        # à clés Microsoft enrôlées et la VM RESTE FIGÉE au firmware (aucun
-        # boot, aucune IP). secure-boot=no -> AAVMF non-SB, boot OK.
-        cmd += [
-            "--arch",
-            "aarch64",
-            "--machine",
-            "virt",
-            "--boot",
-            UEFI_BOOT,
-        ]
-    elif not args.bios:
-        # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
-        # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
-        # boucle « Booting... » en SeaBIOS. --bios force l'ancien BIOS, que
-        # certaines distributions exigent — voir FIRMWARE_IMPOSE.
-        # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
-        # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
-        cmd += ["--boot", UEFI_BOOT]
-    if emulated:
-        # Architecture différente de l'hôte -> émulation logicielle TCG
-        # (pas de KVM). LENT.
-        cmd += ["--virt-type", "qemu"]
+    cmd += amorcage_args(args.arch, args.bios, emulated)
     if not args.attach_console:
         cmd.append("--noautoconsole")
         if installer:
@@ -6402,24 +7357,7 @@ def virt_install(
             # après l'autre. La configuration finale est déjà écrite : rendre
             # la main n'abandonne rien.
             cmd += ["--wait", "0"]
-    # virtinst écrit un journal de debug dans ~/.cache/virt-manager ; sous
-    # sudo, HOME/cache peut être inaccessible -> l'écriture échoue et Python
-    # déverse un « Logging error » (le pavé « Fetched capabilities … »). On
-    # force un cache/HOME ÉCRIVABLE via « env VAR=… » (traverse sudo) pour
-    # que le journal s'écrive silencieusement.
-    # Chemin propre à l'UID : un répertoire partagé finit créé par root lors
-    # d'un premier passage sous sudo, puis devient illisible pour l'utilisateur
-    # (« Error setting up logfile: No write access to … /virt-manager »).
-    cache_dir = f"/var/tmp/erplibre-virtinst-{os.getuid()}"
-    try:
-        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-    except OSError:
-        pass
-    log_env = [
-        "env",
-        f"XDG_CACHE_HOME={cache_dir}",
-        f"HOME={cache_dir}",
-    ]
+    log_env = virtinst_env()
     if not gpu_args:
         runner.run(log_env + cmd, privileged=True)
         return
@@ -6893,7 +7831,20 @@ def build_parser() -> argparse.ArgumentParser:
     g_run.add_argument(
         "--force",
         action="store_true",
-        help="Écrase le qcow2 de travail existant.",
+        help=(
+            "Écrase le qcow2 de travail existant. Un disque présent avant"
+            " le lancement n'est jamais retiré après un échec ; un domaine libvirt existant est refusé, même avec --force, dès que virsh peut le lire (jeton sudo ou groupe libvirt)."
+        ),
+    )
+    g_run.add_argument(
+        "--no-preflight",
+        action="store_true",
+        help=(
+            "N'essaie pas, avant de télécharger quoi que ce soit, de démarrer"
+            " un domaine jetable avec les réglages d'amorçage de la VM. Ce"
+            " préflight prouve en quelques secondes que libvirt accepte le"
+            " firmware UEFI retenu."
+        ),
     )
     g_run.add_argument(
         "--no-wait-ip",
@@ -7169,134 +8120,166 @@ def main() -> None:
                 "nettement plus lents que l'architecture native."
             )
 
-    installer: tuple[Path, Path] | None = None
-    if uses_installer(args.distro, args.arch):
-        # Voie debian-installer : aucune image cloud n'existe pour cette
-        # combinaison, on télécharge l'installateur et on part d'un disque nu.
-        cache = args.image_path.parent
-        kernel = cache / f"debian-{args.version}-s390x-kernel"
-        initrd_src = cache / f"debian-{args.version}-s390x-initrd.gz"
-        initrd = cache / f"{args.name}-initrd.gz"
-        # Le dimensionnement du catalogue vient des images cloud, où le
-        # système est DÉJÀ installé. debian-installer, lui, déplie un système
-        # de fichiers complet en mémoire avant d'écrire quoi que ce soit :
-        # 1024 Mio est le plancher annoncé par Debian, sans marge, et un
-        # manque de mémoire s'y manifeste par un écran figé sans message.
-        # On relève le plancher, en le disant — un réglage explicite plus haut
-        # n'est jamais abaissé.
-        if args.memory < INSTALLER_MIN_RAM:
-            print(
-                f"  Mémoire portée à {INSTALLER_MIN_RAM} Mio pour"
-                f" l'installateur (catalogue : {args.memory})."
-            )
-            args.memory = INSTALLER_MIN_RAM
-        print(f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x ==")
-        download_image(
-            [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
-            kernel,
-            args.dry_run,
-            runner=runner,
-        )
-        download_image(
-            [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
-            initrd_src,
-            args.dry_run,
-            runner=runner,
+    # Avant toute écriture de disque, même avec --force : virt-install
+    # refuserait ce nom de toute façon, une fois le disque du domaine écrasé.
+    # Un état inconnu (libvirt injoignable) ne bloque pas.
+    if (
+        not args.dry_run
+        and domaine_present(args.name, runner.use_sudo) is True
+    ):
+        sys.exit(
+            f"Le domaine « {args.name} » existe déjà : son disque n'est pas"
+            f" écrasé.\n  virsh undefine {args.name} (puis --force) pour le"
+            " remplacer."
         )
 
-        print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
-        create_blank_disk(disk, args.disk_size, runner, args.force)
+    # Calculé ici, une fois : la sonde de firmware et virt-install reçoivent
+    # le même --osinfo, qui fixe le type de machine, donc le firmware retenu.
+    resolved_osinfo = osinfo_arg(osinfo, args.distro)
+    # Avant tout téléchargement et toute écriture de disque : un firmware que
+    # libvirt refuse ne laisse alors rien derrière lui.
+    if not args.dry_run:
+        preflight_firmware(args, resolved_osinfo, runner)
 
-        print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
-        static = static_net_plan(
-            network_name(args.network), not args.dry_run, args.name
-        )
-        if static:
+    # Du premier fichier écrit jusqu'à virt-install : un échec retire ce que
+    # ce lancement a créé. Le suivi de l'installateur reste dehors, le
+    # domaine existe alors.
+    with Defaire(args.name, runner) as defaire:
+        installer: tuple[Path, Path] | None = None
+        if uses_installer(args.distro, args.arch):
+            # Voie debian-installer : aucune image cloud n'existe pour cette
+            # combinaison, on télécharge l'installateur et on part d'un disque nu.
+            cache = args.image_path.parent
+            kernel = cache / f"debian-{args.version}-s390x-kernel"
+            initrd_src = cache / f"debian-{args.version}-s390x-initrd.gz"
+            initrd = cache / f"{args.name}-initrd.gz"
+            # Le dimensionnement du catalogue vient des images cloud, où le
+            # système est DÉJÀ installé. debian-installer, lui, déplie un système
+            # de fichiers complet en mémoire avant d'écrire quoi que ce soit :
+            # 1024 Mio est le plancher annoncé par Debian, sans marge, et un
+            # manque de mémoire s'y manifeste par un écran figé sans message.
+            # On relève le plancher, en le disant — un réglage explicite plus haut
+            # n'est jamais abaissé.
+            if args.memory < INSTALLER_MIN_RAM:
+                print(
+                    f"  Mémoire portée à {INSTALLER_MIN_RAM} Mio pour"
+                    f" l'installateur (catalogue : {args.memory})."
+                )
+                args.memory = INSTALLER_MIN_RAM
             print(
-                f"  Adresse fixe retenue : {static['ip']}"
-                f" (passerelle {static['gateway']})"
+                f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x =="
             )
+            download_image(
+                [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
+                kernel,
+                args.dry_run,
+                runner=runner,
+            )
+            download_image(
+                [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
+                initrd_src,
+                args.dry_run,
+                runner=runner,
+            )
+
+            print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
+            defaire.noter(disk)
+            create_blank_disk(disk, args.disk_size, runner, args.force)
+
+            print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
+            static = static_net_plan(
+                network_name(args.network), not args.dry_run, args.name
+            )
+            if static:
+                print(
+                    f"  Adresse fixe retenue : {static['ip']}"
+                    f" (passerelle {static['gateway']})"
+                )
+            else:
+                print(
+                    "  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
+                    " la question à l'écran et l'installation s'arrêtera."
+                )
+            # Les fichiers que le late_command copie vers /target voyagent dans
+            # l'initrd : sans eux, ses « cp » échouent en silence (« || true »).
+            defaire.noter(initrd)
+            build_installer_initrd(
+                build_preseed(args, pw_hash, ssh_keys, static),
+                initrd_src,
+                initrd,
+                runner,
+                guide=guide_files(args) + installer_cache_files(args),
+            )
+            installer = (kernel, initrd)
         else:
             print(
-                "  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
-                " la question à l'écran et l'installation s'arrêtera."
+                f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
             )
-        # Les fichiers que le late_command copie vers /target voyagent dans
-        # l'initrd : sans eux, ses « cp » échouent en silence (« || true »).
-        build_installer_initrd(
-            build_preseed(args, pw_hash, ssh_keys, static),
-            initrd_src,
-            initrd,
-            runner,
-            guide=guide_files(args) + installer_cache_files(args),
-        )
-        installer = (kernel, initrd)
-    else:
-        print(
-            f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
-        )
-        frais = not image_en_cache(args.image_path)
-        download_image(urls, args.image_path, args.dry_run, runner=runner)
-        verify_pinned_sha256(
-            args.distro, args.image_path, args.dry_run, tuple(urls)
-        )
-        if do_verify:
-            verify_sha256(
-                url,
-                args.image_path,
-                args.dry_run,
-                args.distro,
-                tuple(urls),
-                runner=runner,
-                frais=frais,
+            frais = not image_en_cache(args.image_path)
+            download_image(urls, args.image_path, args.dry_run, runner=runner)
+            verify_pinned_sha256(
+                args.distro, args.image_path, args.dry_run, tuple(urls)
+            )
+            if do_verify:
+                verify_sha256(
+                    url,
+                    args.image_path,
+                    args.dry_run,
+                    args.distro,
+                    tuple(urls),
+                    runner=runner,
+                    frais=frais,
+                )
+
+            print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
+            defaire.noter(disk)
+            prepare_disk(
+                args.image_path, disk, args.disk_size, runner, args.force
             )
 
-        print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
-        prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
+            print(f"\n== 4/5 Seed cloud-init {seed} ==")
+            cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
+            defaire.noter(seed)
+            build_seed(
+                cloud_cfg,
+                args.hostname,
+                seed,
+                runner,
+                network_config_for(args.distro),
+            )
 
-        print(f"\n== 4/5 Seed cloud-init {seed} ==")
-        cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
-        build_seed(
-            cloud_cfg,
-            args.hostname,
-            seed,
-            runner,
-            network_config_for(args.distro),
-        )
-
-    resolved_osinfo = osinfo_arg(osinfo, args.distro)
-    print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
-    ensure_network(network_name(args.network), runner)
-    # Avant la création, et non après : la VM télécharge dès cloud-init.
-    # Une famille sans magasin de certificats ne peut pas apprendre
-    # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter
-    # sur un certificat inconnu à chaque téléchargement. Décidé ici et non
-    # demandé à l'opérateur — c'est le catalogue qui sait.
-    #
-    # JAMAIS HORS LIGNE, et c'est la même raison que sur la voie Proxmox :
-    # l'amont est alors coupé et le magasin est la SEULE source. Soustraire
-    # la VM ne la ferait pas télécharger en direct — cela ne lui laisserait
-    # RIEN. Les deux issues échouent pour une distribution sans magasin de
-    # certificats : exceptée, elle n'a plus de source ; interceptée, elle bute
-    # sur un certificat qu'elle ne reconnaît pas. Le dire AVANT vaut mieux
-    # qu'une heure d'installation pour y arriver.
-    sans_magasin = cache_sans_autorite(getattr(args, "distro", ""))
-    if sans_magasin and getattr(args, "offline", False):
-        print(
-            f"\n  ⚠ {args.distro} n'a pas de magasin de certificats, et"
-            " l'amont du cache est coupé."
-            "\n    Aucune source ne lui reste : l'exception la priverait du"
-            " magasin, et sans elle"
-            "\n    chaque téléchargement bute sur un certificat inconnu."
-        )
-    elif sans_magasin and not getattr(args, "cache_bypass", False):
-        args.cache_bypass = True
-        print(
-            f"\n  {args.distro} n'a pas de magasin de certificats :"
-            " la VM est soustraite au cache et téléchargera en direct."
-        )
-    cache_bypass_apply(args, runner)
-    virt_install(args, disk, seed, resolved_osinfo, runner, installer)
+        print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
+        ensure_network(network_name(args.network), runner)
+        # Avant la création, et non après : la VM télécharge dès cloud-init.
+        # Une famille sans magasin de certificats ne peut pas apprendre
+        # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter
+        # sur un certificat inconnu à chaque téléchargement. Décidé ici et non
+        # demandé à l'opérateur — c'est le catalogue qui sait.
+        #
+        # JAMAIS HORS LIGNE, et c'est la même raison que sur la voie Proxmox :
+        # l'amont est alors coupé et le magasin est la SEULE source. Soustraire
+        # la VM ne la ferait pas télécharger en direct — cela ne lui laisserait
+        # RIEN. Les deux issues échouent pour une distribution sans magasin de
+        # certificats : exceptée, elle n'a plus de source ; interceptée, elle bute
+        # sur un certificat qu'elle ne reconnaît pas. Le dire AVANT vaut mieux
+        # qu'une heure d'installation pour y arriver.
+        sans_magasin = cache_sans_autorite(getattr(args, "distro", ""))
+        if sans_magasin and getattr(args, "offline", False):
+            print(
+                f"\n  ⚠ {args.distro} n'a pas de magasin de certificats, et"
+                " l'amont du cache est coupé."
+                "\n    Aucune source ne lui reste : l'exception la priverait du"
+                " magasin, et sans elle"
+                "\n    chaque téléchargement bute sur un certificat inconnu."
+            )
+        elif sans_magasin and not getattr(args, "cache_bypass", False):
+            args.cache_bypass = True
+            print(
+                f"\n  {args.distro} n'a pas de magasin de certificats :"
+                " la VM est soustraite au cache et téléchargera en direct."
+            )
+        cache_bypass_apply(args, runner)
+        virt_install(args, disk, seed, resolved_osinfo, runner, installer)
     if installer:
         watch_and_restart(args.name, runner)
 

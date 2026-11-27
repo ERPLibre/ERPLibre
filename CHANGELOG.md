@@ -233,6 +233,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `test/test_suite_hygiene.py` keeps the suite runnable under pytest without depending on it: it refuses a module-level helper named `test*`, `addModuleCleanup`, which pytest never runs, and `logging.basicConfig` at import in a test file
 - TODO › Execute › Test › [5] ERPLibre studio runs the code-generator scenarios from a menu: all of them, one chosen from the active Odoo version's list, the failures of the last run, with coverage, or the purge of the databases an interrupted run left behind. Development › Coverage › [3] runs the same command
 - `make open_test_coverage JEU=erplibre` (or `JEU=odoo`) produces that coverage set's HTML report, prints its path and opens it: without data it fails and opens nothing, and a missing browser (ssh, CI) does not fail it. Without `JEU` it still opens `htmlcov/`
+- `deploy_qemu.py` starts a throwaway domain with the VM's boot settings before any image download or disk write, and stops with the cause — AppArmor, missing firmware, timeout — when libvirt cannot start it; the probe is always removed with its NVRAM. `--no-preflight` skips it, and it does not run without `--boot` (s390x, `--bios`). `Clean up QEMU (orphan files)` offers to remove probes an interrupted deploy left behind
 
 ## Changed
 
@@ -362,6 +363,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The unit tests and the code-generator scenarios (`make test_full_fast`, `test_full_fast_debug`, `test_full_fast_coverage`) run on one engine, `script/test/lanceur.py`: each item in its own process group, a timeout that stops the whole group after a SIGTERM grace, one campaign at a time on the PostgreSQL server, and a teardown that always runs, even on a second Ctrl+C. The scenarios keep their step-by-step verdicts, and `config_testcase.odoo<V>.json` is validated on load, an unknown key refused with its entry named. Their log goes to `.venv.<erplibre-version>/make_test.log`, where `make test` reads it
 - The coverage of the Odoo modules (`make test_full_fast_coverage`) goes through `conf/coverage.odoo.cfg` and the coverage of the Odoo venv, and shows in the coverage screen as its own set
 - TODO's SSH host question (SOCKS proxy, SSHFS) takes `~/.ssh/config` on Enter and is skipped when the file declares no host. A host typed by hand can be saved to `~/.ssh/config` under a suggested alias, shown before it is written, with host key checking kept. An invalid user or host is refused, since an empty or two-word `HostName` makes ssh reject the whole file, and a name ssh already resolves is never reused
+- The QEMU diagnostics report (`Diagnostics (report to share)`) opens on why a deploy failed: the end of the last three `*-create.log` with secrets masked, libvirt journal errors, AppArmor refusals, and the firmware libvirt is likely to pick, with a warning when a memory firmware sorts before the flash one. `qemu.conf` is read directly or through `sudo -n`, never asking for a password. Once written, the report can be shown in the terminal, without leaving the TODO CLI
 
 ## Fixed
 
@@ -534,6 +536,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The code-generator scenarios check the generated modules one git pathspec each: a comma-separated list matched nothing, so the check always passed. `hello_world.sh` fails when its module is missing
 - The `script/database` tools no longer configure logging at import, which silenced the INFO messages of any program or test that imported them
 - The unit suite passes in full where `/usr/sbin` is merged into `/usr/bin`: `test_qemu_cache_install` hides only `nft` from its PATH instead of the whole directory, `sed` and `bash` with it. Under the launcher, the `ssh` stub answers `ssh -V`, which git-repo runs on every `repo sync`, and still refuses any connection, so `test_install_erplibre_home` no longer fails there only
+- A QEMU deploy that stops before its domain exists — error, Ctrl+C, SIGTERM, SIGHUP — removes the disk and seed it created and keeps any file that existed before, so the next deploy of that name no longer meets an orphan disk. An existing domain is refused before its disk is overwritten, even with `--force`, and the deploy form says an orphan disk's deletion is offered at launch
+- `deploy_qemu.py` reports a command the kernel stopped (state T: SIGTTIN, SIGTTOU, SIGTSTP) after 30 seconds, naming the process and how to resume it, instead of waiting without end; it never sends a signal itself
 
 ## Removed
 

@@ -1415,15 +1415,16 @@ def run_deploy_form(ctx, run_app: bool = True):
                     return
             orphans = [r for r in self.rows if r["state"] == "orphan"]
             if orphans and not getattr(self, "_orphan_ack", False):
-                # Un qcow2 orphelin fait échouer deploy_qemu : on prévient une
-                # première fois, F5 à nouveau vaut confirmation.
+                # Le premier F5 annonce que le terminal proposera d'effacer
+                # ces disques avant toute création ; le second confirme.
+                # Renommer la VM dans le formulaire est l'autre issue.
                 self._orphan_ack = True
                 self.notify(
-                    t("orphan disk - will FAIL")
+                    t("orphan disk - deletion offered at launch")
                     + f" ({len(orphans)}) — "
                     + t("press F5 again to confirm"),
                     severity="error",
-                    timeout=10,
+                    timeout=15,
                 )
                 return
             self.hand_over_vm_secret()

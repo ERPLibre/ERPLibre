@@ -459,5 +459,35 @@ class TestLesFichiersOuverts(unittest.TestCase):
             self.assertTrue(os.path.exists(chemin), chemin)
 
 
+class TestLesDomainesDeSonde(unittest.TestCase):
+    """Un domaine de sonde firmware resté défini est proposé au retrait."""
+
+    def _nettoyer(self, reponse):
+        todo = todo_avec({"vm-a": "", "erplibre-fwprobe-0a1b2c3d": ""})
+        todo.execute = mock.Mock()
+        with (
+            mock.patch("builtins.input", return_value=reponse),
+            mock.patch("sys.stdout"),
+        ):
+            todo._cleanup_probe_domains()
+        return [
+            c.args[0] for c in todo.execute.exec_command_live.call_args_list
+        ]
+
+    def test_probe_domains_offered_and_removed(self):
+        cmds = self._nettoyer("y")
+        self.assertEqual(1, len(cmds))
+        self.assertIn("destroy erplibre-fwprobe-0a1b2c3d", cmds[0])
+        self.assertIn("undefine erplibre-fwprobe-0a1b2c3d --nvram", cmds[0])
+        self.assertIn(
+            "rm -f /var/log/libvirt/qemu/erplibre-fwprobe-0a1b2c3d.log",
+            cmds[0],
+        )
+        self.assertNotIn("vm-a", cmds[0])
+
+    def test_refusal_runs_nothing(self):
+        self.assertEqual([], self._nettoyer("n"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

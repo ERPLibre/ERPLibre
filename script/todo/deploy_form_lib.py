@@ -502,8 +502,10 @@ def vm_status(name, domains, orphelin=None):
     """État d'un nom face à l'existant : ('new'|'exists'|'orphan', message).
 
     Les deux collisions n'ont pas la même gravité — une VM définie est
-    ignorée, un qcow2 resté seul fait échouer deploy_qemu, qui refuse
-    d'écraser sans --force.
+    ignorée, un qcow2 resté seul bloque deploy_qemu, qui refuse d'écraser
+    sans --force. Son effacement est proposé dans le terminal après le
+    formulaire (TODO._qemu_offer_orphan_removal) : le formulaire, lui, ne
+    peut pas demander le mot de passe de sudo.
 
     `orphelin` dit comment reconnaître un disque resté seul. Le défaut regarde
     le répertoire de libvirt ; un hyperviseur distant passe le sien, ou
@@ -511,7 +513,7 @@ def vm_status(name, domains, orphelin=None):
     if name in domains:
         return "exists", t("exists - skipped")
     if (orphelin or libvirt_orphan)(name):
-        return "orphan", t("orphan disk - will FAIL")
+        return "orphan", t("orphan disk - deletion offered at launch")
     return "new", ""
 
 

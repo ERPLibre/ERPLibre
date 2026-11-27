@@ -237,6 +237,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `test/test_suite_hygiene.py` garde la suite lançable sous pytest sans en dépendre : il refuse une fonction d'aide de module nommée `test*`, `addModuleCleanup`, que pytest n'exécute jamais, et `logging.basicConfig` à l'import dans un fichier de test
 - TODO › Exécution › Test › [5] ERPLibre studio lance les scénarios du générateur de code depuis un menu : tous, un seul choisi dans la liste de la version Odoo active, les échecs du dernier passage, avec couverture, ou la purge des bases laissées par un passage interrompu. Développement › Couverture › [3] lance la même commande
 - `make open_test_coverage JEU=erplibre` (ou `JEU=odoo`) produit le rapport HTML de ce jeu de couverture, affiche son chemin et l'ouvre : sans données, la cible échoue sans rien ouvrir, et sans navigateur (ssh, CI) elle n'échoue pas. Sans `JEU`, elle ouvre toujours `htmlcov/`
+- `deploy_qemu.py` démarre un domaine jetable avec les réglages d'amorçage de la VM avant tout téléchargement d'image ou écriture de disque, et s'arrête sur la cause — AppArmor, firmware absent, délai dépassé — quand libvirt ne peut pas le démarrer ; la sonde est toujours retirée avec sa NVRAM. `--no-preflight` la saute, et elle ne tourne pas sans `--boot` (s390x, `--bios`). `Nettoyer QEMU (fichiers orphelins)` propose de retirer les sondes qu'un déploiement interrompu a laissées
 
 ## Modifié
 
@@ -367,6 +368,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les tests unitaires et les scénarios du générateur de code (`make test_full_fast`, `test_full_fast_debug`, `test_full_fast_coverage`) tournent sur un seul moteur, `script/test/lanceur.py` : chaque élément dans son groupe de processus, un délai qui arrête tout le groupe après une grâce SIGTERM, une campagne à la fois sur le serveur PostgreSQL, et un démontage qui tourne toujours, même sur un second Ctrl+C. Les scénarios gardent leurs verdicts étape par étape, et `config_testcase.odoo<V>.json` est validé au chargement, une clé inconnue refusée en nommant son entrée. Leur journal va dans `.venv.<erplibre-version>/make_test.log`, où `make test` le lit
 - La couverture des modules Odoo (`make test_full_fast_coverage`) passe par `conf/coverage.odoo.cfg` et le coverage du venv Odoo, et apparaît dans l'écran de couverture comme un jeu à part
 - La question de l'hôte SSH de TODO (proxy SOCKS, SSHFS) prend `~/.ssh/config` sur Entrée et n'est pas posée quand le fichier ne déclare aucun hôte. Un hôte tapé à la main peut être ajouté à `~/.ssh/config` sous un alias suggéré, montré avant d'être écrit, avec la vérification de la clé d'hôte gardée. Un utilisateur ou un hôte invalide est refusé, car un `HostName` vide ou de deux mots fait rejeter tout le fichier par ssh, et un nom que ssh résout déjà n'est jamais repris
+- Le rapport de diagnostic QEMU (`Diagnostic (rapport à transmettre)`) s'ouvre sur la cause d'un déploiement échoué : la fin des trois derniers `*-create.log`, secrets masqués, les erreurs de libvirt dans le journal, les refus d'AppArmor, et le firmware que libvirt choisira probablement, avec un avertissement quand un firmware en mémoire passe avant celui en flash. `qemu.conf` est lu directement ou par `sudo -n`, sans jamais demander de mot de passe. Une fois écrit, le rapport peut s'afficher dans le terminal, sans quitter le CLI TODO
 
 ## Corrigé
 
@@ -540,6 +542,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les scénarios du générateur de code contrôlent les modules générés un pathspec git chacun : une liste séparée par des virgules ne correspondait à rien, et le contrôle passait toujours. `hello_world.sh` échoue si son module manque
 - Les outils de `script/database` ne configurent plus la journalisation à l'import, ce qui faisait taire les messages INFO de tout programme ou test qui les importait
 - La suite unitaire passe en entier quand `/usr/sbin` est fusionné dans `/usr/bin` : `test_qemu_cache_install` ne cache plus que `nft` de son PATH au lieu du répertoire entier, `sed` et `bash` avec. Sous le lanceur, la doublure `ssh` répond à `ssh -V`, que git-repo lance à chaque `repo sync`, et refuse toujours toute connexion : `test_install_erplibre_home` n'échoue plus là seulement
+- Un déploiement QEMU qui s'arrête avant que son domaine existe — erreur, Ctrl+C, SIGTERM, SIGHUP — retire le disque et le seed qu'il a créés et garde tout fichier qui existait déjà : le déploiement suivant de ce nom ne bute plus sur un disque orphelin. Un domaine existant est refusé avant que son disque soit écrasé, même avec `--force`, et le formulaire de déploiement annonce que l'effacement d'un disque orphelin est proposé au lancement
+- `deploy_qemu.py` signale après 30 secondes une commande que le noyau a arrêtée (état T : SIGTTIN, SIGTTOU, SIGTSTP), en nommant le processus et la façon de la reprendre, au lieu d'attendre sans fin ; il n'envoie jamais de signal lui-même
 
 ## Retiré
 

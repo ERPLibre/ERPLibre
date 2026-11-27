@@ -401,7 +401,19 @@ passe `grdctl --system`, journalise cette ligne de commande dans la VM.
   dépendances.
 - `--no-install-deps` — n'installe jamais les dépendances automatiquement.
 - `--dry-run` — affiche les commandes sans rien exécuter.
-- `--force` — écrase le disque de travail qcow2 existant.
+- `--no-preflight` — saute le préflight firmware. Par défaut, avant tout
+  téléchargement et toute écriture de disque, un domaine jetable sans disque
+  ni réseau démarre avec les réglages d'amorçage de la VM, puis est retiré :
+  un firmware UEFI que libvirt ou AppArmor refuse arrête le déploiement là,
+  avec l'ordre des descripteurs de firmware. Sauté pour `--bios`, s390x et
+  `--dry-run`. Un domaine de sonde laissé par un déploiement tué
+  (`erplibre-fwprobe-…`) est proposé au retrait par le nettoyage QEMU du
+  TODO.
+- `--force` — écrase le disque de travail qcow2 existant. Refusé tant qu'un
+  domaine libvirt de ce nom existe, dès que virsh peut le lire (jeton sudo
+  en cache ou membre du groupe `libvirt`). Un déploiement raté retire le disque et
+  le seed qu'il a lui-même créés, jamais un disque présent avant le
+  lancement.
 - `--gpu` — accélération 3D par le GPU de l'hôte : `auto` (défaut, activée si
   l'hôte a un nœud de rendu), `on` (forcer), `off` (rendu logiciel).
 - `--gpu-node` — quel nœud de rendu utiliser, sur un hôte à plusieurs cartes.
@@ -463,7 +475,9 @@ sudo virsh domifaddr <nom-vm>  # adresse IP de la VM / VM IP address
 
 `destroy` ne fait qu'éteindre la VM (disque conservé) ; `undefine` supprime sa
 définition. Pour recréer proprement une VM du même nom, faites `destroy` +
-`undefine` d'abord, ou redéployez avec `--force`.
+`undefine` d'abord, puis redéployez avec `--force` pour écraser son disque
+conservé : tant que le domaine est défini, le déploiement est refusé, même
+avec `--force`.
 
 ## Le sous-réseau des VM
 
