@@ -520,6 +520,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A cached QEMU cloud image whose published SHA-256 changed is replaced only once the new download matches: the old image stays readable by a running conversion and stays in place when the download is refused, a mismatch on freshly downloaded bytes stops at once instead of retrying, and a cache directory or `.part` the user cannot write goes through `sudo` instead of failing as a network error
 - The TODO healthcheck offers a first freeze to a repository without `freeze-revision` only in a frozen checkout: in branch mode, where every repository follows its branch, the always-frozen fragments shared by every version no longer get nearly every other repository listed, and accepting no longer writes freezes into the manifests of the active version. The other freeze resolutions, such as putting back a repository behind its freeze, stay offered in branch mode
 - Ctrl+C during the SSH walk of the QEMU access menu kills the running probes and the ssh of their ProxyJump at once, instead of waiting up to their 90 s timeout
+- The unit suite passes in full where `/usr/sbin` is merged into `/usr/bin`: `test_qemu_cache_install` hides only `nft` from its PATH instead of the whole directory, `sed` and `bash` with it. Under the launcher, the `ssh` stub answers `ssh -V`, which git-repo runs on every `repo sync`, and still refuses any connection, so `test_install_erplibre_home` no longer fails there only
 
 ## Removed
 

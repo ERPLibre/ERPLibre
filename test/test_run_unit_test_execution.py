@@ -61,6 +61,32 @@ class TestLesCommandesRefusees(unittest.TestCase):
                     self.assertEqual(res.returncode, code)
                     self.assertIn(f"{commande} devices", res.stderr)
 
+    def test_ssh_answers_its_version_and_refuses_the_rest(self):
+        """git-repo lance « ssh -V » à chaque « repo sync », même vers des
+        dépôts file:// : un refus arrête la synchronisation. La version se
+        lit sans toucher l'hôte ; une connexion, elle, reste refusée."""
+        with tempfile.TemporaryDirectory() as dossier:
+            r.poser_doublures(dossier)
+            ssh = os.path.join(dossier, "ssh")
+            version = subprocess.run(
+                [ssh, "-V"], capture_output=True, text=True, timeout=30
+            )
+            self.assertEqual(version.returncode, 0)
+            # Le motif que git-repo applique à la réponse (ssh.py).
+            self.assertRegex(
+                version.stderr, r"^OpenSSH_([0-9.]+)(p[0-9]+)?[\s,]"
+            )
+            for args in (["-V", "hote"], ["hote", "-V"], ["hote"]):
+                with self.subTest(args):
+                    res = subprocess.run(
+                        [ssh, *args],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(res.returncode, 255)
+                    self.assertIn("refusé", res.stderr)
+
     def test_an_unwritable_cache_falls_back_to_the_work_dir(self):
         """Un cache qui ne peut être créé — XDG_CACHE_HOME en lecture
         seule, ou un fichier à sa place — ne doit pas empêcher la suite de
