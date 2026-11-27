@@ -428,10 +428,21 @@ class TestArchUpgrade(unittest.TestCase):
     def test_keyring_then_full_upgrade_with_reflector(self):
         self.assertIn(
             "pacman -Sy --needed --noconfirm archlinux-keyring "
-            "&& sudo pacman -Su --needed --noconfirm reflector",
+            "&& sudo pacman -Su --needed --noconfirm $el_reflector",
             self.prep,
         )
         self.assertIn("pacman -Syy", self.prep)
+
+    def test_reflector_only_on_x86_64(self):
+        self.assertIn(
+            'case "$(uname -m)" in x86_64) el_reflector=reflector;; '
+            "*) el_reflector=;; esac; ",
+            self.prep,
+        )
+        self.assertLess(
+            self.prep.index("el_reflector=reflector"),
+            self.prep.index("$el_reflector"),
+        )
 
     def test_the_upgrade_comes_before_the_desktop(self):
         pacman = _branche(_cmd("gnome"), "pacman")
@@ -850,11 +861,19 @@ class TestItRuns(unittest.TestCase):
         self.assertEqual(0, rc, out)
         self.assertLess(
             _indice(log, "pacman -Sy --needed --noconfirm archlinux-keyring"),
-            _indice(log, "pacman -Su --needed --noconfirm reflector"),
+            _indice(log, "pacman -Su --needed --noconfirm"),
         )
         self.assertLess(
-            _indice(log, "pacman -Su --needed --noconfirm reflector"),
+            _indice(log, "pacman -Su --needed --noconfirm"),
             _indice(log, "pacman -S --needed --noconfirm gnome gdm"),
+        )
+        # L'invité simulé n'est pas x86_64 : reflector n'y est pas demandé.
+        self.assertFalse(
+            any(
+                ligne.startswith("pacman") and "reflector" in ligne
+                for ligne in log
+            ),
+            log,
         )
         self.assertLess(
             _indice(log, "pacman -Syu --noconfirm"),

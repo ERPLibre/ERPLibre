@@ -60,8 +60,8 @@ el_rust_ensure
 zyp_soft qpdf-devel libjpeg8-devel cmake pkgconf-pkg-config \
   tbb-devel geos-devel proj proj-devel krb5-devel ninja clang-devel \
   llvm-devel
-# Tumbleweed livre qpdf 12.3.2 : l'appel ne fait que le constater. Il est là
-# pour que les trois familles suivent la même règle.
+# Le qpdf de Tumbleweed suffit ou non selon le seuil de S390x/lib_qpdf.sh :
+# l'appel le constate, ou compile. Les trois familles suivent la même règle.
 el_qpdf_ensure
 # pymupdf charge « libclang.so » par son nom nu, via ctypes ; le paquet ne
 # livre qu'un nom versionné. Il ne manque que le lien — même correctif que

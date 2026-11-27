@@ -33,14 +33,43 @@ el_swap_ensure
 # transitivement fonctionnerait ; on le nomme quand même, comme apt le fait
 # avec « proj-bin », parce que openSUSE a prouvé que cette arête n'existe pas
 # partout — elle y manque, et l'échec n'apparaît qu'au build.
+# « gcc-gfortran » et « openblas-devel » : scipy n'a pas de roue s390x, et sa
+# compilation exige un compilateur Fortran et un BLAS/LAPACK. Sans Fortran,
+# meson s'arrête sur « Unknown compiler(s) », et scikit-learn tombe avec lui,
+# puisqu'il bâtit son propre scipy pour se compiler. openblas.pc, que le
+# paquet ne livre pas, est écrit plus bas.
 ${DNF} \
   rust cargo \
   libjpeg-turbo-devel zlib-devel geos-devel proj proj-devel \
   krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
-  GeographicLib-devel pkgconf-pkg-config cmake
+  GeographicLib-devel pkgconf-pkg-config cmake gcc-gfortran openblas-devel
 
-# qpdf : pikepdf en exige 12.2.0, et le paquet de la distribution ne le donne
-# que sur Fedora. EL9 livre 10.3 — même pas « qpdf/QPDFJob.hh », d'où trois
+# Le Python des versions supportées, quand la distribution le livre :
+# el_python_exec (lib_python_provider.sh) prend alors l'interpréteur du
+# système au lieu de compiler CPython. Ici cette compilation est le seul
+# autre chemin, et elle échoue dès que l'OpenSSL du système est plus récent
+# que ce que le module _ssl de cette version sait lire : OpenSSL 4 rend
+# opaques les types ASN1_* que CPython 3.12 manipule directement (« invalid
+# use of incomplete typedef 'ASN1_OCTET_STRING' »). Le -devel porte Python.h,
+# sans lequel aucune extension C du venv ne compile. Une version absente du
+# dépôt est sautée, et un patch plus ancien que celui que conf/ exige est
+# écarté par el_python_exec : pyenv reste alors le repli.
+for py_minor in $(python3 -c '
+import json
+with open("conf/supported_version_erplibre.json") as f:
+    data = json.load(f)
+print(" ".join(sorted({
+    ".".join(v["python_version"].split(".")[:2])
+    for v in data.values() if not v.get("is_deprecated")
+})))' 2> /dev/null); do
+  if dnf repoquery -q --latest-limit 1 "python${py_minor}-devel" 2> /dev/null \
+    | grep -q .; then
+    ${DNF} "python${py_minor}" "python${py_minor}-devel"
+  fi
+done
+
+# qpdf : pikepdf en exige ${EL_QPDF_MIN} (S390x/lib_qpdf.sh), que le paquet de
+# la distribution ne donne pas toujours. EL9 livre 10.3 — même pas « qpdf/QPDFJob.hh », d'où trois
 # cents lignes de g++ sans un mot sur qpdf ; EL10 livre 11.9.
 #
 # On ne pose donc « qpdf-devel » QUE s'il atteint le seuil, au lieu de le
@@ -73,3 +102,25 @@ for d in /usr/lib64 /usr/lib; do
     fi
   fi
 done
+# openblas-devel ne livre ni fichier pkg-config ni configuration cmake, et
+# scipy 1.16 ne cherche OpenBLAS que par ces deux moyens (« Dependency
+# "OpenBLAS" not found (tried pkg-config and cmake) »). C'est ce scipy-là que
+# scikit-learn bâtit dans son environnement de build isolé, où aucune option
+# meson ne se transmet. Le fichier n'est écrit que s'il manque : un openblas.pc
+# livré par la distribution garde la main.
+if ! pkg-config --exists openblas 2> /dev/null \
+  && [ -e /usr/lib64/libopenblas.so ] \
+  && [ -e /usr/include/openblas/cblas.h ]; then
+  openblas_ver="$(rpm -q --qf '%{VERSION}' openblas-devel 2> /dev/null)"
+  sudo tee /usr/lib64/pkgconfig/openblas.pc > /dev/null << PC
+libdir=/usr/lib64
+includedir=/usr/include/openblas
+
+Name: openblas
+Description: OpenBLAS, written by ERPLibre: the distribution ships no .pc
+Version: ${openblas_ver:-0}
+Libs: -L\${libdir} -lopenblas
+Cflags: -I\${includedir}
+PC
+  echo "openblas.pc ecrit (${openblas_ver:-version inconnue})."
+fi

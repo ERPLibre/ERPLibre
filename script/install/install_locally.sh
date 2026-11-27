@@ -180,6 +180,33 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # sans jamais nommer la mémoire. On borne d'après la mémoire disponible.
     if [[ "$(uname -m)" == "s390x" ]]; then
         el_build_limit_jobs
+        # PyNaCl n'a pas de roue s390x : PyPI n'en publie que pour x86_64 et
+        # aarch64. Son sdist compile donc une copie embarquée de libsodium
+        # 1.0.20, et son setup.py enchaîne OBLIGATOIREMENT « make check »
+        # dessus. Le test kdf_hkdf y sort en ERREUR sur cette architecture —
+        # 80 tests, un seul fautif — make rend 1, et l'installation s'arrête.
+        # SODIUM_INSTALL=system saute tout ce build et lie l'extension au
+        # libsodium de la distribution, dont la 1.0.22 passe ses 101 tests.
+        #
+        # Conditionné à une bibliothèque d'au moins 1.0.19 : PyNaCl 1.6 appelle
+        # les fonctions AEGIS, apparues dans cette version, et sa compilation
+        # échoue contre une plus ancienne (« implicit declaration of function
+        # crypto_aead_aegis256_* »). Sous ce seuil, ou sans bibliothèque, la
+        # copie embarquée reste le repli ; son « make check » ne tombe pas sur
+        # toutes les distributions s390x.
+        if pkg-config --atleast-version=1.0.19 libsodium 2> /dev/null; then
+            export SODIUM_INSTALL=system
+            echo "  PyNaCl : lié au libsodium du système."
+        else
+            echo "  libsodium absent ou antérieur à 1.0.19 :" \
+                "PyNaCl bâtira sa copie embarquée." >&2
+        fi
+        # grpcio n'a pas de roue s390x non plus, et la BoringSSL qu'il
+        # embarque ne connaît pas cette architecture : sa compilation s'arrête
+        # sur « #error "Unknown target CPU" ». Le lier à l'OpenSSL de la
+        # distribution, dont les en-têtes viennent de libssl-dev, contourne
+        # BoringSSL entièrement.
+        export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
     fi
     "${POETRY_ODOO_PATH}" --version
     # To fix keyring problem when installation is blocked, use

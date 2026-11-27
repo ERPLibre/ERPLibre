@@ -169,8 +169,14 @@ else
     printf "workers = 0\n" >> "${EL_CONFIG_FILE}"
 fi
 
-# Update and fix the config.conf
-# Fix only the configuration if installation is done
-if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" ]; then
+# « make config_update » démarre Odoo pour compléter config.conf : il exige
+# le venv d'Odoo et ses sources. Leur présence ne prouve pas que les
+# dépendances d'Odoo sont posées — un venv d'une installation inachevée
+# passe le test, et Odoo s'arrête sur un module manquant. EL_CONFIG_NO_UPDATE=1
+# écrit le fichier sans démarrer Odoo : l'appelant le met quand
+# « poetry install » n'a pas encore tourné et qu'une régénération suit.
+if [ "${EL_CONFIG_NO_UPDATE:-0}" = "1" ]; then
+    echo "* config.conf written without starting Odoo (EL_CONFIG_NO_UPDATE=1)"
+elif [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" ]; then
     make config_update
 fi

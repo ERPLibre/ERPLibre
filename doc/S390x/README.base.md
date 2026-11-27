@@ -41,17 +41,17 @@ fonctions laissées de côté.
 
 | System | Versions on s390x | How the VM is installed | Notes |
 |---|---|---|---|
-| Ubuntu | 24.04, 25.10, 26.04 | cloud image | 24.04 builds qpdf from source |
+| Ubuntu | 24.04, 25.10, 26.04 | cloud image | 24.04 and 25.10 build qpdf from source |
 | Debian | 12, 13 | debian-installer (no s390x cloud image) | 12 builds qpdf and PROJ from source |
 | Fedora | 44, 45 | cloud image (*fedora-secondary*) | s390x is a secondary Fedora architecture, published on a separate tree: a release is offered once its s390x Cloud image is published there |
 | AlmaLinux | 9, 10 | cloud image | Rust below 1.95 (1.92 on 10) → completed by rustup; qpdf built from source (EL9 ships 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | cloud image | same as AlmaLinux |
-| openSUSE | Leap 16.0, Tumbleweed | cloud image | Leap 16.0 builds qpdf (11.10 shipped); Tumbleweed's qpdf is recent enough; distribution Python used |
+| openSUSE | Leap 16.0, Tumbleweed | cloud image | qpdf built from source when the shipped one is below the threshold of `script/install/S390x/lib_qpdf.sh` (Leap 16.0 ships 11.10); distribution Python used |
+| Arch Linux | latest | cloud image from the community archlinux-s390x port | no upstream s390x image: `EL_ARCH_S390X_BASE` must give the base URL of a server serving `Arch-Linux-s390x-cloudimg.qcow2`, otherwise the deployment stops |
 
-**Not supported on s390x:** Arch Linux (no official s390x image, the project
-targets x86_64), NixOS (the only cloud image, built by a third party, is
-x86_64 only), Proxmox VE (its repository has no s390x index). Ubuntu 20.04 and
-22.04 are refused on every architecture: pikepdf needs qpdf 12.2 built in
+**Not supported on s390x:** NixOS (the only cloud image, built by a third
+party, is x86_64 only), Proxmox VE (its repository has no s390x index). Ubuntu 20.04 and
+22.04 are refused on every architecture: pikepdf needs qpdf 12.4.2 built in
 C++20, and focal ships GCC 9 with no g++-10 for s390x.
 
 <!-- [fr] -->
@@ -59,18 +59,18 @@ C++20, and focal ships GCC 9 with no g++-10 for s390x.
 
 | Système | Versions sur s390x | Installation de la VM | Remarques |
 |---|---|---|---|
-| Ubuntu | 24.04, 25.10, 26.04 | image cloud | 24.04 compile qpdf depuis les sources |
+| Ubuntu | 24.04, 25.10, 26.04 | image cloud | 24.04 et 25.10 compilent qpdf depuis les sources |
 | Debian | 12, 13 | debian-installer (aucune image cloud s390x) | 12 compile qpdf et PROJ depuis les sources |
 | Fedora | 44, 45 | image cloud (*fedora-secondary*) | s390x est une architecture secondaire de Fedora, publiée sur une arborescence à part : une version n'est proposée qu'une fois son image Cloud s390x publiée là |
 | AlmaLinux | 9, 10 | image cloud | Rust sous 1.95 (1.92 en 10) → complété par rustup ; qpdf compilé depuis les sources (EL9 livre 10.3, EL10 11.9) |
 | Rocky Linux | 9, 10 | image cloud | comme AlmaLinux |
-| openSUSE | Leap 16.0, Tumbleweed | image cloud | Leap 16.0 compile qpdf (11.10 livré) ; le qpdf de Tumbleweed est assez récent ; Python de la distribution utilisé |
+| openSUSE | Leap 16.0, Tumbleweed | image cloud | qpdf compilé depuis les sources quand celui livré est sous le seuil de `script/install/S390x/lib_qpdf.sh` (Leap 16.0 livre 11.10) ; Python de la distribution utilisé |
+| Arch Linux | latest | image cloud du portage communautaire archlinux-s390x | aucune image s390x en amont : `EL_ARCH_S390X_BASE` doit donner l'URL de base d'un serveur qui sert `Arch-Linux-s390x-cloudimg.qcow2`, sinon le déploiement s'arrête |
 
-**Non pris en charge sur s390x :** Arch Linux (aucune image s390x officielle,
-le projet vise x86_64), NixOS (la seule image cloud, construite par un tiers,
-n'existe qu'en x86_64), Proxmox VE (son dépôt n'a aucun index s390x). Ubuntu
+**Non pris en charge sur s390x :** NixOS (la seule image cloud, construite
+par un tiers, n'existe qu'en x86_64), Proxmox VE (son dépôt n'a aucun index s390x). Ubuntu
 20.04 et 22.04 sont refusés sur toutes les architectures : pikepdf exige
-qpdf 12.2 compilé en C++20, et focal livre GCC 9, sans g++-10 pour s390x.
+qpdf 12.4.2 compilé en C++20, et focal livre GCC 9, sans g++-10 pour s390x.
 
 <!-- [en] -->
 ## Installing
@@ -140,9 +140,9 @@ pour le contrôle pyenv (`script/install/S390x/build_check.sh` et
 | Addition | Why | Where |
 |---|---|---|
 | Temporary swap file, up to 8 GiB of RAM + swap | one `cc1plus` alone can take 2.5 GiB (matplotlib); the kernel kills it and the compiler only reports `Killed signal terminated program cc1plus`, without naming memory | `S390x/lib_lowmem.sh` (`el_swap_ensure`) |
-| Limit on parallel compilations: one per 2 GiB of RAM + swap | every build engine starts as many compilers as there are cores | `S390x/lib_lowmem.sh` (`el_build_limit_jobs`) |
+| Limit on parallel compilations: one per 2 GiB of RAM + swap, shared between the packages Poetry builds at once and the tasks of each | every build engine starts as many compilers as there are cores, and Poetry builds several packages at once | `S390x/lib_lowmem.sh` (`el_build_limit_jobs`) |
 | Rust ≥ 1.95, through rustup when the distribution is older | orjson 3.13 (Odoo 18) requires rustc 1.95; cryptography and bcrypt carry Rust extensions | `S390x/lib_rust.sh` |
-| qpdf 12.3.2 built from source when the system has < 12.2 | pikepdf compiles against the system qpdf | `S390x/lib_qpdf.sh` |
+| qpdf 12.4.2 built from source when the system has < 12.4.2 | pikepdf compiles against the system qpdf | `S390x/lib_qpdf.sh` |
 | PROJ 9.6.2 built from source when the system has < 9.4 (apt family) | pyproj compiles against the system PROJ (its amd64 and arm64 wheels embed their own) | `S390x/lib_proj.sh` |
 | Build packages: tbb, cmake, ninja, geos, proj, krb5, clang… | manifold3d, pyproj, pymupdf and others compile | `S390x/debian.sh`, `fedora.sh`, `suse.sh` |
 | `libclang.so` symbolic link | pymupdf loads `libclang.so` by its bare name; distributions ship only versioned names | same files |
@@ -162,9 +162,9 @@ copy-on-write, no compression), otherwise `swapon` refuses it.
 | Ajout | Pourquoi | Où |
 |---|---|---|
 | Fichier d'échange temporaire, jusqu'à 8 Gio de RAM + swap | un seul `cc1plus` peut prendre 2,5 Gio (matplotlib) ; le noyau le tue et le compilateur n'affiche que `Killed signal terminated program cc1plus`, sans nommer la mémoire | `S390x/lib_lowmem.sh` (`el_swap_ensure`) |
-| Limite des compilations parallèles : une par 2 Gio de RAM + swap | chaque moteur de build lance autant de compilateurs que de cœurs | `S390x/lib_lowmem.sh` (`el_build_limit_jobs`) |
+| Limite des compilations parallèles : une par 2 Gio de RAM + swap, partagée entre les paquets que Poetry construit en même temps et les tâches de chacun | chaque moteur de build lance autant de compilateurs que de cœurs, et Poetry construit plusieurs paquets à la fois | `S390x/lib_lowmem.sh` (`el_build_limit_jobs`) |
 | Rust ≥ 1.95, par rustup si la distribution est plus ancienne | orjson 3.13 (Odoo 18) exige rustc 1.95 ; cryptography et bcrypt portent des extensions Rust | `S390x/lib_rust.sh` |
-| qpdf 12.3.2 compilé depuis les sources si le système a < 12.2 | pikepdf compile contre le qpdf du système | `S390x/lib_qpdf.sh` |
+| qpdf 12.4.2 compilé depuis les sources si le système a < 12.4.2 | pikepdf compile contre le qpdf du système | `S390x/lib_qpdf.sh` |
 | PROJ 9.6.2 compilé depuis les sources si le système a < 9.4 (famille apt) | pyproj compile contre le PROJ du système (ses roues amd64 et arm64 embarquent le leur) | `S390x/lib_proj.sh` |
 | Paquets de compilation : tbb, cmake, ninja, geos, proj, krb5, clang… | manifold3d, pyproj, pymupdf et d'autres se compilent | `S390x/debian.sh`, `fedora.sh`, `suse.sh` |
 | Lien symbolique `libclang.so` | pymupdf charge `libclang.so` par son nom nu ; les distributions ne livrent que des noms versionnés | mêmes fichiers |
@@ -279,7 +279,11 @@ le refuse.
 - The s390x part lives in `script/install/S390x/fedora.sh`.
 - On AlmaLinux and Rocky, EPEL and CRB are enabled: most `-devel` packages
   live there.
-- `qpdf-devel` is installed only if it reaches 12.2; otherwise qpdf is built
+- The Python packages of the supported versions (`python3.12` and its
+  `-devel`) are installed when the distribution ships them: the install then
+  uses that interpreter instead of compiling CPython. Fedora 45 ships
+  OpenSSL 4, against which the `_ssl` module of CPython 3.12 does not build.
+- `qpdf-devel` is installed only if it reaches 12.4.2; otherwise qpdf is built
   in `/usr/local`. The RHEL linker searches `/usr/lib64` before
   `/usr/local/lib64`, so an old `qpdf-devel` would make pikepdf link against
   the old library despite the new headers.
@@ -293,7 +297,11 @@ le refuse.
 - La partie s390x vit dans `script/install/S390x/fedora.sh`.
 - Sur AlmaLinux et Rocky, EPEL et CRB sont activés : la plupart des paquets
   `-devel` s'y trouvent.
-- `qpdf-devel` n'est installé que s'il atteint 12.2 ; sinon qpdf est compilé
+- Les paquets Python des versions supportées (`python3.12` et son `-devel`)
+  sont installés quand la distribution les livre : l'installation prend alors
+  cet interpréteur au lieu de compiler CPython. Fedora 45 livre OpenSSL 4,
+  contre lequel le module `_ssl` de CPython 3.12 ne compile pas.
+- `qpdf-devel` n'est installé que s'il atteint 12.4.2 ; sinon qpdf est compilé
   dans `/usr/local`. L'éditeur de liens de RHEL cherche `/usr/lib64` avant
   `/usr/local/lib64` : un vieux `qpdf-devel` ferait lier pikepdf contre
   l'ancienne bibliothèque malgré les nouveaux en-têtes.
@@ -309,7 +317,7 @@ le refuse.
   compile, and the failure would otherwise show an hour later.
 - The distribution's Python 3.12 is installed and preferred: building CPython
   3.12.10 with gcc 15.2 on s390x stops on an internal compiler error.
-- qpdf goes through the same 12.2 check as with apt and dnf: Leap 16.0 ships
+- qpdf goes through the same 12.4.2 check as with apt and dnf: Leap 16.0 ships
   11.10 and compiles it; Tumbleweed's version passes, so nothing is compiled
   there.
 - Leap is the version to choose for a long-lived installation; Tumbleweed
@@ -324,7 +332,7 @@ le refuse.
 - Le Python 3.12 de la distribution est installé et préféré : compiler
   CPython 3.12.10 avec gcc 15.2 sur s390x s'arrête sur une erreur interne du
   compilateur.
-- qpdf passe par le même contrôle de 12.2 qu'avec apt et dnf : Leap 16.0
+- qpdf passe par le même contrôle de 12.4.2 qu'avec apt et dnf : Leap 16.0
   livre 11.10 et le compile ; la version de Tumbleweed le satisfait, et rien
   n'y est compilé.
 - Leap est la version à choisir pour une installation durable ; Tumbleweed
@@ -416,6 +424,7 @@ sudo ./script/qemu/deploy_qemu.py --name erplibre-ubuntu-2604-s390x \
 | `EL_SWAP_TARGET_GIB` | `8` | RAM + swap targeted, in GiB; `0` disables the swap file |
 | `EL_SWAP_FILE` | `/swapfile.erplibre` | swap file path; on btrfs, the file goes into a `.erplibre-swap` subvolume of its directory (`/.erplibre-swap/swapfile.erplibre` by default) |
 | `EL_MEM_PER_JOB_MB` | `2048` | memory reserved per parallel compilation |
+| `EL_POETRY_BUILD_WORKERS` | `2` | packages Poetry builds at once, within the same budget |
 | `EL_RUST_MIN_MINOR` | `95` | minimum Rust (1.95) below which rustup is installed |
 | `EL_PYTHON_PROVIDER` | `auto` | `auto`, `mise` or `pyenv`; `auto` takes a compatible distribution Python before installing anything, which on s390x avoids compiling CPython |
 | `EL_PIP_PROVIDER` | `auto` | `auto`, `uv` or `pip` |
@@ -426,6 +435,7 @@ sudo ./script/qemu/deploy_qemu.py --name erplibre-ubuntu-2604-s390x \
 | `EL_SWAP_TARGET_GIB` | `8` | RAM + swap visés, en Gio ; `0` désactive le fichier d'échange |
 | `EL_SWAP_FILE` | `/swapfile.erplibre` | chemin du fichier d'échange ; sur btrfs, le fichier va dans un sous-volume `.erplibre-swap` de son répertoire (`/.erplibre-swap/swapfile.erplibre` par défaut) |
 | `EL_MEM_PER_JOB_MB` | `2048` | mémoire réservée par compilation parallèle |
+| `EL_POETRY_BUILD_WORKERS` | `2` | paquets que Poetry construit en même temps, dans le même budget |
 | `EL_RUST_MIN_MINOR` | `95` | Rust minimal (1.95) sous lequel rustup est installé |
 | `EL_PYTHON_PROVIDER` | `auto` | `auto`, `mise` ou `pyenv` ; `auto` prend un Python compatible de la distribution avant de rien installer, ce qui évite sur s390x de compiler CPython |
 | `EL_PIP_PROVIDER` | `auto` | `auto`, `uv` ou `pip` |

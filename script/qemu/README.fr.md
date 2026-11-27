@@ -103,7 +103,7 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 | almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
 | opensuse | `16.0` (défaut), `tumbleweed` | ✔ | ✔ | ✔ |
-| arch | `latest` | ✔ | — | — |
+| arch | `latest` | ✔ | — | ✔ (portage archlinux-s390x, `EL_ARCH_S390X_BASE`) |
 | proxmox | `9` | ✔ | ✔ | — |
 
 Fedora publie s390x sur une arborescence à part (`fedora-secondary`) :

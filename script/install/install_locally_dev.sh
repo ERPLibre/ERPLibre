@@ -22,6 +22,14 @@ done
 # EL_PARALLEL_INSTALL=0: legacy sequential behavior (set to debug or force order)
 EL_PARALLEL_INSTALL=${EL_PARALLEL_INSTALL:-1}
 
+# install_locally.sh écrit config.conf avant « poetry install » : démarrer
+# Odoo à ce moment le lancerait sur un venv sans ses dépendances, dès qu'une
+# installation inachevée a laissé un venv et des sources. update_env_version.py,
+# seul appelant de ce script, régénère config.conf avec Odoo une fois les
+# dépendances et les dépôts en place. Posé ici, avant les deux modes, il vaut
+# pour le parallèle comme pour le séquentiel.
+export EL_CONFIG_NO_UPDATE=1
+
 if [[ ${EL_PARALLEL_INSTALL} -eq 1 ]]; then
 
     # ── Phase 1 : common prereqs (~1-3 min) ──────────────────────────────────
