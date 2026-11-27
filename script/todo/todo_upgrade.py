@@ -37,7 +37,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.database import pg_state
+from script.database import pg_connexion, pg_state
 from script.execute import execute
 from script.git.git_tool import GitTool
 from script.git.manifest_freeze import manifest_branch
@@ -4298,12 +4298,10 @@ class TodoUpgrade:
         début et à chaque reprise, puisqu'une mise à jour du paquet peut
         tomber entre deux. Le serveur du système se redémarre par sudo :
         la commande est donnée, pas lancée."""
-        from script.database import db_restore
-
         # La connexion d'Odoo, celle de config.conf, et non celle
         # qu'auraient les valeurs par défaut de libpq.
         defauts = pg_state.verifier(
-            db_restore.environnement_pg("postgres"),
+            pg_connexion.environnement(),
             version_dump=pg_state.version_du_dump(self.file_path),
             cible=cible,
         )
