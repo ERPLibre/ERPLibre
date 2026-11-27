@@ -72,6 +72,12 @@ if [[ "${EL_PHASE}" != "poetry" ]]; then
     fi
 
     if [[ ! -n "${DOCKER_BUILD}" ]]; then
+        # Sur s390x, pip compile ce qui n'a pas de roue : on vérifie qu'il en
+        # a les moyens AVANT les venvs, comme install_erplibre.sh. Ce chemin
+        # crée le même venv d'outillage sans passer par lui.
+        if [ "$(uname -m)" = "s390x" ]; then
+            . ./script/install/S390x/build_check.sh
+        fi
         # Install ERPLibre venv
         echo -e "Install ${VENV_ERPLIBRE_PATH} with ${EL_PYTHON_ERPLIBRE_VERSION}"
         # Le code de retour n'était PAS regardé : quand l'interpréteur ne
