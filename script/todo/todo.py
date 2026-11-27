@@ -1085,7 +1085,7 @@ class TODO(
         """Demande, quand une version d'Odoo est déjà installée, s'il faut
         la mettre à jour ou installer. Entrée choisit la mise à jour. Rend
         « maj », « installation » ou None pour quitter."""
-        noms = ", ".join(f"Odoo {v[len('odoo'):]}" for v in presentes)
+        noms = ", ".join(f"Odoo {v[len('odoo') :]}" for v in presentes)
         choix = {
             "1": (
                 "maj",
@@ -2714,10 +2714,7 @@ class TODO(
             print(t("No Stream Deck games found."))
             return False
 
-        choices = [
-            {"prompt_description": g["description"]}
-            for g in games
-        ]
+        choices = [{"prompt_description": g["description"]} for g in games]
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -2729,9 +2726,7 @@ class TODO(
                 idx = int(status) - 1
                 if 0 <= idx < len(games):
                     game = games[idx]
-                    print(
-                        f"{t('Launching game:')} {game['name']}"
-                    )
+                    print(f"{t('Launching game:')} {game['name']}")
                     try:
                         self.execute.exec_command_live(
                             self._streamdeck_game_command(game["path"]),
@@ -7727,9 +7722,7 @@ class TODO(
         print(
             f"[1] erplibre - {t('ERPLibre code, measured by the unit tests')}"
         )
-        print(
-            f"[2] odoo - {t('Odoo modules, measured by ERPLibre studio')}"
-        )
+        print(f"[2] odoo - {t('Odoo modules, measured by ERPLibre studio')}")
         print(retour(t("Back")))
         choix = click.prompt(t("Coverage set"), default="1")
         return {"1": "erplibre", "2": "odoo"}.get(str(choix).strip())
