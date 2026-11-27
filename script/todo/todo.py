@@ -2470,10 +2470,15 @@ class TODO(
         proxy_jump=None,
         identity_file=None,
         also_drop=(),
+        trust_any_host_key=True,
     ):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
 
         `host` peut être une liste de noms : ils partagent alors un seul bloc.
+
+        `trust_any_host_key` : désactive la vérification de la clé d'hôte.
+        Juste pour une VM, dont l'IP DHCP passe d'une machine à l'autre ;
+        faux pour une machine durable, où une clé changée doit alerter.
 
         `also_drop` : noms dont le bloc doit DISPARAÎTRE sans être réécrit.
         Sert quand une convention de nommage change : l'ancienne entrée ne
@@ -2511,14 +2516,13 @@ class TODO(
             retires = ", ".join(also_drop)
             print(f"🗑  {t('Removed from ~/.ssh/config:')} {retires}")
             return
-        block = (
-            f"Host {' '.join(names)}\n"
-            f"    HostName {ip}\n"
-            f"    User {user}\n"
+        block = f"Host {' '.join(names)}\n    HostName {ip}\n    User {user}\n"
+        if trust_any_host_key:
             # IP DHCP réutilisées entre VM -> on évite l'erreur de clé d'hôte.
-            f"    StrictHostKeyChecking no\n"
-            f"    UserKnownHostsFile /dev/null\n"
-        )
+            block += (
+                "    StrictHostKeyChecking no\n"
+                "    UserKnownHostsFile /dev/null\n"
+            )
         if identity_file:
             # IdentitiesOnly : sans lui, IdentityFile s'AJOUTE aux clés de
             # l'agent au lieu de les remplacer, et le serveur coupe après
@@ -3678,57 +3682,242 @@ class TODO(
 
         DEPUIS_CONFIG distingue les deux, que le nom seul ne sépare pas :
         l'appelant n'interroge ~/.ssh/config que pour une adresse qui en vient.
+
+        ~/.ssh/config est le choix par défaut dès qu'il déclare un hôte. Sans
+        hôte déclaré — fichier absent compris —, la question n'a qu'une
+        réponse et n'est pas posée : on passe droit à la saisie.
         """
-        import getpass
+        entries = self._ssh_config_entries(os.path.expanduser("~/.ssh/config"))
+        if not entries:
+            print(f"\n{t('No SSH hosts found in ~/.ssh/config')}")
+            return self._ask_ssh_target_manual(entries)
 
         print(f"\n{t('SSH address input method')}")
         print(f"[1] {t('Manual entry')}")
         print(f"[2] {t('From ~/.ssh/config')}")
-        choice = input(t("Your choice (1/2): ")).strip()
+        choice = input(t("Your choice (1/2, default 2): ")).strip()
+        if choice == "1":
+            return self._ask_ssh_target_manual(entries)
+        if choice not in ("", "2"):
+            print(t("Invalid selection!"))
+            return None
 
-        if choice == "2":
-            ssh_config_path = os.path.expanduser("~/.ssh/config")
-            hosts = self._ssh_config_entries(ssh_config_path)
+        picked = self._pick_ssh_config_host(entries)
+        if not picked:
+            return None
+        return self._ssh_target_from_alias(*picked)
 
-            if not hosts:
-                print(t("No SSH hosts found in ~/.ssh/config"))
-                return None
+    @staticmethod
+    def _ssh_target_from_alias(alias, info):
+        """Le quintuplet de `_ask_ssh_target` pour un alias de ~/.ssh/config.
 
-            print()
-            for i, (host, info) in enumerate(hosts, 1):
-                hn = info.get("hostname", host)
-                u = info.get("user", "")
-                desc = host
-                if hn != host:
-                    desc += f" ({hn})"
-                if u:
-                    desc += f" [{u}]"
-                print(f"[{i}] {desc}")
-            sel = input(t("Select SSH host number: ")).strip()
-            try:
-                idx = int(sel) - 1
-                if idx < 0 or idx >= len(hosts):
-                    print(t("Invalid selection!"))
-                    return None
-            except ValueError:
-                print(t("Invalid selection!"))
-                return None
+        La cible est l'alias SEUL : ssh y lit l'utilisateur, le port et le
+        ProxyJump du bloc."""
+        import getpass
 
-            host_name, host_info = hosts[idx]
-            hostname = host_info.get("hostname", host_name)
-            user = host_info.get("user", getpass.getuser())
-            return host_name, user, hostname, host_name, True
+        hostname = info.get("hostname", alias)
+        user = info.get("user", getpass.getuser())
+        return alias, user, hostname, alias, True
+
+    @staticmethod
+    def _pick_ssh_config_host(entries, indent=""):
+        """Fait choisir un hôte parmi `entries` de `_ssh_config_entries`.
+
+        Chaque ligne montre l'alias, son adresse quand elle diffère, et son
+        utilisateur. Rend (alias, info), ou None sur une saisie hors liste.
+        """
+        print()
+        for i, (host, info) in enumerate(entries, 1):
+            hn = info.get("hostname", host)
+            u = info.get("user", "")
+            desc = host + (f" ({hn})" if hn != host else "")
+            print(f"{indent}[{i}] {desc}{f' [{u}]' if u else ''}")
+        sel = input(t("Select SSH host number: ")).strip()
+        if not sel.isdigit() or not 1 <= int(sel) <= len(entries):
+            print(t("Invalid selection!"))
+            return None
+        return entries[int(sel) - 1]
+
+    def _ask_ssh_target_manual(self, entries):
+        """Saisie libre « utilisateur@hôte », puis offre de l'ajouter à
+        ~/.ssh/config.
+
+        Un alias déjà déclaré reste un alias, seul ou précédé d'un
+        utilisateur : la cible garde son HostName et son ProxyJump, et rien
+        n'est proposé à l'ajout — un second bloc pointerait sur le NOM de
+        l'alias, que ssh ne repasse pas par les blocs Host. Ajoutée au
+        fichier, une adresse revient sous son nouvel alias, comme si elle en
+        avait été choisie.
+
+        Utilisateur et hôte sont validés avant tout usage : écrits tels
+        quels, un « HostName » vide ou à deux mots est une erreur de syntaxe
+        qui fait refuser à ssh le fichier ENTIER, pour tous ses hôtes.
+        """
+        import getpass
 
         ssh_host = input(t("SSH host (e.g.: user@192.168.1.100): ")).strip()
         if not ssh_host:
             print(t("SSH host is required!"))
             return None
-        if "@" in ssh_host:
-            user, hostname = ssh_host.split("@", 1)
-        else:
-            hostname = ssh_host
-            user = getpass.getuser()
+        known = dict(entries)
+        if ssh_host in known:
+            return self._ssh_target_from_alias(ssh_host, known[ssh_host])
+        user, _, hostname = ssh_host.rpartition("@")
+        user = user or getpass.getuser()
+        if not hostname:
+            print(t("SSH host is required!"))
+            return None
+        if not self._ssh_host_valid(hostname) or not self._SSH_USER_RE.match(
+            user
+        ):
+            print(f"{t('Invalid address:')} {ssh_host}")
+            return None
+        if hostname in known:
+            # « utilisateur@alias » : ssh applique le bloc de l'alias et
+            # n'en remplace que l'utilisateur. La cible est passée telle
+            # quelle, d'où depuis_config faux.
+            info = known[hostname]
+            return (
+                f"{user}@{hostname}",
+                user,
+                info.get("hostname", hostname),
+                hostname,
+                False,
+            )
+        alias = self._offer_ssh_config_entry(user, hostname)
+        if alias:
+            return alias, user, hostname, alias, True
         return f"{user}@{hostname}", user, hostname, hostname, False
+
+    # Un alias ~/.ssh/config est un seul mot que ssh compare tel quel : les
+    # jokers « * ? » et la négation « ! » en feraient un motif, et un blanc
+    # deux alias.
+    _SSH_ALIAS_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$")
+    # Nom de compte POSIX, « $ » final compris (comptes machine).
+    _SSH_USER_RE = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._-]*\$?$")
+    # Nom DNS : libellés séparés par des points, ni blanc ni « :port ».
+    _SSH_HOSTNAME_RE = re.compile(
+        r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?"
+        r"(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*\.?$"
+    )
+
+    @classmethod
+    def _ssh_host_valid(cls, hostname):
+        """Vrai pour une IP (v4, v6 entre crochets ou non) ou un nom DNS.
+
+        « hôte:port » est refusé : ssh lirait le tout comme un nom, et le
+        port se donne ailleurs.
+        """
+        import ipaddress
+
+        try:
+            ipaddress.ip_address(hostname.strip("[]"))
+            return True
+        except ValueError:
+            return bool(cls._SSH_HOSTNAME_RE.match(hostname))
+
+    @staticmethod
+    def _ssh_alias_suggestion(hostname, taken):
+        """Alias proposé pour `hostname`, absent de `taken`.
+
+        Le premier libellé d'un nom DNS (« srv » pour « srv.exemple.test »),
+        « hote-<adresse> » pour une IP, dont les points et deux-points
+        deviennent des tirets. Un nom pris reçoit le suffixe « -2 », « -3 »…
+        """
+        import ipaddress
+
+        try:
+            ipaddress.ip_address(hostname.strip("[]"))
+            base = "hote-" + re.sub(r"[.:]+", "-", hostname.strip("[]"))
+        except ValueError:
+            base = hostname.split(".", 1)[0]
+        base = re.sub(r"[^A-Za-z0-9._-]", "-", base).strip("-.") or "hote"
+        alias, n = base, 2
+        while alias in taken:
+            alias, n = f"{base}-{n}", n + 1
+        return alias
+
+    def _ssh_alias_taken(self, alias, taken):
+        """Vrai si `alias` est déjà déclaré, aux yeux de ssh lui-même.
+
+        `taken` vient de la lecture du fichier, qui ne voit ni les Include,
+        ni « Host=nom », ni les noms entre guillemets. ssh -G les voit : un
+        nom qu'aucun bloc ne connaît se résout en lui-même, un nom déclaré
+        se résout vers son HostName. Sans ssh, la lecture du fichier reste
+        le seul avis.
+        """
+        if alias in taken:
+            return True
+        resolu = self._ssh_resolve(alias).get("hostname", "")
+        return bool(resolu) and resolu.lower() != alias.lower()
+
+    def _offer_ssh_config_entry(self, user, hostname):
+        """Propose d'ajouter « utilisateur@hôte » à ~/.ssh/config.
+
+        Rend l'alias écrit, ou None si l'on décline ou si l'alias écrit ne
+        mène pas à cette adresse ; l'appelant se rabat alors sur la cible
+        tapée. Un alias déjà déclaré est refusé plutôt que remplacé :
+        `_write_ssh_config_entry` réécrit le bloc du même nom, et celui-ci
+        appartient à quelqu'un d'autre. Le bloc est montré AVANT d'être
+        écrit, et garde la vérification de la clé d'hôte : une adresse tapée
+        à la main n'est pas une VM jetable.
+
+        Un bloc plus haut dans le fichier — « Host * » qui fixe un User —
+        l'emporte sur celui qu'on ajoute en fin de fichier : ssh retient la
+        première valeur lue. ssh -G le révèle après écriture.
+        """
+        if not self._is_yes_default_yes(
+            input(t("Add this host to ~/.ssh/config? (Y/n): "))
+        ):
+            return None
+        try:
+            taken = set(self._ssh_config_hosts())
+        except ValueError:
+            # UnicodeDecodeError : la réécriture passerait par la même
+            # lecture stricte, et un fichier qu'on ne sait pas relire ne se
+            # réécrit pas.
+            print(f"  ⚠ {t('~/.ssh/config is not UTF-8: nothing added.')}")
+            return None
+        default = self._ssh_alias_suggestion(hostname, taken)
+        while self._ssh_alias_taken(default, taken):
+            taken.add(default)
+            default = self._ssh_alias_suggestion(hostname, taken)
+        while True:
+            alias = (
+                input(f"{t('Name for ~/.ssh/config')} ({default}): ").strip()
+                or default
+            )
+            if not self._SSH_ALIAS_RE.match(alias):
+                print(
+                    f"  ⚠ {t('Invalid name: one word, letters, digits, . _ -')}"
+                )
+                continue
+            if self._ssh_alias_taken(alias, taken):
+                print(
+                    f"  ⚠ {t('Name already in ~/.ssh/config, pick another:')}"
+                    f" {alias}"
+                )
+                continue
+            break
+        print(f"  {t('Will add to ~/.ssh/config:')}")
+        print(f"    Host {alias}")
+        print(f"        HostName {hostname}")
+        print(f"        User {user}")
+        self._write_ssh_config_entry(
+            alias, user, hostname, trust_any_host_key=False
+        )
+        resolu = self._ssh_resolve(alias)
+        if resolu and (
+            resolu.get("user") != user
+            or resolu.get("hostname", "").lower() != hostname.lower()
+        ):
+            print(
+                f"  ⚠ {t('An earlier block of ~/.ssh/config overrides it:')}"
+                f" {resolu.get('user', '?')}@{resolu.get('hostname', '?')}"
+            )
+            print(f"    {t('Connecting to the typed address instead.')}")
+            return None
+        return alias
 
     def _deploy_socks_proxy(self):
         """Ouvre un proxy SOCKS qui fait sortir le navigateur PAR la machine

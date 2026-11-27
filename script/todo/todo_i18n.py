@@ -1439,9 +1439,41 @@ TRANSLATIONS = {
         "fr": "Depuis ~/.ssh/config",
         "en": "From ~/.ssh/config",
     },
-    "Your choice (1/2): ": {
-        "fr": "Votre choix (1/2) : ",
-        "en": "Your choice (1/2): ",
+    "Your choice (1/2, default 2): ": {
+        "fr": "Votre choix (1/2, défaut : 2) : ",
+        "en": "Your choice (1/2, default: 2): ",
+    },
+    "Add this host to ~/.ssh/config? (Y/n): ": {
+        "fr": "Ajouter cet hôte à ~/.ssh/config ? (O/n, défaut : oui) : ",
+        "en": "Add this host to ~/.ssh/config? (Y/n, default: yes): ",
+    },
+    "Invalid name: one word, letters, digits, . _ -": {
+        "fr": "Nom invalide : un seul mot, lettres, chiffres, . _ -",
+        "en": "Invalid name: one word, letters, digits, . _ -",
+    },
+    "Name already in ~/.ssh/config, pick another:": {
+        "fr": "Nom déjà dans ~/.ssh/config, choisissez-en un autre :",
+        "en": "Name already in ~/.ssh/config, pick another:",
+    },
+    "Invalid address:": {
+        "fr": "Adresse invalide :",
+        "en": "Invalid address:",
+    },
+    "~/.ssh/config is not UTF-8: nothing added.": {
+        "fr": "~/.ssh/config n'est pas en UTF-8 : rien n'est ajouté.",
+        "en": "~/.ssh/config is not UTF-8: nothing added.",
+    },
+    "An earlier block of ~/.ssh/config overrides it:": {
+        "fr": "Un bloc plus haut dans ~/.ssh/config l'emporte :",
+        "en": "An earlier block of ~/.ssh/config overrides it:",
+    },
+    "Connecting to the typed address instead.": {
+        "fr": "Connexion à l'adresse tapée à la place.",
+        "en": "Connecting to the typed address instead.",
+    },
+    "Will add to ~/.ssh/config:": {
+        "fr": "Ajout prévu dans ~/.ssh/config :",
+        "en": "Will add to ~/.ssh/config:",
     },
     "No SSH hosts found in ~/.ssh/config": {
         "fr": "Aucun hôte SSH trouvé dans ~/.ssh/config",
