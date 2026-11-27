@@ -578,8 +578,8 @@ func TestAutoriteDePaquet(t *testing.T) {
 	if !ca.cert.NotBefore.Before(maintenant.AddDate(0, 0, -6)) {
 		t.Errorf("début %v : une horloge en retard la refuserait", ca.cert.NotBefore)
 	}
-	if ca.cert.NotAfter.After(maintenant.AddDate(2, 0, 1)) {
-		t.Errorf("fin %v : plus de deux ans", ca.cert.NotAfter)
+	if ca.cert.NotAfter.After(maintenant.AddDate(1, 0, 1)) {
+		t.Errorf("fin %v : plus d'un an", ca.cert.NotAfter)
 	}
 	relue, err := LoadOrCreatePayloadCA(dir)
 	if err != nil {

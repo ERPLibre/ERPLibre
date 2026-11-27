@@ -75,7 +75,7 @@ var anglais = map[string]string{
 	"dire ce que le cache occupe, puis sortir":                                             "print what the cache occupies, then exit",
 	"montrer les gestes privilégiés sans en faire un":                                      "show the privileged steps without performing any",
 	"créer l'autorité si elle manque, puis sortir":                                         "create the authority if missing, then exit",
-	"avec --init-ca : autorité d'un paquet hors ligne (nom distinct, deux ans)":            "with --init-ca: authority of an offline payload (distinct name, two years)",
+	"avec --init-ca : autorité d'un paquet hors ligne (nom distinct, un an)":               "with --init-ca: authority of an offline payload (distinct name, one year)",
 	"écrire les règles nft seules, à passer à « nft -f - »":                                "print the nft rules alone, to feed to « nft -f - »",
 	"écrire les commandes iptables seules, une par ligne":                                  "print the iptables commands alone, one per line",
 	"liste des VM soustraites au détournement, une MAC par ligne":                          "list of VMs excluded from redirection, one MAC per line",

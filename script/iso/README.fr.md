@@ -311,7 +311,7 @@ store/          magasin du mandataire Go (script/qemu_cache), miroirs git
                 sous store/git/
 bin/            le mandataire, compilé statique (CGO_ENABLED=0)
 ca/             une autorité propre à ce paquet (nommée « ERPLibre offline
-                payload », valide deux ans à partir d'une semaine avant
+                payload », valide un an à partir d'une semaine avant
                 sa création)
 ```
 

@@ -607,7 +607,7 @@ store/          store of the Go caching proxy (script/qemu_cache), git
                 mirrors under store/git/
 bin/            the proxy, built static (CGO_ENABLED=0)
 ca/             a certificate authority of this payload only (named
-                « ERPLibre offline payload », valid two years from a week
+                « ERPLibre offline payload », valid one year from a week
                 before its creation)
 ```
 
@@ -789,7 +789,7 @@ store/          magasin du mandataire Go (script/qemu_cache), miroirs git
                 sous store/git/
 bin/            le mandataire, compilé statique (CGO_ENABLED=0)
 ca/             une autorité propre à ce paquet (nommée « ERPLibre offline
-                payload », valide deux ans à partir d'une semaine avant
+                payload », valide un an à partir d'une semaine avant
                 sa création)
 ```
 

@@ -1668,7 +1668,7 @@ class TestPayloadFactory(unittest.TestCase):
 
     def test_payload_authority_argv(self):
         """L'autorité du paquet est créée avec le profil de paquet du
-        mandataire (nom distinct, deux ans) : l'option existe dans
+        mandataire (nom distinct, un an) : l'option existe dans
         main.go."""
         argv = self.op.proxy_init_ca_argv("/bin/x", "/ca")
         self.assertEqual(argv[:3], ["/bin/x", "--init-ca", "--ca-paquet"])

@@ -94,7 +94,7 @@ func profilCache(maintenant time.Time) profilCA {
 
 // profilPaquet : l'autorité d'un paquet hors ligne. Sa clé voyage sur
 // chaque clé USB qui porte le paquet, et la cible ne l'approuve que le
-// temps de l'installation : deux ans bornent ce qu'une copie de la clé
+// temps de l'installation : un an borne ce qu'une copie de la clé
 // permet. Le début reculé d'une semaine laisse passer une horloge en
 // retard (horloge matérielle tenue à l'heure locale) sans refuser
 // l'autorité comme « pas encore valide ».
@@ -102,7 +102,7 @@ func profilPaquet(maintenant time.Time) profilCA {
 	return profilCA{
 		nom:   nomAutoritePaquet,
 		debut: maintenant.AddDate(0, 0, -7),
-		fin:   maintenant.AddDate(2, 0, 0),
+		fin:   maintenant.AddDate(1, 0, 0),
 	}
 }
 

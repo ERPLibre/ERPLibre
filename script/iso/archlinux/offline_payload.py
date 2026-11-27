@@ -1147,7 +1147,7 @@ def _print(message):
 
 def proxy_init_ca_argv(binary, ca_dir):
     """L'argv qui crée l'autorité du paquet : --ca-paquet lui donne un
-    nom distinct de celle du cache de l'hôte et une validité de deux ans,
+    nom distinct de celle du cache de l'hôte et une validité d'un an,
     début reculé d'une semaine (mitm.go, profilPaquet)."""
     return [binary, "--init-ca", "--ca-paquet", "--ca-dir", ca_dir]
 

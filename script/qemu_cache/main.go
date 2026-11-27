@@ -58,7 +58,7 @@ func main() {
 		initCA = flag.Bool("init-ca", false,
 			T("créer l'autorité si elle manque, puis sortir"))
 		caPaquet = flag.Bool("ca-paquet", false,
-			T("avec --init-ca : autorité d'un paquet hors ligne (nom distinct, deux ans)"))
+			T("avec --init-ca : autorité d'un paquet hors ligne (nom distinct, un an)"))
 		printNft = flag.Bool("print-nft", false,
 			T("écrire les règles nft seules, à passer à « nft -f - »"))
 		printIptables = flag.Bool("print-iptables", false,
