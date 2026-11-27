@@ -613,7 +613,7 @@ class GitRepoMenuMixin:
         for x in candidats:
             print(f"   {x['chemin']} …", flush=True)
             res = repo_upgrade.approfondir(x, racine=RACINE)
-            libelle = repo_upgrade.LIBELLES_APPROFONDIR[res["issue"]]
+            libelle = repo_upgrade.libelle_approfondir(res["issue"])
             if res["issue"] == "complet":
                 complets += 1
                 print(f"   ✅ {libelle}")

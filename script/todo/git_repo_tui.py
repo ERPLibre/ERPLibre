@@ -34,6 +34,10 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+# Le titre d'un verdict vient de la table du rapport texte : les deux
+# affichages nomment un verdict par le même libellé traduit.
+from script.git.repo_upgrade import titre_verdict  # noqa: E402
+
 CSS = """
 Screen { layout: vertical; }
 #head { height: 4; padding: 0 1; background: $panel; color: $text; }
@@ -209,7 +213,7 @@ def build_app(data):
             constat = lst[min(index, len(lst) - 1)]
             self.query_one("#head", Static).update(
                 f"{constat.get('chemin')}\n"
-                f"{t(constat.get('verdict') or '')}"
+                f"{titre_verdict(constat.get('verdict') or '')}"
                 f"   ·   {len(lst)}/{len(self.tout)} {t('shown')}"
             )
             corps.update(detail(constat))

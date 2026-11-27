@@ -697,16 +697,25 @@ def approfondir(constat, racine=REPO_ROOT, delai=DELAI_APPROFONDIR):
     return res
 
 
+# Les libellés se TRADUISENT à l'affichage, jamais ici : une table
+# remplie par t() à l'import fige la langue que TODO avait avant de
+# demander la sienne, et un changement de langue ne l'atteint plus.
 LIBELLES_APPROFONDIR = {
-    "non_applicable": t("nothing to complete"),
-    "fork_echoue": t("fork fetch failed"),
-    "encore_superficiel": t("still shallow: HEAD is outside the branch"),
-    "autre_url": t("upstream remote points to another URL"),
-    "refuse": t("git refused the upstream remote"),
-    "non_clone": t("not a git clone"),
-    "amont_echoue": t("complete, but the upstream did not answer"),
-    "complet": t("complete, upstream fetched"),
+    "non_applicable": "nothing to complete",
+    "fork_echoue": "fork fetch failed",
+    "encore_superficiel": "still shallow: HEAD is outside the branch",
+    "autre_url": "upstream remote points to another URL",
+    "refuse": "git refused the upstream remote",
+    "non_clone": "not a git clone",
+    "amont_echoue": "complete, but the upstream did not answer",
+    "complet": "complete, upstream fetched",
 }
+
+
+def libelle_approfondir(issue):
+    """Le libellé traduit d'une issue d'``approfondir``, ou l'issue telle
+    quelle quand la table ne la connaît pas."""
+    return t(LIBELLES_APPROFONDIR.get(issue, issue))
 
 
 def divergence(chemin):
@@ -1237,14 +1246,15 @@ def ajouter_remotes(
 # projet qui a cessé de suivre.
 ETATS_A_CORRIGER = ("non_declare", "devine", "branche_absente")
 
+# Traduits à l'affichage, comme LIBELLES_APPROFONDIR.
 _TITRES = {
-    "non_declare": t("No upstream declared for this fork"),
-    "devine": t("Upstream guessed from the remote name"),
-    "branche_absente": t("The declared upstream branch does not exist"),
-    "injoignable": t("Upstream did not answer"),
-    "sans_branche": t("Upstream carries no branch for this version"),
-    "declare": t("Upstream declared"),
-    "confirme": t("Upstream confirmed"),
+    "non_declare": "No upstream declared for this fork",
+    "devine": "Upstream guessed from the remote name",
+    "branche_absente": "The declared upstream branch does not exist",
+    "injoignable": "Upstream did not answer",
+    "sans_branche": "Upstream carries no branch for this version",
+    "declare": "Upstream declared",
+    "confirme": "Upstream confirmed",
 }
 
 
@@ -1269,7 +1279,7 @@ def render(lst, verifie, colour=True):
             if etat in ETATS_A_CORRIGER
             else "watch" if etat in ("injoignable", "sans_branche") else "ok"
         )
-        titre = f"{_TITRES.get(etat, etat)} ({len(groupe)})"
+        titre = f"{t(_TITRES.get(etat, etat))} ({len(groupe)})"
         out.append(paint(titre, genre, colour))
         for x in groupe:
             amont = x["amont"]
@@ -1290,14 +1300,24 @@ def render(lst, verifie, colour=True):
     return "\n".join(out)
 
 
+# Traduits à l'affichage, comme LIBELLES_APPROFONDIR.
 _VERDICTS_TITRE = {
-    "en_conflit": t("Conflicting"),
-    "absorbe": t("Absorbed upstream"),
-    "a_rebaser": t("To rebase"),
-    "en_retard": t("Behind upstream"),
-    "non_comparable": t("Cannot be compared"),
-    "a_jour": t("Up to date"),
+    "en_conflit": "Conflicting",
+    "absorbe": "Absorbed upstream",
+    "a_rebaser": "To rebase",
+    "en_retard": "Behind upstream",
+    "non_comparable": "Cannot be compared",
+    "a_jour": "Up to date",
 }
+
+
+def titre_verdict(verdict):
+    """Le titre traduit d'un verdict. Un identifiant interne passé tel quel
+    à t() n'est pas une clé du catalogue : il s'afficherait brut, en
+    français, dans les deux langues."""
+    return t(_VERDICTS_TITRE.get(verdict, verdict))
+
+
 _VERDICTS_GENRE = {
     "en_conflit": "broken",
     "absorbe": "watch",
@@ -1377,7 +1397,7 @@ def render_diagnostic(lst, version, colour=True):
         groupe = [x for x in lst if x["verdict"] == verdict]
         if not groupe:
             continue
-        titre = f"  {_VERDICTS_TITRE.get(verdict, verdict)} ({len(groupe)})"
+        titre = f"  {titre_verdict(verdict)} ({len(groupe)})"
         out.append(paint(titre, _VERDICTS_GENRE.get(verdict, ""), colour))
         for x in groupe:
             nom = (x["chemin"] or "").split("/")[-1]
@@ -1451,15 +1471,16 @@ ISSUES_REMOTE = (
     "present",
     "non_declare",
 )
+# Traduits à l'affichage, comme LIBELLES_APPROFONDIR.
 _ISSUES_TITRE = {
-    "autre_url": t("Remote with another URL, left untouched"),
-    "refuse": t("Remote refused by git"),
-    "fetch_echoue": t("Remote set, upstream unreachable"),
-    "superficiel": t("Shallow clone: remote set, fetch skipped"),
-    "absent": t("Not cloned"),
-    "ajoute": t("Remote added and fetched"),
-    "present": t("Remote already present, fetched"),
-    "non_declare": t("Skipped: upstream not declared"),
+    "autre_url": "Remote with another URL, left untouched",
+    "refuse": "Remote refused by git",
+    "fetch_echoue": "Remote set, upstream unreachable",
+    "superficiel": "Shallow clone: remote set, fetch skipped",
+    "absent": "Not cloned",
+    "ajoute": "Remote added and fetched",
+    "present": "Remote already present, fetched",
+    "non_declare": "Skipped: upstream not declared",
 }
 _ISSUES_GENRE = {
     "autre_url": "broken",
@@ -1492,7 +1513,7 @@ def render_remotes(lst, version, colour=True):
         groupe = [x for x in lst if x["issue"] == issue]
         if not groupe:
             continue
-        titre = f"  {_ISSUES_TITRE[issue]} ({len(groupe)})"
+        titre = f"  {t(_ISSUES_TITRE[issue])} ({len(groupe)})"
         out.append(paint(titre, _ISSUES_GENRE[issue], colour))
         for x in groupe:
             out.append(f"    {x['chemin']}")

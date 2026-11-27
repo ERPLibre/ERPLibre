@@ -780,11 +780,11 @@ def ajouter_amont(chemin, projet, remotes):
     etat, url = repo_upgrade.preparer_remote(chemin, amont)
     if etat == "autre_url":
         return etat, (
-            f"{repo_upgrade.LIBELLES_APPROFONDIR['autre_url']} ({url}) :"
+            f"{repo_upgrade.libelle_approfondir('autre_url')} ({url}) :"
             f" {repo_upgrade.commande_set_url(chemin, remote, amont['url'])}"
         )
     if etat not in ("ajoute", "present"):
-        return etat, repo_upgrade.LIBELLES_APPROFONDIR.get(etat, etat)
+        return etat, repo_upgrade.libelle_approfondir(etat)
     # Un clone superficiel ne reçoit de l'amont que la même profondeur :
     # sans borne, le fetch rapatrierait tout l'historique amont.
     profondeur = None
