@@ -896,6 +896,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `deploy_qemu.py` runs `apt-get` and `dpkg` with `/dev/null` as input and `apt-get` without a pty: `apt-get` restoring the terminal while not in the foreground, as after a maintainer script's `systemctl`, no longer stays stopped forever by SIGTTOU. A locally modified configuration file is kept, the package's version written next to it as `.dpkg-dist`
 - A cached QEMU cloud image whose published SHA-256 changed is replaced only once the new download matches: the old image stays readable by a running conversion and stays in place when the download is refused, a mismatch on freshly downloaded bytes stops at once instead of retrying, and a cache directory or `.part` the user cannot write goes through `sudo` instead of failing as a network error
 - The TODO healthcheck offers a first freeze to a repository without `freeze-revision` only in a frozen checkout: in branch mode, where every repository follows its branch, the always-frozen fragments shared by every version no longer get nearly every other repository listed, and accepting no longer writes freezes into the manifests of the active version. The other freeze resolutions, such as putting back a repository behind its freeze, stay offered in branch mode
+- Ctrl+C during the SSH walk of the QEMU access menu kills the running probes and the ssh of their ProxyJump at once, instead of waiting up to their 90 s timeout
 
 <!-- [fr] -->
 
@@ -1064,6 +1065,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `deploy_qemu.py` lance `apt-get` et `dpkg` avec `/dev/null` pour entrée et `apt-get` sans pty : un `apt-get` qui restaure le terminal sans être au premier plan, comme après le `systemctl` d'un script de mainteneur, ne reste plus suspendu sans fin par SIGTTOU. Un fichier de configuration modifié localement est gardé, la version du paquet posée à côté en `.dpkg-dist`
 - Une image cloud QEMU en cache dont la somme SHA-256 publiée a changé n'est remplacée qu'une fois le nouveau téléchargement conforme : l'ancienne reste lisible par une conversion en cours et reste en place si le téléchargement est refusé, un écart sur des octets fraîchement téléchargés arrête tout au lieu de reprendre, et un dossier de cache ou un `.part` que l'utilisateur ne peut écrire passe par `sudo` au lieu d'échouer comme une panne réseau
 - Le bilan de santé de TODO ne propose un premier gel à un dépôt sans `freeze-revision` que dans un checkout gelé : en mode branches, où chaque dépôt suit sa branche, les fragments communs à toutes les versions, toujours gelés, ne font plus lister presque tous les autres dépôts, et accepter n'écrit plus de gels dans les manifestes de la version active. Les autres résolutions du gel, comme remettre sur son gel un dépôt en retard, restent proposées en mode branches
+- Ctrl+C pendant l'exploration SSH du menu d'accès QEMU tue aussitôt les sondes en cours et le ssh de leur ProxyJump, au lieu d'attendre jusqu'à leur délai de 90 s
 
 <!-- [en] -->
 ## Removed
