@@ -680,6 +680,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Corrigé
 <!-- [en] -->
 
+- With `code_generator` installed, a manual computed field of any module computes again: `code_generator` changed Odoo's own `SAFE_EVAL_BASE` in place with raw Python modules, which `safe_eval` refuses, so every such compute failed, and in Odoo 18 the server constrains of `code_generator` too. It now evaluates them with a copy, its modules wrapped to the names a constrain uses
 - The install launcher warns « libvirt unreachable » only when libvirt really refuses: a VM not yet started no longer triggers it, and a session opened before joining the libvirt group reaches libvirt through `sg libvirt`, or `newgrp` where sg is missing (Arch), so the VM's moving address is followed again
 - An interrupted database restore (`ctrl+C`, dropped connection) still starts the erplibre service again if it was running, and the VM actions run with a terminal (`ssh -t`): sudo can ask its password, and a changed Odoo master password is no longer echoed
 - The macOS installer creates the PostgreSQL role from the current account, as Homebrew's PostgreSQL runs under it, with the keg-only `postgresql@15` binaries put on the `PATH`, instead of a `su - postgres` that always failed silently, and stops with the command to type when it cannot
@@ -834,6 +835,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- Avec `code_generator` installé, un champ calculé manuel de tout module se calcule de nouveau : `code_generator` modifiait sur place le `SAFE_EVAL_BASE` d'Odoo avec des modules Python bruts, que `safe_eval` refuse, si bien que chacun de ces calculs échouait, et sous Odoo 18 les contraintes serveur de `code_generator` aussi. Il les évalue maintenant avec une copie, ses modules enveloppés aux noms qu'une contrainte utilise
 - Le lanceur d'installation n'avertit « libvirt injoignable » que si libvirt refuse vraiment : une VM pas encore démarrée ne le déclenche plus, et une session ouverte avant l'ajout au groupe libvirt joint libvirt par `sg libvirt`, ou `newgrp` là où sg manque (Arch), si bien que l'adresse mouvante de la VM est de nouveau suivie
 - Une restauration de base interrompue (`ctrl+C`, connexion coupée) relance quand même le service erplibre s'il tournait, et les actions VM tournent avec un terminal (`ssh -t`) : sudo peut demander son mot de passe, et un mot de passe maître d'Odoo changé ne s'affiche plus en clair
 - L'installeur macOS crée le rôle PostgreSQL depuis le compte courant, sous lequel tourne le PostgreSQL de Homebrew, les commandes de `postgresql@15`, non liées par Homebrew, ajoutées au `PATH`, au lieu d'un `su - postgres` qui échouait toujours en silence, et s'arrête avec la commande à taper quand il n'y parvient pas

@@ -329,6 +329,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Fixed
 
+- With `code_generator` installed, a manual computed field of any module computes again: `code_generator` changed Odoo's own `SAFE_EVAL_BASE` in place with raw Python modules, which `safe_eval` refuses, so every such compute failed, and in Odoo 18 the server constrains of `code_generator` too. It now evaluates them with a copy, its modules wrapped to the names a constrain uses
 - The install launcher warns « libvirt unreachable » only when libvirt really refuses: a VM not yet started no longer triggers it, and a session opened before joining the libvirt group reaches libvirt through `sg libvirt`, or `newgrp` where sg is missing (Arch), so the VM's moving address is followed again
 - An interrupted database restore (`ctrl+C`, dropped connection) still starts the erplibre service again if it was running, and the VM actions run with a terminal (`ssh -t`): sudo can ask its password, and a changed Odoo master password is no longer echoed
 - The macOS installer creates the PostgreSQL role from the current account, as Homebrew's PostgreSQL runs under it, with the keg-only `postgresql@15` binaries put on the `PATH`, instead of a `su - postgres` that always failed silently, and stops with the command to type when it cannot
