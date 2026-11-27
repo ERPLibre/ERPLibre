@@ -585,7 +585,7 @@
         remote="ERPLibre_origin_TechnoLibre"
         fork-upstream-remote="TechnoLibre"
         revision="18.0"
-        freeze-revision="1a4aa14c579d7ec63fba3195e2da6e08ded1cb19"
+        freeze-revision="bc77a53e7c56d663403cd73fdcda481c1ab2bfcc"
         groups="addons,odoo18.0,code_generator,image_db"
     />
     <!-- L'amont novacode-nl/odoo-formio n'est plus publié : le fork
