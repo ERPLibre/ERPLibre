@@ -123,6 +123,15 @@ REFUSEES = {
     "adb": 1,
 }
 
+# Ce qu'une doublure accepte quand même : une question qui ne touche ni
+# l'hôte ni le réseau. « ssh -V » en est une, et git-repo la pose à chaque
+# « repo sync », même vers des dépôts file:// ; refusée, elle arrête la
+# synchronisation sur « unable to detect ssh version ». La réponse suit le
+# format d'OpenSSH, que git-repo analyse.
+ACCEPTEES = {
+    "ssh": {"-V": "OpenSSH_9.0p1, run_unit_test"},
+}
+
 
 class Fichier:
     """Un fichier de tests et ce qu'on sait de son passage."""
@@ -247,9 +256,15 @@ def poser_doublures(dossier=DOUBLURES):
     os.makedirs(dossier, exist_ok=True)
     for cmd, code in REFUSEES.items():
         chemin = os.path.join(dossier, cmd)
+        # Comme le vrai ssh, « -V » répond sur la sortie d'erreur.
+        accepte = "".join(
+            f'[ "$*" = "{arg}" ] && {{ echo "{rep}" >&2; exit 0; }}\n'
+            for arg, rep in ACCEPTEES.get(cmd, {}).items()
+        )
         contenu = (
             "#!/bin/sh\n"
-            f'echo "run_unit_test : « {cmd} $* » refusé, un test'
+            + accepte
+            + f'echo "run_unit_test : « {cmd} $* » refusé, un test'
             " unitaire ne touche pas l'hôte\" >&2\n"
             f"exit {code}\n"
         )
