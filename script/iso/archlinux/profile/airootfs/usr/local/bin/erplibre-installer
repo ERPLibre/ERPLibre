@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Lanceur du cœur de l'installateur ERPLibre (erplibre_installer.py).
+
+Les modules vivent dans SHARE_DIR, et ceux du profil machine dans
+SHARE_DIR/machine, copiés là par build_iso.py. Aucun cache Python n'est
+écrit à côté d'eux."""
+
+import sys
+
+sys.dont_write_bytecode = True
+SHARE_DIR = "/usr/local/share/erplibre-install"
+sys.path.insert(0, SHARE_DIR)
+
+import erplibre_installer  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(erplibre_installer.main())

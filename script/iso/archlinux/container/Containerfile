@@ -1,0 +1,30 @@
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Image de construction de l'ISO ERPLibre Arch Linux : une Arch à jour qui
+# porte mkarchiso et le profil releng (archiso), plus archinstall, de la
+# même synchronisation de dépôts que l'ISO qui en sortira. build_iso.py la
+# construit au premier usage, quand elle a vieilli ou sur --refresh-image,
+# puis s'y relance avec « --builder host » : l'hôte ne fournit que le
+# moteur (container_build.py).
+#
+# « pacman -Syu » ici, jamais sur l'hôte : la construction ne dépend pas de
+# l'état de la base de paquets de l'hôte. Le cache est vidé pour garder
+# l'image petite ; build_iso.py monte un cache persistant à la place.
+FROM docker.io/library/archlinux:latest
+LABEL org.opencontainers.image.title="ERPLibre Arch Linux ISO builder"
+RUN pacman -Syu --noconfirm --needed archiso archinstall python libcap \
+    && pacman -Scc --noconfirm
+# Mode « userns » (Podman sans root) : mkarchiso y tourne en simple
+# utilisateur, UID 1000 (CONTAINER_UID), et passe par « unshare
+# --map-auto ». Il lui faut :
+#  - newuidmap/newgidmap porteurs de leurs capacités de fichier, que
+#    l'extraction des paquets dans une couche d'image ne conserve pas
+#    (sans elles : « newuidmap: Could not set caps ») ;
+#  - une plage subuid/subgid pour l'UID 1000, prise dans les UID que
+#    l'espace de noms du conteneur possède : 1001 à 65536 avec la plage
+#    subuid usuelle de 65536 identifiants sur l'hôte.
+RUN setcap cap_setuid+ep /usr/bin/newuidmap \
+    && setcap cap_setgid+ep /usr/bin/newgidmap \
+    && echo "1000:1001:64536" > /etc/subuid \
+    && echo "1000:1001:64536" > /etc/subgid

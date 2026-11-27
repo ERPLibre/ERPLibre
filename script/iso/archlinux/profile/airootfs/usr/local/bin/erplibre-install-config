@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Configuration archinstall de l'installateur ERPLibre (ISO live).
+
+Lit profiles.json (écrit par build_iso.py à la construction de l'ISO), le
+gabarit user_configuration.template.json et l'étape ERPLibre
+erplibre-stage.sh, tous trois dans SHARE_DIR, puis écrit le
+user_configuration.json qu'archinstall 4.5 lit par « --config ».
+
+Mode guidé : la configuration porte le bureau (GNOME + gdm), le réseau
+(NetworkManager), le son, le chargeur d'amorçage choisi d'après le
+micrologiciel, les paquets de l'étape ERPLibre et l'étape elle-même en
+« custom_commands ». Disque, compte, langue et fuseau restent au menu
+d'archinstall.
+
+Mode automatique (« --auto ») : ajoute disk_config (disposition par défaut
+sur le premier disque qui n'est pas le support de démarrage) et écrit
+user_credentials.json avec le compte de test, pour « archinstall --silent ».
+
+Bibliothèque standard seulement : l'ISO live n'a que le Python
+qu'archinstall tire avec lui. Les fonctions sont pures, sauf main() et les
+lectures du système (_read_*), pour que les tests du dépôt les exercent sur
+des données inventées."""
+
+import argparse
+import json
+import os
+import shlex
+import subprocess
+import sys
+import uuid
+
+SHARE_DIR = "/usr/local/share/erplibre-install"
+PROFILES_FILE = "profiles.json"
+TEMPLATE_FILE = "user_configuration.template.json"
+STAGE_FILE = "erplibre-stage.sh"
+
+# Paquets que l'étape ERPLibre exige sur la cible AVANT de s'exécuter :
+# git pour le clone, make pour les cibles, sudo pour « make install_os »,
+# base-devel pour compiler les extensions Python. archinstall les pose avec
+# le système, avant les « custom_commands ».
+STAGE_PACKAGES = ("git", "make", "curl", "sudo", "base-devel")
+
+# Taille minimale d'un disque retenu par le mode automatique : GNOME,
+# ERPLibre, un Odoo et son venv tiennent dans 20 Gio avec de la marge.
+MIN_DISK_BYTES = 20 * 1024**3
+
+MIB = 1024**2
+BOOT_START_MIB = 1
+BOOT_SIZE_MIB = 1024
+# Marge laissée en fin de disque : l'en-tête GPT de secours y vit, et
+# archinstall refuse une partition qui le chevauche.
+END_MARGIN_MIB = 1
+
+AUTO_USERNAME = "erplibre"
+# « --ssh » (ISO de test seulement) : de quoi inspecter la cible à
+# distance après son premier démarrage.
+SSH_PACKAGES = ("openssh",)
+SSH_SERVICES = ("sshd",)
+DEFAULT_AUTO_PASSWORD = "erplibre"
+# Le mot de passe du compte de test arrive par l'environnement : en argv,
+# il serait lisible de tout processus par /proc/<pid>/cmdline.
+AUTO_PASSWORD_ENV = "ERPLIBRE_AUTO_PASSWORD"
+
+
+def load_json(path):
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def cmdline_params(text):
+    """Paramètres « clé=valeur » d'une ligne de commande du noyau. Un
+    paramètre sans « = » vaut chaîne vide.
+
+    Découpage sur les blancs, sans interpréter les guillemets : c'est ce
+    que fait el_param côté bash, et une apostrophe dans une valeur
+    (« erplibre.password=… ») ne doit pas faire échouer l'outil."""
+    params = {}
+    for token in (text or "").split():
+        key, _sep, value = token.partition("=")
+        params[key] = value
+    return params
+
+
+def pick_lang(params, doc):
+    """« erplibre.lang » du noyau, sinon la langue de profiles.json, sinon
+    le français."""
+    lang = params.get("erplibre.lang") or doc.get("lang") or "fr"
+    return lang if lang in ("fr", "en") else "fr"
+
+
+def profile_label(profile, lang):
+    labels = profile.get("label", {})
+    return labels.get(lang) or labels.get("en") or profile["key"]
+
+
+def find_profile(doc, key):
+    """Profil de clé `key`. Vide ou « 1 » désigne le profil par défaut :
+    « erplibre.auto=1 » lance donc l'installation la plus courante. Rend
+    None pour une clé inconnue."""
+    if key in ("", "1", None):
+        key = doc.get("default_profile", "")
+    for profile in doc.get("profiles", []):
+        if profile.get("key") == key:
+            return profile
+    return None
+
+
+def bootloader_config(uefi):
+    """systemd-boot en UEFI, GRUB en BIOS.
+
+    « removable » reste faux : archinstall 4.5 ne l'accepte que pour GRUB
+    et Limine, et le désactive avec un avertissement pour systemd-boot.
+    Le chemin de repli EFI/BOOT/BOOTX64.EFI, que lit un micrologiciel dont
+    la NVRAM a oublié l'entrée, est posé par « bootctl install » lui-même.
+    En BIOS, GRUB s'installe dans le MBR : l'option ne s'y applique pas."""
+    if uefi:
+        return {"bootloader": "Systemd-boot", "uki": False, "removable": False}
+    return {"bootloader": "Grub", "uki": False, "removable": False}
+
+
+def stage_command(doc, profile, stage_text, tty, lang, offline=None):
+    """Texte de l'unique « custom_commands » : un prélude qui fixe les
+    variables de l'étape, puis erplibre-stage.sh tel quel. Chaque valeur
+    passe par shlex.quote : la commande du profil et le gabarit d'unité
+    portent des guillemets, des « $ » et des sauts de ligne.
+
+    `offline`, liste de (variable, valeur) de
+    erplibre_offline.stage_prelude, remplace les variables de même nom
+    (la source git du paquet) et ajoute les autres."""
+    source = doc.get("network_source", {})
+    values = [
+        ("EL_PROFILE_KEY", profile["key"]),
+        ("EL_PROFILE_LABEL", profile_label(profile, lang)),
+        ("EL_PROFILE_CMD", profile.get("command", "")),
+        ("EL_PROFILE_SERVICE", "1" if profile.get("service") else "0"),
+        ("EL_PROFILE_POSTGRES", "1" if profile.get("postgresql") else "0"),
+        ("EL_GIT_URL", source.get("git_url", "")),
+        ("EL_GIT_BRANCH", source.get("branch", "")),
+        ("EL_TTY", tty or ""),
+        ("EL_LANG", lang),
+        ("EL_UNIT_TEMPLATE", doc.get("service_unit", "")),
+    ]
+    for nom, valeur in offline or ():
+        values = [(k, v) for k, v in values if k != nom] + [(nom, valeur)]
+    prelude = "".join(f"{k}={shlex.quote(v)}\n" for k, v in values)
+    # Le shebang du script reste à sa place utile : en tête du fichier
+    # qu'archinstall écrit, et que l'étape recopie pour être relancée.
+    lines = stage_text.splitlines(keepends=True)
+    shebang = ""
+    if lines and lines[0].startswith("#!"):
+        shebang, stage_text = lines[0], "".join(lines[1:])
+    return shebang + prelude + stage_text
+
+
+def build_config(
+    template,
+    doc,
+    profile,
+    stage_text,
+    uefi,
+    tty,
+    lang,
+    disk_config=None,
+    offline=None,
+):
+    """user_configuration.json pour archinstall, sous forme de dict.
+
+    Le profil « GNOME seul » n'a pas de commande : ni paquets de l'étape,
+    ni custom_commands. PostgreSQL est ajouté aux paquets des profils qui
+    en ont besoin, pour que l'étape le trouve déjà là. `offline` passe au
+    prélude de l'étape (voir stage_command)."""
+    config = json.loads(json.dumps(template))
+    config["bootloader_config"] = bootloader_config(uefi)
+    packages = list(config.get("packages", []))
+    commands = []
+    if profile.get("command"):
+        extra = list(STAGE_PACKAGES)
+        if profile.get("postgresql"):
+            extra.append("postgresql")
+        for pkg in extra:
+            if pkg not in packages:
+                packages.append(pkg)
+        commands.append(
+            stage_command(doc, profile, stage_text, tty, lang, offline)
+        )
+    config["packages"] = packages
+    config["custom_commands"] = commands
+    if disk_config is not None:
+        config["disk_config"] = disk_config
+    return config
+
+
+def _flatten(devices):
+    for dev in devices or []:
+        yield dev
+        yield from _flatten(dev.get("children"))
+
+
+def boot_disk_names(lsblk, boot_uuid):
+    """Noms des disques qui portent le support de démarrage : celui dont
+    une partition (ou le disque entier, image hybride) a l'UUID que
+    « archisosearchuuid » désigne, et celui où /run/archiso/bootmnt est
+    monté."""
+    names = set()
+    for disk in lsblk.get("blockdevices", []):
+        for dev in _flatten([disk]):
+            mounts = [m for m in dev.get("mountpoints") or [] if m]
+            if (boot_uuid and dev.get("uuid") == boot_uuid) or any(
+                m.startswith("/run/archiso") for m in mounts
+            ):
+                names.add(disk.get("name"))
+    return names
+
+
+def pick_install_disk(lsblk, boot_uuid, min_bytes=MIN_DISK_BYTES):
+    """Disque qu'efface le mode automatique, ou None.
+
+    Rien n'est choisi tant que le support de démarrage n'est pas reconnu
+    (boot_disk_names vide). Les deux repères manquent ensemble sur une clé
+    dont les FICHIERS de l'ISO ont été copiés sur une partition FAT32 :
+    archiso la trouve par son fichier « .uuid » et non par l'UUID, et
+    copytoram (actif dès que la RAM dépasse l'image de 2 Gio) démonte
+    /run/archiso/bootmnt. Cette clé passerait alors pour un disque fixe.
+
+    Écartés ensuite : tout ce qui n'est pas un disque (CD, boucle), zram,
+    lecture seule, trop petit, et le support de démarrage. Parmi le reste,
+    l'ordre de lsblk, disques fixes avant amovibles : une clé USB branchée
+    en plus n'est prise que s'il n'y a rien d'autre."""
+    boot = boot_disk_names(lsblk, boot_uuid)
+    if not boot:
+        return None
+    candidates = []
+    for disk in lsblk.get("blockdevices", []):
+        name = disk.get("name") or ""
+        if disk.get("type") != "disk" or name.startswith("zram"):
+            continue
+        if name in boot or _truthy(disk.get("ro")):
+            continue
+        if int(disk.get("size") or 0) < min_bytes:
+            continue
+        candidates.append(disk)
+    candidates.sort(key=lambda d: _truthy(d.get("rm")))
+    return candidates[0] if candidates else None
+
+
+def _truthy(value):
+    return value in (True, 1, "1", "true")
+
+
+def _size(value_mib, sector_size):
+    return {
+        "sector_size": {"unit": "B", "value": sector_size},
+        "unit": "MiB",
+        "value": value_mib,
+    }
+
+
+def _partition(start_mib, size_mib, sector, fs_type, mountpoint, flags):
+    return {
+        "btrfs": [],
+        "dev_path": None,
+        "flags": flags,
+        "fs_type": fs_type,
+        "mount_options": [],
+        "mountpoint": mountpoint,
+        "obj_id": str(uuid.uuid4()),
+        "size": _size(size_mib, sector),
+        "start": _size(start_mib, sector),
+        "status": "create",
+        "type": "primary",
+    }
+
+
+def disk_layout(device_path, size_bytes, sector_size, uefi):
+    """disk_config « default_layout » : /boot en FAT32 de 1 Gio, puis / en
+    ext4 sur le reste. Mêmes drapeaux que la disposition par défaut
+    d'archinstall : « boot », plus « esp » en UEFI où la table est GPT.
+    Tailles en Mio entiers, donc alignées comme archinstall l'exige."""
+    total_mib = int(size_bytes) // MIB
+    root_start = BOOT_START_MIB + BOOT_SIZE_MIB
+    root_size = total_mib - root_start - END_MARGIN_MIB
+    if root_size <= 0:
+        raise ValueError(f"disk too small: {device_path}")
+    boot_flags = ["boot", "esp"] if uefi else ["boot"]
+    return {
+        "config_type": "default_layout",
+        "device_modifications": [
+            {
+                "device": device_path,
+                "wipe": True,
+                "partitions": [
+                    _partition(
+                        BOOT_START_MIB,
+                        BOOT_SIZE_MIB,
+                        sector_size,
+                        "fat32",
+                        "/boot",
+                        boot_flags,
+                    ),
+                    _partition(
+                        root_start, root_size, sector_size, "ext4", "/", []
+                    ),
+                ],
+            }
+        ],
+    }
+
+
+def credentials(username, password):
+    """user_credentials.json : un compte sudo au mot de passe en clair
+    (« !password », lu par archinstall 4.5), root sans mot de passe."""
+    return {
+        "users": [
+            {
+                "username": username,
+                "!password": password,
+                "sudo": True,
+                "groups": [],
+            }
+        ]
+    }
+
+
+def auto_settings(config):
+    """Réglages que le mode guidé laisse au menu et que le mode
+    automatique doit fixer."""
+    config.setdefault("timezone", "UTC")
+    config.setdefault(
+        "locale_config",
+        {"kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US.UTF-8"},
+    )
+    return config
+
+
+def enable_ssh(config):
+    """Ajoute openssh aux paquets et sshd aux services activés."""
+    for key, values in (
+        ("packages", SSH_PACKAGES),
+        ("services", SSH_SERVICES),
+    ):
+        current = list(config.get(key, []))
+        current += [v for v in values if v not in current]
+        config[key] = current
+    return config
+
+
+def _read_text(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def _read_lsblk():
+    out = subprocess.run(
+        [
+            "lsblk",
+            "-J",
+            "-b",
+            "-o",
+            "NAME,PATH,TYPE,RM,RO,SIZE,LOG-SEC,UUID,MOUNTPOINTS",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    data = json.loads(out)
+    # lsblk nomme la colonne « log-sec » ; le reste du code lit « log_sec ».
+    for dev in _flatten(data.get("blockdevices")):
+        if "log-sec" in dev:
+            dev["log_sec"] = dev.pop("log-sec")
+    return data
+
+
+def _write_json(path, data, mode=0o600):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
+def _parser():
+    parser = argparse.ArgumentParser(
+        description="Écrit la configuration archinstall de l'installateur "
+        "ERPLibre."
+    )
+    parser.add_argument("--share-dir", default=SHARE_DIR)
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="affiche « numéro<TAB>clé<TAB>libellé » par profil, et sort",
+    )
+    parser.add_argument("--profile", default="", help="clé du profil")
+    parser.add_argument("--output", help="user_configuration.json à écrire")
+    parser.add_argument("--tty", default="", help="console de l'étape")
+    parser.add_argument("--lang", default="", help="fr ou en")
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="mode automatique : disque choisi et compte de test",
+    )
+    parser.add_argument("--creds", help="user_credentials.json (--auto)")
+    parser.add_argument(
+        "--ssh",
+        action="store_true",
+        help="ISO de test : openssh installé et sshd activé sur la cible",
+    )
+    return parser
+
+
+def main(argv=None):
+    args = _parser().parse_args(argv)
+    share = args.share_dir
+    doc = load_json(os.path.join(share, PROFILES_FILE))
+    params = cmdline_params(_read_text("/proc/cmdline"))
+    lang = args.lang if args.lang in ("fr", "en") else pick_lang(params, doc)
+
+    if args.list:
+        for i, profile in enumerate(doc.get("profiles", []), 1):
+            print(f"{i}\t{profile['key']}\t{profile_label(profile, lang)}")
+        return 0
+
+    profile = find_profile(doc, args.profile)
+    if profile is None:
+        print(f"unknown profile: {args.profile}", file=sys.stderr)
+        return 2
+    if not args.output:
+        print("--output is required", file=sys.stderr)
+        return 2
+
+    uefi = os.path.isdir("/sys/firmware/efi")
+    disk_config = None
+    if args.auto:
+        lsblk = _read_lsblk()
+        boot_uuid = params.get("archisosearchuuid", "")
+        if not boot_disk_names(lsblk, boot_uuid):
+            print(
+                "boot medium not identified: refusing to pick a disk to "
+                "erase (write the ISO to the key with dd)",
+                file=sys.stderr,
+            )
+            return 3
+        disk = pick_install_disk(lsblk, boot_uuid)
+        if disk is None:
+            print("no installable disk found", file=sys.stderr)
+            return 3
+        disk_config = disk_layout(
+            disk.get("path") or f"/dev/{disk['name']}",
+            disk["size"],
+            int(disk.get("log_sec") or 512),
+            uefi,
+        )
+
+    config = build_config(
+        load_json(os.path.join(share, TEMPLATE_FILE)),
+        doc,
+        profile,
+        _read_text(os.path.join(share, STAGE_FILE)),
+        uefi,
+        args.tty,
+        lang,
+        disk_config,
+    )
+    if args.ssh:
+        enable_ssh(config)
+    if args.auto:
+        auto_settings(config)
+        # Lu par erplibre-install : le disque effacé, et si une étape
+        # ERPLibre doit laisser son fichier d'état dans la cible.
+        has_stage = 1 if config["custom_commands"] else 0
+        print(
+            f"{disk_config['device_modifications'][0]['device']}\t{has_stage}"
+        )
+        if args.creds:
+            password = os.environ.get(AUTO_PASSWORD_ENV) or (
+                DEFAULT_AUTO_PASSWORD
+            )
+            _write_json(args.creds, credentials(AUTO_USERNAME, password))
+    _write_json(args.output, config)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -28,3 +28,11 @@ sms/
 # fabricant et modèle, points de montage, venvs. Ils décrivent UNE machine et
 # n'ont rien à faire dans un dépôt dont le distant est public.
 diagnostic/
+
+# Profils machine de la clé USB ERPLibre (TODO › Système › Clé USB
+# amorçable › Profils machine) : le menu les écrit ici en 0600, et
+# l'écriture d'une clé les copie dans l'ISO. Un profil nomme l'utilisateur
+# et l'hôte de la machine à installer, ainsi que sa langue et son fuseau :
+# c'est la description d'une installation précise, pas un défaut partagé.
+# Les profils génériques vivent dans script/iso/archlinux/machine/profiles/.
+iso/

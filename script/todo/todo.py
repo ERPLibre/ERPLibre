@@ -200,6 +200,7 @@ from script.todo.streamdeck_menu import RACINE as ERPLIBRE_HOME_RACINE
 from script.todo.streamdeck_menu import StreamDeckMenuMixin
 from script.todo.studio_menu import StudioMenuMixin
 from script.todo.system_menu import SystemMenuMixin
+from script.todo.system_usb_menu import SystemUsbMenuMixin
 from script.todo.todo_couleur import bleu_poudre, quitter, retour
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
@@ -298,6 +299,7 @@ class TODO(
     SshKeyMenuMixin,
     StreamDeckMenuMixin,
     SystemMenuMixin,
+    SystemUsbMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -1397,6 +1399,8 @@ class TODO(
         "prompt_execute_system": "System",
         "_system_conteneurs": "Containers",
         "_system_swap": "Swap memory",
+        "_system_usb": "Bootable USB key",
+        "_system_usb_profils": "Machine profiles",
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",

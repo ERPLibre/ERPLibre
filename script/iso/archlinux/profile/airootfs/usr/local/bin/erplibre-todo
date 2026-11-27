@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Lance le TODO d'ERPLibre embarqué dans le live : le checkout du dépôt
+# copié sous EL_TODO_DIR par build_iso.py (checkout_files). L'accueil de
+# l'installateur ([2]) le lance et reprend la main à sa sortie.
+#
+# Le TODO tourne sur le Python du live, dont les paquets Arch fournissent
+# les modules que son import exige (build_iso.py, EXTRA_LIVE_PACKAGES). La
+# garde de todo.py compare ce Python à la version du venv d'outillage d'un
+# checkout (conf/python-erplibre-version) ; le live n'a pas ce venv, et sa
+# copie de conf/ reçoit donc la version du Python qui tourne réellement.
+#
+# Le système de fichiers du live est un overlay dont la couche écrite est
+# le tmpfs EL_COWSPACE, borné par archiso à cow_spacesize (256 Mio par
+# défaut) ; l'écriture ne dure que jusqu'à l'extinction. Le menu Clé USB
+# du TODO écrit sous ~/.erplibre/iso une ISO dérivée ou téléchargée de
+# plus d'un Gio, qui n'y tiendrait pas : la borne passe à EL_COW_SIZE
+# (« 75% » de la mémoire par défaut, syntaxe de l'option size de tmpfs).
+# Un tmpfs n'occupe en mémoire que ce qui y est écrit ; une borne déjà
+# plus grande n'est jamais réduite, un échec est signalé sans arrêter le
+# TODO.
+#
+# EL_LANG (fr, en), passé par l'interface de l'installateur, donne au TODO
+# la langue choisie à l'accueil : écrite dans env_var.sh, que todo_i18n
+# lit pour savoir que la langue est réglée, elle lui évite de la redemander.
+
+set -u
+
+EL_TODO_DIR="${EL_TODO_DIR:-/opt/erplibre}"
+EL_PYTHON="${EL_PYTHON:-python3}"
+EL_COWSPACE="${EL_COWSPACE:-/run/archiso/cowspace}"
+EL_COW_SIZE="${EL_COW_SIZE:-75%}"
+
+# Octets de la borne du tmpfs monté sur $1 ; rien si ce n'en est pas un.
+el_tmpfs_size() {
+  [[ "$(findmnt -n -o FSTYPE --target "$1" 2>/dev/null)" == tmpfs ]] &&
+    [[ "$(findmnt -n -o TARGET --target "$1" 2>/dev/null)" == "$1" ]] &&
+    findmnt -n -b -o SIZE --target "$1" 2>/dev/null
+}
+
+# Agrandit la couche écrite du live à EL_COW_SIZE, jamais ne la réduit.
+el_grow_cowspace() {
+  local avant apres
+  avant="$(el_tmpfs_size "${EL_COWSPACE}")" || return 0
+  [[ -n "${avant}" ]] || return 0
+  mount -o "remount,size=${EL_COW_SIZE}" "${EL_COWSPACE}" 2>/dev/null || {
+    printf 'Live overlay not enlarged (%s): large ISO files will not fit.\n' \
+      "${EL_COWSPACE}" >&2
+    return 0
+  }
+  apres="$(el_tmpfs_size "${EL_COWSPACE}")"
+  if [[ -n "${apres}" && "${apres}" -lt "${avant}" ]]; then
+    mount -o "remount,size=${avant}" "${EL_COWSPACE}" 2>/dev/null
+  fi
+  return 0
+}
+
+if [[ ! -f "${EL_TODO_DIR}/script/todo/todo.py" ]]; then
+  printf 'ERPLibre TODO is not on this key (%s).\n' "${EL_TODO_DIR}" >&2
+  exit 1
+fi
+el_grow_cowspace
+cd "${EL_TODO_DIR}" || exit 1
+"${EL_PYTHON}" -c 'import sys; print("%d.%d" % sys.version_info[:2])' \
+  >conf/python-erplibre-version || exit 1
+# env_var.sh du dépôt porte déjà sa propre ligne EL_LANG, que todo_i18n
+# lit AVANT la variable d'environnement : la ligne est remplacée, et
+# ajoutée seulement si le fichier n'en a pas.
+if [[ "${EL_LANG:-}" == fr || "${EL_LANG:-}" == en ]]; then
+  if grep -qs '^EL_LANG=' env_var.sh; then
+    sed -i "0,/^EL_LANG=.*/s//EL_LANG=\"${EL_LANG}\"/" env_var.sh
+  else
+    printf 'EL_LANG="%s"\n' "${EL_LANG}" >>env_var.sh
+  fi
+fi
+exec "${EL_PYTHON}" script/todo/todo.py "$@"

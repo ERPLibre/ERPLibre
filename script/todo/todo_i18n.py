@@ -26548,6 +26548,1294 @@ TRANSLATIONS = {
         "fr": "Passage USB, deck simulé : le lancer",
         "en": "USB passthrough, emulated deck: run it",
     },
+    # Système : clé USB amorçable et images ISO
+    "Bootable USB key": {
+        "fr": "🔌 Clé USB amorçable",
+        "en": "🔌 Bootable USB key",
+    },
+    "Detect USB keys and show their information": {
+        "fr": "🔍 Détecter les clés USB et afficher leurs informations",
+        "en": "🔍 Detect USB keys and show their information",
+    },
+    "Write an ISO to a USB key": {
+        "fr": "💽 Écrire un ISO sur une clé USB",
+        "en": "💽 Write an ISO to a USB key",
+    },
+    "Build the ERPLibre Arch Linux ISO (amd64)": {
+        "fr": "🏗 Construire l'ISO ERPLibre Arch Linux (amd64)",
+        "en": "🏗 Build the ERPLibre Arch Linux ISO (amd64)",
+    },
+    "Supported ISO list": {
+        "fr": "📋 Liste des ISO prises en charge",
+        "en": "📋 Supported ISO list",
+    },
+    "not mounted": {
+        "fr": "non montée",
+        "en": "not mounted",
+    },
+    "Serial:": {
+        "fr": "Numéro de série :",
+        "en": "Serial:",
+    },
+    "Transport:": {
+        "fr": "Transport :",
+        "en": "Transport:",
+    },
+    "Removable:": {
+        "fr": "Amovible :",
+        "en": "Removable:",
+    },
+    "Mounted on:": {
+        "fr": "Montée sur :",
+        "en": "Mounted on:",
+    },
+    "by-id:": {
+        "fr": "by-id :",
+        "en": "by-id:",
+    },
+    "This key will be erased:": {
+        "fr": "Cette clé sera effacée :",
+        "en": "This key will be erased:",
+    },
+    "Erase the key and write the image? (y/N): ": {
+        "fr": "Effacer la clé et écrire l'image ? (o/N) : ",
+        "en": "Erase the key and write the image? (y/N): ",
+    },
+    "The key is ready: boot the computer from it (the boot menu key is often F12, F11, F8 or Esc).": {
+        "fr": "La clé est prête : démarrez l'ordinateur sur elle (la touche du menu de démarrage est souvent F12, F11, F8 ou Échap).",
+        "en": "The key is ready: boot the computer from it (the boot menu key is often F12, F11, F8 or Esc).",
+    },
+    "The key changed since the confirmation (unplugged, swapped or mounted): nothing was written.": {
+        "fr": "La clé a changé depuis la confirmation (débranchée, remplacée ou montée) : rien n'a été écrit.",
+        "en": "The key changed since the confirmation (unplugged, swapped or mounted): nothing was written.",
+    },
+    "Image:": {
+        "fr": "Image :",
+        "en": "Image:",
+    },
+    "Browse files": {
+        "fr": "Parcourir les fichiers",
+        "en": "Browse files",
+    },
+    "Choice, Enter to cancel: ": {
+        "fr": "Choix, Entrée pour annuler : ",
+        "en": "Choice, Enter to cancel: ",
+    },
+    "Path to the image (empty to cancel): ": {
+        "fr": "Chemin de l'image (vide pour annuler) : ",
+        "en": "Path to the image (empty to cancel): ",
+    },
+    "Download now? (y/N): ": {
+        "fr": "Télécharger maintenant ? (o/N) : ",
+        "en": "Download now? (y/N): ",
+    },
+    "Checking the SHA-256 checksum…": {
+        "fr": "Vérification de la somme SHA-256…",
+        "en": "Checking the SHA-256 checksum…",
+    },
+    "Checksum verified:": {
+        "fr": "Somme vérifiée :",
+        "en": "Checksum verified:",
+    },
+    "lsblk did not answer: the disks cannot be listed.": {
+        "fr": "lsblk n'a pas répondu : les disques ne peuvent pas être listés.",
+        "en": "lsblk did not answer: the disks cannot be listed.",
+    },
+    "No USB key detected: plug one in and retry.": {
+        "fr": "Aucune clé USB détectée : branchez-en une et réessayez.",
+        "en": "No USB key detected: plug one in and retry.",
+    },
+    "System disks excluded: {count}": {
+        "fr": "Disques système exclus : {count}",
+        "en": "System disks excluded: {count}",
+    },
+    "ALL DATA on {device} will be erased.": {
+        "fr": "TOUTES LES DONNÉES de {device} seront effacées.",
+        "en": "ALL DATA on {device} will be erased.",
+    },
+    "Key number (0 to cancel): ": {
+        "fr": "Numéro de la clé (0 pour annuler) : ",
+        "en": "Key number (0 to cancel): ",
+    },
+    "Choose a number from the list.": {
+        "fr": "Choisissez un numéro de la liste.",
+        "en": "Choose a number from the list.",
+    },
+    "The file is empty:": {
+        "fr": "Le fichier est vide :",
+        "en": "The file is empty:",
+    },
+    "This file does not end in .iso or .img: make sure it is a disk image.": {
+        "fr": "Ce fichier ne finit ni par .iso ni par .img : assurez-vous que c'est une image disque.",
+        "en": "This file does not end in .iso or .img: make sure it is a disk image.",
+    },
+    "Image number, Enter to cancel: ": {
+        "fr": "Numéro de l'image, Entrée pour annuler : ",
+        "en": "Image number, Enter to cancel: ",
+    },
+    "Already downloaded and verified:": {
+        "fr": "Déjà téléchargée et vérifiée :",
+        "en": "Already downloaded and verified:",
+    },
+    "The SHA-256 checksum does not match: the download is deleted, retry later.": {
+        "fr": "La somme SHA-256 ne correspond pas : le téléchargement est supprimé, réessayez plus tard.",
+        "en": "The SHA-256 checksum does not match: the download is deleted, retry later.",
+    },
+    "The ERPLibre Arch Linux ISO builder is not available yet in this checkout:": {
+        "fr": "Le constructeur de l'ISO ERPLibre Arch Linux n'est pas encore disponible dans ce dépôt :",
+        "en": "The ERPLibre Arch Linux ISO builder is not available yet in this checkout:",
+    },
+    "The checksum list has no line for {file}.": {
+        "fr": "La liste des sommes n'a aucune ligne pour {file}.",
+        "en": "The checksum list has no line for {file}.",
+    },
+    "Downloaded:": {
+        "fr": "Téléchargée :",
+        "en": "Downloaded:",
+    },
+    "Downloaded on demand from:": {
+        "fr": "Téléchargée à la demande depuis :",
+        "en": "Downloaded on demand from:",
+    },
+    "{device} is not a whole disk.": {
+        "fr": "{device} n'est pas un disque entier.",
+        "en": "{device} is not a whole disk.",
+    },
+    "{device} carries the running system or the repository: it is never written.": {
+        "fr": "{device} porte le système en marche ou le dépôt : il n'est jamais écrit.",
+        "en": "{device} carries the running system or the repository: it is never written.",
+    },
+    "{device} is not connected by USB (transport: {transport}).": {
+        "fr": "{device} n'est pas branché en USB (transport : {transport}).",
+        "en": "{device} is not connected by USB (transport: {transport}).",
+    },
+    "{device} is read-only: check the lock switch of the key or card.": {
+        "fr": "{device} est en lecture seule : vérifiez le verrou de la clé ou de la carte.",
+        "en": "{device} is read-only: check the lock switch of the key or card.",
+    },
+    "{device} ({size}) is smaller than the image ({iso_size}).": {
+        "fr": "{device} ({size}) est plus petit que l'image ({iso_size}).",
+        "en": "{device} ({size}) is smaller than the image ({iso_size}).",
+    },
+    "{device} ({size}) is larger than {limit}: probably an external disk, not a key.": {
+        "fr": "{device} ({size}) dépasse {limit} : sans doute un disque externe, pas une clé.",
+        "en": "{device} ({size}) is larger than {limit}: probably an external disk, not a key.",
+    },
+    "{device} has encrypted or LVM volumes open on it ({mapped}): close them first.": {
+        "fr": "{device} a des volumes chiffrés ou LVM ouverts ({mapped}) : fermez-les d'abord.",
+        "en": "{device} has encrypted or LVM volumes open on it ({mapped}): close them first.",
+    },
+    "The image {path} is on the key itself ({mountpoint}): copy it elsewhere first.": {
+        "fr": "L'image {path} est sur la clé elle-même ({mountpoint}) : copiez-la ailleurs d'abord.",
+        "en": "The image {path} is on the key itself ({mountpoint}): copy it elsewhere first.",
+    },
+    "This image cannot be downloaded.": {
+        "fr": "Cette image ne se télécharge pas.",
+        "en": "This image cannot be downloaded.",
+    },
+    "eject is missing: remove {device} once the commands are done.": {
+        "fr": "eject est absent : retirez {device} une fois les commandes terminées.",
+        "en": "eject is missing: remove {device} once the commands are done.",
+    },
+    "ERPLibre Arch Linux GNOME (amd64)": {
+        "fr": "ERPLibre Arch Linux GNOME (amd64)",
+        "en": "ERPLibre Arch Linux GNOME (amd64)",
+    },
+    "Not built yet: use « Build the ERPLibre Arch Linux ISO ».": {
+        "fr": "Pas encore construite : utilisez « Construire l'ISO ERPLibre Arch Linux ».",
+        "en": "Not built yet: use « Build the ERPLibre Arch Linux ISO ».",
+    },
+    "Arch Linux official (amd64)": {
+        "fr": "Arch Linux officielle (amd64)",
+        "en": "Arch Linux official (amd64)",
+    },
+    "ERPLibre Arch Linux (arm64)": {
+        "fr": "ERPLibre Arch Linux (arm64)",
+        "en": "ERPLibre Arch Linux (arm64)",
+    },
+    "Planned: archiso builds aarch64 only on an aarch64 host, and Arch Linux has no official aarch64 repository.": {
+        "fr": "Prévue : archiso ne construit pour aarch64 que sur un hôte aarch64, et Arch Linux n'a pas de dépôt aarch64 officiel.",
+        "en": "Planned: archiso builds aarch64 only on an aarch64 host, and Arch Linux has no official aarch64 repository.",
+    },
+    "ERPLibre Arch Linux (s390x)": {
+        "fr": "ERPLibre Arch Linux (s390x)",
+        "en": "ERPLibre Arch Linux (s390x)",
+    },
+    "Not possible: Arch Linux has no s390x port, and a mainframe does not boot from a USB key.": {
+        "fr": "Impossible : Arch Linux n'a pas de portage s390x, et un ordinateur central ne démarre pas sur une clé USB.",
+        "en": "Not possible: Arch Linux has no s390x port, and a mainframe does not boot from a USB key.",
+    },
+    # Système : clé USB amorçable, profils machine
+    "Machine profiles": {
+        "fr": "🧩 Profils machine",
+        "en": "🧩 Machine profiles",
+    },
+    "List machine profiles": {
+        "fr": "📋 Lister les profils machine",
+        "en": "📋 List machine profiles",
+    },
+    "Duplicate a profile into private/": {
+        "fr": "📄 Dupliquer un profil dans private/",
+        "en": "📄 Duplicate a profile into private/",
+    },
+    "Edit a private profile": {
+        "fr": "✏ Modifier un profil privé",
+        "en": "✏ Edit a private profile",
+    },
+    "Delete a private profile": {
+        "fr": "🗑 Supprimer un profil privé",
+        "en": "🗑 Delete a private profile",
+    },
+    "Preview « auto » on this computer (host, not the target)": {
+        "fr": "🔍 Prévisualiser « auto » sur cet ordinateur (l'hôte, pas la cible)",
+        "en": "🔍 Preview « auto » on this computer (host, not the target)",
+    },
+    "Show a profile summary": {
+        "fr": "📝 Afficher le résumé d'un profil",
+        "en": "📝 Show a profile summary",
+    },
+    "Machine profile:": {
+        "fr": "Profil machine :",
+        "en": "Machine profile:",
+    },
+    "none (guided installation)": {
+        "fr": "aucun (installation guidée)",
+        "en": "none (guided installation)",
+    },
+    "Passwords and LUKS passphrases will be asked during installation.": {
+        "fr": "Les mots de passe et les phrases secrètes LUKS seront demandés pendant l'installation.",
+        "en": "Passwords and LUKS passphrases will be asked during installation.",
+    },
+    "Computing the SHA-256 of the image…": {
+        "fr": "Calcul de la somme SHA-256 de l'image…",
+        "en": "Computing the SHA-256 of the image…",
+    },
+    "Build the ISO with this profile? (y/N): ": {
+        "fr": "Construire l'ISO avec ce profil ? (o/N) : ",
+        "en": "Build the ISO with this profile? (y/N): ",
+    },
+    "ISO with the profile:": {
+        "fr": "ISO avec le profil :",
+        "en": "ISO with the profile:",
+    },
+    "xorriso is missing: it builds the ISO that carries the profile.": {
+        "fr": "xorriso est absent : c'est lui qui construit l'ISO qui porte le profil.",
+        "en": "xorriso is missing: it builds the ISO that carries the profile.",
+    },
+    "Install xorriso now? (y/N): ": {
+        "fr": "Installer xorriso maintenant ? (o/N) : ",
+        "en": "Install xorriso now? (y/N): ",
+    },
+    "New profile name (empty to cancel): ": {
+        "fr": "Nom du nouveau profil (vide pour annuler) : ",
+        "en": "New profile name (empty to cancel): ",
+    },
+    "Saved:": {
+        "fr": "Enregistré :",
+        "en": "Saved:",
+    },
+    "Enter keeps the current value; « auto » and « ask » are accepted where the field allows them.": {
+        "fr": "Entrée garde la valeur actuelle ; « auto » et « ask » sont acceptés là où le champ les permet.",
+        "en": "Enter keeps the current value; « auto » and « ask » are accepted where the field allows them.",
+    },
+    "This profile will be deleted:": {
+        "fr": "Ce profil sera supprimé :",
+        "en": "This profile will be deleted:",
+    },
+    "This computer (host, not the target):": {
+        "fr": "Cet ordinateur (l'hôte, pas la cible) :",
+        "en": "This computer (host, not the target):",
+    },
+    "Profile number, Enter for none: ": {
+        "fr": "Numéro du profil, Entrée pour aucun : ",
+        "en": "Profile number, Enter for none: ",
+    },
+    "This profile has errors: fix it before writing.": {
+        "fr": "Ce profil a des erreurs : corrigez-le avant d'écrire.",
+        "en": "This profile has errors: fix it before writing.",
+    },
+    "Already built with this profile:": {
+        "fr": "Déjà construite avec ce profil :",
+        "en": "Already built with this profile:",
+    },
+    "xorriso did not produce the ISO:": {
+        "fr": "xorriso n'a pas produit l'ISO :",
+        "en": "xorriso did not produce the ISO:",
+    },
+    "No machine profile found.": {
+        "fr": "Aucun profil machine trouvé.",
+        "en": "No machine profile found.",
+    },
+    "Profile number (0 to cancel): ": {
+        "fr": "Numéro du profil (0 pour annuler) : ",
+        "en": "Profile number (0 to cancel): ",
+    },
+    "Not saved: the profile has errors.": {
+        "fr": "Non enregistré : le profil a des erreurs.",
+        "en": "Not saved: the profile has errors.",
+    },
+    "Asked during installation:": {
+        "fr": "Demandé pendant l'installation :",
+        "en": "Asked during installation:",
+    },
+    "No private profile: duplicate one first.": {
+        "fr": "Aucun profil privé : dupliquez-en un d'abord.",
+        "en": "No private profile: duplicate one first.",
+    },
+    "A profile named {name} already exists.": {
+        "fr": "Un profil nommé {name} existe déjà.",
+        "en": "A profile named {name} already exists.",
+    },
+    "Section number (0 to finish): ": {
+        "fr": "Numéro de la section (0 pour terminer) : ",
+        "en": "Section number (0 to finish): ",
+    },
+    "Invalid value for {path}.": {
+        "fr": "Valeur invalide pour {path}.",
+        "en": "Invalid value for {path}.",
+    },
+    "The volume date of {path} cannot be read (blkid, xorriso): the ISO with the profile would not find its boot medium.": {
+        "fr": "La date de volume de {path} ne se lit pas (blkid, xorriso) : l'ISO avec le profil ne retrouverait pas son support de démarrage.",
+        "en": "The volume date of {path} cannot be read (blkid, xorriso): the ISO with the profile would not find its boot medium.",
+    },
+    "{path}: the profile is not a JSON object.": {
+        "fr": "{path} : le profil n'est pas un objet JSON.",
+        "en": "{path}: the profile is not a JSON object.",
+    },
+    "{path} cannot be read as JSON: {error}": {
+        "fr": "{path} ne se lit pas comme du JSON : {error}",
+        "en": "{path} cannot be read as JSON: {error}",
+    },
+    "{path}: passwords, keys and hashes are never stored in a profile; they are asked during installation.": {
+        "fr": "{path} : un profil ne contient jamais de mot de passe, de clé ni de hash ; ils sont demandés pendant l'installation.",
+        "en": "{path}: passwords, keys and hashes are never stored in a profile; they are asked during installation.",
+    },
+    "{path}: unknown field.": {
+        "fr": "{path} : champ inconnu.",
+        "en": "{path}: unknown field.",
+    },
+    "{path}: schema version {value}, expected {expected}.": {
+        "fr": "{path} : version de schéma {value}, {expected} attendue.",
+        "en": "{path}: schema version {value}, expected {expected}.",
+    },
+    "{path}: « {value} » is not a valid name (lowercase letters, digits, - and _).": {
+        "fr": "{path} : « {value} » n'est pas un nom valide (minuscules, chiffres, - et _).",
+        "en": "{path}: « {value} » is not a valid name (lowercase letters, digits, - and _).",
+    },
+    "{path}: « {value} » has the wrong type ({expected} expected).": {
+        "fr": "{path} : « {value} » n'a pas le bon type ({expected} attendu).",
+        "en": "{path}: « {value} » has the wrong type ({expected} expected).",
+    },
+    "{path}: « {value} » is not one of: {allowed}.": {
+        "fr": "{path} : « {value} » n'est pas parmi : {allowed}.",
+        "en": "{path}: « {value} » is not one of: {allowed}.",
+    },
+    "{path}: {value} is below the minimum ({minimum}).": {
+        "fr": "{path} : {value} est sous le minimum ({minimum}).",
+        "en": "{path}: {value} is below the minimum ({minimum}).",
+    },
+    "{path}: the list cannot be empty.": {
+        "fr": "{path} : la liste ne peut pas être vide.",
+        "en": "{path}: the list cannot be empty.",
+    },
+    "{path}: « {value} » is not accepted for this field.": {
+        "fr": "{path} : « {value} » n'est pas accepté pour ce champ.",
+        "en": "{path}: « {value} » is not accepted for this field.",
+    },
+    "{path}: « {value} » is not a valid host name (RFC 1123).": {
+        "fr": "{path} : « {value} » n'est pas un nom d'hôte valide (RFC 1123).",
+        "en": "{path}: « {value} » is not a valid host name (RFC 1123).",
+    },
+    "{path}: « {value} » is not a valid user name, or the system reserves it.": {
+        "fr": "{path} : « {value} » n'est pas un nom d'utilisateur valide, ou le système le réserve.",
+        "en": "{path}: « {value} » is not a valid user name, or the system reserves it.",
+    },
+    "{path}: « {value} » is not a locale such as en_US.UTF-8.": {
+        "fr": "{path} : « {value} » n'est pas une locale comme en_US.UTF-8.",
+        "en": "{path}: « {value} » is not a locale such as en_US.UTF-8.",
+    },
+    "{path}: « {value} » is not a keyboard layout name.": {
+        "fr": "{path} : « {value} » n'est pas un nom de disposition de clavier.",
+        "en": "{path}: « {value} » is not a keyboard layout name.",
+    },
+    "{path}: « {value} » is not a country name.": {
+        "fr": "{path} : « {value} » n'est pas un nom de pays.",
+        "en": "{path}: « {value} » is not a country name.",
+    },
+    "{path}: « {value} » is not a time zone such as Area/City.": {
+        "fr": "{path} : « {value} » n'est pas un fuseau horaire comme Région/Ville.",
+        "en": "{path}: « {value} » is not a time zone such as Area/City.",
+    },
+    "{path}: « {value} » is not a /dev/… path.": {
+        "fr": "{path} : « {value} » n'est pas un chemin /dev/….",
+        "en": "{path}: « {value} » is not a /dev/… path.",
+    },
+    "{path}: « {item} » is not a valid package name.": {
+        "fr": "{path} : « {item} » n'est pas un nom de paquet valide.",
+        "en": "{path}: « {item} » is not a valid package name.",
+    },
+    "{path}: « {item} » is not a valid unit name.": {
+        "fr": "{path} : « {item} » n'est pas un nom d'unité valide.",
+        "en": "{path}: « {item} » is not a valid unit name.",
+    },
+    "{path}: choose one or more distinct kernels among: {allowed}.": {
+        "fr": "{path} : choisissez un ou plusieurs noyaux distincts parmi : {allowed}.",
+        "en": "{path}: choose one or more distinct kernels among: {allowed}.",
+    },
+    "{path}: « {value} » must be a number of MiB, « ram / N » or « min(ram / N, M) ».": {
+        "fr": "{path} : « {value} » doit être un nombre de Mio, « ram / N » ou « min(ram / N, M) ».",
+        "en": "{path}: « {value} » must be a number of MiB, « ram / N » or « min(ram / N, M) ».",
+    },
+    "{path}: {value} must also be listed in system.locales.": {
+        "fr": "{path} : {value} doit aussi figurer dans system.locales.",
+        "en": "{path}: {value} must also be listed in system.locales.",
+    },
+    "{path}: hibernation needs a swap volume.": {
+        "fr": "{path} : l'hibernation demande un volume de swap.",
+        "en": "{path}: hibernation needs a swap volume.",
+    },
+    "The parent profile « {name} » does not exist.": {
+        "fr": "Le profil parent « {name} » n'existe pas.",
+        "en": "The parent profile « {name} » does not exist.",
+    },
+    "The profiles extend each other in a loop: {chain}.": {
+        "fr": "Les profils s'étendent l'un l'autre en boucle : {chain}.",
+        "en": "The profiles extend each other in a loop: {chain}.",
+    },
+    "No internal fixed disk of at least 20 GiB was found (USB disks are never chosen automatically): the disk will be asked during installation.": {
+        "fr": "Aucun disque fixe interne d'au moins 20 Gio n'a été trouvé (un disque USB n'est jamais choisi automatiquement) : le disque sera demandé pendant l'installation.",
+        "en": "No internal fixed disk of at least 20 GiB was found (USB disks are never chosen automatically): the disk will be asked during installation.",
+    },
+    "{device} is connected by USB: check that it is not a backup disk.": {
+        "fr": "{device} est branché en USB : vérifiez que ce n'est pas un disque de sauvegarde.",
+        "en": "{device} is connected by USB: check that it is not a backup disk.",
+    },
+    "{path}: the answer « {value} » is refused; the question stays.": {
+        "fr": "{path} : la réponse « {value} » est refusée ; la question reste posée.",
+        "en": "{path}: the answer « {value} » is refused; the question stays.",
+    },
+    "Hibernation is off: the plain layout has no swap volume.": {
+        "fr": "L'hibernation est coupée : la disposition plain n'a pas de volume de swap.",
+        "en": "Hibernation is off: the plain layout has no swap volume.",
+    },
+    "The {swap} GiB swap takes more than a quarter of the {disk} GiB disk.": {
+        "fr": "La swap de {swap} Gio prend plus du quart du disque de {disk} Gio.",
+        "en": "The {swap} GiB swap takes more than a quarter of the {disk} GiB disk.",
+    },
+    "The memory size is unknown: no swap volume is created, and hibernation is off.": {
+        "fr": "La taille de la mémoire est inconnue : aucun volume de swap n'est créé, et l'hibernation est coupée.",
+        "en": "The memory size is unknown: no swap volume is created, and hibernation is off.",
+    },
+    "32-bit UEFI firmware: GRUB is installed for i386-efi; check that the machine boots before relying on it.": {
+        "fr": "Micrologiciel UEFI 32 bits : GRUB est installé pour i386-efi ; vérifiez que la machine démarre avant de vous y fier.",
+        "en": "32-bit UEFI firmware: GRUB is installed for i386-efi; check that the machine boots before relying on it.",
+    },
+    "The {driver} driver is chosen but no NVIDIA card was detected.": {
+        "fr": "Le pilote {driver} est choisi, mais aucune carte NVIDIA n'a été détectée.",
+        "en": "The {driver} driver is chosen but no NVIDIA card was detected.",
+    },
+    "{path}: this field is required.": {
+        "fr": "{path} : ce champ est obligatoire.",
+        "en": "{path}: this field is required.",
+    },
+    "{path}: a secret volume needs the lvm_on_luks layout.": {
+        "fr": "{path} : un volume secret demande la disposition lvm_on_luks.",
+        "en": "{path}: a secret volume needs the lvm_on_luks layout.",
+    },
+    "File system error:": {
+        "fr": "Erreur du système de fichiers :",
+        "en": "File system error:",
+    },
+    "Removed an outdated derived ISO file:": {
+        "fr": "Fichier d'ISO dérivée périmé retiré :",
+        "en": "Removed an outdated derived ISO file:",
+    },
+    "Not enough free space in {path}: {need} needed, {free} free.": {
+        "fr": "Pas assez de place libre dans {path} : {need} nécessaires, {free} libres.",
+        "en": "Not enough free space in {path}: {need} needed, {free} free.",
+    },
+    "Unknown ERPLibre profile: {profile}.": {
+        "fr": "Profil ERPLibre inconnu : {profile}.",
+        "en": "Unknown ERPLibre profile: {profile}.",
+    },
+    "no .sha256 file for the image: build the payload again.": {
+        "fr": "aucun fichier .sha256 pour l'image : refabriquer le paquet.",
+        "en": "no .sha256 file for the image: build the payload again.",
+    },
+    "no readable manifest in the image (debugfs, e2fsprogs) nor in payload/.": {
+        "fr": "aucun manifeste lisible dans l'image (debugfs, e2fsprogs) ni dans payload/.",
+        "en": "no readable manifest in the image (debugfs, e2fsprogs) nor in payload/.",
+    },
+    "the manifest is refused by the installer of the key.": {
+        "fr": "le manifeste est refusé par l'installateur de la clé.",
+        "en": "the manifest is refused by the installer of the key.",
+    },
+    "this is a recording key, not an offline payload.": {
+        "fr": "c'est une clé d'enregistrement, pas un paquet hors ligne.",
+        "en": "this is a recording key, not an offline payload.",
+    },
+    "report.json says a required package is missing or unsigned: build the payload again.": {
+        "fr": "report.json signale un paquet requis absent ou non signé : refabriquer le paquet.",
+        "en": "report.json says a required package is missing or unsigned: build the payload again.",
+    },
+    "Nothing says which ISO recorded this payload: the ISO must have the offline mode, otherwise the key installs online.": {
+        "fr": "Rien ne dit quelle ISO a enregistré ce paquet : l'ISO doit avoir le mode hors ligne, sinon la clé installe en ligne.",
+        "en": "Nothing says which ISO recorded this payload: the ISO must have the offline mode, otherwise the key installs online.",
+    },
+    "This payload was recorded with another ISO (UUID {uuid}): the chosen ISO must have the offline mode, otherwise the key installs online.": {
+        "fr": "Ce paquet a été enregistré avec une autre ISO (UUID {uuid}) : l'ISO choisie doit avoir le mode hors ligne, sinon la clé installe en ligne.",
+        "en": "This payload was recorded with another ISO (UUID {uuid}): the chosen ISO must have the offline mode, otherwise the key installs online.",
+    },
+    "The ISO carries archinstall {iso}, the payload was recorded with {payload}: it may ask for packages the payload lacks (the installer checks before erasing anything).": {
+        "fr": "L'ISO porte archinstall {iso}, le paquet a été enregistré avec {payload} : il peut demander des paquets absents du paquet (l'installateur le vérifie avant tout effacement).",
+        "en": "The ISO carries archinstall {iso}, the payload was recorded with {payload}: it may ask for packages the payload lacks (the installer checks before erasing anything).",
+    },
+    "sfdisk or xorriso cannot read it.": {
+        "fr": "sfdisk ou xorriso ne peut pas la lire.",
+        "en": "sfdisk or xorriso cannot read it.",
+    },
+    "its UUID changed: the live would not find its boot medium.": {
+        "fr": "son UUID a changé : le live ne retrouverait pas son support de démarrage.",
+        "en": "its UUID changed: the live would not find its boot medium.",
+    },
+    "BIOS boot is missing.": {
+        "fr": "le démarrage BIOS manque.",
+        "en": "BIOS boot is missing.",
+    },
+    "UEFI boot is missing.": {
+        "fr": "le démarrage UEFI manque.",
+        "en": "UEFI boot is missing.",
+    },
+    "the EFI partition is missing.": {
+        "fr": "la partition EFI manque.",
+        "en": "the EFI partition is missing.",
+    },
+    "partition 3 (offline payload) is missing or too small.": {
+        "fr": "la partition 3 (paquet hors ligne) manque ou est trop petite.",
+        "en": "partition 3 (offline payload) is missing or too small.",
+    },
+    "payload {profile}, {date}, {size} (key of {key} GB or more)": {
+        "fr": "paquet {profile}, {date}, {size} (clé de {key} Go ou plus)",
+        "en": "payload {profile}, {date}, {size} (key of {key} GB or more)",
+    },
+    "Offline payload on {device} (manifest readable as root only).": {
+        "fr": "Paquet hors ligne sur {device} (manifeste lisible en root seulement).",
+        "en": "Offline payload on {device} (manifest readable as root only).",
+    },
+    "Offline payload on {device}: {profile}, {date}": {
+        "fr": "Paquet hors ligne sur {device} : {profile}, {date}",
+        "en": "Offline payload on {device}: {profile}, {date}",
+    },
+    "Offline payloads in {path}:": {
+        "fr": "Paquets hors ligne dans {path} :",
+        "en": "Offline payloads in {path}:",
+    },
+    "none: build one when writing an ERPLibre ISO to a key.": {
+        "fr": "aucun : en fabriquer un à l'écriture d'une ISO ERPLibre sur une clé.",
+        "en": "none: build one when writing an ERPLibre ISO to a key.",
+    },
+    "Offline installation:": {
+        "fr": "Installation hors ligne :",
+        "en": "Offline installation:",
+    },
+    "no (network required during installation)": {
+        "fr": "non (réseau requis pendant l'installation)",
+        "en": "no (network required during installation)",
+    },
+    "Build an offline payload (reference install in QEMU)…": {
+        "fr": "Fabriquer un paquet hors ligne (installation de référence en QEMU)…",
+        "en": "Build an offline payload (reference install in QEMU)…",
+    },
+    "Payload number, Enter for none: ": {
+        "fr": "Numéro du paquet, Entrée pour aucun : ",
+        "en": "Payload number, Enter for none: ",
+    },
+    "This payload cannot go on a key: see the reasons above.": {
+        "fr": "Ce paquet ne peut pas partir sur une clé : voir les raisons ci-dessus.",
+        "en": "This payload cannot go on a key: see the reasons above.",
+    },
+    "No USB key plugged in can hold {size}: the largest is {largest}.": {
+        "fr": "Aucune clé USB branchée ne peut recevoir {size} : la plus grande fait {largest}.",
+        "en": "No USB key plugged in can hold {size}: the largest is {largest}.",
+    },
+    "Keep this offline payload? (y/N): ": {
+        "fr": "Garder ce paquet hors ligne ? (o/N) : ",
+        "en": "Keep this offline payload? (y/N): ",
+    },
+    "The image will take {size}: use a key of {key} GB or more. Writing and reading it back takes tens of minutes on a slow key.": {
+        "fr": "L'image fera {size} : prendre une clé de {key} Go ou plus. L'écrire puis la relire prend des dizaines de minutes sur une clé lente.",
+        "en": "The image will take {size}: use a key of {key} GB or more. Writing and reading it back takes tens of minutes on a slow key.",
+    },
+    "ERPLibre profile number (0 to cancel): ": {
+        "fr": "Numéro du profil ERPLibre (0 pour annuler) : ",
+        "en": "ERPLibre profile number (0 to cancel): ",
+    },
+    "About {minutes} min and up to {need} in {path}: a reference install of {profile} in QEMU (KVM, no root), network required during the build.": {
+        "fr": "Environ {minutes} min et jusqu'à {need} dans {path} : une installation de référence de {profile} en QEMU (KVM, sans root), réseau requis pendant la fabrication.",
+        "en": "About {minutes} min and up to {need} in {path}: a reference install of {profile} in QEMU (KVM, no root), network required during the build.",
+    },
+    "Git mirrors copied first from:": {
+        "fr": "Miroirs git copiés d'abord depuis :",
+        "en": "Git mirrors copied first from:",
+    },
+    "Build the offline payload now? (y/N): ": {
+        "fr": "Fabriquer le paquet hors ligne maintenant ? (o/N) : ",
+        "en": "Build the offline payload now? (y/N): ",
+    },
+    "Checking the SHA-256 of the offline payload image…": {
+        "fr": "Vérification de la somme SHA-256 de l'image du paquet hors ligne…",
+        "en": "Checking the SHA-256 of the offline payload image…",
+    },
+    "The offline payload image does not match its .sha256: build the payload again.": {
+        "fr": "L'image du paquet hors ligne ne correspond plus à son .sha256 : refabriquer le paquet.",
+        "en": "The offline payload image does not match its .sha256: build the payload again.",
+    },
+    "Already built with this offline payload:": {
+        "fr": "Déjà construite avec ce paquet hors ligne :",
+        "en": "Already built with this offline payload:",
+    },
+    "Outdated derived ISO files are removed first to make room.": {
+        "fr": "Les fichiers d'ISO dérivées périmés sont retirés d'abord pour faire de la place.",
+        "en": "Outdated derived ISO files are removed first to make room.",
+    },
+    "Build the ISO with the offline payload? (y/N): ": {
+        "fr": "Construire l'ISO avec le paquet hors ligne ? (o/N) : ",
+        "en": "Build the ISO with the offline payload? (y/N): ",
+    },
+    "The derived ISO is refused:": {
+        "fr": "L'ISO dérivée est refusée :",
+        "en": "The derived ISO is refused:",
+    },
+    "Derived ISO:": {
+        "fr": "ISO dérivée :",
+        "en": "Derived ISO:",
+    },
+    "{device} is not present on this computer.": {
+        "fr": "{device} n'est pas présent sur cet ordinateur.",
+        "en": "{device} is not present on this computer.",
+    },
+    "{device} is the boot medium.": {
+        "fr": "{device} est le support de démarrage.",
+        "en": "{device} is the boot medium.",
+    },
+    "The boot medium was not identified: no disk is chosen automatically; check that the chosen disk is not the key.": {
+        "fr": "Le support de démarrage n'a pas été reconnu : aucun disque n'est choisi automatiquement ; vérifier que le disque choisi n'est pas la clé.",
+        "en": "The boot medium was not identified: no disk is chosen automatically; check that the chosen disk is not the key.",
+    },
+    "{device} shares its NVMe controller with other namespaces: reformatting to 4 KiB sectors is not offered, it could erase them.": {
+        "fr": "{device} partage son contrôleur NVMe avec d'autres espaces de noms : le reformatage en secteurs de 4 Kio n'est pas proposé, il pourrait les effacer.",
+        "en": "{device} shares its NVMe controller with other namespaces: reformatting to 4 KiB sectors is not offered, it could erase them.",
+    },
+    "{device} is no longer the disk shown on the summary ({fields}): nothing was erased.": {
+        "fr": "{device} n'est plus le disque montré au récapitulatif ({fields}) : rien n'a été effacé.",
+        "en": "{device} is no longer the disk shown on the summary ({fields}): nothing was erased.",
+    },
+    "The installation was interrupted; the disk was released.": {
+        "fr": "L'installation a été interrompue ; le disque a été libéré.",
+        "en": "The installation was interrupted; the disk was released.",
+    },
+    "The disk is not known yet: sector size, TRIM and swap are computed again once it is chosen.": {
+        "fr": "Le disque n'est pas encore connu : taille de secteur, TRIM et swap seront recalculés une fois qu'il sera choisi.",
+        "en": "The disk is not known yet: sector size, TRIM and swap are computed again once it is chosen.",
+    },
+    "Swap capped at {capped} GiB instead of {requested} GiB (a quarter of the disk at most): hibernation is off.": {
+        "fr": "Swap plafonnée à {capped} Gio au lieu de {requested} Gio (le quart du disque au plus) : l'hibernation est coupée.",
+        "en": "Swap capped at {capped} GiB instead of {requested} GiB (a quarter of the disk at most): hibernation is off.",
+    },
+    "Hibernation is off: the swap cannot hold all the memory.": {
+        "fr": "L'hibernation est coupée : la swap ne peut pas contenir toute la mémoire.",
+        "en": "Hibernation is off: the swap cannot hold all the memory.",
+    },
+    "systemd-boot needs a 64-bit UEFI boot: this machine boots with BIOS or 32-bit UEFI.": {
+        "fr": "systemd-boot demande un démarrage UEFI 64 bits : cette machine démarre en BIOS ou en UEFI 32 bits.",
+        "en": "systemd-boot needs a 64-bit UEFI boot: this machine boots with BIOS or 32-bit UEFI.",
+    },
+    "asked during installation": {
+        "fr": "demandé pendant l'installation",
+        "en": "asked during installation",
+    },
+    "detected during installation": {
+        "fr": "détecté pendant l'installation",
+        "en": "detected during installation",
+    },
+    "private": {
+        "fr": "privé",
+        "en": "private",
+    },
+    "Profile": {
+        "fr": "Profil",
+        "en": "Profile",
+    },
+    "Target disk": {
+        "fr": "Disque cible",
+        "en": "Target disk",
+    },
+    "Disk layout": {
+        "fr": "Disposition du disque",
+        "en": "Disk layout",
+    },
+    "LUKS sector size": {
+        "fr": "Taille de secteur LUKS",
+        "en": "LUKS sector size",
+    },
+    "TRIM (discards)": {
+        "fr": "TRIM (discards)",
+        "en": "TRIM (discards)",
+    },
+    "Secret volume": {
+        "fr": "Volume secret",
+        "en": "Secret volume",
+    },
+    "Boot loader": {
+        "fr": "Chargeur d'amorçage",
+        "en": "Boot loader",
+    },
+    "Kernels": {
+        "fr": "Noyaux",
+        "en": "Kernels",
+    },
+    "Microcode": {
+        "fr": "Microcode",
+        "en": "Microcode",
+    },
+    "Time zone": {
+        "fr": "Fuseau horaire",
+        "en": "Time zone",
+    },
+    "Locales": {
+        "fr": "Locales",
+        "en": "Locales",
+    },
+    "Keyboard": {
+        "fr": "Clavier",
+        "en": "Keyboard",
+    },
+    "Desktop": {
+        "fr": "Bureau",
+        "en": "Desktop",
+    },
+    "GPU driver": {
+        "fr": "Pilote graphique",
+        "en": "GPU driver",
+    },
+    "Power management": {
+        "fr": "Gestion de l'énergie",
+        "en": "Power management",
+    },
+    "AppArmor": {
+        "fr": "AppArmor",
+        "en": "AppArmor",
+    },
+    "Extra packages": {
+        "fr": "Paquets supplémentaires",
+        "en": "Extra packages",
+    },
+    "Services": {
+        "fr": "Services",
+        "en": "Services",
+    },
+    # Phrases de l'interface de l'installateur de l'ISO (erplibre_ui*),
+    # recopiées dans son catalogue par build_iso.catalogue_document.
+    "Dry run: the plan is complete, nothing was written.": {
+        "fr": "Essai à blanc : le plan est complet, rien n'a été écrit.",
+        "en": "Dry run: the plan is complete, nothing was written.",
+    },
+    "(cable, or « iwctl » from the shell)": {
+        "fr": "(câble, ou « iwctl » depuis le shell)",
+        "en": "(cable, or « iwctl » from the shell)",
+    },
+    "ALL DATA ON THIS DISK WILL BE ERASED:": {
+        "fr": "TOUTES LES DONNÉES DE CE DISQUE SERONT EFFACÉES :",
+        "en": "ALL DATA ON THIS DISK WILL BE ERASED:",
+    },
+    "Answer yes or no.": {
+        "fr": "Répondez oui ou non.",
+        "en": "Answer yes or no.",
+    },
+    "At least {count} characters are required.": {
+        "fr": "Au moins {count} caractères sont exigés.",
+        "en": "At least {count} characters are required.",
+    },
+    "Back to the home screen": {
+        "fr": "Retour à l'accueil",
+        "en": "Back to the home screen",
+    },
+    "Back up the LUKS header": {
+        "fr": "Sauvegarder l'en-tête LUKS",
+        "en": "Back up the LUKS header",
+    },
+    "Cancelled: nothing was erased.": {
+        "fr": "Annulé : rien n'a été effacé.",
+        "en": "Cancelled: nothing was erased.",
+    },
+    "Choose a disk.": {
+        "fr": "Choisissez un disque.",
+        "en": "Choose a disk.",
+    },
+    "Choose a profile.": {
+        "fr": "Choisissez un profil.",
+        "en": "Choose a profile.",
+    },
+    "Choose a value.": {
+        "fr": "Choisissez une valeur.",
+        "en": "Choose a value.",
+    },
+    "Commands": {
+        "fr": "Commandes",
+        "en": "Commands",
+    },
+    "Configuration not written.": {
+        "fr": "Configuration non écrite.",
+        "en": "Configuration not written.",
+    },
+    "Confirm: {label}": {
+        "fr": "Confirmer : {label}",
+        "en": "Confirm: {label}",
+    },
+    "Create the secret volume ({size} GiB)": {
+        "fr": "Créer le volume secret ({size} Gio)",
+        "en": "Create the secret volume ({size} GiB)",
+    },
+    "Disk encryption passphrase (LUKS)": {
+        "fr": "Phrase de chiffrement du disque (LUKS)",
+        "en": "Disk encryption passphrase (LUKS)",
+    },
+    "Disk to ERASE": {
+        "fr": "Disque à EFFACER",
+        "en": "Disk to ERASE",
+    },
+    "ERPLibre TODO is not on this key.": {
+        "fr": "Le TODO d'ERPLibre n'est pas sur cette clé.",
+        "en": "ERPLibre TODO is not on this key.",
+    },
+    "ERPLibre installer — Arch Linux + GNOME + ERPLibre": {
+        "fr": "Installateur ERPLibre — Arch Linux + GNOME + ERPLibre",
+        "en": "ERPLibre installer — Arch Linux + GNOME + ERPLibre",
+    },
+    "ERPLibre profile": {
+        "fr": "Profil ERPLibre",
+        "en": "ERPLibre profile",
+    },
+    "Erase and install": {
+        "fr": "Effacer et installer",
+        "en": "Erase and install",
+    },
+    "Exit code: {rc}": {
+        "fr": "Code de sortie : {rc}",
+        "en": "Exit code: {rc}",
+    },
+    "Firmware": {
+        "fr": "Micrologiciel",
+        "en": "Firmware",
+    },
+    "Français / English": {
+        "fr": "Français / English",
+        "en": "Français / English",
+    },
+    "Installation failed": {
+        "fr": "Installation échouée",
+        "en": "Installation failed",
+    },
+    "Installation finished": {
+        "fr": "Installation terminée",
+        "en": "Installation finished",
+    },
+    "Installation in progress — do not power off": {
+        "fr": "Installation en cours — ne pas éteindre",
+        "en": "Installation in progress — do not power off",
+    },
+    "Installation started; it takes a while.": {
+        "fr": "Installation lancée ; elle prend un moment.",
+        "en": "Installation started; it takes a while.",
+    },
+    "Invalid choice.": {
+        "fr": "Choix invalide.",
+        "en": "Invalid choice.",
+    },
+    "Keyboard layout (applied now)": {
+        "fr": "Disposition du clavier (appliquée tout de suite)",
+        "en": "Keyboard layout (applied now)",
+    },
+    "Keyboard layout « {name} » applied.": {
+        "fr": "Disposition du clavier « {name} » appliquée.",
+        "en": "Keyboard layout « {name} » applied.",
+    },
+    "LVM on LUKS (encrypted)": {
+        "fr": "LVM sur LUKS (chiffré)",
+        "en": "LVM on LUKS (encrypted)",
+    },
+    "Laptop": {
+        "fr": "Portable",
+        "en": "Laptop",
+    },
+    "Line breaks are not accepted.": {
+        "fr": "Les sauts de ligne ne sont pas acceptés.",
+        "en": "Line breaks are not accepted.",
+    },
+    "Locales (comma separated)": {
+        "fr": "Locales (séparées par des virgules)",
+        "en": "Locales (comma separated)",
+    },
+    "Logs: {path}": {
+        "fr": "Journaux : {path}",
+        "en": "Logs: {path}",
+    },
+    "Machine profile: {profile}": {
+        "fr": "Profil machine : {profile}",
+        "en": "Machine profile: {profile}",
+    },
+    "Missing: {missing}": {
+        "fr": "Manquant : {missing}",
+        "en": "Missing: {missing}",
+    },
+    "NOT connected": {
+        "fr": "NON connecté",
+        "en": "NOT connected",
+    },
+    "Network: checking…": {
+        "fr": "Réseau : vérification…",
+        "en": "Network: checking…",
+    },
+    "Network: {state}": {
+        "fr": "Réseau : {state}",
+        "en": "Network: {state}",
+    },
+    "Next": {
+        "fr": "Suivant",
+        "en": "Next",
+    },
+    "No ERPLibre profile on this key.": {
+        "fr": "Aucun profil ERPLibre sur cette clé.",
+        "en": "No ERPLibre profile on this key.",
+    },
+    "No disk is chosen.": {
+        "fr": "Aucun disque n'est choisi.",
+        "en": "No disk is chosen.",
+    },
+    "No disk of this computer can be erased.": {
+        "fr": "Aucun disque de cet ordinateur ne peut être effacé.",
+        "en": "No disk of this computer can be erased.",
+    },
+    "No network: connect a cable, or Wi-Fi with iwctl.": {
+        "fr": "Pas de réseau : branchez un câble, ou le Wi-Fi avec iwctl.",
+        "en": "No network: connect a cable, or Wi-Fi with iwctl.",
+    },
+    "Preparing the disk failed.": {
+        "fr": "La préparation du disque a échoué.",
+        "en": "Preparing the disk failed.",
+    },
+    "Press Enter to go back to the home screen… ": {
+        "fr": "Entrée pour revenir à l'accueil… ",
+        "en": "Press Enter to go back to the home screen… ",
+    },
+    "Quit to the shell": {
+        "fr": "Quitter vers le shell",
+        "en": "Quit to the shell",
+    },
+    "Reboot": {
+        "fr": "Redémarrer",
+        "en": "Reboot",
+    },
+    "Reformat the NVMe disk to 4 KiB sectors (format {lbaf})?": {
+        "fr": "Reformater le disque NVMe en secteurs de 4 Kio (format {lbaf}) ?",
+        "en": "Reformat the NVMe disk to 4 KiB sectors (format {lbaf})?",
+    },
+    "Root account": {
+        "fr": "Compte root",
+        "en": "Root account",
+    },
+    "Root can only be locked when the user has sudo.": {
+        "fr": "root ne peut être verrouillé que si le compte a sudo.",
+        "en": "Root can only be locked when the user has sudo.",
+    },
+    "Root password": {
+        "fr": "Mot de passe de root",
+        "en": "Root password",
+    },
+    "Run archinstall (guided, pre-filled)": {
+        "fr": "Lancer archinstall (guidé, pré-rempli)",
+        "en": "Run archinstall (guided, pre-filled)",
+    },
+    "Secret volume passphrase": {
+        "fr": "Phrase du volume secret",
+        "en": "Secret volume passphrase",
+    },
+    "Some answers need fixing.": {
+        "fr": "Des réponses sont à corriger.",
+        "en": "Some answers need fixing.",
+    },
+    "Some questions are still unanswered: {questions}": {
+        "fr": "Des questions restent sans réponse : {questions}",
+        "en": "Some questions are still unanswered: {questions}",
+    },
+    "Start ERPLibre TODO": {
+        "fr": "Démarrer le TODO d'ERPLibre",
+        "en": "Start ERPLibre TODO",
+    },
+    "Start archinstall": {
+        "fr": "Lancer archinstall",
+        "en": "Start archinstall",
+    },
+    "Summary — nothing is written yet": {
+        "fr": "Récapitulatif — rien n'est encore écrit",
+        "en": "Summary — nothing is written yet",
+    },
+    "System language (one of the locales)": {
+        "fr": "Langue du système (une des locales)",
+        "en": "System language (one of the locales)",
+    },
+    "Tab: next field — F10: next screen — Esc: back": {
+        "fr": "Tab : champ suivant — F10 : écran suivant — Échap : retour",
+        "en": "Tab: next field — F10: next screen — Esc: back",
+    },
+    "The ERPLibre archinstall plugin failed.": {
+        "fr": "Le greffon ERPLibre d'archinstall a échoué.",
+        "en": "The ERPLibre archinstall plugin failed.",
+    },
+    "Installation source": {
+        "fr": "Source de l'installation",
+        "en": "Installation source",
+    },
+    "The ERPLibre stage could not trust the offline payload.": {
+        "fr": "L'étape ERPLibre n'a pas pu approuver le paquet hors ligne.",
+        "en": "The ERPLibre stage could not trust the offline payload.",
+    },
+    "The installed system still trusts the offline payload authority: reinstall it, or free space on it and run 'trust extract-compat' before using it.": {
+        "fr": "Le système installé approuve encore l'autorité du paquet hors ligne : le réinstaller, ou y libérer de la place et lancer « trust extract-compat » avant de s'en servir.",
+        "en": "The installed system still trusts the offline payload authority: reinstall it, or free space on it and run 'trust extract-compat' before using it.",
+    },
+    "The offline install was refused before anything was erased; see the log.": {
+        "fr": "L'installation hors ligne a été refusée avant tout effacement ; voir le journal.",
+        "en": "The offline install was refused before anything was erased; see the log.",
+    },
+    "The offline payload of this key is unusable ({reason}): the install needs the network.": {
+        "fr": "Le paquet hors ligne de cette clé est inutilisable ({reason}) : l'installation demande le réseau.",
+        "en": "The offline payload of this key is unusable ({reason}): the install needs the network.",
+    },
+    "offline install (payload {profile}, {date})": {
+        "fr": "installation hors ligne (paquet {profile}, {date})",
+        "en": "offline install (payload {profile}, {date})",
+    },
+    "online (network required)": {
+        "fr": "en ligne (réseau requis)",
+        "en": "online (network required)",
+    },
+    "The ERPLibre profile command failed.": {
+        "fr": "La commande du profil ERPLibre a échoué.",
+        "en": "The ERPLibre profile command failed.",
+    },
+    "The ERPLibre profile « {value} » does not exist on this key.": {
+        "fr": "Le profil ERPLibre « {value} » n'existe pas sur cette clé.",
+        "en": "The ERPLibre profile « {value} » does not exist on this key.",
+    },
+    "The ERPLibre stage could not clone ERPLibre.": {
+        "fr": "L'étape ERPLibre n'a pas pu cloner ERPLibre.",
+        "en": "The ERPLibre stage could not clone ERPLibre.",
+    },
+    "The ERPLibre stage could not set up sudo.": {
+        "fr": "L'étape ERPLibre n'a pas pu configurer sudo.",
+        "en": "The ERPLibre stage could not set up sudo.",
+    },
+    "The ERPLibre stage could not start PostgreSQL.": {
+        "fr": "L'étape ERPLibre n'a pas pu démarrer PostgreSQL.",
+        "en": "The ERPLibre stage could not start PostgreSQL.",
+    },
+    "The ERPLibre stage did not run.": {
+        "fr": "L'étape ERPLibre n'a pas tourné.",
+        "en": "The ERPLibre stage did not run.",
+    },
+    "The ERPLibre stage found no user account.": {
+        "fr": "L'étape ERPLibre n'a trouvé aucun compte utilisateur.",
+        "en": "The ERPLibre stage found no user account.",
+    },
+    "The answers are malformed: {errors}": {
+        "fr": "Les réponses sont mal formées : {errors}",
+        "en": "The answers are malformed: {errors}",
+    },
+    "The answers were refused.": {
+        "fr": "Les réponses ont été refusées.",
+        "en": "The answers were refused.",
+    },
+    "The disk can be reformatted to 4 KiB sectors (format {lbaf}); it is not, unless you tick the box.": {
+        "fr": "Le disque peut être reformaté en secteurs de 4 Kio (format {lbaf}) ; il ne l'est pas, sauf si vous cochez la case.",
+        "en": "The disk can be reformatted to 4 KiB sectors (format {lbaf}); it is not, unless you tick the box.",
+    },
+    "The disk changed or is in use: nothing was erased.": {
+        "fr": "Le disque a changé ou est utilisé : rien n'a été effacé.",
+        "en": "The disk changed or is in use: nothing was erased.",
+    },
+    "The disk is too small: the system would get {root_mib} MiB, {minimum_mib} MiB at least.": {
+        "fr": "Le disque est trop petit : le système aurait {root_mib} Mio, il en faut au moins {minimum_mib}.",
+        "en": "The disk is too small: the system would get {root_mib} MiB, {minimum_mib} MiB at least.",
+    },
+    "The erplibre service could not be installed.": {
+        "fr": "Le service erplibre n'a pas pu être installé.",
+        "en": "The erplibre service could not be installed.",
+    },
+    "The installation cannot go on:": {
+        "fr": "L'installation ne peut pas continuer :",
+        "en": "The installation cannot go on:",
+    },
+    "The installation is running.": {
+        "fr": "L'installation est en cours.",
+        "en": "The installation is running.",
+    },
+    "The installation succeeded.": {
+        "fr": "L'installation a réussi.",
+        "en": "The installation succeeded.",
+    },
+    "The installer ended with code {rc}.": {
+        "fr": "L'installateur s'est terminé avec le code {rc}.",
+        "en": "The installer ended with code {rc}.",
+    },
+    "The installer was started wrongly.": {
+        "fr": "L'installateur a été mal lancé.",
+        "en": "The installer was started wrongly.",
+    },
+    "The keyboard layout « {value} » does not exist.": {
+        "fr": "La disposition du clavier « {value} » n'existe pas.",
+        "en": "The keyboard layout « {value} » does not exist.",
+    },
+    "The machine profile is invalid.": {
+        "fr": "Le profil machine est invalide.",
+        "en": "The machine profile is invalid.",
+    },
+    "The machine profile was refused.": {
+        "fr": "Le profil machine a été refusé.",
+        "en": "The machine profile was refused.",
+    },
+    "The passphrase has non-ASCII characters: make sure the boot prompt can type them.": {
+        "fr": "La phrase porte des caractères hors ASCII : vérifiez que l'invite du démarrage sait les taper.",
+        "en": "The passphrase has non-ASCII characters: make sure the boot prompt can type them.",
+    },
+    "The passphrase is typed with « {live} » but the installed system asks for it with « {target} »: check that it types the same.": {
+        "fr": "La phrase est tapée avec « {live} » mais le système installé la demande avec « {target} » : vérifiez qu'elle se tape pareil.",
+        "en": "The passphrase is typed with « {live} » but the installed system asks for it with « {target} »: check that it types the same.",
+    },
+    "The two entries differ.": {
+        "fr": "Les deux saisies diffèrent.",
+        "en": "The two entries differ.",
+    },
+    "This archinstall version is not the supported one.": {
+        "fr": "Cette version d'archinstall n'est pas celle prise en charge.",
+        "en": "This archinstall version is not the supported one.",
+    },
+    "This field is required.": {
+        "fr": "Ce champ est obligatoire.",
+        "en": "This field is required.",
+    },
+    "Time zone (Area/City)": {
+        "fr": "Fuseau horaire (Zone/Ville)",
+        "en": "Time zone (Area/City)",
+    },
+    "Type exactly « {name} » to confirm.": {
+        "fr": "Tapez exactement « {name} » pour confirmer.",
+        "en": "Type exactly « {name} » to confirm.",
+    },
+    "Type the disk name to confirm.": {
+        "fr": "Tapez le nom du disque pour confirmer.",
+        "en": "Type the disk name to confirm.",
+    },
+    "Type « {name} » to erase it (Enter cancels): ": {
+        "fr": "Tapez « {name} » pour l'effacer (Entrée annule) : ",
+        "en": "Type « {name} » to erase it (Enter cancels): ",
+    },
+    "Type « {name} » to erase it:": {
+        "fr": "Tapez « {name} » pour l'effacer :",
+        "en": "Type « {name} » to erase it:",
+    },
+    "User name": {
+        "fr": "Nom du compte",
+        "en": "User name",
+    },
+    "User password": {
+        "fr": "Mot de passe du compte",
+        "en": "User password",
+    },
+    "Virtual machine": {
+        "fr": "Machine virtuelle",
+        "en": "Virtual machine",
+    },
+    "Waiting for the network…": {
+        "fr": "Attente du réseau…",
+        "en": "Waiting for the network…",
+    },
+    "Waiting for the pacman keyring…": {
+        "fr": "Attente du trousseau de pacman…",
+        "en": "Waiting for the pacman keyring…",
+    },
+    "What now?": {
+        "fr": "Et maintenant ?",
+        "en": "What now?",
+    },
+    "What should be installed with GNOME?": {
+        "fr": "Que faut-il installer avec GNOME ?",
+        "en": "What should be installed with GNOME?",
+    },
+    "Wi-Fi": {
+        "fr": "Wi-Fi",
+        "en": "Wi-Fi",
+    },
+    "[Y/n]": {
+        "fr": "[O/n]",
+        "en": "[Y/n]",
+    },
+    "[y/N]": {
+        "fr": "[o/N]",
+        "en": "[y/N]",
+    },
+    "archinstall asks the disk, an account (required for ERPLibre), the language and the time zone. The network is required.": {
+        "fr": "archinstall demande le disque, un compte (obligatoire pour ERPLibre), la langue et le fuseau. Le réseau est requis.",
+        "en": "archinstall asks the disk, an account (required for ERPLibre), the language and the time zone. The network is required.",
+    },
+    "archinstall failed.": {
+        "fr": "archinstall a échoué.",
+        "en": "archinstall failed.",
+    },
+    "archinstall returned {rc}.": {
+        "fr": "archinstall a rendu {rc}.",
+        "en": "archinstall returned {rc}.",
+    },
+    "ERPLibre TODO returned {rc}.": {
+        "fr": "Le TODO d'ERPLibre a rendu {rc}.",
+        "en": "ERPLibre TODO returned {rc}.",
+    },
+    "connected": {
+        "fr": "connecté",
+        "en": "connected",
+    },
+    "guided (profile « {name} »)": {
+        "fr": "guidé (profil « {name} »)",
+        "en": "guided (profile « {name} »)",
+    },
+    "its own password": {
+        "fr": "son propre mot de passe",
+        "en": "its own password",
+    },
+    "loadkeys {name} failed: {error}": {
+        "fr": "loadkeys {name} a échoué : {error}",
+        "en": "loadkeys {name} failed: {error}",
+    },
+    "locked: administration through sudo": {
+        "fr": "verrouillé : l'administration passe par sudo",
+        "en": "locked: administration through sudo",
+    },
+    "pacman-init is not active: pacman may fail.": {
+        "fr": "pacman-init n'est pas actif : pacman peut échouer.",
+        "en": "pacman-init is not active: pacman may fail.",
+    },
+    "plain (not encrypted)": {
+        "fr": "plain (non chiffré)",
+        "en": "plain (not encrypted)",
+    },
+    "{name} (from the key)": {
+        "fr": "{name} (de la clé)",
+        "en": "{name} (from the key)",
+    },
+    "« {value} » is not a keyboard layout name.": {
+        "fr": "« {value} » n'est pas un nom de disposition de clavier.",
+        "en": "« {value} » is not a keyboard layout name.",
+    },
 }
 
 

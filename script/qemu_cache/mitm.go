@@ -53,31 +53,94 @@ type CA struct {
 // tomberaient sur une erreur de certificat sans rapport apparent avec le
 // cache.
 func LoadOrCreateCA(dir string) (*CA, error) {
+	return lireOuCreer(dir, profilCache(time.Now()))
+}
+
+// LoadOrCreatePayloadCA lit l'autorité, et la fabrique si elle manque,
+// avec le profil d'un paquet hors ligne (profilPaquet).
+func LoadOrCreatePayloadCA(dir string) (*CA, error) {
+	return lireOuCreer(dir, profilPaquet(time.Now()))
+}
+
+func lireOuCreer(dir string, profil profilCA) (*CA, error) {
 	certPath := filepath.Join(dir, "ca.crt")
 	keyPath := filepath.Join(dir, "ca.key")
 
-	if certPEM, err := os.ReadFile(certPath); err == nil {
-		keyPEM, err := os.ReadFile(keyPath)
-		if err != nil {
-			return nil, fmt.Errorf(T("clé de l'autorité illisible : %w"), err)
-		}
-		cb, _ := pem.Decode(certPEM)
-		kb, _ := pem.Decode(keyPEM)
-		if cb == nil || kb == nil {
-			return nil, errors.New(T("autorité illisible : PEM invalide"))
-		}
-		cert, err := x509.ParseCertificate(cb.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		key, err := x509.ParsePKCS1PrivateKey(kb.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		return &CA{cert: cert, key: key, certPEM: certPEM,
-			leaves: map[string]*tls.Certificate{}}, nil
+	if _, err := os.Stat(certPath); err == nil {
+		return LoadCA(dir)
 	}
+	return creerCA(dir, certPath, keyPath, profil)
+}
 
+// profilCA : le nom et la période de validité d'une autorité à créer.
+type profilCA struct {
+	nom        string
+	debut, fin time.Time
+}
+
+// Nom de l'autorité d'un paquet hors ligne : distinct de celle du cache
+// de l'hôte, les deux se distinguent dans « trust list ».
+const nomAutoritePaquet = "ERPLibre offline payload"
+
+// profilCache : l'autorité du cache de l'hôte, approuvée à demeure par
+// ses VM ; dix ans, pour ne jamais avoir à la remplacer.
+func profilCache(maintenant time.Time) profilCA {
+	return profilCA{
+		nom:   "ERPLibre QEMU cache",
+		debut: maintenant.Add(-time.Hour),
+		fin:   maintenant.AddDate(10, 0, 0),
+	}
+}
+
+// profilPaquet : l'autorité d'un paquet hors ligne. Sa clé voyage sur
+// chaque clé USB qui porte le paquet, et la cible ne l'approuve que le
+// temps de l'installation : un an borne ce qu'une copie de la clé
+// permet. Le début reculé d'une semaine laisse passer une horloge en
+// retard (horloge matérielle tenue à l'heure locale) sans refuser
+// l'autorité comme « pas encore valide ».
+func profilPaquet(maintenant time.Time) profilCA {
+	return profilCA{
+		nom:   nomAutoritePaquet,
+		debut: maintenant.AddDate(0, 0, -7),
+		fin:   maintenant.AddDate(1, 0, 0),
+	}
+}
+
+// LoadCA lit une autorité existante, sans jamais en créer : le mode hors
+// ligne sert celle de son paquet, que la cible approuve le temps de
+// l'installation.
+func LoadCA(dir string) (*CA, error) {
+	certPath := filepath.Join(dir, "ca.crt")
+	keyPath := filepath.Join(dir, "ca.key")
+
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, fmt.Errorf(T("autorité illisible : %w"), err)
+	}
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf(T("clé de l'autorité illisible : %w"), err)
+	}
+	cb, _ := pem.Decode(certPEM)
+	kb, _ := pem.Decode(keyPEM)
+	if cb == nil || kb == nil {
+		return nil, errors.New(T("autorité illisible : PEM invalide"))
+	}
+	cert, err := x509.ParseCertificate(cb.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	key, err := x509.ParsePKCS1PrivateKey(kb.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return &CA{cert: cert, key: key, certPEM: certPEM,
+		leaves: map[string]*tls.Certificate{}}, nil
+}
+
+// creerCA fabrique l'autorité de `profil` et l'écrit sous ces deux
+// chemins.
+func creerCA(dir, certPath, keyPath string, profil profilCA) (*CA, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
@@ -92,11 +155,11 @@ func LoadOrCreateCA(dir string) (*CA, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName:   "ERPLibre QEMU cache",
+			CommonName:   profil.nom,
 			Organization: []string{"ERPLibre"},
 		},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().AddDate(10, 0, 0),
+		NotBefore:             profil.debut,
+		NotAfter:              profil.fin,
 		IsCA:                  true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
@@ -462,6 +525,16 @@ type TLSFront struct {
 	// Nulle, originalDst s'applique ; les tests la remplacent pour viser une
 	// destination sans poser de règle de détournement.
 	Origine func(net.Conn) (string, error)
+	// HorsLigne ne tente aucun tunnel : rien ne peut aboutir à l'amont, et
+	// la connexion est déchiffrée pour que le magasin réponde.
+	HorsLigne bool
+	// SansTunnel déchiffre toujours, même un hôte dont le client a refusé
+	// l'autorité : le tunnel suppose la destination d'origine que garde
+	// Netfilter, et un mandataire joint SANS détournement noyau de cette
+	// machine (la VM d'une installation de référence, par la passerelle de
+	// son réseau « user ») n'en a aucune. Le tunnel échouerait toujours, et
+	// un hôte retenu comme refusé ne serait plus servi du tout.
+	SansTunnel bool
 }
 
 // Serve accepte et traite chaque connexion détournée.
@@ -492,7 +565,7 @@ func (t *TLSFront) handle(c net.Conn) {
 	}
 	peeked := &replayed{Conn: c, buf: bytes.NewBuffer(raw)}
 
-	if host == "" || t.Refusals.Has(host) {
+	if !t.HorsLigne && !t.SansTunnel && (host == "" || t.Refusals.Has(host)) {
 		// Sans SNI il n'y a pas de nom à certifier ; avec un refus connu il
 		// n'y a rien à tenter. Les deux passent en tunnel vers la
 		// destination que le noyau a gardée.

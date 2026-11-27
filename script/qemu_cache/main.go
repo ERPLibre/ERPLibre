@@ -33,6 +33,16 @@ func main() {
 			T("répertoire des objets gardés"))
 		caDir = flag.String("ca-dir", "/var/lib/erplibre_go_qemu_cache",
 			T("répertoire de l'autorité de certification"))
+		ecoute = flag.String("ecoute", "",
+			T("adresse d'écoute des deux ports ; vide, toutes les adresses"))
+		horsLigne = flag.Bool("hors-ligne", false,
+			T("servir le magasin sans jamais joindre l'amont ni y écrire"))
+		sansTunnel = flag.Bool("sans-tunnel", false,
+			T("déchiffrer toujours, sans tunnel : le mandataire est joint"+
+				" sans détournement noyau sur cette machine"))
+		depotPacman = flag.String("depot-pacman", "",
+			T("dépôt pacman local, <dépôt>/os/<arch>/, servi pour tout"+
+				" miroir Arch"))
 		httpPort = flag.Int("http-port", 8898, T("écoute pour le 80 détourné"))
 		tlsPort  = flag.Int("tls-port", 8899, T("écoute pour le 443 détourné"))
 		bridge   = flag.String("bridge", "virbr0", T("pont libvirt des VM"))
@@ -47,6 +57,8 @@ func main() {
 			T("montrer les gestes privilégiés sans en faire un"))
 		initCA = flag.Bool("init-ca", false,
 			T("créer l'autorité si elle manque, puis sortir"))
+		caPaquet = flag.Bool("ca-paquet", false,
+			T("avec --init-ca : autorité d'un paquet hors ligne (nom distinct, un an)"))
 		printNft = flag.Bool("print-nft", false,
 			T("écrire les règles nft seules, à passer à « nft -f - »"))
 		printIptables = flag.Bool("print-iptables", false,
@@ -234,6 +246,7 @@ func main() {
 	muets.Sentinelle = filepath.Join(*cacheDir, SentinelleAmonts)
 	miroir := &GitMirror{
 		Dir: *gitMirrorDir, Frais: *gitMirrorFresh, Muets: muets,
+		HorsLigne: *horsLigne,
 	}
 
 	if *ageReport {
@@ -373,7 +386,11 @@ func main() {
 	}
 
 	if *initCA {
-		ca, err := LoadOrCreateCA(*caDir)
+		creer := LoadOrCreateCA
+		if *caPaquet {
+			creer = LoadOrCreatePayloadCA
+		}
+		ca, err := creer(*caDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, T("autorité : %v\n"), err)
 			os.Exit(1)
@@ -391,28 +408,58 @@ func main() {
 			T("miroir git demandé mais « git-http-backend » est introuvable :"+
 				" git sera relayé vers l'amont (%s)"), *gitMirrorDir)
 	}
+	if *horsLigne {
+		if err := verifierHorsLigne(*cacheDir, *caDir); err != nil {
+			log.Fatal(err)
+		}
+	}
+	options := optionsService{
+		Ecoute: *ecoute, HorsLigne: *horsLigne, SansTunnel: *sansTunnel,
+		Pacman: &DepotPacman{Dir: *depotPacman},
+	}
 	if err := serve(
 		store, *caDir, rules, *logPath, *exclude, *verbose, miroir, muets,
+		options,
 	); err != nil {
 		log.Fatalf(T("le cache s'arrête : %v"), err)
 	}
 }
 
+// optionsService : ce que le service règle en plus de ses ports. Le zéro
+// est le service d'origine, sur toutes les adresses, qui écrit son magasin.
+type optionsService struct {
+	// Ecoute est l'adresse des deux écoutes ; vide, toutes.
+	Ecoute string
+	// HorsLigne sert un magasin figé (voir horsligne.go).
+	HorsLigne bool
+	// SansTunnel : voir TLSFront.SansTunnel.
+	SansTunnel bool
+	// Pacman est le dépôt pacman local, nul ou vide s'il n'y en a pas.
+	Pacman *DepotPacman
+}
+
 func serve(
 	store *Store, caDir string, rules RuleSet,
 	logPath, exclude string, verbose bool, miroir *GitMirror,
-	muets *Joignabilite,
+	muets *Joignabilite, options optionsService,
 ) error {
-	if err := os.MkdirAll(store.Dir, 0o755); err != nil {
-		return err
+	var ca *CA
+	var err error
+	if options.HorsLigne {
+		// Le magasin est en lecture seule : ni création ni balayage.
+		ca, err = LoadCA(caDir)
+	} else {
+		if err := os.MkdirAll(store.Dir, 0o755); err != nil {
+			return err
+		}
+		// Un objet à moitié écrit ne vaut rien et occupe : le démarrage est
+		// le seul moment où un « .part » n'appartient à aucune écriture
+		// vivante.
+		if n := store.SweepPartials(); n > 0 {
+			log.Printf(T("%d écriture(s) interrompue(s) retirée(s)"), n)
+		}
+		ca, err = LoadOrCreateCA(caDir)
 	}
-	// Un objet à moitié écrit ne vaut rien et occupe : le démarrage est le
-	// seul moment où un « .part » n'appartient à aucune écriture vivante.
-	if n := store.SweepPartials(); n > 0 {
-		log.Printf(T("%d écriture(s) interrompue(s) retirée(s)"), n)
-	}
-
-	ca, err := LoadOrCreateCA(caDir)
 	if err != nil {
 		return err
 	}
@@ -428,15 +475,22 @@ func serve(
 	proxy.Muets = muets
 	// Les ports d'écoute sont ceux que la requête d'une boucle viserait.
 	proxy.Ecoutes = []int{rules.HTTPPort, rules.TLSPort}
+	proxy.HorsLigne = options.HorsLigne
+	proxy.Pacman = options.Pacman
 
 	refusals := NewRefusals(append(DefaultExclusions, splitList(exclude)...))
-	front := &TLSFront{CA: ca, Proxy: proxy, Refusals: refusals}
+	front := &TLSFront{
+		CA: ca, Proxy: proxy, Refusals: refusals,
+		HorsLigne: options.HorsLigne, SansTunnel: options.SansTunnel,
+	}
 
-	httpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", rules.HTTPPort))
+	httpLn, err := net.Listen("tcp",
+		adresseDEcoute(options.Ecoute, rules.HTTPPort))
 	if err != nil {
 		return fmt.Errorf(T("écoute HTTP : %w"), err)
 	}
-	tlsLn, err := net.Listen("tcp", fmt.Sprintf(":%d", rules.TLSPort))
+	tlsLn, err := net.Listen("tcp",
+		adresseDEcoute(options.Ecoute, rules.TLSPort))
 	if err != nil {
 		return fmt.Errorf(T("écoute TLS : %w"), err)
 	}
@@ -444,6 +498,12 @@ func serve(
 	log.Printf(T("cache : %s"), store.Dir)
 	log.Printf(T("autorité : %s (%s)"), CertPath(caDir), ca.Fingerprint())
 	log.Printf(T("écoutes : http %d, tls %d"), rules.HTTPPort, rules.TLSPort)
+	if options.HorsLigne {
+		log.Printf("%s", T("mode hors ligne : aucun amont n'est joint"))
+	}
+	if options.Pacman.Actif() {
+		log.Printf(T("dépôt pacman local : %s"), options.Pacman.Dir)
+	}
 
 	errc := make(chan error, 2)
 	go func() {
