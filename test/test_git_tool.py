@@ -396,3 +396,51 @@ class TestConstants(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGenerateGenerateConfig(unittest.TestCase):
+    """generate_generate_config() writes each repository of the manifest
+    once into script/generate_config.sh."""
+
+    HEADER = (
+        'printf "addons_path = old," >> "${EL_CONFIG_FILE}"\n'
+        "\n"
+        'if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then\n'
+        '    printf "stale," >> "${EL_CONFIG_FILE}"\n'
+        "fi\n"
+    )
+    REPOS = [
+        {"path": "odoo18.0/addons/addons"},
+        {"path": "odoo18.0/addons/OCA_server-tools"},
+        {"path": "odoo18.0/odoo"},
+    ]
+
+    def _generate(self, **kwargs):
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "script"))
+            path = os.path.join(root, "script", "generate_config.sh")
+            with open(path, "w") as file:
+                file.write(self.HEADER)
+            tool = GitTool()
+            with patch.object(
+                GitTool, "odoo_version_long", "odoo18.0"
+            ), patch.object(tool, "get_repo_info", return_value=self.REPOS):
+                tool.generate_generate_config(repo_path=root, **kwargs)
+            with open(path) as file:
+                return file.read()
+
+    def test_addons_addons_is_listed_once(self):
+        content = self._generate()
+        self.assertEqual(content.count("/addons/addons,"), 1)
+        self.assertIn(
+            "${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons,", content
+        )
+        self.assertIn(
+            "${EL_HOME_ODOO_PROJECT}/addons/OCA_server-tools,", content
+        )
+        self.assertNotIn("stale,", content)
+
+    def test_addons_addons_kept_when_the_odoo_path_is_ignored(self):
+        content = self._generate(ignore_odoo_path=True)
+        self.assertIn("${EL_HOME_ODOO_PROJECT}/addons/addons,", content)
+        self.assertEqual(content.count("/addons/addons,"), 1)

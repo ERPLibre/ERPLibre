@@ -140,6 +140,11 @@ filetype
 # 3.0.1, et rapporte une version que personne n'installe.
 PyPDF2==2.12.1
 img2pdf
+# Moteur de rendu des images de reportlab 4.1.0 (codes-barres, QR des
+# rapports). Odoo 18 ne l'épingle que pour win32, le paquet Debian le
+# fournissant : sans lui, renderPM lève « cannot import desired renderPM
+# backend rlPyCairo ».
+rl-renderPM==4.0.3
 
 # For logical test and quality
 # black 24.8.0 : CVE-2026-32274, corrigée en 26.3.1 ; ses deux autres avis
