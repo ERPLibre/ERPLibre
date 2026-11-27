@@ -538,6 +538,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The unit suite passes in full where `/usr/sbin` is merged into `/usr/bin`: `test_qemu_cache_install` hides only `nft` from its PATH instead of the whole directory, `sed` and `bash` with it. Under the launcher, the `ssh` stub answers `ssh -V`, which git-repo runs on every `repo sync`, and still refuses any connection, so `test_install_erplibre_home` no longer fails there only
 - A QEMU deploy that stops before its domain exists — error, Ctrl+C, SIGTERM, SIGHUP — removes the disk and seed it created and keeps any file that existed before, so the next deploy of that name no longer meets an orphan disk. An existing domain is refused before its disk is overwritten, even with `--force`, and the deploy form says an orphan disk's deletion is offered at launch
 - `deploy_qemu.py` reports a command the kernel stopped (state T: SIGTTIN, SIGTTOU, SIGTSTP) after 30 seconds, naming the process and how to resume it, instead of waiting without end; it never sends a signal itself
+- TODO's Git repository upgrade reports — dry run, upstream remotes, deepening of shallow clones — follow the language chosen in TODO: their titles were translated once, when TODO started and before it asks for the language, and kept that one. The upgrade screen's header names the verdict by its translated title instead of its internal id (`a_rebaser`, `en_conflit`), which showed in both languages
 
 ## Removed
 

@@ -927,6 +927,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The unit suite passes in full where `/usr/sbin` is merged into `/usr/bin`: `test_qemu_cache_install` hides only `nft` from its PATH instead of the whole directory, `sed` and `bash` with it. Under the launcher, the `ssh` stub answers `ssh -V`, which git-repo runs on every `repo sync`, and still refuses any connection, so `test_install_erplibre_home` no longer fails there only
 - A QEMU deploy that stops before its domain exists — error, Ctrl+C, SIGTERM, SIGHUP — removes the disk and seed it created and keeps any file that existed before, so the next deploy of that name no longer meets an orphan disk. An existing domain is refused before its disk is overwritten, even with `--force`, and the deploy form says an orphan disk's deletion is offered at launch
 - `deploy_qemu.py` reports a command the kernel stopped (state T: SIGTTIN, SIGTTOU, SIGTSTP) after 30 seconds, naming the process and how to resume it, instead of waiting without end; it never sends a signal itself
+- TODO's Git repository upgrade reports — dry run, upstream remotes, deepening of shallow clones — follow the language chosen in TODO: their titles were translated once, when TODO started and before it asks for the language, and kept that one. The upgrade screen's header names the verdict by its translated title instead of its internal id (`a_rebaser`, `en_conflit`), which showed in both languages
 
 <!-- [fr] -->
 
@@ -1102,6 +1103,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - La suite unitaire passe en entier quand `/usr/sbin` est fusionné dans `/usr/bin` : `test_qemu_cache_install` ne cache plus que `nft` de son PATH au lieu du répertoire entier, `sed` et `bash` avec. Sous le lanceur, la doublure `ssh` répond à `ssh -V`, que git-repo lance à chaque `repo sync`, et refuse toujours toute connexion : `test_install_erplibre_home` n'échoue plus là seulement
 - Un déploiement QEMU qui s'arrête avant que son domaine existe — erreur, Ctrl+C, SIGTERM, SIGHUP — retire le disque et le seed qu'il a créés et garde tout fichier qui existait déjà : le déploiement suivant de ce nom ne bute plus sur un disque orphelin. Un domaine existant est refusé avant que son disque soit écrasé, même avec `--force`, et le formulaire de déploiement annonce que l'effacement d'un disque orphelin est proposé au lancement
 - `deploy_qemu.py` signale après 30 secondes une commande que le noyau a arrêtée (état T : SIGTTIN, SIGTTOU, SIGTSTP), en nommant le processus et la façon de la reprendre, au lieu d'attendre sans fin ; il n'envoie jamais de signal lui-même
+- Les rapports de mise à niveau des dépôts Git de TODO — à sec, remotes amont, approfondissement des clones superficiels — suivent la langue choisie dans TODO : leurs titres étaient traduits une seule fois, au démarrage de TODO et avant qu'il demande la langue, et gardaient celle-là. L'en-tête de l'écran de parcours nomme le verdict par son titre traduit au lieu de son identifiant interne (`a_rebaser`, `en_conflit`), qui s'affichait dans les deux langues
 
 <!-- [en] -->
 ## Removed
