@@ -854,9 +854,12 @@ def head_info(racine):
 def uncommitted_freeze(racine):
     """Clés dont le gel de `manifest/` diffère de HEAD.
 
-    Le gel compte ses deux attributs : « freeze-revision » et la base amont
-    « fork-upstream-freeze-revision », qu'un gel peut réécrire seule sous
-    un commit gelé inchangé.
+    Le gel compte ses deux attributs, « freeze-revision » et la base amont
+    « fork-upstream-freeze-revision », qu'un gel peut réécrire seule sous un
+    commit gelé inchangé. La branche « revision » compte aussi, mais
+    seulement pour un projet présent des deux côtés : un gel des branches
+    la réécrit sans toucher au commit, alors qu'un projet ajouté ou retiré
+    sans gel n'est pas un gel.
     """
     try:
         engage = read_ref(racine, "HEAD")
@@ -864,13 +867,21 @@ def uncommitted_freeze(racine):
         return []
     ecrit = read_worktree(racine)
 
-    def gel(entree):
-        return (entree or {}).get("sha"), (entree or {}).get("upstream_base")
+    def differe(avant, apres):
+        avant, apres = avant or {}, apres or {}
+        if (avant.get("sha"), avant.get("upstream_base")) != (
+            apres.get("sha"),
+            apres.get("upstream_base"),
+        ):
+            return True
+        return bool(avant and apres) and (
+            avant.get("branch") != apres.get("branch")
+        )
 
     return sorted(
         c
         for c in set(engage) | set(ecrit)
-        if gel(engage.get(c)) != gel(ecrit.get(c))
+        if differe(engage.get(c), ecrit.get(c))
     )
 
 

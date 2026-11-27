@@ -559,6 +559,19 @@ class TestBaseGeleeDesManifestes(unittest.TestCase):
         texte = repo_upgrade.render([fork], False, colour=False)
         self.assertIn(f"{repo_upgrade.t('frozen base')} {'2' * 12}", texte)
 
+    def test_la_branche_du_fork_ignore_sa_copie_datee(self):
+        """Un gel des branches peut écrire la copie datée dans le
+        manifeste : la passe suivante vise quand même la branche du fork,
+        et ne nomme pas « X_dev_maj_<jour>_maj_<jour> »."""
+        self.ecrire("git_manifest_odooX.xml", None)
+        chemin = os.path.join(self.dossier, "git_manifest_odooX.xml")
+        with open(chemin) as fh:
+            texte = fh.read()
+        with open(chemin, "w") as fh:
+            fh.write(texte.replace('"X_dev"', '"X_dev_maj_20990101"'))
+        (fork,) = repo_upgrade.etat_forks("X", self.dossier)
+        self.assertEqual(fork["revision"], "X_dev")
+
 
 class TestPrefixesModule(unittest.TestCase):
     def test_coeur_odoo(self):

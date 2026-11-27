@@ -1153,6 +1153,13 @@ class GitRepoMenuMixin:
         relire ; le second fetch ne rapatrie que ce qui a bougé depuis le
         premier.
 
+        Il demande ensuite s'il gèle aussi la branche de chaque clone
+        (« --branches »), non par défaut : un clone extrait sur une branche
+        autre que celle du manifeste la donne à « revision ». Une branche
+        absente de son remote, ou en avance sur lui, ne peut s'écrire ; le
+        menu les liste et propose de les pousser, sans force, AVANT la passe
+        à sec, qui montre alors les branches que l'écriture posera.
+
         Rend le code de sortie du script : 1 quand aucun clone n'est gelable.
         """
         script = f"{PYTHON_ERPLIBRE} {FREEZE_SCRIPT}"
@@ -1170,6 +1177,12 @@ class GitRepoMenuMixin:
                     "Querying each upstream, this takes a few seconds."
                 )
                 print(f"   {attente}")
+            if click.confirm(
+                t("Also freeze the branch each clone is on (revision)?"),
+                default=False,
+            ):
+                script += " --branches"
+                self._git_repo_publier_branches()
         cmd = f"{script} --dry-run"
         print(f"  {t('Will execute:')} {cmd}")
         status = self.execute.exec_command_live(
@@ -1197,6 +1210,70 @@ class GitRepoMenuMixin:
         else:
             print(f"   {t('Apply with: Switch to production.')}")
         return 0
+
+    def _git_repo_publier_branches(self):
+        """Propose de pousser les branches que le gel ne peut écrire.
+
+        Liste les branches extraites absentes de leur remote ou en avance
+        sur lui (`git_freeze_manifest.branches_a_publier`), puis demande :
+        toutes, une à une, ou aucune, aucune par défaut. Chaque push porte
+        la branche locale sur la branche homonyme du remote, jamais de
+        force. Rend le nombre de branches poussées.
+        """
+        depart = os.getcwd()
+        try:
+            os.chdir(RACINE)
+            lst = git_freeze_manifest.branches_a_publier()
+        finally:
+            os.chdir(depart)
+        if not lst:
+            return 0
+        print(
+            f"   {len(lst)}"
+            f" {t('branches are missing from their remote or behind it: the freeze cannot write them.')}"
+        )
+        for e in lst:
+            genre = (
+                t("new branch")
+                if e["motif"] == git_freeze_manifest.BRANCHE_ABSENTE
+                else t("fast-forward")
+            )
+            print(
+                f"   ▸ {e['chemin']}: {e['branche']} → {e['remote']} · {genre}"
+            )
+        choix = click.prompt(
+            f"💬 {t('Push them? all, each or none')}",
+            type=click.Choice(["all", "each", "none"]),
+            default="none",
+        )
+        if choix == "none":
+            print(
+                f"↩️  {t('Nothing pushed: these projects keep their manifest branch.')}"
+            )
+            return 0
+        poussees = 0
+        for e in lst:
+            if choix == "each" and not click.confirm(
+                f"{t('Push')} {e['branche']} ({e['chemin']}) → {e['remote']}?",
+                default=False,
+            ):
+                continue
+            code, err = git_freeze_manifest.publier_branche(
+                os.path.join(RACINE, e["chemin"]), e["remote"], e["branche"]
+            )
+            if code:
+                print(f"  ⚠  {e['chemin']}: {err[:400]}")
+                if e["motif"] == git_freeze_manifest.BRANCHE_ABSENTE:
+                    conseil = t(
+                        "If the remote already has this branch, fetch it,"
+                        " then freeze again."
+                    )
+                    print(f"     {conseil}")
+                continue
+            poussees += 1
+            print(f"  ✅ {e['chemin']}: {e['branche']}")
+        print(f"   {poussees}/{len(lst)} {t('branches pushed.')}")
+        return poussees
 
     def _git_repo_comparer(self):
         """Compare deux gels, puis ouvre l'historique d'un projet sur demande.

@@ -519,6 +519,27 @@ deux attributs. Comme `freeze-revision`, elle n'atteint jamais git-repo : la fus
 fichiers que le gel n'écrit pas. L'en-tête de TODO › Exécution › Répertoire git › Repo compte les forks qui ont une base amont, lue
 dans les fichiers sans réseau.
 
+#### Geler les branches
+
+`--branches`, ou `make repo_freeze BRANCHES=1`, écrit aussi dans `revision` la branche de chaque clone, quand elle
+diffère de celle du manifeste : un clone que la mise à jour des forks laisse sur sa branche datée
+`<branche>_maj_<AAAAMMJJ>` fait suivre cette branche à la reconfiguration, tandis que `freeze-revision` épingle son
+commit. Une tête détachée ne change rien, et une `revision` qui est déjà un commit n'est jamais remplacée par une
+branche.
+
+Seule une branche que le remote du projet porte, sa branche de suivi contenant le commit gelé, s'écrit ; les autres
+sont listées, et leur projet garde sa branche : `branch not on the remote`, `branch ahead of the remote`,
+`branch diverged from the remote`. Le script ne pousse rien. Dans TODO, le gel demande après la base amont s'il gèle
+aussi les branches, Non par défaut ; avant la passe à sec, il liste les branches absentes de leur remote ou en avance
+sur lui et propose de les pousser, toutes, une à une ou aucune, aucune par défaut. Chaque push porte la branche locale
+sur la branche homonyme, jamais de force : une branche divergente reste listée. `make repo_unfreeze` garde `revision`.
+
+Une `revision` datée revient à sa branche de base, avec ou sans `--branches`, dès que la branche de base du remote
+contient le commit gelé : c'est l'état que laisse la publication d'une passe, la copie datée poussée sur la branche du
+fork et le clone détaché dessus. La mise à jour des forks travaille toujours sur la branche de base : une passe nomme
+`<branche>_maj_<AAAAMMJJ>` et publie sur `<branche>`, jamais sur une copie datée, et le nettoyage des branches
+fusionnées ne propose jamais la branche que suit le manifeste.
+
 #### Installer ou reconfigurer sur les commits
 
 ```bash

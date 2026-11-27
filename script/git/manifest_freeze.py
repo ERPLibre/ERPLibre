@@ -30,10 +30,14 @@ import re
 
 FREEZE_ATTR = "freeze-revision"
 FORK_UPSTREAM_FREEZE_ATTR = "fork-upstream-freeze-revision"
+REVISION_ATTR = "revision"
 
 # Où chaque attribut se pose quand la balise ne le porte pas encore : après
 # la première de ces ancres présente.
 _ANCRES = {
+    # Un projet sans « revision » suit le <default> ; lui en donner une la
+    # place après son chemin.
+    REVISION_ATTR: ("path", "name"),
     FREEZE_ATTR: ("revision", "path", "name"),
     # Un projet sans « remote » suit le <default> ; le lui donner le place
     # après son chemin.
@@ -66,6 +70,21 @@ _COMMENT = re.compile(r"<!--.*?-->", re.S)
 # s'arrête donc à la fin de la balise ouvrante, auto-fermante ou non.
 _PROJECT = re.compile(r"<project\b[^>]*>", re.S)
 _ATTRS = re.compile(r'([\w:.-]+)="([^"]*)"')
+
+
+# Le suffixe d'une copie datée que la mise à jour des forks crée,
+# « <branche>_maj_<AAAAMMJJ> » ; répété quand une copie datée a elle-même
+# servi de branche.
+_DATEE = re.compile(r"(?:_maj_\d{8})+$")
+
+
+def base_branch(revision):
+    """La branche d'un fork sous sa copie datée : `revision` sans ses
+    suffixes « _maj_<AAAAMMJJ> ». Une branche non datée, un commit ou None
+    se rendent tels quels."""
+    if not revision or is_sha(revision):
+        return revision
+    return _DATEE.sub("", revision) or revision
 
 
 def is_sha(value):
@@ -173,19 +192,22 @@ def _drop_freeze(tag):
     return _drop_attr(tag, FORK_UPSTREAM_FREEZE_ATTR)
 
 
-def rewrite(text, freeze=None, unfreeze=False, upstream=None):
+def rewrite(text, freeze=None, unfreeze=False, upstream=None, revisions=None):
     """Réécrit les `<project>` d'un fichier source. Rend (texte, clés changées).
 
     `freeze` associe une clé `project_key` au commit à poser ; `upstream`
     associe une clé à la base amont à poser dans
     « fork-upstream-freeze-revision », ou à None pour la retirer. Une clé
     absente d'`upstream` garde sa base si son commit gelé ne change pas, et
-    la perd sinon. Un projet absent des deux tables n'est pas touché.
-    `unfreeze` retire les deux attributs de tous les projets. Tout ce qui
-    n'est pas une balise `<project>` visée est rendu à l'octet près.
+    la perd sinon. `revisions` associe une clé à la branche à poser dans
+    « revision ». Un projet absent des trois tables n'est pas touché.
+    `unfreeze` retire le commit gelé et la base amont de tous les projets et
+    laisse « revision » telle quelle. Tout ce qui n'est pas une balise
+    `<project>` visée est rendu à l'octet près.
     """
     freeze = freeze or {}
     upstream = upstream or {}
+    revisions = revisions or {}
     morceaux = []
     changees = []
     curseur = 0
@@ -194,10 +216,12 @@ def rewrite(text, freeze=None, unfreeze=False, upstream=None):
         tag = text[debut:fin]
         if unfreeze:
             neuf = _drop_freeze(tag)
-        elif cle in freeze or cle in upstream:
+        elif cle in freeze or cle in upstream or cle in revisions:
             neuf = _set_freeze(
                 tag, freeze.get(cle), upstream.get(cle, _INCHANGEE)
             )
+            if cle in revisions:
+                neuf = _set_attr(neuf, REVISION_ATTR, revisions[cle])
         else:
             continue
         if neuf != tag:

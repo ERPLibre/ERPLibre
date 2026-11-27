@@ -507,6 +507,26 @@ removes both attributes. Like `freeze-revision`, it never reaches git-repo: the 
 the files the freeze does not write. The header of TODO › Execute › Git repository › Repo counts the forks with an upstream
 base, read from the files without network.
 
+#### Freeze the branches
+
+`--branches`, or `make repo_freeze BRANCHES=1`, also writes in `revision` the branch each clone is on, when it differs
+from the manifest: a clone left by the fork upgrade on its dated branch `<branch>_maj_<YYYYMMDD>` makes the
+reconfiguration follow that branch, while `freeze-revision` pins its commit. A detached HEAD changes nothing, and a
+`revision` that is already a commit is never replaced by a branch.
+
+Only a branch that the project's remote carries, its tracking branch containing the frozen commit, is written; the
+others are listed, and their project keeps its branch: `branch not on the remote`, `branch ahead of the remote`,
+`branch diverged from the remote`. The script pushes nothing. In TODO, the freeze asks after the upstream base whether
+to freeze the branches too, No by default; before the dry run, it lists the branches missing from their remote or
+ahead of it and offers to push them, all, one by one or none, none by default. Each push puts the local branch on the
+branch of the same name, never forced: a diverged branch stays listed. `make repo_unfreeze` keeps `revision`.
+
+A dated `revision` returns to its base branch, with or without `--branches`, once the remote's base branch contains the
+frozen commit: that is the state the publication of a pass leaves, the dated branch pushed onto the fork's branch and
+the clone detached on it. The fork upgrade always works on the base branch: a pass names `<branch>_maj_<YYYYMMDD>` and
+publishes onto `<branch>`, never onto a dated branch, and the cleanup of merged branches never offers the branch the
+manifest follows.
+
 #### Install or reconfigure on the commits
 
 ```bash

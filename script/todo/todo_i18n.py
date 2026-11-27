@@ -24136,6 +24136,34 @@ TRANSLATIONS = {
         "fr": "Geler aussi la base amont de chaque fork (réseau) ?",
         "en": "Also freeze the upstream base of each fork (network)?",
     },
+    "Also freeze the branch each clone is on (revision)?": {
+        "fr": "Geler aussi la branche de chaque clone (revision) ?",
+        "en": "Also freeze the branch each clone is on (revision)?",
+    },
+    "branches are missing from their remote or behind it: the freeze cannot write them.": {
+        "fr": "branches absentes de leur remote ou en retard sur lui : le gel ne peut pas les écrire.",
+        "en": "branches are missing from their remote or behind it: the freeze cannot write them.",
+    },
+    "If the remote already has this branch, fetch it, then freeze again.": {
+        "fr": "Si le remote porte déjà cette branche, la récupérer (fetch), puis geler de nouveau.",
+        "en": "If the remote already has this branch, fetch it, then freeze again.",
+    },
+    "new branch": {
+        "fr": "nouvelle branche",
+        "en": "new branch",
+    },
+    "Push them? all, each or none": {
+        "fr": "Les pousser ? all (toutes), each (une à une) ou none (aucune)",
+        "en": "Push them? all, each or none",
+    },
+    "Nothing pushed: these projects keep their manifest branch.": {
+        "fr": "Rien n'a été poussé : ces projets gardent la branche du manifeste.",
+        "en": "Nothing pushed: these projects keep their manifest branch.",
+    },
+    "branches pushed.": {
+        "fr": "branches poussées.",
+        "en": "branches pushed.",
+    },
     "forks with upstream base": {
         "fr": "forks avec base amont",
         "en": "forks with upstream base",
