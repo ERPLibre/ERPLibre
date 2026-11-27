@@ -9,7 +9,9 @@ dépend de ce que l'amont répond, pour que la suite unitaire reste
 lançable en quelques secondes sur une machine hors ligne.
 """
 
+import json
 import os
+import shutil
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -18,6 +20,20 @@ from script.git import repo_upgrade
 from script.git.git_tool import GitTool
 
 VERSION = "18.0"
+
+RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def versions_supportees():
+    """Les versions d'Odoo du catalogue, dépréciées comprises : leurs
+    manifestes vivent dans le dépôt et dérivent comme les autres."""
+    chemin = os.path.join(RACINE, "conf", "supported_version_erplibre.json")
+    with open(chemin, encoding="utf-8") as fh:
+        catalogue = json.load(fh)
+    return sorted(
+        {v["odoo_version"] for v in catalogue.values()},
+        key=lambda v: float(v),
+    )
 
 
 class TestUrlAmont(unittest.TestCase):
@@ -140,6 +156,7 @@ MANIFESTE_DEV = """<?xml version="1.0" encoding="UTF-8" ?>
 class TestLireManifestes(unittest.TestCase):
     def setUp(self):
         self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
         with open(
             os.path.join(self.dossier, "git_manifest_odooX.xml"), "w"
         ) as fh:
@@ -199,54 +216,76 @@ class TestLireManifestes(unittest.TestCase):
 
 
 class TestManifestesDuDepot(unittest.TestCase):
-    """La garde qui attrape la dérive : les manifestes réels du dépôt."""
+    """La garde qui attrape la dérive : les manifestes réels du dépôt, pour
+    chaque version d'Odoo du catalogue."""
 
     def setUp(self):
-        self.remotes, self.projets = repo_upgrade.lire_manifestes(VERSION)
-        self.forks = [
-            p for p in self.projets.values() if repo_upgrade.est_fork(p)
+        self.versions = versions_supportees()
+
+    def forks(self, version):
+        remotes, projets = repo_upgrade.lire_manifestes(version)
+        return remotes, [
+            p for p in projets.values() if repo_upgrade.est_fork(p)
         ]
+
+    def test_le_catalogue_a_ete_lu(self):
+        """Sinon une liste vide ferait passer toutes les gardes."""
+        self.assertIn(VERSION, self.versions)
+        self.assertGreater(len(self.versions), 1)
 
     def test_des_forks_existent(self):
-        self.assertGreater(len(self.forks), 0)
+        for version in self.versions:
+            with self.subTest(version=version):
+                self.assertGreater(len(self.forks(version)[1]), 0)
 
     def test_chaque_fork_declare_son_remote_amont(self):
-        muets = [
-            p.get("path")
-            for p in self.forks
-            if not p.get("fork-upstream-remote")
-        ]
-        self.assertEqual(muets, [], "forks sans amont déclaré")
+        for version in self.versions:
+            with self.subTest(version=version):
+                muets = [
+                    p.get("path")
+                    for p in self.forks(version)[1]
+                    if not p.get("fork-upstream-remote")
+                ]
+                self.assertEqual(muets, [], "forks sans amont déclaré")
 
     def test_chaque_remote_amont_est_declare(self):
         """Un « fork-upstream-remote » qui ne nomme aucun <remote> ne
         résout aucune URL, et la mise à niveau ignorerait le dépôt."""
-        absents = [
-            (p.get("path"), p["fork-upstream-remote"])
-            for p in self.forks
-            if p.get("fork-upstream-remote")
-            and p["fork-upstream-remote"] not in self.remotes
-        ]
-        self.assertEqual(absents, [])
+        for version in self.versions:
+            with self.subTest(version=version):
+                remotes, forks = self.forks(version)
+                absents = [
+                    (p.get("path"), p["fork-upstream-remote"])
+                    for p in forks
+                    if p.get("fork-upstream-remote")
+                    and p["fork-upstream-remote"] not in remotes
+                ]
+                self.assertEqual(absents, [])
 
     def test_aucun_amont_devine(self):
-        lst = repo_upgrade.etat_forks(VERSION, verifier=False)
-        a_corriger = [
-            (x["chemin"], x["etat"])
-            for x in lst
-            if x["etat"] in repo_upgrade.ETATS_A_CORRIGER
-        ]
-        self.assertEqual(a_corriger, [])
+        for version in self.versions:
+            with self.subTest(version=version):
+                lst = repo_upgrade.etat_forks(version, verifier=False)
+                a_corriger = [
+                    (x["chemin"], x["etat"])
+                    for x in lst
+                    if x["etat"] in repo_upgrade.ETATS_A_CORRIGER
+                ]
+                self.assertEqual(a_corriger, [])
 
     def test_attributs_jamais_vides(self):
-        for p in self.forks:
-            for attr in (
-                "fork-upstream-remote",
-                "fork-upstream-name",
-                "fork-upstream",
-            ):
-                if attr in p:
-                    self.assertTrue(p[attr].strip(), f"{p.get('path')} {attr}")
+        for version in self.versions:
+            for p in self.forks(version)[1]:
+                for attr in (
+                    "fork-upstream-remote",
+                    "fork-upstream-name",
+                    "fork-upstream",
+                ):
+                    if attr in p:
+                        with self.subTest(version=version, attr=attr):
+                            self.assertTrue(
+                                p[attr].strip(), f"{p.get('path')} {attr}"
+                            )
 
 
 class TestAllerRetourGenerateur(unittest.TestCase):
@@ -259,6 +298,7 @@ class TestAllerRetourGenerateur(unittest.TestCase):
 
     def test_les_trois_attributs_survivent(self):
         dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, ignore_errors=True)
         sortie = os.path.join(dossier, "sortie.xml")
         GitTool().generate_repo_manifest(
             output=sortie,

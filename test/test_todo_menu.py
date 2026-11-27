@@ -2179,6 +2179,59 @@ class TestPremiereEntreeJoignable(unittest.TestCase):
         self.assertIn("int_cmd = int(status)\n", corps)
         self.assertNotIn("int_cmd = int(status) - 1", corps)
 
+    def lancer_update(self, saisies):
+        """Fait tourner le menu Mise à jour sur ``saisies`` ; rend le menu,
+        sa valeur de retour et ce qu'il a imprimé."""
+        import io
+        import sys
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        # todo.py lit ses arguments à l'import.
+        with mock.patch.object(sys, "argv", ["todo.py"]):
+            from script.todo import todo as module
+
+        menu = module.TODO.__new__(module.TODO)
+        menu.premiere = {"prompt_description": "première", "makefile_cmd": "x"}
+        menu.config_file = mock.Mock()
+        menu.config_file.get_config.return_value = [menu.premiere]
+        menu.fill_help_info = lambda choices: ""
+        menu.execute_from_configuration = mock.Mock()
+        menu._update_odoo_migration = mock.Mock()
+        menu.upgrade_poetry = mock.Mock()
+        with mock.patch.object(
+            module.click, "prompt", side_effect=saisies
+        ), redirect_stdout(io.StringIO()) as sortie:
+            rendu = menu.prompt_execute_update()
+        introuvable = module.t("Command not found !") in sortie.getvalue()
+        return menu, rendu, introuvable
+
+    def test_update_atteint_chaque_entree_en_vrai(self):
+        """Le menu tourne pour de bon, une entrée par passe : chaque rang
+        mène à SA destination, et « 0 » rend la main."""
+        attendus = {
+            "1": "execute_from_configuration",
+            "2": "_update_odoo_migration",
+            "3": "upgrade_poetry",
+        }
+        for rang, methode in attendus.items():
+            with self.subTest(rang=rang):
+                menu, rendu, introuvable = self.lancer_update([rang, "0"])
+                self.assertIs(rendu, False)
+                self.assertFalse(introuvable)
+                for nom in attendus.values():
+                    appels = getattr(menu, nom).call_count
+                    self.assertEqual(appels, 1 if nom == methode else 0, nom)
+                if methode == "execute_from_configuration":
+                    menu.execute_from_configuration.assert_called_once_with(
+                        menu.premiere
+                    )
+
+    def test_update_refuse_le_rang_au_dela_de_la_liste(self):
+        menu, rendu, introuvable = self.lancer_update(["4", "0"])
+        self.assertIs(rendu, False)
+        self.assertTrue(introuvable)
+
 
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
